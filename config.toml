@@ -1,0 +1,9 @@
+[default]
+in_protocol="tcp"
+servers="127.0.0.1:8000,127.0.0.1:8123, 127.0.0.1:8121"
+msg_format="<timestamp> <key> <value>"
+heartbeat_time_delay=5
+heartbeat_time_timeout=1
+failed_heartbeat_count=3
+server_down_policy="remove_node"
+
