@@ -8,35 +8,53 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"sync/atomic"
+	"net/http"
+	"net/url"
+	"sync"
 	"time"
 )
 
 const (
 	SERVER_TIMEOUT             = time.Duration(5) * time.Second
-	DEFAULT_SERVER_OUT_COUNT   = uint64(3)
+	DEFAULT_SERVER_OUT_COUNT   = 3
 	DEFAULT_SERVER_RETRY       = time.Duration(2) * time.Second
 	DEFAULT_SERVER_RE_ADD_TICK = DEFAULT_SERVER_OUT_COUNT * 4
 )
 
 // to be used by another object
 type ServerPoolRunner interface {
-	onServerUp(server string)
-	onServerDown(server string)
+	onServerUp(server url.URL)
+	onServerDown(server url.URL)
 }
 
 type ServerPoolServer struct {
+	//name (ip:port) of the real server
 	Name string
 
-	ServerPingCounts        uint64
-	ServerUpCounts          uint64
-	ServerDownCounts        uint64
-	ServerCurrentDownCounts uint64
-	ServerRequestCounts     uint64
+	//the actual check URL ()
+	// this string can be
+	// tcp://ip:port
+	// http://ip:port/path -- > 200 == healthy
+	// this is here in case the actuall servers are UDP which
+	// while checkable is not as a good way to really check servers
+	// if will default to tcp://Name above
+	CheckName string
+
+	// proper URLs used for checks and servers
+	ServerURL url.URL
+	CheckURL  url.URL
+
+	ServerPingCounts        AtomicInt
+	ServerUpCounts          AtomicInt
+	ServerDownCounts        AtomicInt
+	ServerCurrentDownCounts AtomicInt
+	ServerRequestCounts     AtomicInt
 }
 
 type CheckedServerPool struct {
-	ServerList []string
+	mu sync.Mutex
+
+	ServerList []*url.URL
 
 	ServerActions ServerPoolRunner
 
@@ -44,7 +62,7 @@ type CheckedServerPool struct {
 
 	Servers        []ServerPoolServer
 	DroppedServers []ServerPoolServer
-	AllPingCounts  uint64
+	AllPingCounts  AtomicInt
 
 	// some stats
 	ServerActiveList map[string]bool
@@ -54,7 +72,7 @@ type CheckedServerPool struct {
 	DownPolicy string
 
 	// if 0 we never take out the node .. the check internal
-	DownOutCount uint64
+	DownOutCount int64
 
 	ConnectionTimeout time.Duration
 
@@ -65,12 +83,13 @@ type CheckedServerPool struct {
 
 //make from our basic config object
 func createServerPoolFromConfig(cfg *ConstHashConfig, serveraction *ServerPoolRunner) (*CheckedServerPool, error) {
-	serverp, err := createServerPool(cfg.ServerListStr, cfg.Protocal, serveraction)
+
+	serverp, err := createServerPool(cfg.ServerLists.ServerUrls, cfg.ServerLists.CheckUrls, serveraction)
 	if err != nil {
 		return nil, fmt.Errorf("Error setting up servers: %s", err)
 	}
 	serverp.ConnectionRetry = cfg.ServerHeartBeat
-	serverp.DownOutCount = cfg.MaxServerHeartBeatFail
+	serverp.DownOutCount = int64(cfg.MaxServerHeartBeatFail)
 	serverp.ConnectionTimeout = cfg.ServerHeartBeatTimeout
 	serverp.DownPolicy = cfg.ServerDownPolicy
 
@@ -78,23 +97,25 @@ func createServerPoolFromConfig(cfg *ConstHashConfig, serveraction *ServerPoolRu
 
 }
 
-func createServerPool(serverlist []string, protocal string, serveraction *ServerPoolRunner) (CheckedServerPool, error) {
+func createServerPool(serverlist []*url.URL, checklist []*url.URL, serveraction *ServerPoolRunner) (CheckedServerPool, error) {
 	var serverp CheckedServerPool
 
 	serverp.ServerList = serverlist
-	serverp.Protocal = protocal
 
 	serverp.ServerActions = *serveraction
 
 	serverp.AllPingCounts = 0
 
-	for _, server := range serverlist {
+	for idx, server := range serverlist {
 
 		//up
-		serverp.ServerActions.onServerUp(server)
+		serverp.ServerActions.onServerUp(*server)
 
 		c_server := ServerPoolServer{
-			Name:                    server,
+			Name:                    fmt.Sprintf("%s", server),
+			ServerURL:               *server,
+			CheckName:               fmt.Sprintf("%s", checklist[idx]),
+			CheckURL:                *checklist[idx],
 			ServerPingCounts:        0,
 			ServerUpCounts:          0,
 			ServerDownCounts:        0,
@@ -138,12 +159,14 @@ func (self *CheckedServerPool) isUp(server string) bool {
 // add any "dropped" servers back into the pool
 func (self *CheckedServerPool) reAddAllDroppedServers() {
 	new_s := self.Servers
+	self.mu.Lock()
+	defer self.mu.Unlock()
 
 	for idx, _ := range self.DroppedServers {
 
 		//add it back to the hash pool
 		if self.DownPolicy == "remove_node" {
-			self.ServerActions.onServerUp(self.DroppedServers[idx].Name)
+			self.ServerActions.onServerUp(self.DroppedServers[idx].ServerURL)
 		}
 		log.Printf("Readded old dead server %s", self.DroppedServers[idx].Name)
 		self.DroppedServers[idx].ServerCurrentDownCounts = 0
@@ -154,15 +177,17 @@ func (self *CheckedServerPool) reAddAllDroppedServers() {
 }
 
 func (self *CheckedServerPool) dropServer(server *ServerPoolServer) {
+	self.mu.Lock()
+	defer self.mu.Unlock()
 
 	var new_s []ServerPoolServer
 
 	for idx, _ := range self.Servers {
 		if &self.Servers[idx] == server {
 			self.DroppedServers = append(self.DroppedServers, self.Servers[idx])
-			// remove from serverp if we don't want it any more
+			// remove from server pool if we don't want it any more
 			if self.DownPolicy == "remove_node" {
-				self.ServerActions.onServerDown(self.Servers[idx].Name)
+				self.ServerActions.onServerDown(self.Servers[idx].ServerURL)
 			}
 		} else {
 			new_s = append(new_s, self.Servers[idx])
@@ -173,21 +198,37 @@ func (self *CheckedServerPool) dropServer(server *ServerPoolServer) {
 
 func (self *CheckedServerPool) testConnections() error {
 
-	testUp := func(server *ServerPoolServer, out chan bool) {
-		pings := atomic.AddUint64(&server.ServerPingCounts, 1)
+	testConnection := func(url url.URL, timeout time.Duration) error {
+		if url.Scheme == "tcp" || url.Scheme == "udp" {
+			conn, err := net.DialTimeout(url.Scheme, url.Host, timeout)
+			if err == nil {
+				conn.Close()
+			}
+			return err
+		}
 
-		log.Printf("Health Checking %s, check %d", server.Name, pings)
-		con, err := net.DialTimeout(self.Protocal, server.Name, self.ConnectionTimeout)
+		//http
+		client := &http.Client{
+			Timeout: timeout,
+		}
+		_, err := client.Get(url.String())
+		return err
+
+	}
+
+	testUp := func(server *ServerPoolServer, out chan bool) {
+		pings := server.ServerPingCounts.Add(1)
+
+		log.Printf("Health Checking %s via %s, check %d", server.Name, server.CheckName, pings)
+		err := testConnection(server.CheckURL, self.ConnectionTimeout)
 
 		if err != nil {
 			log.Printf("Healthcheck for %s Failed: %s - Down %d times", server.Name, err, server.ServerDownCounts+1)
-			if self.DownOutCount > 0 && server.ServerCurrentDownCounts+1 > self.DownOutCount {
+			if self.DownOutCount > 0 && server.ServerCurrentDownCounts.Get()+1 > self.DownOutCount {
 				log.Printf("Health %s Fail too many times, taking out of pool", server.Name)
 				self.dropServer(server)
 			}
 			out <- false
-		} else {
-			con.Close()
 		}
 		out <- true
 	}
@@ -195,11 +236,11 @@ func (self *CheckedServerPool) testConnections() error {
 	gotResponse := func(server *ServerPoolServer, in <-chan bool) {
 		message := <-in
 		if message {
-			server.ServerCurrentDownCounts = 0
-			atomic.AddUint64(&server.ServerUpCounts, 1)
+			server.ServerCurrentDownCounts.Set(0)
+			server.ServerUpCounts.Add(1)
 		} else {
-			atomic.AddUint64(&server.ServerDownCounts, 1)
-			atomic.AddUint64(&server.ServerCurrentDownCounts, 1)
+			server.ServerDownCounts.Add(1)
+			server.ServerCurrentDownCounts.Add(1)
 		}
 	}
 	if self.ConnectionRetry < 2*self.ConnectionTimeout {
@@ -208,15 +249,16 @@ func (self *CheckedServerPool) testConnections() error {
 	}
 
 	for self.DoChecks {
+		self.mu.Lock()
 		for idx, _ := range self.Servers {
 			channel := make(chan bool)
 			defer close(channel)
 			go testUp(&self.Servers[idx], channel)
 			go gotResponse(&self.Servers[idx], channel)
 		}
-
+		self.mu.Unlock()
 		//re-add any killed servers after X ticker counts just to retest them
-		atomic.AddUint64(&self.AllPingCounts, 1)
+		self.AllPingCounts.Add(1)
 		if (self.AllPingCounts%DEFAULT_SERVER_RE_ADD_TICK == 0) && len(self.DroppedServers) > 0 {
 			log.Printf("Attempting to re-add old dead server")
 			self.reAddAllDroppedServers()

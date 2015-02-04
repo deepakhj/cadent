@@ -28,7 +28,7 @@ GOFMT=gofmt -w
 TOPLEVEL_PKG := .
 INT_LIST := 	#<-- Interface directories
 IMPL_LIST :=	#<-- Implementation directories
-CMD_LIST := cmd/consthash 	#<-- Command directories
+CMD_LIST := cmd/consthash cmd/echoserver	#<-- Command directories
  
 # List building
 ALL_LIST = $(INT_LIST) $(IMPL_LIST) $(CMD_LIST)

@@ -8,46 +8,66 @@ import (
 	"fmt"
 	"github.com/stathat/consistent"
 	"log"
-	//"net"
+	"net/url"
 	//"sync/atomic"
 	//"time"
 )
 
+const (
+	CACHE_ITEMS = 10000
+)
+
+// for LRU cache "value" interface
+type ServerCacheItem string
+
+func (s ServerCacheItem) Size() int {
+	return len(s)
+}
+
 // match the  ServerPoolRunner interface
-type ConstHashHasher struct {
+type ConstHasher struct {
 	Hasher     *consistent.Consistent
+	Cache      *LRUCache
 	ServerPool *CheckedServerPool
 
 	ServerPutCounts uint64
 	ServerGetCounts uint64
 }
 
-func (self ConstHashHasher) onServerUp(server string) {
-	log.Printf("Adding server %s to hasher", server)
-	self.Hasher.Add(server)
+func (self ConstHasher) onServerUp(server url.URL) {
+	log.Printf("Adding server %s to hasher", server.String())
+	self.Hasher.Add(server.String())
 	log.Printf("Current members %s from hasher", self.Members())
 }
 
-func (self ConstHashHasher) onServerDown(server string) {
-	log.Printf("Removing server %s from hasher", server)
-	self.Hasher.Remove(server)
+func (self ConstHasher) onServerDown(server url.URL) {
+	log.Printf("Removing server %s from hasher", server.String())
+	self.Hasher.Remove(server.String())
 	log.Printf("Current members %s from hasher", self.Members())
 }
 
-//alias to hasher
-func (self *ConstHashHasher) Get(in_key string) (string, error) {
-	return self.Hasher.Get(in_key)
+//alias to hasher to allow to use our LRU cache
+func (self *ConstHasher) Get(in_key string) (string, error) {
+	srv, ok := self.Cache.Get(in_key)
+	if !ok {
+		srv, err := self.Hasher.Get(in_key)
+		self.Cache.Set(in_key, ServerCacheItem(srv))
+		return srv, err
+	}
+	return fmt.Sprintf("%s", srv), nil
 }
 
 //alias to hasher
-func (self *ConstHashHasher) Members() []string {
+func (self *ConstHasher) Members() []string {
 	return self.Hasher.Members()
 }
 
 //make from our basic config object
-func createConstHasherFromConfig(cfg *ConstHashConfig) (*ConstHashHasher, error) {
-	var hasher ConstHashHasher
+func createConstHasherFromConfig(cfg *ConstHashConfig) (*ConstHasher, error) {
+	var hasher ConstHasher
 	hasher.Hasher = consistent.New()
+	hasher.Cache = NewLRUCache(CACHE_ITEMS)
+
 	s_pool_runner := ServerPoolRunner(hasher)
 	s_pool, err := createServerPoolFromConfig(cfg, &s_pool_runner)
 
@@ -59,15 +79,16 @@ func createConstHasherFromConfig(cfg *ConstHashConfig) (*ConstHashHasher, error)
 
 }
 
-func createConstHasher(serverlist []string, protocal string) (*ConstHashHasher, error) {
-	var hasher ConstHashHasher
+// make from a generic string
+func createConstHasher(serverlist []*url.URL, checkerurl []*url.URL) (*ConstHasher, error) {
+	var hasher ConstHasher
 
 	hasher.Hasher = consistent.New()
 
 	// cast it to the interface
 	s_pool_runner := ServerPoolRunner(hasher)
 
-	s_pool, err := createServerPool(serverlist, protocal, &s_pool_runner)
+	s_pool, err := createServerPool(serverlist, checkerurl, &s_pool_runner)
 	if err != nil {
 		return nil, fmt.Errorf("Error setting up servers: %s", err)
 	}

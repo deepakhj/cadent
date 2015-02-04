@@ -2,3 +2,6 @@
 consthash
 consthash.iml
 consthash.xcodeproj*
+*.heap
+*.pprof
+echoserver

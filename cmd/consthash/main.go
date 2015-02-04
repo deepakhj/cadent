@@ -2,8 +2,11 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"io/ioutil"
 	"log"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"runtime"
 	"strconv"
@@ -11,7 +14,34 @@ import (
 	"syscall"
 )
 
+// need to up this guy otherwise we quickly run out of sockets
+func setSystemStuff() {
+	fmt.Println("[System] Setting GOMAXPROCS to ", runtime.NumCPU())
+
+	runtime.GOMAXPROCS(runtime.NumCPU())
+
+	var rLimit syscall.Rlimit
+	err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rLimit)
+	if err != nil {
+		fmt.Println("[System] Error Getting Rlimit: ", err)
+	}
+	fmt.Println("[System] Current Rlimit: ", rLimit)
+
+	rLimit.Max = 999999
+	rLimit.Cur = 999999
+	err = syscall.Setrlimit(syscall.RLIMIT_NOFILE, &rLimit)
+	if err != nil {
+		fmt.Println("[System] Error Setting Rlimit: ", err)
+	}
+	err = syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rLimit)
+	if err != nil {
+		fmt.Println("[System] Error Getting Rlimit:  ", err)
+	}
+	fmt.Println("[System] Final Rlimit Final: ", rLimit)
+}
+
 func main() {
+	setSystemStuff()
 	configFile := flag.String("config", "config.toml", "Consitent Hash configuration file")
 	flag.Parse()
 
@@ -73,7 +103,10 @@ func main() {
 		log.Printf("Error decoding config file: Could not find default: %s", err)
 		os.Exit(1)
 	}
-
+	if def.Profile {
+		log.Println("Starting Profiler on localhost:6060")
+		go http.ListenAndServe(":6060", nil)
+	}
 	hasher, err := createConstHasherFromConfig(def)
 	go hasher.ServerPool.startChecks()
 	startServer(def, hasher)

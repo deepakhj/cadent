@@ -1,9 +1,12 @@
 [default]
-in_protocol="tcp"
-servers="127.0.0.1:8000,127.0.0.1:8123, 127.0.0.1:8121"
+listen="tcp://127.0.0.1:6000"
+#servers="udp://127.0.0.1:6002,udp://127.0.0.1:6003, udp://127.0.0.1:6004"
+servers="tcp://127.0.0.1:6002,tcp://127.0.0.1:6003, tcp://127.0.0.1:6004"
+check_servers="tcp://127.0.0.1:6005,tcp://127.0.0.1:6006, tcp://127.0.0.1:6007"
 msg_format="<timestamp> <key> <value>"
 heartbeat_time_delay=5
 heartbeat_time_timeout=1
 failed_heartbeat_count=3
 server_down_policy="remove_node"
+cpu_profile=true
 
