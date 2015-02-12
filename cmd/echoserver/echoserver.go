@@ -24,9 +24,12 @@ func echoMe(line string) {
 	}
 }
 
+var TotalLines uint64
+
 type EchoStat struct {
 	NumConnections       uint64
 	NumOpenConnections   uint64
+	NumLines             uint64
 	NumClosedConnections uint64
 }
 
@@ -65,8 +68,13 @@ func (echo EchoServerUDP) String() string {
 	return echo.Listen.String()
 }
 func (echo EchoServerUDP) EchoStats() {
-	log.Printf("Server: ValidConnections: %d", echo.StatCt.NumConnections)
-	log.Printf("Server: OpenConnections: %d", echo.StatCt.NumOpenConnections-echo.StatCt.NumClosedConnections)
+	log.Printf("Server %s: {ValidConnections: %d, OpenConnections: %d, Lines: %d, Total: %d}",
+		echo.String(),
+		echo.StatCt.NumOpenConnections-echo.StatCt.NumClosedConnections,
+		echo.StatCt.NumLines,
+		echo.StatCt.NumConnections,
+		TotalLines)
+
 	time.Sleep(time.Duration(5 * time.Second))
 	go echo.EchoStats()
 }
@@ -87,6 +95,8 @@ func (echo EchoServerUDP) ReadMessages() (err error) {
 			if n > 0 {
 				str := strings.Split(string(buf), "\n")
 				for _, line := range str {
+					atomic.AddUint64(&echo.StatCt.NumLines, 1)
+					atomic.AddUint64(&TotalLines, 1)
 					echoMe("[ECHO from " + echo.String() + "] " + strings.Trim(line, " \t\n"))
 				}
 			}
@@ -123,8 +133,13 @@ func (echo EchoServerTCP) String() string {
 }
 
 func (echo EchoServerTCP) EchoStats() {
-	log.Printf("Server %s: ValidConnections: %d", echo.String(), echo.StatCt.NumConnections)
-	log.Printf("Server %s: OpenConnections: %d", echo.String(), echo.StatCt.NumOpenConnections-echo.StatCt.NumClosedConnections)
+	log.Printf("Server %s: {ValidConnections: %d, OpenConnections: %d, Lines: %d, Total: %d}",
+		echo.String(),
+		echo.StatCt.NumOpenConnections-echo.StatCt.NumClosedConnections,
+		echo.StatCt.NumLines,
+		echo.StatCt.NumConnections,
+		TotalLines)
+
 	time.Sleep(time.Duration(5 * time.Second))
 	go echo.EchoStats()
 }
@@ -142,7 +157,6 @@ func (echo EchoServerTCP) ReadMessages() (err error) {
 		if conn != nil {
 			atomic.AddUint64(&echo.StatCt.NumConnections, 1)
 			atomic.AddUint64(&echo.StatCt.NumOpenConnections, 1)
-
 		}
 
 		log.Printf("Accepted connection from %s", conn.RemoteAddr())
@@ -153,6 +167,8 @@ func (echo EchoServerTCP) ReadMessages() (err error) {
 			if err != nil || len(line) == 0 {
 				break
 			}
+			atomic.AddUint64(&TotalLines, 1)
+			atomic.AddUint64(&echo.StatCt.NumLines, 1)
 			echoMe("[ECHO from " + echo.String() + "] " + strings.Trim(line, " \t\n"))
 
 		}

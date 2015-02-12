@@ -82,7 +82,7 @@ type CheckedServerPool struct {
 }
 
 //make from our basic config object
-func createServerPoolFromConfig(cfg *ConstHashConfig, serveraction *ServerPoolRunner) (*CheckedServerPool, error) {
+func createServerPoolFromConfig(cfg *Config, serveraction *ServerPoolRunner) (*CheckedServerPool, error) {
 
 	serverp, err := createServerPool(cfg.ServerLists.ServerUrls, cfg.ServerLists.CheckUrls, serveraction)
 	if err != nil {

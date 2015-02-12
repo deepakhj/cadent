@@ -9,12 +9,13 @@ import (
 	"github.com/stathat/consistent"
 	"log"
 	"net/url"
+	"strings"
 	//"sync/atomic"
 	//"time"
 )
 
 const (
-	CACHE_ITEMS = 10000
+	DEFAULT_CACHE_ITEMS = 10000
 )
 
 // for LRU cache "value" interface
@@ -36,24 +37,42 @@ type ConstHasher struct {
 
 func (self ConstHasher) onServerUp(server url.URL) {
 	log.Printf("Adding server %s to hasher", server.String())
+	StatsdClient.Incr("hasher.added-server", 1)
 	self.Hasher.Add(server.String())
+	StatsdClient.Gauge("hasher.up-servers", int64(len(self.Members())))
 	log.Printf("Current members %s from hasher", self.Members())
 }
 
 func (self ConstHasher) onServerDown(server url.URL) {
 	log.Printf("Removing server %s from hasher", server.String())
+	StatsdClient.Incr("hasher.removed-server", 1)
 	self.Hasher.Remove(server.String())
+	StatsdClient.Gauge("hasher.up-servers", int64(len(self.Members())))
 	log.Printf("Current members %s from hasher", self.Members())
+}
+
+// clean up the server name for statsd
+func (self ConstHasher) cleanKey(srv interface{}) string {
+	srv_key := strings.Replace(fmt.Sprintf("%s", srv), ":", "-", -1)
+	srv_key = strings.Replace(srv_key, "/", "", -1)
+	srv_key = strings.Replace(srv_key, ".", "-", -1)
+	return srv_key
 }
 
 //alias to hasher to allow to use our LRU cache
 func (self *ConstHasher) Get(in_key string) (string, error) {
 	srv, ok := self.Cache.Get(in_key)
+
 	if !ok {
+		StatsdClient.Incr("lrucache.miss", 1)
 		srv, err := self.Hasher.Get(in_key)
 		self.Cache.Set(in_key, ServerCacheItem(srv))
+
+		StatsdClient.Incr(fmt.Sprintf("hashserver.%s.used", self.cleanKey(srv)), 1)
 		return srv, err
 	}
+	StatsdClient.Incr(fmt.Sprintf("hashserver.%s.used", self.cleanKey(srv)), 1)
+	StatsdClient.Incr("lrucache.hit", 1)
 	return fmt.Sprintf("%s", srv), nil
 }
 
@@ -63,11 +82,16 @@ func (self *ConstHasher) Members() []string {
 }
 
 //make from our basic config object
-func createConstHasherFromConfig(cfg *ConstHashConfig) (*ConstHasher, error) {
+func createConstHasherFromConfig(cfg *Config) (*ConstHasher, error) {
 	var hasher ConstHasher
 	hasher.Hasher = consistent.New()
-	hasher.Cache = NewLRUCache(CACHE_ITEMS)
 
+	if cfg.CacheItems <= 0 {
+		hasher.Cache = NewLRUCache(DEFAULT_CACHE_ITEMS)
+	} else {
+		hasher.Cache = NewLRUCache(cfg.CacheItems)
+	}
+	log.Print("Hasher Cache size set to ", hasher.Cache.capacity)
 	s_pool_runner := ServerPoolRunner(hasher)
 	s_pool, err := createServerPoolFromConfig(cfg, &s_pool_runner)
 

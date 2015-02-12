@@ -1,12 +1,64 @@
 [default]
-listen="tcp://127.0.0.1:6000"
+
+## what port/scheme we are listening on for incoming data
+
+listen="udp://127.0.0.1:6000"
+
+## the list of servers we hashring send to
+## {scheme}://{ip}:{port},...
+## scheme = tcp|udp
+
 #servers="udp://127.0.0.1:6002,udp://127.0.0.1:6003, udp://127.0.0.1:6004"
-servers="tcp://127.0.0.1:6002,tcp://127.0.0.1:6003, tcp://127.0.0.1:6004"
-check_servers="tcp://127.0.0.1:6005,tcp://127.0.0.1:6006, tcp://127.0.0.1:6007"
-msg_format="<timestamp> <key> <value>"
+#servers="tcp://127.0.0.1:6002,tcp://127.0.0.1:6003, tcp://127.0.0.1:6004"
+servers="udp://192.168.59.103:8126"
+
+## there must be a check server for each `servers` above
+## {scheme}://{ip}:{port},...
+## scheme = tcp|http -- NOTE NO UDP checks (does not make sense)
+## tcp connections are simply checked for a connection and closed
+## http connections must respond with a 200 to a GET on the provided url
+
+#check_servers="tcp://127.0.0.1:6005,tcp://127.0.0.1:6006, tcp://127.0.0.1:6007"
+check_servers="tcp://192.168.59.103:8127"
+
+## Incoming Messages
+## msg_type = statsd | graphite | regex
+## msg_regex = <some regex that has <Key> defined as a group>
+### like "(?P<Key>[a-zA-Z0-9]+)-(?P<message>.*)"
+msg_type="statsd"
+msg_regex="(?P<Key>.*):(?P<message>.*)"
+
+## cache keys/server pairs in an LRU mem cache for speed
+cache_items=50000
+
+## Health Checking options
+### check every "X" seconds
 heartbeat_time_delay=5
+
+### Timeout for failed connections (in Seconds)
 heartbeat_time_timeout=1
+
+## if a server has failed "X" times it's out of the loop
 failed_heartbeat_count=3
+
+## If we detect a downed node,
+## `remove_node` -- we can REMOVE the node from the hashpool
+## `ignore` -- stop checking the node
 server_down_policy="remove_node"
+
+## Turn on CPU/Mem profiling
+##  there will be a http server set up to yank pprof data on :6060
 cpu_profile=true
 
+## fire out some internal to statsd if desired
+
+statsd_server="192.168.59.103:8126"
+statsd_prefix="consthash"
+statsd_interval=1  # send to statd every second (buffered)
+
+## number of workers to chew on the sending queue
+workers=500
+
+## there will be an internal health http server set up as well
+## and will respond to '/ops/status' and '/stats' and '/'
+internal_health_server_listen="0.0.0.0:6061"

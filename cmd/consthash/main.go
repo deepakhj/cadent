@@ -88,7 +88,7 @@ func main() {
 		}()
 	}
 
-	var config ConstHashServers
+	var config ConfigServers
 	var err error
 
 	config, err = parseConfigFile(*configFile)
@@ -107,6 +107,10 @@ func main() {
 		log.Println("Starting Profiler on localhost:6060")
 		go http.ListenAndServe(":6060", nil)
 	}
+
+	//initiallize the statsd singleton
+	SetUpStatsdClient(def)
+
 	hasher, err := createConstHasherFromConfig(def)
 	go hasher.ServerPool.startChecks()
 	startServer(def, hasher)

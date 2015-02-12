@@ -5,6 +5,7 @@ import (
 	"github.com/bbangert/toml"
 	"log"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -18,19 +19,40 @@ type ParsedServerConfig struct {
 	CheckUrls  []*url.URL
 }
 
-type ConstHashConfig struct {
+type Config struct {
 	Servers                string        `toml:"servers"`
 	CheckServers           string        `toml:"check_servers"`
-	MsgFormat              string        `toml:"msg_format"`
+	MsgType                string        `toml:"msg_type"`
+	MsgFormatRegEx         string        `toml:"msg_regex"`
 	ListenStr              string        `toml:"listen"`
 	ServerHeartBeat        time.Duration `toml:"heartbeat_time_delay"`
 	ServerHeartBeatTimeout time.Duration `toml:"heartbeat_time_timeout"`
 	MaxServerHeartBeatFail uint64        `toml:"failed_heartbeat_count"`
 	ServerDownPolicy       string        `toml:"server_down_policy"`
+	CacheItems             uint64        `toml:"cache_items"`
 	Profile                bool          `toml:"cpu_profile"`
+
+	// send some stats to the land
+	StatsdServer   string `toml:"statsd_server"`
+	StatsdPrefix   string `toml:"statsd_prefix"`
+	StatsdInterval uint   `toml:"statsd_interval"`
+
+	// number of workers to handle message sending queue
+	Workers int64 `toml:"workers"`
+
+	// start a little http server for external health checks and stats probes
+	HealthServerBind string `toml:"internal_health_server_listen"`
 
 	ListenURL   *url.URL
 	ServerLists *ParsedServerConfig
+
+	//compiled Regex
+	ComRegEx      *regexp.Regexp
+	ComRegExNames []string
+
+	// some runners in the hasher need extra config bits to
+	// operate this construct that from the config args
+	MsgConfig map[string]interface{}
 }
 
 const (
@@ -42,10 +64,10 @@ const (
 	DEFAULT_SERVERDOWN_POLICY = "keep"
 )
 
-type ConstHashServers map[string]ConstHashConfig
+type ConfigServers map[string]Config
 
 // make our map of servers to hosts
-func (self *ConstHashConfig) parseServerList() (*ParsedServerConfig, error) {
+func (self *Config) parseServerList() (*ParsedServerConfig, error) {
 
 	parsed := new(ParsedServerConfig)
 
@@ -99,7 +121,7 @@ func (self *ConstHashConfig) parseServerList() (*ParsedServerConfig, error) {
 	return parsed, nil
 }
 
-func (self ConstHashServers) parseConfig() (out ConstHashServers, err error) {
+func (self ConfigServers) parseConfig() (out ConfigServers, err error) {
 	for chunk, cfg := range self {
 		parsedServer, err := cfg.parseServerList()
 
@@ -134,13 +156,44 @@ func (self ConstHashServers) parseConfig() (out ConstHashServers, err error) {
 		//need to make things seconds
 		cfg.ServerHeartBeat = cfg.ServerHeartBeat * time.Second
 		cfg.ServerHeartBeatTimeout = cfg.ServerHeartBeatTimeout * time.Second
+
+		cfg.MsgConfig = make(map[string]interface{})
+
+		//check the message type/regex
+		if cfg.MsgType != "statsd" && cfg.MsgType != "graphite" && cfg.MsgType != "regex" {
+			panic("`msg_type` must be 'statsd', 'graphite', or 'regex'")
+		}
+		if cfg.MsgType == "regex" && len(cfg.MsgFormatRegEx) == 0 {
+			panic("`msg_type` of 'regex' needs to have `msg_regex` defined")
+		}
+
+		cfg.MsgConfig["type"] = cfg.MsgType
+
+		if cfg.MsgType == "regex" {
+			//check the regex itself
+			cfg.ComRegEx = regexp.MustCompile(cfg.MsgFormatRegEx)
+			cfg.ComRegExNames = cfg.ComRegEx.SubexpNames()
+			got_name := false
+			for _, nm := range cfg.ComRegExNames {
+				if nm == "Key" {
+					got_name = true
+				}
+			}
+			if !got_name {
+				panic("`msg_regex` MUST have a `(?P<Key>...)` group")
+			}
+			cfg.MsgConfig["regexp"] = cfg.ComRegEx
+			cfg.MsgConfig["regexpNames"] = cfg.ComRegExNames
+
+		}
+
 		self[chunk] = cfg
 
 	}
 	return self, nil
 }
 
-func parseConfigFile(filename string) (cfg ConstHashServers, err error) {
+func parseConfigFile(filename string) (cfg ConfigServers, err error) {
 
 	if _, err := toml.DecodeFile(filename, &cfg); err != nil {
 		log.Printf("Error decoding config file: %s", err)
@@ -149,7 +202,7 @@ func parseConfigFile(filename string) (cfg ConstHashServers, err error) {
 	return cfg.parseConfig()
 }
 
-func (self ConstHashServers) defaultConfig() (def_cfg *ConstHashConfig, err error) {
+func (self ConfigServers) defaultConfig() (def_cfg *Config, err error) {
 
 	if val, ok := self[DEFAULT_CONFIG_SECTION]; ok {
 		return &val, nil
@@ -163,7 +216,7 @@ func (self ConstHashServers) defaultConfig() (def_cfg *ConstHashConfig, err erro
 	return nil, fmt.Errorf("Could not find default in config file")
 }
 
-func (self *ConstHashServers) debugConfig() {
+func (self *ConfigServers) debugConfig() {
 
 	for chunk, cfg := range *self {
 		log.Printf("Chunk '%s'", chunk)
@@ -171,7 +224,7 @@ func (self *ConstHashServers) debugConfig() {
 		log.Printf("  Listen: %s", cfg.ListenURL.String())
 		log.Printf("  MaxServerHeartBeatFail: %v", cfg.MaxServerHeartBeatFail)
 		log.Printf("  ServerHeartBeat: %v", cfg.ServerHeartBeat)
-		log.Printf("  MsgFormat: %s ", cfg.MsgFormat)
+		log.Printf("  MsgType: %s ", cfg.MsgType)
 		log.Printf("  Servers")
 		for idx, hosts := range cfg.ServerLists.ServerList {
 			log.Printf("    %s Checked via %s", hosts, cfg.ServerLists.CheckList[idx])
