@@ -10,13 +10,12 @@ import (
 	"log"
 	"net/url"
 	"strings"
-	//"sync/atomic"
-	//"time"
 )
 
 const (
 	DEFAULT_CACHE_ITEMS = 10000
 	DEFAULT_HASHER      = "crc32"
+	DEFAULT_REPLICAS    = 4
 )
 
 // for LRU cache "value" interface
@@ -32,7 +31,8 @@ type ConstHasher struct {
 	Cache      *LRUCache
 	ServerPool *CheckedServerPool
 
-	HashAlgo string
+	HashAlgo     string
+	HashReplicas int
 
 	ServerPutCounts uint64
 	ServerGetCounts uint64
@@ -108,7 +108,12 @@ func createConstHasherFromConfig(cfg *Config) (*ConstHasher, error) {
 		hasher.HashAlgo = cfg.HashAlgo
 
 	}
+	hasher.HashReplicas = DEFAULT_REPLICAS
+	if cfg.HashReplicas >= 0 {
+		hasher.HashReplicas = cfg.HashReplicas
+	}
 	hasher.Hasher.SetHasherByName(hasher.HashAlgo)
+	hasher.Hasher.NumberOfReplicas = hasher.HashReplicas
 
 	return &hasher, nil
 
