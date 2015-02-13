@@ -1,5 +1,5 @@
 ########################################
-## THIS is a heavily modify version of the below's persons consiten Client
+## THIS is a modify version of the below's consitent Hashring
 ## I've added ability to have Different Hashing algos' then just crc32
 ## Author boblanton@myfitnesspal.com
 ##################################

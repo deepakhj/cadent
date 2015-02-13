@@ -1,6 +1,7 @@
 ########################################
 ## THIS is a heavily modify version of the below's persons statsd Client
 ## Send buffering and extra items for the timers as well as retaining keys for constant pushing
+## and closing connections to attempt to pick of host changes
 ## Author boblanton@myfitnesspal.com
 ##################################
 
