@@ -6,3 +6,4 @@ consthash.xcodeproj*
 *.pprof
 echoserver
 tester/*
+tester
