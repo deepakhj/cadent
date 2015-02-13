@@ -5,3 +5,4 @@ consthash.xcodeproj*
 *.heap
 *.pprof
 echoserver
+tester/*

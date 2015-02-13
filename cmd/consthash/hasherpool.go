@@ -5,8 +5,8 @@
 package main
 
 import (
+	"./consistent"
 	"fmt"
-	"github.com/stathat/consistent"
 	"log"
 	"net/url"
 	"strings"
@@ -16,6 +16,7 @@ import (
 
 const (
 	DEFAULT_CACHE_ITEMS = 10000
+	DEFAULT_HASHER      = "crc32"
 )
 
 // for LRU cache "value" interface
@@ -30,6 +31,8 @@ type ConstHasher struct {
 	Hasher     *consistent.Consistent
 	Cache      *LRUCache
 	ServerPool *CheckedServerPool
+
+	HashAlgo string
 
 	ServerPutCounts uint64
 	ServerGetCounts uint64
@@ -99,6 +102,14 @@ func createConstHasherFromConfig(cfg *Config) (*ConstHasher, error) {
 		return nil, fmt.Errorf("Error setting up servers: %s", err)
 	}
 	hasher.ServerPool = s_pool
+
+	hasher.HashAlgo = DEFAULT_HASHER
+	if len(cfg.HashAlgo) > 0 {
+		hasher.HashAlgo = cfg.HashAlgo
+
+	}
+	hasher.Hasher.SetHasherByName(hasher.HashAlgo)
+
 	return &hasher, nil
 
 }

@@ -21,6 +21,15 @@ servers="udp://192.168.59.103:8126"
 #check_servers="tcp://127.0.0.1:6005,tcp://127.0.0.1:6006, tcp://127.0.0.1:6007"
 check_servers="tcp://192.168.59.103:8127"
 
+## Hashing Algo
+# The hashing algo to use in our hashring
+# 'crc32' -> default
+# 'md5' -> a small portion of the MD5 (same one graphite uses)
+# 'sha1' -> s small porting of the SHA1
+# 'fnv' -> 32 bit FNV
+# 'fnva' -> 32 bin FNVa
+hasher_algo="md5"
+
 ## Incoming Messages
 ## msg_type = statsd | graphite | regex
 ## msg_regex = <some regex that has <Key> defined as a group>

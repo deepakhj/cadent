@@ -1,12 +1,11 @@
 package statsd
 
 import (
+	"./event"
 	"log"
 	"os"
 	"strings"
 	"time"
-
-	event "./event"
 )
 
 // request to close the buffered statsd collector
@@ -18,26 +17,26 @@ type closeRequest struct {
 // flushing aggregates to StatsD, useful if the frequency of events is extremely high
 // and sampling is not desirable
 type StatsdBuffer struct {
-	statsd        *StatsdClient
-	flushInterval time.Duration
-	eventChannel  chan event.Event
-	events        map[string]event.Event
-	closeChannel  chan closeRequest
-	Logger        *log.Logger
-	RetainKeys    bool
+	statsd            *StatsdClient
+	flushInterval     time.Duration
+	eventChannel      chan event.Event
+	events            map[string]event.Event
+	closeChannel      chan closeRequest
+	Logger            *log.Logger
+	RetainKeys        bool
 	ReCycleConnection bool //close the Statsd connection each time after send (helps with picking up new hosts)
 }
 
 // NewStatsdBuffer Factory
 func NewStatsdBuffer(interval time.Duration, client *StatsdClient) *StatsdBuffer {
 	sb := &StatsdBuffer{
-		flushInterval: interval,
-		statsd:        client,
-		eventChannel:  make(chan event.Event, 100),
-		events:        make(map[string]event.Event, 0),
-		closeChannel:  make(chan closeRequest, 0),
-		Logger:        log.New(os.Stdout, "[BufferedStatsdClient] ", log.Ldate|log.Ltime),
-		RetainKeys:    false,
+		flushInterval:     interval,
+		statsd:            client,
+		eventChannel:      make(chan event.Event, 100),
+		events:            make(map[string]event.Event, 0),
+		closeChannel:      make(chan closeRequest, 0),
+		Logger:            log.New(os.Stdout, "[BufferedStatsdClient] ", log.Ldate|log.Ltime),
+		RetainKeys:        false,
 		ReCycleConnection: true,
 	}
 	go sb.collector()
@@ -184,11 +183,11 @@ func (sb *StatsdBuffer) flush() (err error) {
 		return nil
 	}
 	err = sb.statsd.CreateSocket()
-	
+
 	if sb.ReCycleConnection {
 		defer sb.statsd.Close()
 	}
-	
+
 	if nil != err {
 		sb.Logger.Println("Error establishing UDP connection for sending statsd events:", err)
 	}
@@ -221,6 +220,6 @@ func (sb *StatsdBuffer) flush() (err error) {
 	if len(out_string) > 0 {
 		sb.statsd.SendRaw(out_string)
 	}
-	
+
 	return nil
 }

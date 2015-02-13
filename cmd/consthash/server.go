@@ -5,16 +5,13 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"net/url"
-	"regexp"
 	"runtime"
-	"strings"
 	"time"
 )
 
@@ -132,214 +129,6 @@ func WorkerOutput(jobs <-chan *SendOut) {
 	}
 }
 
-/****************** RUNNERS *********************/
-
-type Runner interface {
-	run() string
-	Client() Client
-	GetKey() string
-}
-
-type StatsdRunner struct {
-	client    Client
-	Hasher    *ConstHasher
-	param     string
-	key_param string
-	params    []string
-}
-
-func NewStatsdRunner(client Client, conf map[string]interface{}, param string) (*StatsdRunner, error) {
-
-	//<key>:blaaa
-	job := &StatsdRunner{
-		client: client,
-		Hasher: client.Hasher(),
-		param:  param,
-	}
-	statd_array := strings.Split(param, ":")
-	if len(statd_array) == 2 {
-		job.param = param
-		job.key_param = statd_array[0]
-		job.params = statd_array
-		return job, nil
-	}
-	return nil, fmt.Errorf("Invalid Statsd line")
-}
-
-func (job StatsdRunner) Client() Client {
-	return job.client
-}
-
-func (job StatsdRunner) GetKey() string {
-	//<key>:blaaa
-	return job.key_param
-}
-
-func (job StatsdRunner) run() string {
-	//<key> <value>
-	useme, err := job.Hasher.Get(job.GetKey())
-	if err == nil {
-		StatsdClient.Incr("success.valid-lines", 1)
-		job.Client().Server().ValidLineCount.Up(1)
-		sendOut := &SendOut{
-			outserver: useme,
-			param:     job.param,
-			server:    job.Client().Server(),
-			client:    job.Client(),
-		}
-		job.Client().Server().WorkerHold <- 1
-		job.Client().WorkerQueue() <- sendOut
-		return fmt.Sprintf("yay statsd : %v : %v", string(useme), string(job.param))
-	}
-	StatsdClient.Incr("failed.invalid-hash-server", 1)
-	job.Client().Server().UnsendableSendCount.Up(1)
-	return fmt.Sprintf("ERROR ON statsd %s", err)
-}
-
-type GraphiteRunner struct {
-	client    Client
-	Hasher    *ConstHasher
-	key_param string
-	param     string
-	params    []string
-}
-
-func NewGraphiteRunner(client Client, conf map[string]interface{}, param string) (*GraphiteRunner, error) {
-
-	//<key>:blaaa
-	job := &GraphiteRunner{
-		client: client,
-		Hasher: client.Hasher(),
-		param:  param,
-	}
-	graphite_array := strings.Split(param, " ")
-	if len(graphite_array) == 3 {
-		job.param = param
-		job.key_param = graphite_array[1]
-		job.params = graphite_array
-		return job, nil
-	}
-	return nil, fmt.Errorf("Invalid Graphite line")
-}
-
-func (job GraphiteRunner) Client() Client {
-	return job.client
-}
-func (job GraphiteRunner) GetKey() string {
-	//<time> <key> <value>
-	return job.key_param
-}
-
-func (job GraphiteRunner) run() string {
-	// <time> <key> <value>
-	useme, err := job.Hasher.Get(job.GetKey())
-	if err == nil {
-		StatsdClient.Incr("success.valid-lines", 1)
-		job.Client().Server().ValidLineCount.Up(1)
-		sendOut := &SendOut{
-			outserver: useme,
-			server:    job.Client().Server(),
-			param:     job.param,
-			client:    job.Client(),
-		}
-		job.Client().Server().WorkerHold <- 1
-
-		job.Client().WorkerQueue() <- sendOut
-		return fmt.Sprintf("yay graphite %s: %s", string(useme), string(job.param))
-	}
-	StatsdClient.Incr("failed.invalid-hash-server", 1)
-	job.Client().Server().UnsendableSendCount.Up(1)
-	return fmt.Sprintf("ERROR ON graphite %s", err)
-}
-
-type RegExRunner struct {
-	client          Client
-	Hasher          *ConstHasher
-	param           string
-	key_regex       *regexp.Regexp
-	key_regex_names []string
-	key_param       string
-	params          []string
-}
-
-func NewRegExRunner(client Client, conf map[string]interface{}, param string) (*RegExRunner, error) {
-
-	//<key>:blaaa
-	job := &RegExRunner{
-		client: client,
-		Hasher: client.Hasher(),
-		param:  param,
-	}
-	job.key_regex = conf["regexp"].(*regexp.Regexp)
-	job.key_regex_names = conf["regexpNames"].([]string)
-
-	matched := job.key_regex.FindAllStringSubmatch(param, -1)[0]
-	for i, n := range matched {
-		//fmt.Printf("%d. match='%s'\tname='%s'\n", i, n, n1[i])
-		if job.key_regex_names[i] == "Key" {
-			job.key_param = n
-		}
-	}
-
-	if len(job.key_param) > 0 {
-		job.param = param
-		job.params = matched
-		return job, nil
-	}
-	return nil, fmt.Errorf("Invalid RegEx line")
-}
-
-func (job RegExRunner) Client() Client {
-	return job.client
-}
-
-func (job RegExRunner) GetKey() string {
-	return job.key_param
-}
-
-func (job RegExRunner) run() string {
-	// <time> <key> <value>
-	useme, err := job.Hasher.Get(job.GetKey())
-	if err == nil {
-		StatsdClient.Incr("success.valid-lines", 1)
-		job.Client().Server().ValidLineCount.Up(1)
-		sendOut := &SendOut{
-			outserver: useme,
-			server:    job.Client().Server(),
-			param:     job.param,
-			client:    job.Client(),
-		}
-		job.Client().Server().WorkerHold <- 1
-
-		job.Client().WorkerQueue() <- sendOut
-		return fmt.Sprintf("yay regex %s: %s", string(useme), string(job.param))
-	}
-	StatsdClient.Incr("failed.invalid-hash-server", 1)
-	job.Client().Server().UnsendableSendCount.Up(1)
-	return fmt.Sprintf("ERROR ON graphite %s", err)
-}
-
-type UnknownRunner struct {
-	client Client
-	Hasher *ConstHasher
-	param  string
-	params []string
-}
-
-func (job UnknownRunner) Client() Client {
-	return job.client
-}
-
-func (job UnknownRunner) run() string {
-	StatsdClient.Incr("failed.unknown-lines", 1)
-	job.Client().Server().UnknownSendCount.Up(1)
-	return "ACK no idea what message i'm supposed to parse"
-}
-
-func (job UnknownRunner) GetKey() string {
-	return ""
-}
-
 func RunRunner(job Runner, out chan string) {
 	//direct timer to void leaks (i.e. NOT time.After(...))
 	timer := time.NewTimer(500 * time.Millisecond)
@@ -384,208 +173,26 @@ func NewRunner(client Client, line string) (Runner, error) {
 
 /****************** CLIENTS *********************/
 
-type Client interface {
-	handleRequest()
-	handleSend()
-	Close()
-	//Runner() *Runner
-	Server() *Server
-	Hasher() *ConstHasher
-	WorkerQueue() chan *SendOut
-}
-
-type TCPClient struct {
-	server *Server
-	hasher *ConstHasher
-
-	Connection   net.Conn
-	LineCount    uint64
-	MaxLineCount uint64
-	CycleCount   uint64
-	//ins and outs
-	writer *bufio.Writer
-	reader *bufio.Reader
-
-	channel      chan string
-	done         chan Client
-	worker_queue chan *SendOut
-}
-
-func NewTCPClient(server *Server, hasher *ConstHasher, conn net.Conn, worker_queue chan *SendOut, done chan Client) *TCPClient {
-
-	client := new(TCPClient)
-	client.server = server
-	client.hasher = hasher
-
-	//client.writer = bufio.NewWriter(conn)
-	client.reader = bufio.NewReader(conn)
-	client.LineCount = 0
-
-	// we "parrael" this many processes then block until we are done
-	client.MaxLineCount = 1024
-	client.CycleCount = 0
-	client.Connection = conn
-
-	client.channel = make(chan string)
-	client.worker_queue = worker_queue
-	client.done = done
-	return client
-}
-
-func (client TCPClient) Server() (server *Server) {
-	return client.server
-}
-
-func (client TCPClient) Hasher() (server *ConstHasher) {
-	return client.hasher
-}
-func (client TCPClient) WorkerQueue() chan *SendOut {
-	return client.worker_queue
-}
-
-// close the 2 hooks, channel and connection
-func (client TCPClient) Close() {
-	close(client.channel)
-	client.Connection.Close()
-	client.server = nil
-	client.hasher = nil
-
-}
-
-func (client TCPClient) handleRequest() {
-
-	for {
-
-		line, err := client.reader.ReadString('\n')
-		if err != nil || len(line) == 0 {
-			break
-		}
-		client.LineCount += 1
-
-		job, err := NewRunner(client, strings.Trim(line, "\n\t "))
-		if err == nil {
-			RunRunner(job, client.channel)
-		}
-	}
-	//close it
-	//client.done <- client
-
-}
-
-func (client TCPClient) handleSend() {
-
-	for {
-		message := <-client.channel
-		if len(message) == 0 {
-			break
-		}
-		//log.Print(message)
-
-		//client.writer.WriteString(message)
-		//client.writer.Flush()
-		//clear buffer
-		//client.reader.Reset(client.Connection)
-	}
-	//close it out
-	client.done <- client
-}
-
-type UDPClient struct {
-	server *Server
-	hasher *ConstHasher
-
-	Connection   *net.UDPConn
-	LineCount    uint64
-	MaxLineCount uint64
-	CycleCount   uint64
-
-	channel      chan string
-	done         chan Client
-	worker_queue chan *SendOut
-}
-
-func NewUDPClient(server *Server, hasher *ConstHasher, conn *net.UDPConn, worker_queue chan *SendOut, done chan Client) *UDPClient {
-
-	client := new(UDPClient)
-	client.server = server
-	client.hasher = hasher
-
-	client.LineCount = 0
-	client.Connection = conn
-
-	// we "parrael" this many processes then block until we are done
-	client.MaxLineCount = 1024
-	client.CycleCount = 0
-
-	client.channel = make(chan string)
-	client.worker_queue = worker_queue
-	client.done = done
-	return client
-
-}
-
-func (client UDPClient) Server() (server *Server) {
-	return client.server
-}
-
-func (client UDPClient) Hasher() (hasher *ConstHasher) {
-	return client.hasher
-}
-func (client UDPClient) WorkerQueue() chan *SendOut {
-	return client.worker_queue
-}
-func (client UDPClient) Close() {
-	client.server = nil
-	client.hasher = nil
-	if client.Connection != nil {
-		client.Connection.Close()
-	}
-}
-func (client UDPClient) handleRequest() {
-	for {
-		var buf [1024]byte
-		rlen, _, _ := client.Connection.ReadFromUDP(buf[:])
-		in_str := string(buf[0:rlen])
-		for _, line := range strings.Split(in_str, "\n") {
-			if len(line) == 0 {
-				continue
-			}
-
-			client.LineCount += 1
-			job, err := NewRunner(client, strings.Trim(line, "\n\t "))
-			if err == nil {
-				go RunRunner(job, client.channel)
-			}
-		}
-
-	}
-
-}
-
-func (client UDPClient) handleSend() {
-
-	for {
-		message := <-client.channel
-		if len(message) == 0 {
-			break
-		}
-	}
-	log.Println("Close")
-	//close it out
-	client.Close()
-}
-
 /****************** SERVERS *********************/
 
 //helper object for json'ing the basic stat data
 type ServerStats struct {
-	ValidLineCount            int64    `json:"valid_line_count"`
-	InvalidLineCount          int64    `json:"invalid_line_count"`
-	SuccessSendCount          int64    `json:"success_send_count"`
-	FailSendCount             int64    `json:"fail_send_count"`
-	UnsendableSendCount       int64    `json:"unsendable_send_count"`
-	UnknownSendCount          int64    `json:"unknown_send_count"`
-	AllLinesCount             int64    `json:"all_lines_count"`
+	ValidLineCount      int64 `json:"valid_line_count"`
+	InvalidLineCount    int64 `json:"invalid_line_count"`
+	SuccessSendCount    int64 `json:"success_send_count"`
+	FailSendCount       int64 `json:"fail_send_count"`
+	UnsendableSendCount int64 `json:"unsendable_send_count"`
+	UnknownSendCount    int64 `json:"unknown_send_count"`
+	AllLinesCount       int64 `json:"all_lines_count"`
+
+	CurrentValidLineCount      int64 `json:"current_valid_line_count"`
+	CurrentInvalidLineCount    int64 `json:"current_invalid_line_count"`
+	CurrentSuccessSendCount    int64 `json:"current_success_send_count"`
+	CurrentFailSendCount       int64 `json:"current_fail_send_count"`
+	CurrentUnsendableSendCount int64 `json:"current_unsendable_send_count"`
+	CurrentUnknownSendCount    int64 `json:"current_unknown_send_count"`
+	CurrentAllLinesCount       int64 `json:"current_all_lines_count"`
+
 	GoRoutines                int      `json:"go_routines"`
 	UpTimeSeconds             int64    `json:"uptime_sec"`
 	ValidLineCountPerSec      float32  `json:"valid_line_count_persec"`
@@ -698,6 +305,14 @@ func (server *Server) StatsJsonString() string {
 	server.stats.UnknownSendCount = server.UnknownSendCount.TotalCount.Get()
 	server.stats.UnknownSendCount = server.UnknownSendCount.TotalCount.Get()
 	server.stats.AllLinesCount = server.AllLinesCount.TotalCount.Get()
+
+	server.stats.CurrentValidLineCount = server.ValidLineCount.TickCount.Get()
+	server.stats.CurrentInvalidLineCount = server.InvalidLineCount.TickCount.Get()
+	server.stats.CurrentSuccessSendCount = server.SuccessSendCount.TickCount.Get()
+	server.stats.CurrentFailSendCount = server.FailSendCount.TickCount.Get()
+	server.stats.CurrentUnknownSendCount = server.UnknownSendCount.TickCount.Get()
+	server.stats.CurrentUnknownSendCount = server.UnknownSendCount.TickCount.Get()
+	server.stats.CurrentAllLinesCount = server.AllLinesCount.TickCount.Get()
 
 	server.stats.GoRoutines = runtime.NumGoroutine()
 	server.stats.UpTimeSeconds = int64(elasped_sec)

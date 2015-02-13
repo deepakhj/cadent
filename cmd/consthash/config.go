@@ -31,6 +31,7 @@ type Config struct {
 	ServerDownPolicy       string        `toml:"server_down_policy"`
 	CacheItems             uint64        `toml:"cache_items"`
 	Profile                bool          `toml:"cpu_profile"`
+	HashAlgo               string        `toml:"hasher_algo"`
 
 	// send some stats to the land
 	StatsdServer   string `toml:"statsd_server"`
@@ -62,6 +63,7 @@ const (
 	DEFAULT_HEARTBEAT         = time.Duration(30)
 	DEFAULT_HEARTBEAT_TIMEOUT = time.Duration(5)
 	DEFAULT_SERVERDOWN_POLICY = "keep"
+	DEFAULT_HASHER_ALGO       = "crc32"
 )
 
 type ConfigServers map[string]Config
@@ -152,6 +154,9 @@ func (self ConfigServers) parseConfig() (out ConfigServers, err error) {
 		if cfg.ServerDownPolicy == "" {
 			cfg.ServerDownPolicy = DEFAULT_SERVERDOWN_POLICY
 		}
+		if cfg.HashAlgo == "" {
+			cfg.HashAlgo = DEFAULT_HASHER_ALGO
+		}
 
 		//need to make things seconds
 		cfg.ServerHeartBeat = cfg.ServerHeartBeat * time.Second
@@ -225,6 +230,7 @@ func (self *ConfigServers) debugConfig() {
 		log.Printf("  MaxServerHeartBeatFail: %v", cfg.MaxServerHeartBeatFail)
 		log.Printf("  ServerHeartBeat: %v", cfg.ServerHeartBeat)
 		log.Printf("  MsgType: %s ", cfg.MsgType)
+		log.Printf("  Hashing Algo: %s ", cfg.HashAlgo)
 		log.Printf("  Servers")
 		for idx, hosts := range cfg.ServerLists.ServerList {
 			log.Printf("    %s Checked via %s", hosts, cfg.ServerLists.CheckList[idx])

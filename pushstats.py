@@ -63,7 +63,7 @@ def gen_msg(num):
     else:
         send_udp(msg_full)
         PACKET_FULL_CT += 1
-        time.sleep(0.0001)
+        time.sleep(0.001)
         t_delta = time.time()- START
         out_msg = "Sent {}/{} lines ~{:.2f}/s | {} Packets {:.2f}/s".format(
                 ct, FULL_CT, float(FULL_CT)/float(t_delta),
