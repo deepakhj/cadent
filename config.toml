@@ -30,6 +30,12 @@ check_servers="tcp://192.168.59.103:8127"
 # 'fnva' -> 32 bin FNVa
 hasher_algo="md5"
 
+## Hasher replicas
+# the number of replicas per server
+## graphite has 100 for this
+## statsd has 0
+hasher_replicas=0
+
 ## Incoming Messages
 ## msg_type = statsd | graphite | regex
 ## msg_regex = <some regex that has <Key> defined as a group>

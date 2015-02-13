@@ -32,6 +32,7 @@ type Config struct {
 	CacheItems             uint64        `toml:"cache_items"`
 	Profile                bool          `toml:"cpu_profile"`
 	HashAlgo               string        `toml:"hasher_algo"`
+	HashReplicas           int           `toml:"hasher_replicas"`
 
 	// send some stats to the land
 	StatsdServer   string `toml:"statsd_server"`

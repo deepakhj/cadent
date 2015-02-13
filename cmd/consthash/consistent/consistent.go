@@ -62,7 +62,7 @@ type Consistent struct {
 // To change the number of replicas, set NumberOfReplicas before adding entries.
 func New() *Consistent {
 	c := new(Consistent)
-	c.NumberOfReplicas = 20
+	c.NumberOfReplicas = 4
 	c.circle = make(map[uint32]string)
 	c.members = make(map[string]bool)
 	c.SetHasherByName(DEFAULT_HASHER)
