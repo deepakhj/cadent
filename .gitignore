@@ -1,9 +1,7 @@
 .idea*
-consthash
 consthash.iml
 consthash.xcodeproj*
 *.heap
 *.pprof
-echoserver
 tester/*
 tester
