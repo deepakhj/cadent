@@ -8,10 +8,17 @@ Generic Consistent hash Server in Go
 Installation
 ------------
 
-    Well first you need to install go .. https://golang.org
+    Well, first you need to install go .. https://golang.org
 
     git clone git@scm-main-01.dc.myfitnesspal.com:infra/consthashsrv.git
-    cd consthashsrv
+    cd consthashsrv/cmd/consthash
+    
+    // because things are "private" we need to "hack around" go's usual pulling/get mechanism
+    //pull in more git repos you'll need
+    git clone git@scm-main-01.dc.myfitnesspal.com:goutil/statsd.git
+    git clone git@scm-main-01.dc.myfitnesspal.com:goutil/consistent.git
+     
+    cd ../../
     make
    
 
@@ -36,6 +43,7 @@ outgoing connections.  It also supports various hashing algorithms to attempt to
 proxies to be transparent to them.
 
 It runs it's own micro stats server so you can ping it for it's internal stats (very lightweight at the moment)
+We can make a fancy status page when nesesary
 
     localhost:6061/stats
 
