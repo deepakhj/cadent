@@ -5,12 +5,11 @@
 package main
 
 import (
+	"./consistent"
 	"fmt"
 	"log"
 	"net/url"
 	"strings"
-
-	"./consistent"
 )
 
 const (
@@ -44,6 +43,8 @@ func (self ConstHasher) onServerUp(server url.URL) {
 	StatsdClient.Incr("hasher.added-server", 1)
 	self.Hasher.Add(server.String())
 	StatsdClient.Gauge("hasher.up-servers", int64(len(self.Members())))
+	//evil as this is we must clear the cache
+	self.Cache.Clear()
 	log.Printf("Current members %s from hasher", self.Members())
 }
 
@@ -52,6 +53,8 @@ func (self ConstHasher) onServerDown(server url.URL) {
 	StatsdClient.Incr("hasher.removed-server", 1)
 	self.Hasher.Remove(server.String())
 	StatsdClient.Gauge("hasher.up-servers", int64(len(self.Members())))
+	//evil as this is we must clear the cache
+	self.Cache.Clear()
 	log.Printf("Current members %s from hasher", self.Members())
 }
 
