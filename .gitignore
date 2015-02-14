@@ -5,3 +5,5 @@ consthash.xcodeproj*
 *.pprof
 tester/*
 tester
+cmd/consthash/consistent
+cmd/consthash/statsd
