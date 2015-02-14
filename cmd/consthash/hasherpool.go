@@ -5,11 +5,12 @@
 package main
 
 import (
-	"./consistent"
 	"fmt"
 	"log"
 	"net/url"
 	"strings"
+
+	"./consistent"
 )
 
 const (

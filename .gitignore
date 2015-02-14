@@ -7,3 +7,4 @@ tester/*
 tester
 cmd/consthash/consistent
 cmd/consthash/statsd
+consthashsrv.iml
