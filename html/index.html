@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<!--
+
+                                        +oyhdddddddddddddddddddddhyo+
+                                      ohNMMMMMMMMMMMMMMMMMMMMMMMMMMMNdo
+                                     yNMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMh
+                                    sNMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMd
+                                    dMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMo
+                                    mMMMMNoosNMMMMMMMMMMMMMMMMMMdoohMMMMMo
+                                    mMMMMN   NMMMMMMMMMMMMMMMMMMh  yMMMMMo
+                                    mMMMMN   NMMMMMMMMMMMMMMMMMMh  yMMMMMs
+                                    mMMMMN   NMMMMMMMMMMMMMMMMMMh  yMMMMMs
+                                    mMMMMN   NMMMMMMMMMMMMMMMMMMh  yMMMMMs
+                                    mMMMMN   NMMMMMMMMMMMMMMMMMMh  yMMMMMs
+                                    mMMMMN   NMMMMMMMMMMMMMMMMMMh  yMMMMMo
+                                    mMMMMN   NMMMMMMMMMMMMMMMMMMh  sMMMMMs
+                                    mMMMMN   NMMMMMMMMMMMMMMMMMMh  sMMMMMs
+                                    mMMMMN   NMMMMMMMMMMMMMMMMMMh  sMMMMMs
+                                    mMMMMN   NMMMMMMMMMMMMMMMMMMh  sMMMMMs
+                                    mMMMMm   NMMMMMMMMMMMMMMMMMMh  sMMMMMs
+                                    odNNmo   NMMMMMMMNmmMMMMMMMMh   ymNNh
+                                             NMMMMMMMs  dMMMMMMMh
+                                             NMMMMMMMs  dMMMMMMMd
+                                             NMMMMMMMs  dMMMMMMMd
+                                             NMMMMMMMs  dMMMMMMMd
+                                             NMMMMMMMs  dMMMMMMMd
+                                             NMMMMMMMs  dMMMMMMMd
+                                             NMMMMMMMs  dMMMMMMMd
+                                             NMMMMMMMs  dMMMMMMMd
+                                             NMMMMMMMs  hMMMMMMMd
+                                             NMMMMMMMs  dMMMMMMMd
+                                             NMMMMMMMs  hMMMMMMMd
+                                             NMMMMMMMs  hMMMMMMMd
+                        +syhhhyo             NMMMMMMMs  hMMMMMMMd
+                      odNMMMMMMMNd+          NMMMMMMMs  hMMMMMMMd
+                     sNMMMMMMMMMMMNo         NMMMMMMMs  hMMMMMMMd
+                     NMMMMMMMMMMMMMm         NMMMMMMMs  hMMMMMMMd
+                    +MMMMMMMMMMMMMMm         NMMMMMMMs  hMMMMMMMd
+                     dMMMMMMMMMMMMMs         NMMMMMMMs  hMMMMMMMd
+                      yNMMMMMMMMMmo          hMMMMMMm+  +NMMMMMNs
+                        oydmmmdy+             +yddhs      shdhy+
+
+    -->
+
+	<title>ConstHash Tracker {% block site-title %}{% endblock %}</title>
+	<script src="http://ajax.googleapis.com/ajax/libs/jquery/1.10.2/jquery.min.js"></script>
+	<link rel="stylesheet" href="http://netdna.bootstrapcdn.com/bootstrap/3.1.1/css/bootstrap.min.css">
+	<link rel="stylesheet" href="http://netdna.bootstrapcdn.com/bootstrap/3.1.1/css/bootstrap-theme.min.css">
+	<script src="http://netdna.bootstrapcdn.com/bootstrap/3.1.1/js/bootstrap.min.js"></script>
+	<script src="http://cdnjs.cloudflare.com/ajax/libs/dygraph/1.1.0/dygraph-combined.js"></script>
+	<style type="text/css">
+		.graph{
+			height:400px;
+			width:100%;
+			
+		}
+	</style>
+	
+</head>
+<body>
+
+<div class="container">
+
+	<div class="page-header">
+		<div class="row">
+			<div class="col-sm-12"><h1>ConstHasher Tracker</h1></div>
+
+		</div>
+	</div>
+	<div class="row">
+		<div class="col-sm-3"><h4>All Lines: <span id="all_lines_count"></span></h4></div>
+		<div class="col-sm-3"><h4>Valid Lines: <span id="valid_line_count"></span></h4></div>
+		<div class="col-sm-3"><h4>Sent Lines: <span id="success_send_count"></span></h4></div>
+		<div class="col-sm-3"><h4>Failed Lines: <span id="fail_send_count"></span></h4></div>
+
+	</div>
+	<div id="charts">
+		<div class="row">
+			<h4> Lines Seen</h4>
+			<div id="current_all_lines_count" class="graph"></div>
+			<span id="current_all_lines_count_leg"></span>
+		</div>
+		<div class="row">
+			<h4>Valid Lines</h4>
+			<div id="current_valid_line_count"  class="graph"></div>
+			<span id="current_valid_line_count_leg"></span>
+		</div>
+		<div class="row">
+			<h4>InValid Lines</h4>
+			<div id="current_invalid_line_count"  class="graph"></div>
+			<span id="current_invalid_line_count_leg"></span>
+		</div>
+		<div class="row">
+			<h4>Sent Lines</h4>
+			<div id="current_success_send_count"  class="graph"></canvas>
+			<span id="current_success_send_count_leg"></span>
+		</div>
+		<div class="row">
+			<h4>Failed Lines</h4>
+			<div id="current_fail_send_count"  class="graph"></div>
+			<span id="current_fail_send_count_leg"></span>
+		</div>
+		<div class="row">
+			<h4>UnSendable Lines</h4>
+			<div id="current_unsendable_send_count"  class="graph"></div>
+			<span id="current_unsendable_send_count_leg"></span>
+		</div>
+		<div class="row">
+			<h4>Unknown Lines</h4>
+			<div id="current_unknown_send_count" class="graph"></div>
+			<span id="current_unknown_send_count_leg"></span>
+		</div>
+		
+	</div>
+
+	<div class="footer small">
+		<hr>
+		<ul class="list-inline links pull-left">
+			&copy; MyFitnesspal 2015 - Bo Blanton
+		</ul>
+
+		<ul class="list-inline pull-right">
+			<li class="pull-right"></li>
+		</ul>
+
+		<div class="clearfix"></div>
+	</div>
+
+</div>
+
+<script type="text/javascript">
+	var HOST="http://localhost:6061/"
+	var DATA = {}
+	var LAST_DATA = {}
+	var GRAPHS = {}
+	var servers = []
+	var ticks = []
+
+	function renderGraphs(){
+		$.each( GRAPHS, function( key, graph ) {
+			if(GRAPHS[key]['graph'] == null){
+				var init_data = {
+					drawPoints: true,
+					showRoller: true,
+					ylabel: 'Count',
+					legend: 'always',
+					//valueRange: [0.0, 1.2],
+					labels: ["UpTime"]
+				};
+				data = []
+	
+				$.each(servers, function(idx, servername) {
+					chart_data = LAST_DATA[servername]
+					if(data.length == 0){
+						data.push(chart_data['uptime_sec'])
+					}
+					data.push(chart_data[key])
+					init_data['labels'].push(servername)
+				})
+				GRAPHS[key]['data'] = [data]
+				GRAPHS[key]['graph'] = new Dygraph(graph['item'], GRAPHS[key]['data'], init_data);
+			}else{
+				t_data = []
+				$.each(servers, function(idx, servername) {
+					chart_data = LAST_DATA[servername]
+
+					if(t_data.length == 0){
+						t_data.push(chart_data['uptime_sec'])
+					}
+					t_data.push(chart_data[key])
+				})
+				GRAPHS[key]['data'].push(t_data)
+				GRAPHS[key]['graph'].updateOptions( { 'file': GRAPHS[key]['data'] } );
+				
+			}
+
+		})
+
+	}
+	function getData(){
+		$.ajax({
+			url: HOST,
+			jsonp: "jsonp",
+			dataType: "jsonp",
+
+
+			// Work with the response
+			success: function( data ) {
+				now = new Date().getTime();
+				ticks.push(now)
+				LAST_DATA = data
+				$.each( data, function( key, val ) {
+					if(!DATA[key]){
+						servers.push(key)
+
+						DATA[key] = {}
+						$.each( val, function( s_k, d_k ) {
+							DATA[key][s_k] = [d_k]
+							DATA[key][s_k+"_time"] = [now]
+							if($("#"+s_k).get(0) && $("#"+s_k).hasClass("graph")){
+								GRAPHS[s_k] = {
+									'item': $("#"+s_k).get(0),
+									'graph' : null
+								}
+							}
+						})
+
+					}else{
+						$.each( val, function( s_k, d_k ) {
+							DATA[key][s_k].push(d_k)
+							DATA[key][s_k+"_time"].push(now);
+							
+							if($("#"+s_k).get(0) && !$("#"+s_k).hasClass("graph")){
+								$("#"+s_k).html(d_k)
+							}
+						})
+					}
+
+				});
+				//console.log(DATA)
+				renderGraphs()
+			}
+		});
+
+	}
+	setInterval(getData, 5000)
+</script>
+
+</body>
+</html>
