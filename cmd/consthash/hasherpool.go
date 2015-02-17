@@ -88,6 +88,24 @@ func (self *ConstHasher) Members() []string {
 	return self.Hasher.Members()
 }
 
+func (self *ConstHasher) DroppedServers() []string {
+	var n_str []string
+	for _, srv := range self.ServerPool.DroppedServers {
+		n_str = append(n_str, srv.Name)
+
+	}
+	return n_str
+}
+
+func (self *ConstHasher) CheckingServers() []string {
+	var n_str []string
+	for _, srv := range self.ServerPool.Servers {
+		n_str = append(n_str, srv.CheckName)
+
+	}
+	return n_str
+}
+
 //make from our basic config object
 func createConstHasherFromConfig(cfg *Config) (*ConstHasher, error) {
 	var hasher ConstHasher

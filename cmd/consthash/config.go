@@ -20,6 +20,7 @@ type ParsedServerConfig struct {
 }
 
 type Config struct {
+	Name                   string
 	Servers                string        `toml:"servers"`
 	CheckServers           string        `toml:"check_servers"`
 	MsgType                string        `toml:"msg_type"`
@@ -55,6 +56,9 @@ type Config struct {
 	// some runners in the hasher need extra config bits to
 	// operate this construct that from the config args
 	MsgConfig map[string]interface{}
+
+	//this config can be used as a server list
+	OkToUse bool
 }
 
 const (
@@ -72,6 +76,9 @@ type ConfigServers map[string]Config
 // make our map of servers to hosts
 func (self *Config) parseServerList() (*ParsedServerConfig, error) {
 
+	if len(self.Servers) == 0 {
+		return nil, fmt.Errorf("No 'servers' in config section, skipping")
+	}
 	parsed := new(ParsedServerConfig)
 
 	var server_spl = strings.Split(self.Servers, ",")
@@ -124,14 +131,11 @@ func (self *Config) parseServerList() (*ParsedServerConfig, error) {
 	return parsed, nil
 }
 
-func (self ConfigServers) parseConfig() (out ConfigServers, err error) {
-	for chunk, cfg := range self {
-		parsedServer, err := cfg.parseServerList()
+func (self ConfigServers) parseConfig(defaults Config) (out ConfigServers, err error) {
 
-		if err != nil {
-			return nil, err
-		}
-		cfg.ServerLists = parsedServer
+	for chunk, cfg := range self {
+
+		cfg.Name = chunk
 
 		//set some defaults
 
@@ -143,20 +147,56 @@ func (self ConfigServers) parseConfig() (out ConfigServers, err error) {
 			return nil, err
 		}
 		cfg.ListenURL = l_url
+
+		parsedServer, err := cfg.parseServerList()
+		// no servers is ok for the defaults section
+		if err != nil && chunk != DEFAULT_CONFIG_SECTION {
+			return nil, err
+		} else if err != nil && chunk == DEFAULT_CONFIG_SECTION {
+			cfg.OkToUse = false
+			continue
+		}
+		cfg.ServerLists = parsedServer
+
 		if cfg.MaxServerHeartBeatFail == 0 {
 			cfg.MaxServerHeartBeatFail = DEFAULT_HEARTBEAT_COUNT
+			if defaults.MaxServerHeartBeatFail > 0 {
+				cfg.MaxServerHeartBeatFail = defaults.MaxServerHeartBeatFail
+			}
 		}
 		if cfg.ServerHeartBeatTimeout == 0 {
 			cfg.ServerHeartBeatTimeout = DEFAULT_HEARTBEAT_TIMEOUT
+			if defaults.ServerHeartBeatTimeout > 0 {
+				cfg.ServerHeartBeatTimeout = defaults.ServerHeartBeatTimeout
+			}
 		}
 		if cfg.ServerHeartBeat == 0 {
 			cfg.ServerHeartBeat = DEFAULT_HEARTBEAT
+			if defaults.ServerHeartBeat > 0 {
+				cfg.ServerHeartBeat = defaults.ServerHeartBeat
+			}
 		}
 		if cfg.ServerDownPolicy == "" {
 			cfg.ServerDownPolicy = DEFAULT_SERVERDOWN_POLICY
+			if defaults.ServerDownPolicy != "" {
+				cfg.ServerDownPolicy = defaults.ServerDownPolicy
+			}
 		}
 		if cfg.HashAlgo == "" {
 			cfg.HashAlgo = DEFAULT_HASHER_ALGO
+			if defaults.HashAlgo != "" {
+				cfg.HashAlgo = defaults.HashAlgo
+			}
+		}
+		if cfg.Workers == 0 {
+			if defaults.Workers > 0 {
+				cfg.Workers = defaults.Workers
+			}
+		}
+		if cfg.CacheItems == 0 {
+			if defaults.CacheItems > 0 {
+				cfg.CacheItems = defaults.CacheItems
+			}
 		}
 
 		//need to make things seconds
@@ -192,10 +232,12 @@ func (self ConfigServers) parseConfig() (out ConfigServers, err error) {
 			cfg.MsgConfig["regexpNames"] = cfg.ComRegExNames
 
 		}
+		cfg.OkToUse = true
 
 		self[chunk] = cfg
 
 	}
+
 	return self, nil
 }
 
@@ -205,7 +247,12 @@ func parseConfigFile(filename string) (cfg ConfigServers, err error) {
 		log.Printf("Error decoding config file: %s", err)
 		return nil, err
 	}
-	return cfg.parseConfig()
+	var defaults Config
+	var ok bool
+	if defaults, ok = cfg[DEFAULT_CONFIG_SECTION]; !ok {
+		panic("Need to have a [default] section in the config.")
+	}
+	return cfg.parseConfig(defaults)
 }
 
 func (self ConfigServers) defaultConfig() (def_cfg *Config, err error) {
@@ -214,27 +261,34 @@ func (self ConfigServers) defaultConfig() (def_cfg *Config, err error) {
 		return &val, nil
 	}
 
-	for _, cfg := range self {
-		//just yank the first one
-		return &cfg, nil
-	}
-
 	return nil, fmt.Errorf("Could not find default in config file")
+}
+
+func (self ConfigServers) ServableConfigs() (configs []Config) {
+
+	for _, cfg := range self {
+		if !cfg.OkToUse {
+			continue
+		}
+		configs = append(configs, cfg)
+	}
+	return configs
 }
 
 func (self *ConfigServers) debugConfig() {
 
 	for chunk, cfg := range *self {
 		log.Printf("Chunk '%s'", chunk)
-
-		log.Printf("  Listen: %s", cfg.ListenURL.String())
-		log.Printf("  MaxServerHeartBeatFail: %v", cfg.MaxServerHeartBeatFail)
-		log.Printf("  ServerHeartBeat: %v", cfg.ServerHeartBeat)
-		log.Printf("  MsgType: %s ", cfg.MsgType)
-		log.Printf("  Hashing Algo: %s ", cfg.HashAlgo)
-		log.Printf("  Servers")
-		for idx, hosts := range cfg.ServerLists.ServerList {
-			log.Printf("    %s Checked via %s", hosts, cfg.ServerLists.CheckList[idx])
+		if cfg.OkToUse {
+			log.Printf("  Listen: %s", cfg.ListenURL.String())
+			log.Printf("  MaxServerHeartBeatFail: %v", cfg.MaxServerHeartBeatFail)
+			log.Printf("  ServerHeartBeat: %v", cfg.ServerHeartBeat)
+			log.Printf("  MsgType: %s ", cfg.MsgType)
+			log.Printf("  Hashing Algo: %s ", cfg.HashAlgo)
+			log.Printf("  Servers")
+			for idx, hosts := range cfg.ServerLists.ServerList {
+				log.Printf("    %s Checked via %s", hosts, cfg.ServerLists.CheckList[idx])
+			}
 		}
 	}
 }

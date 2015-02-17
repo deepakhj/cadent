@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -38,6 +39,52 @@ func setSystemStuff() {
 		fmt.Println("[System] Error Getting Rlimit:  ", err)
 	}
 	fmt.Println("[System] Final Rlimit Final: ", rLimit)
+}
+
+// Fire up the http server for stats and healthchecks
+func startStatsServer(defaults *Config, servers []*Server) {
+
+	log.Printf("Starting Status server on %s", defaults.HealthServerBind)
+
+	var names []string
+	for _, serv := range servers {
+		names = append(names, serv.Name)
+		serv.AddStatusHandlers()
+	}
+
+	status := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "private, max-age=0, no-cache")
+		fmt.Fprintf(w, "ok")
+	}
+	stats := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "private, max-age=0, no-cache")
+		jsonp := r.URL.Query().Get("jsonp")
+
+		stats_map := make(map[string]*ServerStats)
+		for idx, serv := range servers {
+			//servers[idx].StatsJsonString() //need to set it up
+			stats_map[serv.Name] = &servers[idx].stats
+		}
+		resbytes, _ := json.Marshal(stats_map)
+		if len(jsonp) > 0 {
+			w.Header().Set("Content-Type", "application/javascript")
+			fmt.Fprintf(w, fmt.Sprintf("%s(", jsonp))
+		} else {
+			w.Header().Set("Content-Type", "application/json")
+
+		}
+		fmt.Fprintf(w, string(resbytes))
+		if len(jsonp) > 0 {
+			fmt.Fprintf(w, ")")
+		}
+	}
+
+	http.HandleFunc("/", stats)
+	http.HandleFunc("/ops/status", status)
+	http.HandleFunc("/status", status)
+
+	log.Fatal(http.ListenAndServe(defaults.HealthServerBind, nil))
+
 }
 
 func main() {
@@ -111,8 +158,29 @@ func main() {
 	//initiallize the statsd singleton
 	SetUpStatsdClient(def)
 
-	hasher, err := createConstHasherFromConfig(def)
-	go hasher.ServerPool.startChecks()
-	startServer(def, hasher)
+	var servers []*Server
+	useconfigs := config.ServableConfigs()
+
+	for idx, cfg := range useconfigs {
+		log.Print("SERVER", idx, cfg.Name)
+
+		hasher, err := createConstHasherFromConfig(&cfg)
+		if err != nil {
+			panic(err)
+		}
+		go hasher.ServerPool.startChecks()
+		server, err := CreateServer(&cfg, hasher)
+		servers = append(servers, server)
+		go server.StartServer()
+	}
+
+	//fire up the http stats if given
+	if len(def.HealthServerBind) != 0 {
+		startStatsServer(def, servers)
+	} else {
+		//now we just need to loop
+		for {
+		}
+	}
 
 }

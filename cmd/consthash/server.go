@@ -11,12 +11,14 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"runtime"
 	"time"
 )
 
 const (
 	DEFAULT_WORKERS = int64(500)
+	NUM_STATS       = 5
 )
 
 type SendOut struct {
@@ -193,6 +195,16 @@ type ServerStats struct {
 	CurrentUnknownSendCount    int64 `json:"current_unknown_send_count"`
 	CurrentAllLinesCount       int64 `json:"current_all_lines_count"`
 
+	ValidLineCountList      []int64 `json:"valid_line_count_list"`
+	InvalidLineCountList    []int64 `json:"invalid_line_count_list"`
+	SuccessSendCountList    []int64 `json:"success_send_count_list"`
+	FailSendCountList       []int64 `json:"fail_send_count_list"`
+	UnsendableSendCountList []int64 `json:"unsendable_send_count_list"`
+	UnknownSendCountList    []int64 `json:"unknown_send_count_list"`
+	AllLinesCountList       []int64 `json:"all_lines_count_list"`
+	GoRoutinesList          []int   `json:"go_routines_list"`
+	TicksList               []int64 `json:ticks_list`
+
 	GoRoutines                int      `json:"go_routines"`
 	UpTimeSeconds             int64    `json:"uptime_sec"`
 	ValidLineCountPerSec      float32  `json:"valid_line_count_persec"`
@@ -202,10 +214,14 @@ type ServerStats struct {
 	UnknownSendCountPerSec    float32  `json:"unknown_send_count_persec"`
 	AllLinesCountPerSec       float32  `json:"all_lines_count_persec"`
 	ServersUp                 []string `json:"servers_up"`
+	ServersDown               []string `json:"servers_down"`
+	ServersChecks             []string `json:"servers_checking"`
 }
 
 // a server set of stats
 type Server struct {
+	Name string
+
 	ValidLineCount      StatCount
 	InvalidLineCount    StatCount
 	SuccessSendCount    StatCount
@@ -240,8 +256,9 @@ type Server struct {
 	//uptime
 	StartTime time.Time
 
-	stats        ServerStats
-	listen_stats string
+	stats ServerStats
+
+	Logger *log.Logger
 }
 
 func (server *Server) ResetTickers() {
@@ -255,12 +272,14 @@ func (server *Server) ResetTickers() {
 }
 
 func NewServer(cfg *Config) (connection *Server, err error) {
-	log.Printf("Binding server to %s", cfg.ListenURL.String())
 
 	serv := new(Server)
+	serv.Name = cfg.Name
 	serv.StartTime = time.Now()
 	serv.WorkerHold = make(chan int64)
-	serv.listen_stats = cfg.HealthServerBind
+
+	serv.Logger = log.New(os.Stdout, fmt.Sprintf("[Server: %s] ", serv.Name), log.Ldate|log.Ltime)
+	serv.Logger.Printf("Binding server to %s", cfg.ListenURL.String())
 
 	//find the runner types
 	serv.RunnerTypeString = cfg.MsgType
@@ -292,9 +311,7 @@ func NewServer(cfg *Config) (connection *Server, err error) {
 
 }
 
-// dump some json data about the stats and server status
-func (server *Server) StatsJsonString() string {
-
+func (server *Server) StatsTick() {
 	elapsed := time.Since(server.StartTime)
 	elasped_sec := float64(elapsed) / float64(time.Second)
 
@@ -302,7 +319,7 @@ func (server *Server) StatsJsonString() string {
 	server.stats.InvalidLineCount = server.InvalidLineCount.TotalCount.Get()
 	server.stats.SuccessSendCount = server.SuccessSendCount.TotalCount.Get()
 	server.stats.FailSendCount = server.FailSendCount.TotalCount.Get()
-	server.stats.UnknownSendCount = server.UnknownSendCount.TotalCount.Get()
+	server.stats.UnsendableSendCount = server.UnsendableSendCount.TotalCount.Get()
 	server.stats.UnknownSendCount = server.UnknownSendCount.TotalCount.Get()
 	server.stats.AllLinesCount = server.AllLinesCount.TotalCount.Get()
 
@@ -311,10 +328,29 @@ func (server *Server) StatsJsonString() string {
 	server.stats.CurrentSuccessSendCount = server.SuccessSendCount.TickCount.Get()
 	server.stats.CurrentFailSendCount = server.FailSendCount.TickCount.Get()
 	server.stats.CurrentUnknownSendCount = server.UnknownSendCount.TickCount.Get()
-	server.stats.CurrentUnknownSendCount = server.UnknownSendCount.TickCount.Get()
 	server.stats.CurrentAllLinesCount = server.AllLinesCount.TickCount.Get()
 
-	server.stats.GoRoutines = runtime.NumGoroutine()
+	server.stats.ValidLineCountList = append(server.stats.ValidLineCountList, server.ValidLineCount.TickCount.Get())
+	server.stats.InvalidLineCountList = append(server.stats.InvalidLineCountList, server.InvalidLineCount.TickCount.Get())
+	server.stats.SuccessSendCountList = append(server.stats.SuccessSendCountList, server.SuccessSendCount.TickCount.Get())
+	server.stats.FailSendCountList = append(server.stats.FailSendCountList, server.FailSendCount.TickCount.Get())
+	server.stats.UnknownSendCountList = append(server.stats.UnknownSendCountList, server.UnknownSendCount.TickCount.Get())
+	server.stats.UnsendableSendCountList = append(server.stats.UnsendableSendCountList, server.UnsendableSendCount.TickCount.Get())
+	server.stats.AllLinesCountList = append(server.stats.AllLinesCountList, server.AllLinesCount.TickCount.Get())
+	server.stats.TicksList = append(server.stats.TicksList, int64(elasped_sec))
+	server.stats.GoRoutinesList = append(server.stats.GoRoutinesList, runtime.NumGoroutine())
+
+	if len(server.stats.ValidLineCountList) > NUM_STATS {
+		server.stats.ValidLineCountList = server.stats.ValidLineCountList[1:NUM_STATS]
+		server.stats.InvalidLineCountList = server.stats.InvalidLineCountList[1:NUM_STATS]
+		server.stats.SuccessSendCountList = server.stats.SuccessSendCountList[1:NUM_STATS]
+		server.stats.FailSendCountList = server.stats.FailSendCountList[1:NUM_STATS]
+		server.stats.UnknownSendCountList = server.stats.UnknownSendCountList[1:NUM_STATS]
+		server.stats.UnsendableSendCountList = server.stats.UnsendableSendCountList[1:NUM_STATS]
+		server.stats.AllLinesCountList = server.stats.AllLinesCountList[1:NUM_STATS]
+		server.stats.TicksList = server.stats.TicksList[1:NUM_STATS]
+		server.stats.GoRoutinesList = server.stats.GoRoutinesList[1:NUM_STATS]
+	}
 	server.stats.UpTimeSeconds = int64(elasped_sec)
 
 	server.stats.ValidLineCountPerSec = server.ValidLineCount.TotalRate(elapsed)
@@ -324,31 +360,38 @@ func (server *Server) StatsJsonString() string {
 	server.stats.UnknownSendCountPerSec = server.UnknownSendCount.TotalRate(elapsed)
 	server.stats.AllLinesCountPerSec = server.AllLinesCount.TotalRate(elapsed)
 	server.stats.ServersUp = server.Hasher.Members()
+	server.stats.ServersDown = server.Hasher.DroppedServers()
+	server.stats.ServersChecks = server.Hasher.CheckingServers()
 
+}
+
+// dump some json data about the stats and server status
+func (server *Server) StatsJsonString() string {
 	resbytes, _ := json.Marshal(server.stats)
 	return string(resbytes)
 }
 
 // a little function to log out some collected stats
 func (server *Server) tickDisplay() {
+	server.StatsTick()
 
-	log.Printf("Server: ValidLineCount: %d", server.ValidLineCount.TotalCount)
-	log.Printf("Server: InvalidLineCount: %d", server.InvalidLineCount.TotalCount)
-	log.Printf("Server: SuccessSendCount: %d", server.SuccessSendCount.TotalCount)
-	log.Printf("Server: FailSendCount: %d", server.FailSendCount.TotalCount)
-	log.Printf("Server: UnsendableSendCount: %d", server.UnsendableSendCount.TotalCount)
-	log.Printf("Server: UnknownSendCount: %d", server.UnknownSendCount.TotalCount)
-	log.Printf("Server: AllLinesCount: %d", server.AllLinesCount.TotalCount)
-	log.Printf("Server: GO Routines Running: %d", runtime.NumGoroutine())
-	log.Printf("-------")
-	log.Printf("Server Rate: Duration %ds", uint64(server.ticker/time.Second))
-	log.Printf("Server Rate: ValidLineCount: %.2f/s", server.ValidLineCount.Rate(server.ticker))
-	log.Printf("Server Rate: InvalidLineCount: %.2f/s", server.InvalidLineCount.Rate(server.ticker))
-	log.Printf("Server Rate: SuccessSendCount: %.2f/s", server.SuccessSendCount.Rate(server.ticker))
-	log.Printf("Server Rate: FailSendCount: %.2f/s", server.FailSendCount.Rate(server.ticker))
-	log.Printf("Server Rate: UnsendableSendCount: %.2f/s", server.UnsendableSendCount.Rate(server.ticker))
-	log.Printf("Server Rate: UnknownSendCount: %.2f/s", server.UnknownSendCount.Rate(server.ticker))
-	log.Printf("Server Rate: AllLinesCount: %.2f/s", server.AllLinesCount.Rate(server.ticker))
+	server.Logger.Printf("Server: ValidLineCount: %d", server.ValidLineCount.TotalCount)
+	server.Logger.Printf("Server: InvalidLineCount: %d", server.InvalidLineCount.TotalCount)
+	server.Logger.Printf("Server: SuccessSendCount: %d", server.SuccessSendCount.TotalCount)
+	server.Logger.Printf("Server: FailSendCount: %d", server.FailSendCount.TotalCount)
+	server.Logger.Printf("Server: UnsendableSendCount: %d", server.UnsendableSendCount.TotalCount)
+	server.Logger.Printf("Server: UnknownSendCount: %d", server.UnknownSendCount.TotalCount)
+	server.Logger.Printf("Server: AllLinesCount: %d", server.AllLinesCount.TotalCount)
+	server.Logger.Printf("Server: GO Routines Running: %d", runtime.NumGoroutine())
+	server.Logger.Printf("-------")
+	server.Logger.Printf("Server Rate: Duration %ds", uint64(server.ticker/time.Second))
+	server.Logger.Printf("Server Rate: ValidLineCount: %.2f/s", server.ValidLineCount.Rate(server.ticker))
+	server.Logger.Printf("Server Rate: InvalidLineCount: %.2f/s", server.InvalidLineCount.Rate(server.ticker))
+	server.Logger.Printf("Server Rate: SuccessSendCount: %.2f/s", server.SuccessSendCount.Rate(server.ticker))
+	server.Logger.Printf("Server Rate: FailSendCount: %.2f/s", server.FailSendCount.Rate(server.ticker))
+	server.Logger.Printf("Server Rate: UnsendableSendCount: %.2f/s", server.UnsendableSendCount.Rate(server.ticker))
+	server.Logger.Printf("Server Rate: UnknownSendCount: %.2f/s", server.UnknownSendCount.Rate(server.ticker))
+	server.Logger.Printf("Server Rate: AllLinesCount: %.2f/s", server.AllLinesCount.Rate(server.ticker))
 	server.ResetTickers()
 	runtime.GC()
 	time.Sleep(server.ticker)
@@ -366,10 +409,10 @@ func (server *Server) Accepter() (<-chan net.Conn, error) {
 		for {
 			conn, err := server.Connection.Accept()
 			if err != nil {
-				log.Printf("Error Accecption Connection: %s", err)
+				server.Logger.Printf("Error Accecption Connection: %s", err)
 				return
 			}
-			log.Printf("Accepted connection from %s", conn.RemoteAddr())
+			server.Logger.Printf("Accepted connection from %s", conn.RemoteAddr())
 
 			conns <- conn
 		}
@@ -395,7 +438,7 @@ func (server *Server) startTCPServer(hasher *ConstHasher, worker_queue chan *Sen
 		case workerUpDown := <-server.WorkerHold:
 			server.InWorkQueue.Add(workerUpDown)
 			if server.InWorkQueue.Get() == server.Workers {
-				log.Printf("Worker Queue Full %d", server.InWorkQueue.Get())
+				server.Logger.Printf("Worker Queue Full %d", server.InWorkQueue.Get())
 			}
 		case client := <-done:
 			client.Close()
@@ -405,24 +448,30 @@ func (server *Server) startTCPServer(hasher *ConstHasher, worker_queue chan *Sen
 }
 
 // Fire up the http server for stats and healthchecks
-func (server *Server) startStatsServer() {
-	log.Printf("Starting Status server on %s", server.listen_stats)
+// do this only if there is not a
+func (server *Server) AddStatusHandlers() {
 
 	stats := func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "private, max-age=0, no-cache")
 		fmt.Fprintf(w, server.StatsJsonString())
 	}
 	status := func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "ok")
+		w.Header().Set("Cache-Control", "private, max-age=0, no-cache")
+		if len(server.Hasher.Members()) <= 0 {
+			http.Error(w, "all servers down", http.StatusServiceUnavailable)
+			return
+		} else {
+			fmt.Fprintf(w, "ok")
+		}
 	}
 
-	http.HandleFunc("/", stats)
-	http.HandleFunc("/ops/status", status)
-	http.HandleFunc("/ops/status/", status)
-	http.HandleFunc("/status/", status)
-	http.HandleFunc("/stats/", stats)
-	http.HandleFunc("/stats", stats)
-	http.ListenAndServe(server.listen_stats, nil)
+	http.HandleFunc(fmt.Sprintf("/%s", server.Name), stats)
+	http.HandleFunc(fmt.Sprintf("/%s/ops/status", server.Name), status)
+	http.HandleFunc(fmt.Sprintf("/%s/ops/status/", server.Name), status)
+	http.HandleFunc(fmt.Sprintf("/%s/status", server.Name), status)
+	http.HandleFunc(fmt.Sprintf("/%s/stats/", server.Name), stats)
+	http.HandleFunc(fmt.Sprintf("/%s/stats", server.Name), stats)
 
 }
 
@@ -438,7 +487,7 @@ func (server *Server) startUDPServer(hasher *ConstHasher, worker_queue chan *Sen
 		case workerUpDown := <-server.WorkerHold:
 			server.InWorkQueue.Add(workerUpDown)
 			if server.InWorkQueue.Get() == server.Workers {
-				log.Printf("Worker Queue Full %d", server.InWorkQueue.Get())
+				server.Logger.Printf("Worker Queue Full %d", server.InWorkQueue.Get())
 			}
 		case client := <-done:
 			client.Close()
@@ -446,36 +495,35 @@ func (server *Server) startUDPServer(hasher *ConstHasher, worker_queue chan *Sen
 	}
 }
 
-func startServer(cfg *Config, hasher *ConstHasher) {
-
+func CreateServer(cfg *Config, hasher *ConstHasher) (*Server, error) {
+	//log.Print("CERATE", cfg, hasher)
 	server, err := NewServer(cfg)
 	server.Hasher = hasher
+
 	if err != nil {
 		panic(err)
 	}
-	done := make(chan Client)
-	worker_queue := make(chan *SendOut)
 
 	server.Workers = DEFAULT_WORKERS
 	if cfg.Workers > 0 {
 		server.Workers = int64(cfg.Workers)
 	}
 
+	return server, err
+}
+
+func (server *Server) StartServer() {
+
 	log.Printf("Using %d workers to process output", server.Workers)
 	//fire up the send to workers
+	done := make(chan Client)
+	worker_queue := make(chan *SendOut)
 	for w := int64(1); w <= server.Workers; w++ {
 		go WorkerOutput(worker_queue)
 	}
-
-	//fire up the http stats if given
-	if len(server.listen_stats) != 0 {
-		go server.startStatsServer()
-	}
-
 	if server.UDPConn != nil {
-		server.startUDPServer(hasher, worker_queue, done)
+		server.startUDPServer(server.Hasher, worker_queue, done)
 	} else {
-		server.startTCPServer(hasher, worker_queue, done)
+		server.startTCPServer(server.Hasher, worker_queue, done)
 	}
-
 }

@@ -1,25 +1,5 @@
 [default]
 
-## what port/scheme we are listening on for incoming data
-
-listen="udp://127.0.0.1:6000"
-
-## the list of servers we hashring send to
-## {scheme}://{ip}:{port},...
-## scheme = tcp|udp
-
-#servers="udp://127.0.0.1:6002,udp://127.0.0.1:6003, udp://127.0.0.1:6004"
-#servers="tcp://127.0.0.1:6002,tcp://127.0.0.1:6003, tcp://127.0.0.1:6004"
-servers="udp://192.168.59.103:8126"
-
-## there must be a check server for each `servers` above
-## {scheme}://{ip}:{port},...
-## scheme = tcp|http -- NOTE NO UDP checks (does not make sense)
-## tcp connections are simply checked for a connection and closed
-## http connections must respond with a 200 to a GET on the provided url
-
-#check_servers="tcp://127.0.0.1:6005,tcp://127.0.0.1:6006, tcp://127.0.0.1:6007"
-check_servers="tcp://192.168.59.103:8127"
 
 ## Hashing Algo
 # The hashing algo to use in our hashring
@@ -36,12 +16,6 @@ hasher_algo="md5"
 ## statsd has 0
 hasher_replicas=0
 
-## Incoming Messages
-## msg_type = statsd | graphite | regex
-## msg_regex = <some regex that has <Key> defined as a group>
-### like "(?P<Key>[a-zA-Z0-9]+)-(?P<message>.*)"
-msg_type="statsd"
-msg_regex="(?P<Key>.*):(?P<message>.*)"
 
 ## cache keys/server pairs in an LRU mem cache for speed
 cache_items=50000
@@ -77,3 +51,53 @@ workers=500
 ## there will be an internal health http server set up as well
 ## and will respond to '/ops/status' and '/stats' and '/'
 internal_health_server_listen="0.0.0.0:6061"
+
+
+### Server sections .. note all the above is overridable in each section
+### (except the `statsd_*` and `internal_health_server_listen`)
+### NOTE: `hasher_replicas` will NOT use the defaults, be explict there
+
+[mainstatsd]
+
+## what port/scheme we are listening on for incoming data
+
+listen="udp://127.0.0.1:6000"
+
+## the list of servers we hashring send to
+## {scheme}://{ip}:{port},...
+## scheme = tcp|udp
+
+#servers="udp://127.0.0.1:6002,udp://127.0.0.1:6003, udp://127.0.0.1:6004"
+#servers="tcp://127.0.0.1:6002,tcp://127.0.0.1:6003, tcp://127.0.0.1:6004"
+servers="udp://192.168.59.103:8126"
+
+## there must be a check server for each `servers` above
+## {scheme}://{ip}:{port},...
+## scheme = tcp|http -- NOTE NO UDP checks (does not make sense)
+## tcp connections are simply checked for a connection and closed
+## http connections must respond with a 200 to a GET on the provided url
+
+#check_servers="tcp://127.0.0.1:6005,tcp://127.0.0.1:6006, tcp://127.0.0.1:6007"
+check_servers="tcp://192.168.59.103:8127"
+
+## Incoming Messages
+## msg_type = statsd | graphite | regex
+## msg_regex = <some regex that has <Key> defined as a group>
+### like "(?P<Key>[a-zA-Z0-9]+)-(?P<message>.*)"
+msg_type="statsd"
+msg_regex="(?P<Key>.*):(?P<message>.*)"
+
+# statsd style
+hasher_replicas=0
+
+[mainregex]
+
+listen="udp://127.0.0.1:6001"
+
+servers="udp://192.168.59.103:8126"
+check_servers="tcp://192.168.59.103:8127"
+
+msg_type="regex"
+msg_regex="(?P<Key>.*):(?P<message>.*)"
+hasher_algo="fnv"
+
