@@ -65,7 +65,7 @@
 
 	<div class="page-header">
 		<div class="row">
-			<div class="col-sm-12"><h1>ConstHasher Tracker</h1></div>
+			<div class="col-sm-12"><h1>ConstHasher Tracker <small>Up: <span id="uptime_sec"></span>s</small></h1></div>
 
 		</div>
 	</div>
@@ -76,7 +76,7 @@
 		<div class="col-sm-3"><h4>Failed Lines: <span id="fail_send_count"></span></h4></div>
 
 	</div>
-	<div id="charts">
+	<div id="charts" class="content">
 		<div class="row">
 			<h4> Lines Seen</h4>
 			<div id="current_all_lines_count" class="graph"></div>
@@ -139,6 +139,7 @@
 	var ticks = []
 
 	function renderGraphs(){
+		now = new Date().getTime();
 		$.each( GRAPHS, function( key, graph ) {
 			if(GRAPHS[key]['graph'] == null){
 				var init_data = {
@@ -147,14 +148,24 @@
 					ylabel: 'Count',
 					legend: 'always',
 					//valueRange: [0.0, 1.2],
-					labels: ["UpTime"]
+					labels: ["Time"],
+					axes: {
+						x: {
+							axisLabelFormatter: function(x) {
+								return Dygraph.dateString_(x)
+							}
+						}
+					}
+					//xValueFormatter: Dygraph.dateString_,
+					//xValueParser: function(x) { return 1000*parseInt(x); },
+					//xTicker: Dygraph.dateTicker
 				};
 				data = []
 	
 				$.each(servers, function(idx, servername) {
 					chart_data = LAST_DATA[servername]
 					if(data.length == 0){
-						data.push(chart_data['uptime_sec'])
+						data.push(now)
 					}
 					data.push(chart_data[key])
 					init_data['labels'].push(servername)
@@ -167,7 +178,7 @@
 					chart_data = LAST_DATA[servername]
 
 					if(t_data.length == 0){
-						t_data.push(chart_data['uptime_sec'])
+						t_data.push(now)
 					}
 					t_data.push(chart_data[key])
 				})
