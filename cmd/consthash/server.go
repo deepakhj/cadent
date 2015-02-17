@@ -72,6 +72,7 @@ func poolWorker(j *SendOut) {
 			log.Printf("Error sending (writing) to backend: %s", err)
 			return
 		} else {
+			j.server.SuccessSendCount.Up(1)
 			StatsdClient.Incr("success.send", 1)
 			StatsdClient.Incr("success.sent-bytes", int64(len(to_send)))
 			outsrv.Close(conn)
