@@ -56,20 +56,22 @@ func (job RegExRunner) GetKey() string {
 
 func (job RegExRunner) run() string {
 	// <time> <key> <value>
-	useme, err := job.Hasher.Get(job.GetKey())
+	servs, err := job.Hasher.GetN(job.GetKey(), job.Client().Server().Replicas)
 	if err == nil {
-		StatsdClient.Incr("success.valid-lines", 1)
-		job.Client().Server().ValidLineCount.Up(1)
-		sendOut := &SendOut{
-			outserver: useme,
-			server:    job.Client().Server(),
-			param:     job.param,
-			client:    job.Client(),
-		}
-		job.Client().Server().WorkerHold <- 1
+		for _, useme := range servs {
+			StatsdClient.Incr("success.valid-lines", 1)
+			job.Client().Server().ValidLineCount.Up(1)
+			sendOut := &SendOut{
+				outserver: useme,
+				server:    job.Client().Server(),
+				param:     job.param,
+				client:    job.Client(),
+			}
+			job.Client().Server().WorkerHold <- 1
 
-		job.Client().WorkerQueue() <- sendOut
-		return fmt.Sprintf("yay regex %s: %s", string(useme), string(job.param))
+			job.Client().WorkerQueue() <- sendOut
+		}
+		return fmt.Sprintf("yay regex %s: %s", servs, string(job.param))
 	}
 	StatsdClient.Incr("failed.invalid-hash-server", 1)
 	job.Client().Server().UnsendableSendCount.Up(1)

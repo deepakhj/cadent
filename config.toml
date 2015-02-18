@@ -1,5 +1,7 @@
 [default]
 
+## PID file to check if things is running already
+pid_file="/tmp/consthash.pid"
 
 ## Hashing Algo
 # The hashing algo to use in our hashring
@@ -10,11 +12,18 @@
 # 'fnva' -> 32 bin FNVa
 hasher_algo="md5"
 
-## Hasher replicas
+## Hasher vnodes
 # the number of replicas per server
 ## graphite has 100 for this
-## statsd has 0
-hasher_replicas=0
+## statsd has 40
+## NOTE: this is NOT for "replication of data" but for how many virtual nodes are
+## in the ConsistentHash ring per "real" node .. sometimes called "vnodes"
+hasher_vnodes=40
+
+## Data Replication
+### for each line we get we can replicated it other nodes in the server
+### list.
+num_dupe_replicas=2
 
 
 ## cache keys/server pairs in an LRU mem cache for speed
@@ -94,8 +103,8 @@ hasher_replicas=0
 
 listen="udp://127.0.0.1:6001"
 
-servers="udp://192.168.59.103:8126"
-check_servers="tcp://192.168.59.103:8127"
+servers="udp://192.168.59.103:8126,udp://127.0.0.1:6002"
+check_servers="tcp://192.168.59.103:8127,tcp://192.168.59.103:8127"
 
 msg_type="regex"
 msg_regex="(?P<Key>.*):(?P<message>.*)"

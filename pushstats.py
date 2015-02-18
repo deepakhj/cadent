@@ -15,7 +15,7 @@ rand_words = [rand_str(string.ascii_lowercase, 5) for x in range(1,10)]
 rand_words = ["test", "house", "here", "there", "cow", "now"]
 
 def gen_key():
-    return "{}.{}.{}".format(
+    return "botests.{}.{}.{}".format(
         random.choice(rand_words),
         random.choice(rand_words),
         random.choice(rand_words)
@@ -27,6 +27,7 @@ START=time.time()
 
 
 ON_SERVER=[
+    ("localhost",6000,),
     ("localhost",6000,),
     ("localhost", 6001,)
 ]
@@ -45,7 +46,7 @@ def send_udp(msg, ip, port):
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # UDP
     sock.sendto(msg, (ip, port,))
 
-def run(ip, port):
+def run(ip, port, idx):
     def gen_msg(num):
         global FULL_CT, START,PACKET_FULL_CT
         msg_full = ""
@@ -78,8 +79,10 @@ def run(ip, port):
         gen_msg(512)
 
 if __name__ == '__main__':
+    idx = 1
     for ip, port in ON_SERVER:
         print( "Running to {}:{}".format(ip, port))
-        p = Process(target=run, args=(ip, port,))
+        p = Process(target=run, args=(ip, port, idx,))
         p.start()
+        idx += 1
         #p.join()

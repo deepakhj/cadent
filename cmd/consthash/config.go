@@ -21,6 +21,7 @@ type ParsedServerConfig struct {
 
 type Config struct {
 	Name                   string
+	PIDfile                string        `toml:"pid_file"`
 	Servers                string        `toml:"servers"`
 	CheckServers           string        `toml:"check_servers"`
 	MsgType                string        `toml:"msg_type"`
@@ -32,8 +33,10 @@ type Config struct {
 	ServerDownPolicy       string        `toml:"server_down_policy"`
 	CacheItems             uint64        `toml:"cache_items"`
 	Profile                bool          `toml:"cpu_profile"`
+	Replicas               int           `toml:"num_dupe_replicas"`
 	HashAlgo               string        `toml:"hasher_algo"`
-	HashReplicas           int           `toml:"hasher_replicas"`
+	HashElter              string        `toml:"hasher_elter"`
+	HashVNodes             int           `toml:"hasher_vnodes"`
 
 	// send some stats to the land
 	StatsdServer   string `toml:"statsd_server"`
@@ -69,6 +72,8 @@ const (
 	DEFAULT_HEARTBEAT_TIMEOUT = time.Duration(5)
 	DEFAULT_SERVERDOWN_POLICY = "keep"
 	DEFAULT_HASHER_ALGO       = "crc32"
+	DEFAULT_HASHER_ELTER      = "graphite"
+	DEFAULT_DUPE_REPLICAS     = 1
 )
 
 type ConfigServers map[string]Config
@@ -198,6 +203,17 @@ func (self ConfigServers) parseConfig(defaults Config) (out ConfigServers, err e
 				cfg.CacheItems = defaults.CacheItems
 			}
 		}
+		if cfg.Replicas == 0 {
+			cfg.Replicas = DEFAULT_DUPE_REPLICAS
+			if defaults.Replicas > 0 {
+				cfg.Replicas = defaults.Replicas
+			}
+		}
+
+		if cfg.Replicas > len(parsedServer.ServerList) {
+			log.Printf("[WARN] Changing replica count to %d to match the # servers", len(parsedServer.ServerList))
+			cfg.Replicas = len(parsedServer.ServerList)
+		}
 
 		//need to make things seconds
 		cfg.ServerHeartBeat = cfg.ServerHeartBeat * time.Second
@@ -285,6 +301,7 @@ func (self *ConfigServers) debugConfig() {
 			log.Printf("  ServerHeartBeat: %v", cfg.ServerHeartBeat)
 			log.Printf("  MsgType: %s ", cfg.MsgType)
 			log.Printf("  Hashing Algo: %s ", cfg.HashAlgo)
+			log.Printf("  Dupe Replicas: %d ", cfg.Replicas)
 			log.Printf("  Servers")
 			for idx, hosts := range cfg.ServerLists.ServerList {
 				log.Printf("    %s Checked via %s", hosts, cfg.ServerLists.CheckList[idx])

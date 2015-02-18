@@ -9,12 +9,14 @@ import (
 	"fmt"
 	"log"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
 const (
 	DEFAULT_CACHE_ITEMS = 10000
 	DEFAULT_HASHER      = "crc32"
+	DEFAULT_ELTER       = "graphite"
 	DEFAULT_REPLICAS    = 4
 )
 
@@ -25,6 +27,12 @@ func (s ServerCacheItem) Size() int {
 	return len(s)
 }
 
+type MultiServerCacheItem []string
+
+func (s MultiServerCacheItem) Size() int {
+	return len(s)
+}
+
 // match the  ServerPoolRunner interface
 type ConstHasher struct {
 	Hasher     *consistent.Consistent
@@ -32,6 +40,7 @@ type ConstHasher struct {
 	ServerPool *CheckedServerPool
 
 	HashAlgo     string
+	HashElter    string
 	HashReplicas int
 
 	ServerPutCounts uint64
@@ -80,7 +89,28 @@ func (self *ConstHasher) Get(in_key string) (string, error) {
 	}
 	StatsdClient.Incr(fmt.Sprintf("hashserver.%s.used", self.cleanKey(srv)), 1)
 	StatsdClient.Incr("lrucache.hit", 1)
-	return fmt.Sprintf("%s", srv), nil
+	return string(srv.(ServerCacheItem)), nil
+}
+
+//alias to hasher to allow to use our LRU cache
+func (self *ConstHasher) GetN(in_key string, num int) ([]string, error) {
+	cache_key := in_key + ":" + strconv.Itoa(num)
+	srv, ok := self.Cache.Get(cache_key)
+
+	if !ok {
+		StatsdClient.Incr("lrucache.miss", 1)
+		srv, err := self.Hasher.GetN(in_key, num)
+		self.Cache.Set(cache_key, MultiServerCacheItem(srv))
+		for _, useme := range srv {
+			StatsdClient.Incr(fmt.Sprintf("hashserver.%s.used", self.cleanKey(useme)), 1)
+		}
+		return srv, err
+	}
+	for _, useme := range srv.(MultiServerCacheItem) {
+		StatsdClient.Incr(fmt.Sprintf("hashserver.%s.used", self.cleanKey(useme)), 1)
+	}
+	StatsdClient.Incr("lrucache.hit", 1)
+	return srv.(MultiServerCacheItem), nil
 }
 
 //alias to hasher
@@ -130,11 +160,17 @@ func createConstHasherFromConfig(cfg *Config) (*ConstHasher, error) {
 		hasher.HashAlgo = cfg.HashAlgo
 
 	}
+	hasher.HashElter = DEFAULT_ELTER
+	if len(cfg.HashElter) > 0 {
+		hasher.HashElter = cfg.HashElter
+
+	}
 	hasher.HashReplicas = DEFAULT_REPLICAS
-	if cfg.HashReplicas >= 0 {
-		hasher.HashReplicas = cfg.HashReplicas
+	if cfg.HashVNodes >= 0 {
+		hasher.HashReplicas = cfg.HashVNodes
 	}
 	hasher.Hasher.SetHasherByName(hasher.HashAlgo)
+	hasher.Hasher.SetElterByName(hasher.HashElter)
 	hasher.Hasher.NumberOfReplicas = hasher.HashReplicas
 
 	return &hasher, nil

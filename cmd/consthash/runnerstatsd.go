@@ -46,19 +46,22 @@ func (job StatsdRunner) GetKey() string {
 
 func (job StatsdRunner) run() string {
 
-	useme, err := job.Hasher.Get(job.GetKey())
+	servs, err := job.Hasher.GetN(job.GetKey(), job.Client().Server().Replicas)
 	if err == nil {
-		StatsdClient.Incr("success.valid-lines", 1)
-		job.Client().Server().ValidLineCount.Up(1)
-		sendOut := &SendOut{
-			outserver: useme,
-			param:     job.param,
-			server:    job.Client().Server(),
-			client:    job.Client(),
+		for _, useme := range servs {
+
+			StatsdClient.Incr("success.valid-lines", 1)
+			job.Client().Server().ValidLineCount.Up(1)
+			sendOut := &SendOut{
+				outserver: useme,
+				param:     job.param,
+				server:    job.Client().Server(),
+				client:    job.Client(),
+			}
+			job.Client().Server().WorkerHold <- 1
+			job.Client().WorkerQueue() <- sendOut
 		}
-		job.Client().Server().WorkerHold <- 1
-		job.Client().WorkerQueue() <- sendOut
-		return fmt.Sprintf("yay statsd : %v : %v", string(useme), string(job.param))
+		return fmt.Sprintf("yay statsd : %v : %v", servs, string(job.param))
 	}
 	StatsdClient.Incr("failed.invalid-hash-server", 1)
 	job.Client().Server().UnsendableSendCount.Up(1)

@@ -21,7 +21,7 @@ type GraphiteRunner struct {
 
 func NewGraphiteRunner(client Client, conf map[string]interface{}, param string) (*GraphiteRunner, error) {
 
-	//<key>:blaaa
+	// <time> <key> <value>
 	job := &GraphiteRunner{
 		client: client,
 		Hasher: client.Hasher(),
@@ -46,21 +46,25 @@ func (job GraphiteRunner) GetKey() string {
 }
 
 func (job GraphiteRunner) run() string {
-	// <time> <key> <value>
-	useme, err := job.Hasher.Get(job.GetKey())
-	if err == nil {
-		StatsdClient.Incr("success.valid-lines", 1)
-		job.Client().Server().ValidLineCount.Up(1)
-		sendOut := &SendOut{
-			outserver: useme,
-			server:    job.Client().Server(),
-			param:     job.param,
-			client:    job.Client(),
-		}
-		job.Client().Server().WorkerHold <- 1
 
-		job.Client().WorkerQueue() <- sendOut
-		return fmt.Sprintf("yay graphite %s: %s", string(useme), string(job.param))
+	// may have replicas we need to deal with
+	servs, err := job.Hasher.GetN(job.GetKey(), job.Client().Server().Replicas)
+	if err == nil {
+		for _, useme := range servs {
+
+			StatsdClient.Incr("success.valid-lines", 1)
+			job.Client().Server().ValidLineCount.Up(1)
+			sendOut := &SendOut{
+				outserver: useme,
+				server:    job.Client().Server(),
+				param:     job.param,
+				client:    job.Client(),
+			}
+			job.Client().Server().WorkerHold <- 1
+			job.Client().WorkerQueue() <- sendOut
+		}
+
+		return fmt.Sprintf("yay graphite %s: %s", servs, string(job.param))
 	}
 	StatsdClient.Incr("failed.invalid-hash-server", 1)
 	job.Client().Server().UnsendableSendCount.Up(1)

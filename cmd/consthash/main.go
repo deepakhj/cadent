@@ -62,7 +62,7 @@ func startStatsServer(defaults *Config, servers []*Server) {
 
 		stats_map := make(map[string]*ServerStats)
 		for idx, serv := range servers {
-			//servers[idx].StatsJsonString() //need to set it up
+			// note the server itself populates this ever 5 seconds
 			stats_map[serv.Name] = &servers[idx].stats
 		}
 		resbytes, _ := json.Marshal(stats_map)
@@ -97,8 +97,25 @@ func main() {
 		os.Exit(0)
 	}
 
+	var config ConfigServers
+	var err error
+
+	config, err = parseConfigFile(*configFile)
+	if err != nil {
+		log.Printf("Error decoding config file: %s", err)
+		os.Exit(1)
+	}
+
+	config.debugConfig()
+
+	def, err := config.defaultConfig()
+	if err != nil {
+		log.Printf("Error decoding config file: Could not find default: %s", err)
+		os.Exit(1)
+	}
+
 	/// main block as we want to "defer" it's removale at main exit
-	var pidFile = "/tmp/consthash.pid"
+	var pidFile = def.PIDfile
 	if pidFile != "" {
 		contents, err := ioutil.ReadFile(pidFile)
 		if err == nil {
@@ -135,21 +152,6 @@ func main() {
 		}()
 	}
 
-	var config ConfigServers
-	var err error
-
-	config, err = parseConfigFile(*configFile)
-	if err != nil {
-		log.Printf("Error decoding config file: %s", err)
-		os.Exit(1)
-	}
-	config.debugConfig()
-
-	def, err := config.defaultConfig()
-	if err != nil {
-		log.Printf("Error decoding config file: Could not find default: %s", err)
-		os.Exit(1)
-	}
 	if def.Profile {
 		log.Println("Starting Profiler on localhost:6060")
 		go http.ListenAndServe(":6060", nil)
@@ -161,9 +163,7 @@ func main() {
 	var servers []*Server
 	useconfigs := config.ServableConfigs()
 
-	for idx, cfg := range useconfigs {
-		log.Print("SERVER", idx, cfg.Name)
-
+	for _, cfg := range useconfigs {
 		hasher, err := createConstHasherFromConfig(&cfg)
 		if err != nil {
 			panic(err)

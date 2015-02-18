@@ -18,7 +18,7 @@ import (
 
 const (
 	DEFAULT_WORKERS = int64(500)
-	NUM_STATS       = 5
+	NUM_STATS       = 100
 )
 
 type SendOut struct {
@@ -238,6 +238,9 @@ type Server struct {
 	//Hasher objects
 	Hasher *ConstHasher
 
+	//number of replicas to fire data to (i.e. dupes)
+	Replicas int
+
 	//pool the connections to the outgoing servers
 	Outpool map[string]*Netpool
 
@@ -285,6 +288,7 @@ func NewServer(cfg *Config) (connection *Server, err error) {
 	//find the runner types
 	serv.RunnerTypeString = cfg.MsgType
 	serv.RunnerConfig = cfg.MsgConfig
+	serv.Replicas = cfg.Replicas
 
 	if cfg.ListenURL.Scheme == "udp" {
 		udp_addr, err := net.ResolveUDPAddr(cfg.ListenURL.Scheme, cfg.ListenURL.Host)
