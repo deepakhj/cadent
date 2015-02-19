@@ -51,9 +51,16 @@ rm -rf ${TARGET}
 echo Clean existing output directory
 rm -rf ${OUTPUT}
 
+progress Copying artifacts
+mkdir -p ${TARGET}
+mkdir -p ${OUTPUT}
+exit 0
+
 cp -rf html ${OUTPUT}
 cp -rf consthash ${OUTPUT}
 cp -rf echoserver ${OUTPUT}
+
+tar -cvzf "${OUTPUT}/${APP_NAME}-${BUILDID}.tmp" -C ${PACKAGE_BASE} contents control
 
 
 #progress Staging for angstrom packager
