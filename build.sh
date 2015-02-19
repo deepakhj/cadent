@@ -28,7 +28,7 @@ git clone git@scm-main-01.dc.myfitnesspal.com:goutil/statsd.git cmd/consthash/st
 
 # grab the external pacakges
 
-go install github.com/bbangert/toml
+go get github.com/bbangert/toml
 
 
 make clean
