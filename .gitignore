@@ -3,8 +3,9 @@ consthash.iml
 consthash.xcodeproj*
 *.heap
 *.pprof
-tester/*
-tester
 cmd/consthash/consistent
 cmd/consthash/statsd
 consthashsrv.iml
+*.pyc
+*.pyo
+node_modules
