@@ -28,13 +28,34 @@ git clone git@scm-main-01.dc.myfitnesspal.com:goutil/statsd.git cmd/consthash/st
 
 # grab the external pacakges
 
+progress Grabing external packages
+
 go get github.com/bbangert/toml
 go get github.com/davecheney/profile
 
 make clean
 
+progress Building .... 
+
 make
 
-progress Staging for angstrom packager
-"${SOURCE}/angstrom/package" "${APP_NAME:-unknown}" "${BUILDID:-develop}" "${WORKSPACE:-.}/staging" "${WORKSPACE:-.}/output"
+progress Copying artifacts
+
+export TARGET="${WORKSPACE:-.}/staging"
+export OUTPUT="${WORKSPACE:-.}/output"
+
+
+## clean existing staging output
+echo Clean existing staging directory
+rm -rf ${TARGET}
+echo Clean existing output directory
+rm -rf ${OUTPUT}
+
+cp -rf html ${OUTPUT}
+cp -rf consthash ${OUTPUT}
+cp -rf echoserver ${OUTPUT}
+
+
+#progress Staging for angstrom packager
+#"${SOURCE}/angstrom/package" "${APP_NAME:-unknown}" "${BUILDID:-develop}" "${WORKSPACE:-.}/staging" "${WORKSPACE:-.}/output"
 progress Build complete.
