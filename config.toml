@@ -6,11 +6,19 @@ pid_file="/tmp/consthash.pid"
 ## Hashing Algo
 # The hashing algo to use in our hashring
 # 'crc32' -> default
-# 'md5' -> a small portion of the MD5 (same one graphite uses)
-# 'sha1' -> s small porting of the SHA1
+# 'md5' -> the first 4 bytes of the MD5 (same one graphite uses)
+# 'sha1' -> the first 4 bytes of the SHA1
 # 'fnv' -> 32 bit FNV
 # 'fnva' -> 32 bin FNVa
+# 'nodejs-hashring' -> an "odd" bitshifting md5 one used by Statsd (nodejs-hashring really)
 hasher_algo="md5"
+
+## Hashing Etls
+# The hashing elt that composes the acctual hashing server key
+# 'graphite' -> the one graphite uses (default)
+# 'statsd' -> the one statsd uses
+# 'goconsistent' -> the one uses in the https://github.com/stathat/consistent
+hasher_elter="graphite"
 
 ## Hasher vnodes
 # the number of replicas per server
@@ -23,7 +31,7 @@ hasher_vnodes=40
 ## Data Replication
 ### for each line we get we can replicated it other nodes in the server
 ### list.
-num_dupe_replicas=2
+num_dupe_replicas=1
 
 
 ## cache keys/server pairs in an LRU mem cache for speed

@@ -193,6 +193,12 @@ func (self ConfigServers) parseConfig(defaults Config) (out ConfigServers, err e
 				cfg.HashAlgo = defaults.HashAlgo
 			}
 		}
+		if cfg.HashElter == "" {
+			cfg.HashElter = DEFAULT_HASHER_ELTER
+			if defaults.HashElter != "" {
+				cfg.HashElter = defaults.HashElter
+			}
+		}
 		if cfg.Workers == 0 {
 			if defaults.Workers > 0 {
 				cfg.Workers = defaults.Workers
