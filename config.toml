@@ -9,7 +9,7 @@ pid_file="/tmp/consthash.pid"
 # 'md5' -> the first 4 bytes of the MD5 (same one graphite uses)
 # 'sha1' -> the first 4 bytes of the SHA1
 # 'fnv' -> 32 bit FNV
-# 'fnva' -> 32 bin FNVa
+# 'fnva' -> 32 bin FNVa -- a faster fnv
 # 'nodejs-hashring' -> an "odd" bitshifting md5 one used by Statsd (nodejs-hashring really)
 hasher_algo="md5"
 
