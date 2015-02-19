@@ -15,7 +15,17 @@ function progress(){
 export WORKSPACE="${WORKSPACE:-.}"
 export SOURCE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 
+export GOPATH="${WORKSPACE:-.}/gopath"
+mkdir -p ${GOPATH}
+
+
 cd "${WORKSPACE}/git"
+
+# need to clone our other deps
+
+git clone git@scm-main-01.dc.myfitnesspal.com:goutil/consistent.git cmd/consthash/consistent
+git clone git@scm-main-01.dc.myfitnesspal.com:goutil/statsd.git cmd/consthash/statsd
+
 
 make clean
 
