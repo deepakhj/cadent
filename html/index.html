@@ -66,56 +66,63 @@
 	<div class="page-header">
 		<div class="row">
 			<div class="col-sm-12"><h1>ConstHasher Tracker <small>Up: <span id="uptime_sec"></span>s</small></h1></div>
-
 		</div>
 	</div>
 	<div class="row">
-		<div class="col-sm-3"><h4>All Lines: <span id="all_lines_count"></span></h4></div>
+		<div class="col-sm-3"><h4>All Lines: <span id="all_lines_count">Getting Stats... hold on</span></h4></div>
 		<div class="col-sm-3"><h4>Valid Lines: <span id="valid_line_count"></span></h4></div>
 		<div class="col-sm-3"><h4>Sent Lines: <span id="success_send_count"></span></h4></div>
 		<div class="col-sm-3"><h4>Failed Lines: <span id="fail_send_count"></span></h4></div>
-
 	</div>
 	<div class="row">
 		<div class="col-sm-12">
-	<div id="charts" class="content">
-		<div class="row">
+			<h4>Current Running Servers:</h4>
+			<div id="current-running">
+				
+			</div>
+		</div>
+	</div>
+	
+	<div class="row">
+		<div class="col-sm-12">
+		<div>
 			<h4> Lines Seen</h4>
 			<div id="current_all_lines_count" class="graph"></div>
 			<span id="current_all_lines_count_leg"></span>
 		</div>
-		<div class="row">
+		<div>
 			<h4>Valid Lines</h4>
 			<div id="current_valid_line_count"  class="graph"></div>
 			<span id="current_valid_line_count_leg"></span>
 		</div>
-		<div class="row">
+		<div>
 			<h4>InValid Lines</h4>
 			<div id="current_invalid_line_count"  class="graph"></div>
 			<span id="current_invalid_line_count_leg"></span>
 		</div>
-		<div class="row">
+		<div>
 			<h4>Sent Lines</h4>
 			<div id="current_success_send_count"  class="graph"></div>
 			<span id="current_success_send_count_leg"></span>
 		</div>
-		<div class="row">
+		<div>
 			<h4>Failed Lines</h4>
 			<div id="current_fail_send_count"  class="graph"></div>
 			<span id="current_fail_send_count_leg"></span>
 		</div>
-		<div class="row">
+		<div>
 			<h4>UnSendable Lines</h4>
 			<div id="current_unsendable_send_count"  class="graph"></div>
 			<span id="current_unsendable_send_count_leg"></span>
 		</div>
-		<div class="row">
+		<div>
 			<h4>Unknown Lines</h4>
 			<div id="current_unknown_send_count" class="graph"></div>
 			<span id="current_unknown_send_count_leg"></span>
 		</div>
 		
-	</div>
+
+		</div>
 		</div>
 
 	<div class="footer small">
@@ -140,6 +147,7 @@
 	var GRAPHS = {}
 	var servers = []
 	var ticks = []
+	var MAX_POINTS=4
 
 	function renderGraphs(){
 		now = new Date().getTime();
@@ -186,6 +194,9 @@
 					t_data.push(chart_data[key])
 				})
 				GRAPHS[key]['data'].push(t_data)
+				if(GRAPHS[key]['data'].length > MAX_POINTS){
+					GRAPHS[key]['data'] = GRAPHS[key]['data'].slice(-MAX_POINTS);
+				}
 				GRAPHS[key]['graph'].updateOptions( { 'file': GRAPHS[key]['data'] } );
 				
 			}
@@ -202,6 +213,9 @@
 
 			// Work with the response
 			success: function( data ) {
+				
+				$('#current-running').html(" ")
+				
 				now = new Date().getTime();
 				ticks.push(now)
 				LAST_DATA = data
@@ -231,6 +245,12 @@
 							}
 						})
 					}
+					var on_html = $('#current-running').html()
+					var news = "<h5>" + key  + "</h5><ul><li><strong>UP: </strong> " + LAST_DATA[key]['servers_up'].join(",") + "</li>";
+					news += "<li><strong>CHECKING: </strong> " +  LAST_DATA[key]['servers_checking'].join(",") + "</li>";
+					news += "<li><strong>DOWN: </strong> " + (LAST_DATA[key]['servers_down']?LAST_DATA[key]['servers_down'].join(","):"None") + "</li>";
+					news += "</ul>"
+					$('#current-running').html(on_html + news)
 
 				});
 				//console.log(DATA)
