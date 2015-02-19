@@ -11,3 +11,4 @@ consthashsrv.iml
 node_modules
 tester/*/tester
 build
+.DS_Store
