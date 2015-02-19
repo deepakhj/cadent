@@ -1,6 +1,6 @@
 // Copyright (C) 2015 Myfitnesspal
 
-// some hashing functions that return an int32 for our hasher
+// testing that our hasherrings matches the same hashring from the graphite world
 //
 package main
 
