@@ -76,6 +76,8 @@
 		<div class="col-sm-3"><h4>Failed Lines: <span id="fail_send_count"></span></h4></div>
 
 	</div>
+	<div class="row">
+		<div class="col-sm-12">
 	<div id="charts" class="content">
 		<div class="row">
 			<h4> Lines Seen</h4>
@@ -94,7 +96,7 @@
 		</div>
 		<div class="row">
 			<h4>Sent Lines</h4>
-			<div id="current_success_send_count"  class="graph"></canvas>
+			<div id="current_success_send_count"  class="graph"></div>
 			<span id="current_success_send_count_leg"></span>
 		</div>
 		<div class="row">
@@ -114,6 +116,7 @@
 		</div>
 		
 	</div>
+		</div>
 
 	<div class="footer small">
 		<hr>
@@ -131,7 +134,7 @@
 </div>
 
 <script type="text/javascript">
-	var HOST="http://localhost:6061/"
+	var HOST="/stats"
 	var DATA = {}
 	var LAST_DATA = {}
 	var GRAPHS = {}

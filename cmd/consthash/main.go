@@ -15,6 +15,10 @@ import (
 	"syscall"
 )
 
+const (
+	DEFAULT_INDEX_STATS_FILE_PATH = "html/index.html"
+)
+
 // need to up this guy otherwise we quickly run out of sockets
 func setSystemStuff() {
 	fmt.Println("[System] Setting GOMAXPROCS to ", runtime.NumCPU())
@@ -52,6 +56,11 @@ func startStatsServer(defaults *Config, servers []*Server) {
 		serv.AddStatusHandlers()
 	}
 
+	fileserve := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "private, max-age=0, no-cache")
+		http.ServeFile(w, r, DEFAULT_INDEX_STATS_FILE_PATH)
+	}
+
 	status := func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "private, max-age=0, no-cache")
 		fmt.Fprintf(w, "ok")
@@ -79,9 +88,10 @@ func startStatsServer(defaults *Config, servers []*Server) {
 		}
 	}
 
-	http.HandleFunc("/", stats)
+	http.HandleFunc("/", fileserve)
 	http.HandleFunc("/ops/status", status)
 	http.HandleFunc("/status", status)
+	http.HandleFunc("/stats", stats)
 
 	log.Fatal(http.ListenAndServe(defaults.HealthServerBind, nil))
 
