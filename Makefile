@@ -1,7 +1,6 @@
 # Makefile for a go project
 #
-# Author: Jon Eisen
-# 	site: joneisen.me
+# modified from: http://joneisen.me/post/25503842796
 # 	
 # Targets:
 # 	all: Builds the code
@@ -11,8 +10,6 @@
 # 	install: Installs the code to the GOPATH
 # 	iref: Installs referenced projects
 #	test: Runs the tests
-#	
-#  Blog post on it: http://joneisen.me/post/25503842796
 #
  
 # Go parameters
@@ -45,6 +42,7 @@ FMT_TEST = $(foreach int, $(ALL_LIST), $(int)_fmt)
  
 all: build
 build: $(BUILD_LIST)
+cmd: $(CMD_LIST)
 clean: $(CLEAN_LIST)
 install: $(INSTALL_LIST)
 test: $(TEST_LIST)
@@ -53,13 +51,20 @@ fmt: $(FMT_TEST)
  
 $(BUILD_LIST): %_build: %_fmt %_iref
 	$(GOBUILD) $(TOPLEVEL_PKG)/$*
+
 $(CLEAN_LIST): %_clean:
+	rm -f echoserver
+	rm -f consthash
 	$(GOCLEAN) $(TOPLEVEL_PKG)/$*
+	
 $(INSTALL_LIST): %_install:
 	$(GOINSTALL) $(TOPLEVEL_PKG)/$*
+	
 $(IREF_LIST): %_iref:
 	$(GODEP) $(TOPLEVEL_PKG)/$*
+	
 $(TEST_LIST): %_test:
 	$(GOTEST) $(TOPLEVEL_PKG)/$*
+	
 $(FMT_TEST): %_fmt:
 	$(GOFMT) ./$*

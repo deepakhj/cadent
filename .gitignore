@@ -9,3 +9,5 @@ consthashsrv.iml
 *.pyc
 *.pyo
 node_modules
+tester/*/tester
+build
