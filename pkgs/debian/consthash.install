@@ -1,3 +1,3 @@
-consthash	/usr/local/consthash/consthash
-echoserver	/usr/local/consthash/echoserver
-html/* /usr/local/consthash/html/
+../consthash	/opt/consthash/consthash
+../echoserver	/opt/consthash/echoserver
+../html/* /opt/consthash/html/
