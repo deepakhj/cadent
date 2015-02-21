@@ -47,7 +47,8 @@ type Config struct {
 	Workers int64 `toml:"workers"`
 
 	// start a little http server for external health checks and stats probes
-	HealthServerBind string `toml:"internal_health_server_listen"`
+	HealthServerBind   string `toml:"internal_health_server_listen"`
+	HealthServerPoints uint   `toml:"internal_health_server_points"`
 
 	ListenURL   *url.URL
 	ServerLists *ParsedServerConfig

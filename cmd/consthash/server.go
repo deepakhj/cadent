@@ -17,8 +17,8 @@ import (
 )
 
 const (
-	DEFAULT_WORKERS = int64(500)
-	NUM_STATS       = 100
+	DEFAULT_WORKERS   = int64(500)
+	DEFAULT_NUM_STATS = 100
 )
 
 type SendOut struct {
@@ -230,6 +230,7 @@ type Server struct {
 	UnsendableSendCount StatCount
 	UnknownSendCount    StatCount
 	AllLinesCount       StatCount
+	NumStats            uint
 
 	// our bound connection if TCP
 	Connection net.Listener
@@ -290,6 +291,12 @@ func NewServer(cfg *Config) (connection *Server, err error) {
 	serv.RunnerConfig = cfg.MsgConfig
 	serv.Replicas = cfg.Replicas
 
+	serv.NumStats = DEFAULT_NUM_STATS
+	if cfg.HealthServerPoints > 0 {
+		serv.NumStats = cfg.HealthServerPoints
+
+	}
+
 	if cfg.ListenURL.Scheme == "udp" {
 		udp_addr, err := net.ResolveUDPAddr(cfg.ListenURL.Scheme, cfg.ListenURL.Host)
 		if err != nil {
@@ -345,16 +352,16 @@ func (server *Server) StatsTick() {
 	server.stats.TicksList = append(server.stats.TicksList, int64(elasped_sec))
 	server.stats.GoRoutinesList = append(server.stats.GoRoutinesList, runtime.NumGoroutine())
 
-	if len(server.stats.ValidLineCountList) > NUM_STATS {
-		server.stats.ValidLineCountList = server.stats.ValidLineCountList[1:NUM_STATS]
-		server.stats.InvalidLineCountList = server.stats.InvalidLineCountList[1:NUM_STATS]
-		server.stats.SuccessSendCountList = server.stats.SuccessSendCountList[1:NUM_STATS]
-		server.stats.FailSendCountList = server.stats.FailSendCountList[1:NUM_STATS]
-		server.stats.UnknownSendCountList = server.stats.UnknownSendCountList[1:NUM_STATS]
-		server.stats.UnsendableSendCountList = server.stats.UnsendableSendCountList[1:NUM_STATS]
-		server.stats.AllLinesCountList = server.stats.AllLinesCountList[1:NUM_STATS]
-		server.stats.TicksList = server.stats.TicksList[1:NUM_STATS]
-		server.stats.GoRoutinesList = server.stats.GoRoutinesList[1:NUM_STATS]
+	if uint(len(server.stats.ValidLineCountList)) > server.NumStats {
+		server.stats.ValidLineCountList = server.stats.ValidLineCountList[1:server.NumStats]
+		server.stats.InvalidLineCountList = server.stats.InvalidLineCountList[1:server.NumStats]
+		server.stats.SuccessSendCountList = server.stats.SuccessSendCountList[1:server.NumStats]
+		server.stats.FailSendCountList = server.stats.FailSendCountList[1:server.NumStats]
+		server.stats.UnknownSendCountList = server.stats.UnknownSendCountList[1:server.NumStats]
+		server.stats.UnsendableSendCountList = server.stats.UnsendableSendCountList[1:server.NumStats]
+		server.stats.AllLinesCountList = server.stats.AllLinesCountList[1:server.NumStats]
+		server.stats.TicksList = server.stats.TicksList[1:server.NumStats]
+		server.stats.GoRoutinesList = server.stats.GoRoutinesList[1:server.NumStats]
 	}
 	server.stats.UpTimeSeconds = int64(elasped_sec)
 

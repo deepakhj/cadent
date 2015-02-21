@@ -71,6 +71,10 @@ workers=500
 ## '/' --> a little file that charts (poorly) the above stats
 internal_health_server_listen="0.0.0.0:6061"
 
+## stats are "rendered" every 5 seconds, so this will keep last
+## `internal_health_server_points` in RAM (careful with how many you store)
+## (use the statsd emitter to store longer term stuff)
+internal_health_server_points=500
 
 ### Server sections .. note all the above is overridable in each section
 ### (except the `statsd_*` and `internal_health_server_listen`)
