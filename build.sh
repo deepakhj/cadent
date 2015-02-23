@@ -60,7 +60,7 @@ cp -rf html ${OUTPUT}
 cp -rf consthash ${OUTPUT}
 cp -rf echoserver ${OUTPUT}
 
-tar -cvzf "${OUTPUT}/${APP_NAME}-${BUILDID}.tmp" -C ${PACKAGE_BASE} contents control
+#tar -cvzf "${OUTPUT}/${APP_NAME}-${BUILDID}.tmp" -C ${PACKAGE_BASE}
 
 
 ### make changelog for the debian maker
