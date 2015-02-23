@@ -54,7 +54,6 @@ rm -rf ${OUTPUT}
 progress Copying artifacts
 mkdir -p ${TARGET}
 mkdir -p ${OUTPUT}
-exit 0
 
 cp -rf html ${OUTPUT}
 cp -rf consthash ${OUTPUT}
@@ -81,3 +80,5 @@ EOF
 #progress Staging for angstrom packager
 #"${SOURCE}/angstrom/package" "${APP_NAME:-unknown}" "${BUILDID:-develop}" "${WORKSPACE:-.}/staging" "${WORKSPACE:-.}/output"
 progress Build complete.
+
+exit 0
