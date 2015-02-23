@@ -67,7 +67,7 @@ tar -cvzf "${OUTPUT}/${APP_NAME}-${BUILDID}.tmp" -C ${PACKAGE_BASE} contents con
 GIT_VERSION=$(git log -1 | head -1 | cut -d " " -f2 | cut -c 1-7)
 ONDATE=$(date +"a, %d %b %Y %T %z")
 ON_VERIONS=$(cat ./version)
-echo > pkgs/debian/changelog <<EOF
+cat > pkgs/debian/changelog <<EOF
 mfp-consthash (${ON_VERIONS}-${GIT_VERSION}) UNRELEASED; urgency=low
 
   * git head
