@@ -6,5 +6,5 @@ Standards-Version: 3.9.3
 Build-Depends: debhelper (>= 8.0.0)
 
 Package: mfp-consthash
-Architecture: all
+Architecture: amd64 i386
 Description: A line-to-line consistent hashing proxy server

@@ -63,6 +63,19 @@ cp -rf echoserver ${OUTPUT}
 tar -cvzf "${OUTPUT}/${APP_NAME}-${BUILDID}.tmp" -C ${PACKAGE_BASE} contents control
 
 
+### make changelog for the debian maker
+GIT_VERSION=$(git log -1 | head -1 | cut -d " " -f2 | cut -c 1-7)
+ONDATE=$(date +"a, %d %b %Y %T %z")
+ON_VERIONS=$(cat ./version)
+echo > pkgs/debian/changelog <<EOF
+mfp-consthash (${ON_VERIONS}-${GIT_VERSION}) UNRELEASED; urgency=low
+
+  * git head
+
+ -- Bo Blanton <boblanton@myfitnesspal.com>  ${ONDATE}
+
+EOF
+
 #progress Staging for angstrom packager
 #"${SOURCE}/angstrom/package" "${APP_NAME:-unknown}" "${BUILDID:-develop}" "${WORKSPACE:-.}/staging" "${WORKSPACE:-.}/output"
 progress Build complete.
