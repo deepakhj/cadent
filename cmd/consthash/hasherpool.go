@@ -47,28 +47,28 @@ type ConstHasher struct {
 	ServerGetCounts uint64
 }
 
-func (self ConstHasher) onServerUp(server url.URL) {
+func (self *ConstHasher) onServerUp(server url.URL) {
 	log.Printf("Adding server %s to hasher", server.String())
 	StatsdClient.Incr("hasher.added-server", 1)
 	self.Hasher.Add(server.String())
 	StatsdClient.Gauge("hasher.up-servers", int64(len(self.Members())))
 	//evil as this is we must clear the cache
 	self.Cache.Clear()
-	log.Printf("Current members %s from hasher", self.Members())
+	log.Printf("[onServerUp] Current members %s from hasher", self.Members())
 }
 
-func (self ConstHasher) onServerDown(server url.URL) {
+func (self *ConstHasher) onServerDown(server url.URL) {
 	log.Printf("Removing server %s from hasher", server.String())
 	StatsdClient.Incr("hasher.removed-server", 1)
 	self.Hasher.Remove(server.String())
 	StatsdClient.Gauge("hasher.up-servers", int64(len(self.Members())))
 	//evil as this is we must clear the cache
 	self.Cache.Clear()
-	log.Printf("Current members %s from hasher", self.Members())
+	log.Printf("[onServerDown] Current members %s from hasher", self.Members())
 }
 
 // clean up the server name for statsd
-func (self ConstHasher) cleanKey(srv interface{}) string {
+func (self *ConstHasher) cleanKey(srv interface{}) string {
 	srv_key := strings.Replace(fmt.Sprintf("%s", srv), ":", "-", -1)
 	srv_key = strings.Replace(srv_key, "/", "", -1)
 	srv_key = strings.Replace(srv_key, ".", "-", -1)
@@ -131,15 +131,33 @@ func (self *ConstHasher) CheckingServers() []string {
 	var n_str []string
 	for _, srv := range self.ServerPool.Servers {
 		n_str = append(n_str, srv.CheckName)
-
 	}
 	return n_str
 }
 
 //make from our basic config object
-func createConstHasherFromConfig(cfg *Config) (*ConstHasher, error) {
-	var hasher ConstHasher
+func createConstHasherFromConfig(cfg *Config) (hasher *ConstHasher, err error) {
+	hasher = new(ConstHasher)
 	hasher.Hasher = consistent.New()
+
+	hasher.HashAlgo = DEFAULT_HASHER
+	if len(cfg.HashAlgo) > 0 {
+		hasher.HashAlgo = cfg.HashAlgo
+	}
+
+	hasher.HashElter = DEFAULT_ELTER
+	if len(cfg.HashElter) > 0 {
+		hasher.HashElter = cfg.HashElter
+	}
+
+	hasher.HashReplicas = DEFAULT_REPLICAS
+	if cfg.HashVNodes >= 0 {
+		hasher.HashReplicas = cfg.HashVNodes
+	}
+
+	hasher.Hasher.SetNumberOfReplicas(hasher.HashReplicas)
+	hasher.Hasher.SetHasherByName(hasher.HashAlgo)
+	hasher.Hasher.SetElterByName(hasher.HashElter)
 
 	if cfg.CacheItems <= 0 {
 		hasher.Cache = NewLRUCache(DEFAULT_CACHE_ITEMS)
@@ -147,49 +165,32 @@ func createConstHasherFromConfig(cfg *Config) (*ConstHasher, error) {
 		hasher.Cache = NewLRUCache(cfg.CacheItems)
 	}
 	log.Print("Hasher Cache size set to ", hasher.Cache.capacity)
-	s_pool_runner := ServerPoolRunner(hasher)
-	s_pool, err := createServerPoolFromConfig(cfg, &s_pool_runner)
+
+	//s_pool_runner := ServerPoolRunner(hasher)
+	s_pool, err := createServerPoolFromConfig(cfg, hasher) //&s_pool_runner)
 
 	if err != nil {
 		return nil, fmt.Errorf("Error setting up servers: %s", err)
 	}
 	hasher.ServerPool = s_pool
-
-	hasher.HashAlgo = DEFAULT_HASHER
-	if len(cfg.HashAlgo) > 0 {
-		hasher.HashAlgo = cfg.HashAlgo
-
-	}
-	hasher.HashElter = DEFAULT_ELTER
-	if len(cfg.HashElter) > 0 {
-		hasher.HashElter = cfg.HashElter
-
-	}
-	hasher.HashReplicas = DEFAULT_REPLICAS
-	if cfg.HashVNodes >= 0 {
-		hasher.HashReplicas = cfg.HashVNodes
-	}
-	hasher.Hasher.SetHasherByName(hasher.HashAlgo)
-	hasher.Hasher.SetElterByName(hasher.HashElter)
-	hasher.Hasher.NumberOfReplicas = hasher.HashReplicas
-
-	return &hasher, nil
+	//log.Print("HASHERRRRR ", &hasher.ServerPool.ServerActions, " ", &hasher, hasher.Hasher.Members())
+	return hasher, nil
 
 }
 
 // make from a generic string
 func createConstHasher(serverlist []*url.URL, checkerurl []*url.URL) (*ConstHasher, error) {
-	var hasher ConstHasher
+	var hasher = new(ConstHasher)
 
 	hasher.Hasher = consistent.New()
 
 	// cast it to the interface
-	s_pool_runner := ServerPoolRunner(hasher)
+	//s_pool_runner := ServerPoolRunner(hasher)
 
-	s_pool, err := createServerPool(serverlist, checkerurl, &s_pool_runner)
+	s_pool, err := createServerPool(serverlist, checkerurl, hasher)
 	if err != nil {
 		return nil, fmt.Errorf("Error setting up servers: %s", err)
 	}
-	hasher.ServerPool = &s_pool
-	return &hasher, nil
+	hasher.ServerPool = s_pool
+	return hasher, nil
 }

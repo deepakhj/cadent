@@ -82,7 +82,7 @@ type CheckedServerPool struct {
 }
 
 //make from our basic config object
-func createServerPoolFromConfig(cfg *Config, serveraction *ServerPoolRunner) (*CheckedServerPool, error) {
+func createServerPoolFromConfig(cfg *Config, serveraction ServerPoolRunner) (*CheckedServerPool, error) {
 
 	serverp, err := createServerPool(cfg.ServerLists.ServerUrls, cfg.ServerLists.CheckUrls, serveraction)
 	if err != nil {
@@ -92,17 +92,17 @@ func createServerPoolFromConfig(cfg *Config, serveraction *ServerPoolRunner) (*C
 	serverp.DownOutCount = int64(cfg.MaxServerHeartBeatFail)
 	serverp.ConnectionTimeout = cfg.ServerHeartBeatTimeout
 	serverp.DownPolicy = cfg.ServerDownPolicy
-
-	return &serverp, nil
+	//log.Print("createServerPoolFromConfig ", &serveraction)
+	return serverp, nil
 
 }
 
-func createServerPool(serverlist []*url.URL, checklist []*url.URL, serveraction *ServerPoolRunner) (CheckedServerPool, error) {
-	var serverp CheckedServerPool
+func createServerPool(serverlist []*url.URL, checklist []*url.URL, serveraction ServerPoolRunner) (serverp *CheckedServerPool, err error) {
+	serverp = new(CheckedServerPool)
 
 	serverp.ServerList = serverlist
 
-	serverp.ServerActions = *serveraction
+	serverp.ServerActions = serveraction
 
 	serverp.AllPingCounts = 0
 
