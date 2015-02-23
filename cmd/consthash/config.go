@@ -74,6 +74,7 @@ const (
 	DEFAULT_SERVERDOWN_POLICY = "keep"
 	DEFAULT_HASHER_ALGO       = "crc32"
 	DEFAULT_HASHER_ELTER      = "graphite"
+	DEFAULT_HASHER_VNODES     = 4
 	DEFAULT_DUPE_REPLICAS     = 1
 )
 
@@ -200,6 +201,13 @@ func (self ConfigServers) parseConfig(defaults Config) (out ConfigServers, err e
 				cfg.HashElter = defaults.HashElter
 			}
 		}
+		if cfg.HashVNodes == 0 {
+			cfg.HashVNodes = DEFAULT_HASHER_VNODES
+			if defaults.HashVNodes > 0 {
+				cfg.HashVNodes = defaults.HashVNodes
+			}
+		}
+
 		if cfg.Workers == 0 {
 			if defaults.Workers > 0 {
 				cfg.Workers = defaults.Workers
