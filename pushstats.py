@@ -27,9 +27,10 @@ START=time.time()
 
 
 ON_SERVER=[
-    ("localhost",6000,),
-    ("localhost",6000,),
-    ("localhost", 6001,)
+    ("localhost",8125,),
+    ("localhost",8125,),
+    ("localhost",8125,),
+ #   ("localhost", 6001,)
 ]
 
 #ON_IP="192.168.59.103"
