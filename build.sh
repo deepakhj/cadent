@@ -69,7 +69,7 @@ GIT_VERSION=$(git log -1 | head -1 | cut -d " " -f2 | cut -c 1-7)
 ONDATE=$(date +"%a, %d %b %Y %T %z")
 ON_VERIONS=$(cat ./version)
 cat > pkgs/debian/changelog <<EOF
-mfp-consthash (${ON_VERIONS}-${GIT_VERSION}) UNRELEASED; urgency=low
+mfp-consthash (${ON_VERIONS}.${GIT_VERSION}) UNRELEASED; urgency=low
 
   * git head
 
@@ -77,8 +77,19 @@ mfp-consthash (${ON_VERIONS}-${GIT_VERSION}) UNRELEASED; urgency=low
 
 EOF
 
+## remove lock file if no other proc is running
+RUNNING=`ps --no-headers -Creprepro | wc -l`
+if [ ${RUNNING} -gt 1 ]; then
+  echo "Previous reprepro is still running. must exit"
+  exit 1
+fi 
+
+sudo rm -f /vol/mfp-jenkins-deb/repo//db/lockfile
+
 #progress Staging for angstrom packager
 #"${SOURCE}/angstrom/package" "${APP_NAME:-unknown}" "${BUILDID:-develop}" "${WORKSPACE:-.}/staging" "${WORKSPACE:-.}/output"
 progress Build complete.
+
+
 
 exit 0
