@@ -1,0 +1,15 @@
+#!/bin/bash
+
+#Clear ephemeral directory
+rm -rf "${EPHEMERAL_DATA:-/tmp/missing/ephemeral/}"/* 2>/dev/null
+
+source "$(dirname "${0}")/shared.env"
+
+"${CONTROL_DIR}/process_templates" "${CONTROL_DIR}/templates" "${EPHEMERAL_DATA}"
+
+supervisord -c "${SUPERVISORD_CONF}"
+
+exit 0
+
+
+

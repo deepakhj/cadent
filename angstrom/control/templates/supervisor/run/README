@@ -1,0 +1,5 @@
+#!/bin/bash
+
+cat <<EOF
+## This directory contains runtime info on supervisord
+EOF
