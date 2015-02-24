@@ -13,17 +13,19 @@ const ConnectionTimeout = time.Duration(5 * time.Second)
 var ErrMaxConn = errors.New("Maximum connections reached")
 
 type Netpool struct {
-	mu       sync.Mutex
-	name     string
-	protocal string
-	conns    int
-	free     []net.Conn
+	mu             sync.Mutex
+	name           string
+	protocal       string
+	conns          int
+	MaxConnections int
+	free           []net.Conn
 }
 
 func NewNetpool(protocal string, name string) *Netpool {
 	return &Netpool{
-		name:     name,
-		protocal: protocal,
+		name:           name,
+		protocal:       protocal,
+		MaxConnections: MaxConnections,
 	}
 }
 
@@ -58,7 +60,7 @@ func (n *Netpool) RemoveConn(in_conn net.Conn) {
 }
 
 func (n *Netpool) Open() (conn net.Conn, err error) {
-	if n.conns >= MaxConnections && len(n.free) == 0 {
+	if n.conns >= n.MaxConnections && len(n.free) == 0 {
 		return nil, ErrMaxConn
 	}
 	n.mu.Lock()

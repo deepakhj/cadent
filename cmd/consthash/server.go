@@ -49,6 +49,9 @@ func poolWorker(j *SendOut) {
 			j.server.Outpool = make(map[string]*Netpool)
 		}
 		outsrv = NewNetpool(m_url.Scheme, m_url.Host)
+		if j.server.NetPoolConnections > 0 {
+			outsrv.MaxConnections = j.server.NetPoolConnections
+		}
 		j.server.Outpool[j.outserver] = outsrv
 	}
 	conn, err := outsrv.Open()
@@ -241,6 +244,9 @@ type Server struct {
 	//Hasher objects
 	Hasher *ConstHasher
 
+	//number of connectiosn in the NetPool
+	NetPoolConnections int
+
 	//number of replicas to fire data to (i.e. dupes)
 	Replicas int
 
@@ -297,8 +303,9 @@ func NewServer(cfg *Config) (connection *Server, err error) {
 	serv.NumStats = DEFAULT_NUM_STATS
 	if cfg.HealthServerPoints > 0 {
 		serv.NumStats = cfg.HealthServerPoints
-
 	}
+
+	serv.NetPoolConnections = cfg.MaxPoolConnections
 
 	if cfg.ListenURL.Scheme == "udp" {
 		udp_addr, err := net.ResolveUDPAddr(cfg.ListenURL.Scheme, cfg.ListenURL.Host)

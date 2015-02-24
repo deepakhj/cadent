@@ -7,6 +7,10 @@ pid_file="/tmp/consthash.pid"
 # 0 == max CPUs
 num_procs=0
 
+## outgoing connections are pooled per outgoign server
+## this sets the number of pool connections
+max_pool_connections=40
+
 ## Hashing Algo
 # The hashing algo to use in our hashring
 # 'crc32' -> default

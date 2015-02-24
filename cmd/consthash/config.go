@@ -23,6 +23,7 @@ type Config struct {
 	Name                   string
 	PIDfile                string        `toml:"pid_file"`
 	NumProc                int           `toml:"num_procs"`
+	MaxPoolConnections     int           `toml:"max_pool_connections"`
 	Servers                string        `toml:"servers"`
 	CheckServers           string        `toml:"check_servers"`
 	MsgType                string        `toml:"msg_type"`
@@ -67,16 +68,17 @@ type Config struct {
 }
 
 const (
-	DEFAULT_CONFIG_SECTION    = "default"
-	DEFAULT_LISTEN            = "tcp://127.0.0.1:6000"
-	DEFAULT_HEARTBEAT_COUNT   = uint64(3)
-	DEFAULT_HEARTBEAT         = time.Duration(30)
-	DEFAULT_HEARTBEAT_TIMEOUT = time.Duration(5)
-	DEFAULT_SERVERDOWN_POLICY = "keep"
-	DEFAULT_HASHER_ALGO       = "crc32"
-	DEFAULT_HASHER_ELTER      = "graphite"
-	DEFAULT_HASHER_VNODES     = 4
-	DEFAULT_DUPE_REPLICAS     = 1
+	DEFAULT_CONFIG_SECTION      = "default"
+	DEFAULT_LISTEN              = "tcp://127.0.0.1:6000"
+	DEFAULT_HEARTBEAT_COUNT     = uint64(3)
+	DEFAULT_HEARTBEAT           = time.Duration(30)
+	DEFAULT_HEARTBEAT_TIMEOUT   = time.Duration(5)
+	DEFAULT_SERVERDOWN_POLICY   = "keep"
+	DEFAULT_HASHER_ALGO         = "crc32"
+	DEFAULT_HASHER_ELTER        = "graphite"
+	DEFAULT_HASHER_VNODES       = 4
+	DEFAULT_DUPE_REPLICAS       = 1
+	DEFAULT_MAX_POOL_CONNETIONS = 20
 )
 
 type ConfigServers map[string]Config
@@ -188,6 +190,12 @@ func (self ConfigServers) parseConfig(defaults Config) (out ConfigServers, err e
 			cfg.ServerDownPolicy = DEFAULT_SERVERDOWN_POLICY
 			if defaults.ServerDownPolicy != "" {
 				cfg.ServerDownPolicy = defaults.ServerDownPolicy
+			}
+		}
+		if cfg.MaxPoolConnections <= 0 {
+			cfg.MaxPoolConnections = DEFAULT_MAX_POOL_CONNETIONS
+			if defaults.MaxPoolConnections > 0 {
+				cfg.MaxPoolConnections = defaults.MaxPoolConnections
 			}
 		}
 		if cfg.HashAlgo == "" {
