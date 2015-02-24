@@ -1,9 +1,8 @@
-Source: mfp-consthash
+Package: mfp-consthash
 Section: MFP
 Priority: optional
-Maintainer: Bo Blanton <boblanton@myfitnesspal.com>
-Standards-Version: 3.9.3
-Build-Depends: debhelper (>= 8.0.0)
-Package: mfp-consthash
 Architecture: amd64 i386
+Essential: No
+Build-Depends: debhelper (>= 8.0.0)
+Maintainer: Bo Blanton <boblanton@myfitnesspal.com>
 Description: A line-to-line consistent hashing proxy server
