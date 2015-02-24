@@ -115,7 +115,10 @@ func (self *ConstHasher) GetN(in_key string, num int) ([]string, error) {
 
 //alias to hasher
 func (self *ConstHasher) Members() []string {
-	return self.Hasher.Members()
+	if self.Hasher != nil {
+		return self.Hasher.Members()
+	}
+	return []string{}
 }
 
 func (self *ConstHasher) DroppedServers() []string {

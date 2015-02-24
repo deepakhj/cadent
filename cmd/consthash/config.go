@@ -22,6 +22,7 @@ type ParsedServerConfig struct {
 type Config struct {
 	Name                   string
 	PIDfile                string        `toml:"pid_file"`
+	NumProc                int           `toml:"num_procs"`
 	Servers                string        `toml:"servers"`
 	CheckServers           string        `toml:"check_servers"`
 	MsgType                string        `toml:"msg_type"`

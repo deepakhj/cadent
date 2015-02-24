@@ -214,6 +214,7 @@ type ServerStats struct {
 	UnsendableSendCountPerSec float32  `json:"unsendable_count_persec"`
 	UnknownSendCountPerSec    float32  `json:"unknown_send_count_persec"`
 	AllLinesCountPerSec       float32  `json:"all_lines_count_persec"`
+	Listening                 string   `json:"listening"`
 	ServersUp                 []string `json:"servers_up"`
 	ServersDown               []string `json:"servers_down"`
 	ServersChecks             []string `json:"servers_checking"`
@@ -221,7 +222,8 @@ type ServerStats struct {
 
 // a server set of stats
 type Server struct {
-	Name string
+	Name      string
+	ListenURL *url.URL
 
 	ValidLineCount      StatCount
 	InvalidLineCount    StatCount
@@ -280,6 +282,7 @@ func NewServer(cfg *Config) (connection *Server, err error) {
 
 	serv := new(Server)
 	serv.Name = cfg.Name
+	serv.ListenURL = cfg.ListenURL
 	serv.StartTime = time.Now()
 	serv.WorkerHold = make(chan int64)
 
@@ -371,6 +374,7 @@ func (server *Server) StatsTick() {
 	server.stats.UnsendableSendCountPerSec = server.UnsendableSendCount.TotalRate(elapsed)
 	server.stats.UnknownSendCountPerSec = server.UnknownSendCount.TotalRate(elapsed)
 	server.stats.AllLinesCountPerSec = server.AllLinesCount.TotalRate(elapsed)
+	server.stats.Listening = server.ListenURL.String()
 	server.stats.ServersUp = server.Hasher.Members()
 	server.stats.ServersDown = server.Hasher.DroppedServers()
 	server.stats.ServersChecks = server.Hasher.CheckingServers()
@@ -508,14 +512,12 @@ func (server *Server) startUDPServer(hasher *ConstHasher, worker_queue chan *Sen
 }
 
 func CreateServer(cfg *Config, hasher *ConstHasher) (*Server, error) {
-	//log.Print("CERATE", cfg, hasher)
 	server, err := NewServer(cfg)
-	server.Hasher = hasher
 
 	if err != nil {
 		panic(err)
 	}
-
+	server.Hasher = hasher
 	server.Workers = DEFAULT_WORKERS
 	if cfg.Workers > 0 {
 		server.Workers = int64(cfg.Workers)

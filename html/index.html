@@ -246,8 +246,10 @@
 						})
 					}
 					var on_html = $('#current-running').html()
-					var news = "<h5>" + key  + "</h5><ul><li><strong>UP: </strong> " + LAST_DATA[key]['servers_up'].join(",") + "</li>";
-					news += "<li><strong>CHECKING: </strong> " +  LAST_DATA[key]['servers_checking'].join(",") + "</li>";
+					
+					var news = "<h5>" + key  + ": " + LAST_DATA[key]['listening'] +"</h5>"
+					news += "<ul><li><strong>UP: </strong> " + (LAST_DATA[key]['servers_up']?LAST_DATA[key]['servers_up'].join(","):"None") + "</li>";
+					news += "<li><strong>CHECKING: </strong> " +  (LAST_DATA[key]['servers_checking']?LAST_DATA[key]['servers_checking'].join(","):"None") + "</li>";
 					news += "<li><strong>DOWN: </strong> " + (LAST_DATA[key]['servers_down']?LAST_DATA[key]['servers_down'].join(","):"None") + "</li>";
 					news += "</ul>"
 					$('#current-running').html(on_html + news)

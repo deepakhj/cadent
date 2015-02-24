@@ -20,29 +20,32 @@ const (
 )
 
 // need to up this guy otherwise we quickly run out of sockets
-func setSystemStuff() {
-	fmt.Println("[System] Setting GOMAXPROCS to ", runtime.NumCPU())
+func setSystemStuff(num_procs int) {
+	if num_procs <= 0 {
+		num_procs = runtime.NumCPU()
+	}
+	log.Println("[System] Setting GOMAXPROCS to ", num_procs)
 
-	runtime.GOMAXPROCS(runtime.NumCPU())
+	runtime.GOMAXPROCS(num_procs)
 
 	var rLimit syscall.Rlimit
 	err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rLimit)
 	if err != nil {
-		fmt.Println("[System] Error Getting Rlimit: ", err)
+		log.Println("[System] Error Getting Rlimit: ", err)
 	}
-	fmt.Println("[System] Current Rlimit: ", rLimit)
+	log.Println("[System] Current Rlimit: ", rLimit)
 
 	rLimit.Max = 999999
 	rLimit.Cur = 999999
 	err = syscall.Setrlimit(syscall.RLIMIT_NOFILE, &rLimit)
 	if err != nil {
-		fmt.Println("[System] Error Setting Rlimit: ", err)
+		log.Println("[System] Error Setting Rlimit: ", err)
 	}
 	err = syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rLimit)
 	if err != nil {
-		fmt.Println("[System] Error Getting Rlimit:  ", err)
+		log.Println("[System] Error Getting Rlimit:  ", err)
 	}
-	fmt.Println("[System] Final Rlimit Final: ", rLimit)
+	log.Println("[System] Final Rlimit Final: ", rLimit)
 }
 
 // Fire up the http server for stats and healthchecks
@@ -98,7 +101,6 @@ func startStatsServer(defaults *Config, servers []*Server) {
 }
 
 func main() {
-	setSystemStuff()
 	configFile := flag.String("config", "config.toml", "Consitent Hash configuration file")
 	flag.Parse()
 
@@ -123,6 +125,8 @@ func main() {
 		log.Printf("Error decoding config file: Could not find default: %s", err)
 		os.Exit(1)
 	}
+
+	setSystemStuff(def.NumProc)
 
 	/// main block as we want to "defer" it's removale at main exit
 	var pidFile = def.PIDfile

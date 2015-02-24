@@ -3,6 +3,10 @@
 ## PID file to check if things is running already
 pid_file="/tmp/consthash.pid"
 
+## user this many proc while active (will default to the number on the machine)
+# 0 == max CPUs
+num_procs=0
+
 ## Hashing Algo
 # The hashing algo to use in our hashring
 # 'crc32' -> default
@@ -30,9 +34,8 @@ hasher_vnodes=40
 
 ## Data Replication
 ### for each line we get we can replicated it other nodes in the server
-### list.
+### list. (1 s the default, just send to one server)
 num_dupe_replicas=1
-
 
 ## cache keys/server pairs in an LRU mem cache for speed
 cache_items=50000
@@ -57,13 +60,13 @@ server_down_policy="remove_node"
 cpu_profile=true
 
 ## fire out some internal to statsd if desired
-
-statsd_server="192.168.59.103:8126"
+statsd_server="192.168.59.103:8125"
 statsd_prefix="consthash"
 statsd_interval=1  # send to statd every second (buffered)
 
 ## number of workers to chew on the sending queue
-workers=500
+## adjust this based on the input load
+workers=200
 
 ## there will be an internal health http server set up as well
 ## and will respond to '/ops/status' -> "GET OK"
@@ -80,47 +83,61 @@ internal_health_server_points=500
 ### (except the `statsd_*` and `internal_health_server_listen`)
 ### NOTE: `hasher_replicas` will NOT use the defaults, be explict there
 
-[mainstatsd]
+[statsd-example]
 
 ## what port/scheme we are listening on for incoming data
 
-listen="udp://127.0.0.1:6000"
+listen="udp://127.0.0.1:8125"
 
 ## the list of servers we hashring send to
 ## {scheme}://{ip}:{port},...
 ## scheme = tcp|udp
-
-#servers="udp://127.0.0.1:6002,udp://127.0.0.1:6003, udp://127.0.0.1:6004"
-#servers="tcp://127.0.0.1:6002,tcp://127.0.0.1:6003, tcp://127.0.0.1:6004"
-servers="udp://192.168.59.103:8126"
+servers="udp://192.168.59.103:8126,udp://192.168.59.103:8136, udp://192.168.59.103:8146"
 
 ## there must be a check server for each `servers` above
 ## {scheme}://{ip}:{port},...
 ## scheme = tcp|http -- NOTE NO UDP checks (does not make sense)
 ## tcp connections are simply checked for a connection and closed
 ## http connections must respond with a 200 to a GET on the provided url
+check_servers="tcp://192.168.59.103:8127,tcp://192.168.59.103:8137, tcp://192.168.59.103:8147"
 
-#check_servers="tcp://127.0.0.1:6005,tcp://127.0.0.1:6006, tcp://127.0.0.1:6007"
-check_servers="tcp://192.168.59.103:8127"
-
-## Incoming Messages
 ## msg_type = statsd | graphite | regex
-## msg_regex = <some regex that has <Key> defined as a group>
-### like "(?P<Key>[a-zA-Z0-9]+)-(?P<message>.*)"
+## <key>:<stat>
 msg_type="statsd"
-msg_regex="(?P<Key>.*):(?P<message>.*)"
 
 # statsd style
-hasher_replicas=0
+hasher_algo="nodejs-hashring"
+hasher_elter="statsd"
+hasher_vnodes=40
 
-[mainregex]
+[graphite-example]
 
-listen="udp://127.0.0.1:6001"
+## msg_type = statsd | graphite | regex
+## <time> <key> <value>
+msg_type="graphite"
 
-servers="udp://192.168.59.103:8126,udp://127.0.0.1:6002"
-check_servers="tcp://192.168.59.103:8127,tcp://192.168.59.103:8127"
+# graphite style
+hasher_algo="md5"
+hasher_elter="graphite"
+hasher_vnodes=100
 
+servers="tcp://127.0.0.1:2003,tcp://127.0.0.1:2013,tcp://127.0.0.1:2023"
+#checks will default to the servers
+
+[regex-example]
+
+# syslog like to farm specific hosts
+listen="udp://127.0.0.1:6004"
+
+servers="udp://127.0.0.1:6080,udp://127.0.0.1:6081,udp://127.0.0.1:6082"
+check_servers="tcp://127.0.0.1:6090,tcp://127.0.0.1:6091,tcp://127.0.0.1:6092"
+
+## msg_type = statsd | graphite | regex
+## NOTE  msg_regex needs to have (?P<Key>..) named bit
 msg_type="regex"
-msg_regex="(?P<Key>.*):(?P<message>.*)"
+## NOTE: SINGLE QUOTES ARE IMPORTANT otherwise it will try to unescape the string
+msg_regex='^(<\d+>)?(?P<Timestamp>[A-Z][a-z]+\s+\d+\s\d+:\d+:\d+) (?P<Key>\S+) (?P<Logger>\S+):(.*)'
 hasher_algo="fnv"
+
+
 
