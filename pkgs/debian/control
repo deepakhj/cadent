@@ -1,4 +1,5 @@
 Package: mfp-consthash
+Source: mfp-consthash
 Section: MFP
 Priority: optional
 Architecture: amd64 i386
