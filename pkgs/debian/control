@@ -1,7 +1,6 @@
 Source: mfp-consthash
 Section: MFP
 Priority: optional
-Essential: No
 Maintainer: Bo Blanton <boblanton@myfitnesspal.com>
 Standards-Version: 3.9.3
 Build-Depends: debhelper (>= 8.0.0)
