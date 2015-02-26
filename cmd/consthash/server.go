@@ -17,8 +17,9 @@ import (
 )
 
 const (
-	DEFAULT_WORKERS   = int64(500)
-	DEFAULT_NUM_STATS = 100
+	DEFAULT_WORKERS                   = int64(500)
+	DEFAULT_NUM_STATS                 = 100
+	DEFAULT_SENDING_CONNETIONS_METHOD = "pool"
 )
 
 type SendOut struct {
@@ -129,9 +130,14 @@ func singleWorker(j *SendOut) {
 }
 
 //spins up the queue of go routines to handle outgoing
-func WorkerOutput(jobs <-chan *SendOut) {
+func WorkerOutput(jobs <-chan *SendOut, sendmethod string) {
 	for j := range jobs {
-		poolWorker(j)
+		if sendmethod == "single" {
+			singleWorker(j)
+
+		} else {
+			poolWorker(j)
+		}
 	}
 }
 
@@ -244,7 +250,12 @@ type Server struct {
 	//Hasher objects
 	Hasher *ConstHasher
 
-	//number of connectiosn in the NetPool
+	// we can use a "pool" of connections, or single connecitons per line
+	// performance will be depending on the system and work load tcp vs udp, etc
+	// "pool" or "single"
+	// default is pool
+	SendingConnectionMethod string
+	//number of connections in the NetPool
 	NetPoolConnections int
 
 	//number of replicas to fire data to (i.e. dupes)
@@ -306,6 +317,11 @@ func NewServer(cfg *Config) (server *Server, err error) {
 	}
 
 	serv.NetPoolConnections = cfg.MaxPoolConnections
+	serv.SendingConnectionMethod = DEFAULT_SENDING_CONNETIONS_METHOD
+
+	if len(cfg.SendingConnectionMethod) > 0 {
+		serv.SendingConnectionMethod = cfg.SendingConnectionMethod
+	}
 
 	if cfg.ListenURL.Scheme == "udp" {
 		udp_addr, err := net.ResolveUDPAddr(cfg.ListenURL.Scheme, cfg.ListenURL.Host)
@@ -547,7 +563,7 @@ func (server *Server) StartServer() {
 	done := make(chan Client)
 	worker_queue := make(chan *SendOut)
 	for w := int64(1); w <= server.Workers; w++ {
-		go WorkerOutput(worker_queue)
+		go WorkerOutput(worker_queue, server.SendingConnectionMethod)
 	}
 	if server.UDPConn != nil {
 		server.startUDPServer(server.Hasher, worker_queue, done)

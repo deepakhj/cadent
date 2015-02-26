@@ -13,6 +13,12 @@ num_procs=0
 ## (i.e. file descriptors limits may hit if this is too big)
 max_pool_connections=10
 
+## if you DO NOT want to pool conections (might be better for cirtant situations)
+## `single` -> One connection = one line
+## `pool` -> Pools connections to each server uses `max_pool_connections` for the pooling amount
+sending_method="pool"
+
+
 ## Hashing Algo
 # The hashing algo to use in our hashring
 # 'crc32' -> default

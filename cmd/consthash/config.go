@@ -20,25 +20,26 @@ type ParsedServerConfig struct {
 }
 
 type Config struct {
-	Name                   string
-	PIDfile                string        `toml:"pid_file"`
-	NumProc                int           `toml:"num_procs"`
-	MaxPoolConnections     int           `toml:"max_pool_connections"`
-	Servers                string        `toml:"servers"`
-	CheckServers           string        `toml:"check_servers"`
-	MsgType                string        `toml:"msg_type"`
-	MsgFormatRegEx         string        `toml:"msg_regex"`
-	ListenStr              string        `toml:"listen"`
-	ServerHeartBeat        time.Duration `toml:"heartbeat_time_delay"`
-	ServerHeartBeatTimeout time.Duration `toml:"heartbeat_time_timeout"`
-	MaxServerHeartBeatFail uint64        `toml:"failed_heartbeat_count"`
-	ServerDownPolicy       string        `toml:"server_down_policy"`
-	CacheItems             uint64        `toml:"cache_items"`
-	Profile                bool          `toml:"cpu_profile"`
-	Replicas               int           `toml:"num_dupe_replicas"`
-	HashAlgo               string        `toml:"hasher_algo"`
-	HashElter              string        `toml:"hasher_elter"`
-	HashVNodes             int           `toml:"hasher_vnodes"`
+	Name                    string
+	PIDfile                 string        `toml:"pid_file"`
+	NumProc                 int           `toml:"num_procs"`
+	MaxPoolConnections      int           `toml:"max_pool_connections"`
+	SendingConnectionMethod string        `toml:"sending_method"`
+	Servers                 string        `toml:"servers"`
+	CheckServers            string        `toml:"check_servers"`
+	MsgType                 string        `toml:"msg_type"`
+	MsgFormatRegEx          string        `toml:"msg_regex"`
+	ListenStr               string        `toml:"listen"`
+	ServerHeartBeat         time.Duration `toml:"heartbeat_time_delay"`
+	ServerHeartBeatTimeout  time.Duration `toml:"heartbeat_time_timeout"`
+	MaxServerHeartBeatFail  uint64        `toml:"failed_heartbeat_count"`
+	ServerDownPolicy        string        `toml:"server_down_policy"`
+	CacheItems              uint64        `toml:"cache_items"`
+	Profile                 bool          `toml:"cpu_profile"`
+	Replicas                int           `toml:"num_dupe_replicas"`
+	HashAlgo                string        `toml:"hasher_algo"`
+	HashElter               string        `toml:"hasher_elter"`
+	HashVNodes              int           `toml:"hasher_vnodes"`
 
 	// send some stats to the land
 	StatsdServer   string `toml:"statsd_server"`
@@ -209,6 +210,11 @@ func (self ConfigServers) parseConfig(defaults Config) (out ConfigServers, err e
 			cfg.HashElter = DEFAULT_HASHER_ELTER
 			if defaults.HashElter != "" {
 				cfg.HashElter = defaults.HashElter
+			}
+		}
+		if cfg.SendingConnectionMethod == "" {
+			if defaults.SendingConnectionMethod != "" {
+				cfg.SendingConnectionMethod = defaults.SendingConnectionMethod
 			}
 		}
 		if cfg.HashVNodes == 0 {
