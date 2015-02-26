@@ -9,6 +9,7 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
+	"path"
 	"runtime"
 	"strconv"
 	"strings"
@@ -16,7 +17,7 @@ import (
 )
 
 const (
-	DEFAULT_INDEX_STATS_FILE_PATH = "html/index.html"
+	DEFAULT_INDEX_STATS_FILE = "index.html"
 )
 
 // need to up this guy otherwise we quickly run out of sockets
@@ -61,7 +62,7 @@ func startStatsServer(defaults *Config, servers []*Server) {
 
 	fileserve := func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "private, max-age=0, no-cache")
-		http.ServeFile(w, r, DEFAULT_INDEX_STATS_FILE_PATH)
+		http.ServeFile(w, r, path.Join(defaults.HealthServerPath, DEFAULT_INDEX_STATS_FILE))
 	}
 
 	status := func(w http.ResponseWriter, r *http.Request) {

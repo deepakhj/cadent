@@ -284,7 +284,7 @@ func (server *Server) ResetTickers() {
 	server.AllLinesCount.ResetTick()
 }
 
-func NewServer(cfg *Config) (connection *Server, err error) {
+func NewServer(cfg *Config) (server *Server, err error) {
 
 	serv := new(Server)
 	serv.Name = cfg.Name
@@ -336,6 +336,7 @@ func NewServer(cfg *Config) (connection *Server, err error) {
 func (server *Server) StatsTick() {
 	elapsed := time.Since(server.StartTime)
 	elasped_sec := float64(elapsed) / float64(time.Second)
+	t_stamp := time.Now().UnixNano()
 
 	server.stats.ValidLineCount = server.ValidLineCount.TotalCount.Get()
 	server.stats.InvalidLineCount = server.InvalidLineCount.TotalCount.Get()
@@ -359,7 +360,8 @@ func (server *Server) StatsTick() {
 	server.stats.UnknownSendCountList = append(server.stats.UnknownSendCountList, server.UnknownSendCount.TickCount.Get())
 	server.stats.UnsendableSendCountList = append(server.stats.UnsendableSendCountList, server.UnsendableSendCount.TickCount.Get())
 	server.stats.AllLinesCountList = append(server.stats.AllLinesCountList, server.AllLinesCount.TickCount.Get())
-	server.stats.TicksList = append(server.stats.TicksList, int64(elasped_sec))
+	// javascript resolution is ms .. not nanos
+	server.stats.TicksList = append(server.stats.TicksList, int64(t_stamp/int64(time.Millisecond)))
 	server.stats.GoRoutinesList = append(server.stats.GoRoutinesList, runtime.NumGoroutine())
 
 	if uint(len(server.stats.ValidLineCountList)) > server.NumStats {

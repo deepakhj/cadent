@@ -51,6 +51,7 @@ type Config struct {
 	// start a little http server for external health checks and stats probes
 	HealthServerBind   string `toml:"internal_health_server_listen"`
 	HealthServerPoints uint   `toml:"internal_health_server_points"`
+	HealthServerPath   string `toml:"internal_health_server_path"`
 
 	ListenURL   *url.URL
 	ServerLists *ParsedServerConfig

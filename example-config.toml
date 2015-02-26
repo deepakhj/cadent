@@ -46,7 +46,7 @@ cache_items=50000
 
 ## Health Checking options
 ### check every "X" seconds
-heartbeat_time_delay=5
+heartbeat_time_delay=60
 
 ### Timeout for failed connections (in Seconds)
 heartbeat_time_timeout=1
@@ -82,6 +82,10 @@ internal_health_server_listen="0.0.0.0:6061"
 ## `internal_health_server_points` in RAM (careful with how many you store)
 ## (use the statsd emitter to store longer term stuff)
 internal_health_server_points=500
+
+
+## path to the html files for the internal health serer
+internal_health_server_path="html"
 
 ### Server sections .. note all the above is overridable in each section
 ### (except the `statsd_*` and `internal_health_server_listen`)

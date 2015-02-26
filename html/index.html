@@ -142,6 +142,7 @@
 
 <script type="text/javascript">
 	var HOST="/stats"
+	//HOST="http://fe-2-statsd-infra-prod.mfpaws.com:6061/stats"
 	var DATA = {}
 	var LAST_DATA = {}
 	var GRAPHS = {}
@@ -167,27 +168,37 @@
 							}
 						}
 					}
-					//xValueFormatter: Dygraph.dateString_,
-					//xValueParser: function(x) { return 1000*parseInt(x); },
-					//xTicker: Dygraph.dateTicker
+					
 				};
 				data = []
-	
+
 				$.each(servers, function(idx, servername) {
 					chart_data = LAST_DATA[servername]
-					if(data.length == 0){
-						data.push(now)
+					// back fill from array keys
+					//[time, data, data, data]
+					if (data.length == 0) {
+
+						$.each(chart_data['TicksList'], function (idx, time) {
+							data.push([time])
+						});
+
 					}
-					data.push(chart_data[key])
+					data_key = (key + "_list").replace("current_", "")
+					$.each(chart_data[data_key], function (idx, datapoint) {
+						data[idx].push(datapoint)
+					});
+
+
 					init_data['labels'].push(servername)
+
 				})
-				GRAPHS[key]['data'] = [data]
+				console.log(data)
+				GRAPHS[key]['data'] = data
 				GRAPHS[key]['graph'] = new Dygraph(graph['item'], GRAPHS[key]['data'], init_data);
 			}else{
 				t_data = []
 				$.each(servers, function(idx, servername) {
 					chart_data = LAST_DATA[servername]
-
 					if(t_data.length == 0){
 						t_data.push(now)
 					}
@@ -197,6 +208,7 @@
 				if(GRAPHS[key]['data'].length > MAX_POINTS){
 					GRAPHS[key]['data'] = GRAPHS[key]['data'].slice(-MAX_POINTS);
 				}
+				console.log(GRAPHS[key]['data'])
 				GRAPHS[key]['graph'].updateOptions( { 'file': GRAPHS[key]['data'] } );
 				
 			}
@@ -247,11 +259,11 @@
 					}
 					var on_html = $('#current-running').html()
 					//change
-					var news = "<h5>" + key  + ": " + LAST_DATA[key]['listening'] +"</h5>"
-					news += "<ul><li><strong>UP: </strong> " + (LAST_DATA[key]['servers_up']?LAST_DATA[key]['servers_up'].join(","):"None") + "</li>";
-					news += "<li><strong>CHECKING: </strong> " +  (LAST_DATA[key]['servers_checking']?LAST_DATA[key]['servers_checking'].join(","):"None") + "</li>";
-					news += "<li><strong>DOWN: </strong> " + (LAST_DATA[key]['servers_down']?LAST_DATA[key]['servers_down'].join(","):"None") + "</li>";
-					news += "</ul>"
+					var news = "<a onclick=\"$('#" + key + "_serv').toggle()\">" + key  + ": listening on " + LAST_DATA[key]['listening'] +"</a><div id='" + key + "_serv' style='display:none'>"
+					news += "<ul><li><strong>UP: </strong> " + (LAST_DATA[key]['servers_up']?LAST_DATA[key]['servers_up'].join(", "):"None") + "</li>";
+					news += "<li><strong>CHECKING: </strong> " +  (LAST_DATA[key]['servers_checking']?LAST_DATA[key]['servers_checking'].join(", "):"None") + "</li>";
+					news += "<li><strong>DOWN: </strong> " + (LAST_DATA[key]['servers_down']?LAST_DATA[key]['servers_down'].join(", "):"None") + "</li>";
+					news += "</ul></div><hr />"
 					$('#current-running').html(on_html + news)
 
 				});
