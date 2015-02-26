@@ -149,6 +149,8 @@
 	var servers = []
 	var ticks = []
 	var MAX_POINTS=300
+	var statInterval=5000
+	var TickInterval=5 // stats every 5 second are rendered by the consthasher
 
 	function renderGraphs(){
 		now = new Date().getTime();
@@ -157,7 +159,7 @@
 				var init_data = {
 					drawPoints: true,
 					showRoller: true,
-					ylabel: 'Count',
+					ylabel: 'Count/s',
 					legend: 'always',
 					//valueRange: [0.0, 1.2],
 					labels: ["Time"],
@@ -185,7 +187,7 @@
 					}
 					data_key = (key + "_list").replace("current_", "")
 					$.each(chart_data[data_key], function (idx, datapoint) {
-						data[idx].push(datapoint)
+						data[idx].push(datapoint / TickInterval) //per stats are ticked every 5 seconds
 					});
 
 
@@ -202,7 +204,7 @@
 					if(t_data.length == 0){
 						t_data.push(now)
 					}
-					t_data.push(chart_data[key])
+					t_data.push(chart_data[key] / TickInterval)  //per stats are ticked every 5 seconds
 				})
 				GRAPHS[key]['data'].push(t_data)
 				if(GRAPHS[key]['data'].length > MAX_POINTS){
@@ -273,7 +275,7 @@
 		});
 
 	}
-	setInterval(getData, 5000)
+	setInterval(getData, statInterval)
 </script>
 
 </body>
