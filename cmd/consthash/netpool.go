@@ -29,6 +29,10 @@ func NewNetpool(protocal string, name string) *Netpool {
 	}
 }
 
+func (n *Netpool) NumFree() int {
+	return len(n.free)
+}
+
 // reset all the connections
 func (n *Netpool) Reset() {
 	n.mu.Lock()
@@ -37,6 +41,7 @@ func (n *Netpool) Reset() {
 	for _, conn := range n.free {
 		conn.Close()
 	}
+
 	n.free = make([]net.Conn, 0)
 	n.conns = 0
 }
@@ -64,10 +69,12 @@ func (n *Netpool) Open() (conn net.Conn, err error) {
 		return nil, ErrMaxConn
 	}
 	n.mu.Lock()
-	if len(n.free) > 0 {
+	defer n.mu.Unlock()
+	if n.NumFree() > 0 {
 		// return the first free connection in the pool
 		conn = n.free[0]
 		n.free = n.free[1:]
+
 		//reset if we can
 		if conn == nil {
 			conn, err = net.DialTimeout(n.protocal, n.name, ConnectionTimeout)
@@ -76,13 +83,18 @@ func (n *Netpool) Open() (conn net.Conn, err error) {
 		conn, err = net.DialTimeout(n.protocal, n.name, ConnectionTimeout)
 		n.conns += 1
 	}
-	n.mu.Unlock()
+
 	return conn, err
 }
 
 func (n *Netpool) Close(conn net.Conn) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	n.free = append(n.free, conn)
+
+	if n.NumFree() < n.MaxConnections {
+		n.free = append(n.free, conn)
+	} else {
+		conn.Close()
+	}
 	return nil
 }
