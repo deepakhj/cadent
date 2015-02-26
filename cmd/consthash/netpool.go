@@ -56,8 +56,7 @@ func (n *Netpool) RemoveConn(in_conn net.Conn) {
 			conn.Close()
 		} else {
 			n.conns += 1
-			n.free = append(n.free, conn)
-
+			new_list = append(new_list, conn)
 		}
 	}
 	n.free = new_list

@@ -418,7 +418,7 @@ func (server *Server) tickDisplay() {
 	server.Logger.Printf("Server Rate: UnknownSendCount: %.2f/s", server.UnknownSendCount.Rate(server.ticker))
 	server.Logger.Printf("Server Rate: AllLinesCount: %.2f/s", server.AllLinesCount.Rate(server.ticker))
 	for idx, pool := range server.Outpool {
-		server.Logger.Printf("Free NetPools [%s]: %d/%d", idx, pool.NumFree(), pool.MaxConnections)
+		server.Logger.Printf("Used NetPools [%s]: %d/%d", idx, pool.NumFree(), pool.MaxConnections)
 
 	}
 
