@@ -13,7 +13,7 @@ num_procs=0
 ## (i.e. file descriptors limits may hit if this is too big)
 max_pool_connections=10
 
-## if you DO NOT want to pool conections (might be better for cirtant situations)
+## if you DO NOT want to pool connections (might be better for certain situations)
 ## `single` -> One connection = one line
 ## `pool` -> Pools connections to each server uses `max_pool_connections` for the pooling amount
 sending_method="pool"

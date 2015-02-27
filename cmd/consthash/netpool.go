@@ -46,6 +46,16 @@ func (n *Netpool) Reset() {
 	n.conns = 0
 }
 
+func (n *Netpool) WarmPool() {
+	n.Reset()
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	for i := 0; i < n.MaxConnections; i++ {
+		conn, _ := net.DialTimeout(n.protocal, n.name, ConnectionTimeout)
+		n.free = append(n.free, conn)
+	}
+}
+
 func (n *Netpool) RemoveConn(in_conn net.Conn) {
 	n.mu.Lock()
 	defer n.mu.Unlock()

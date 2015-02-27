@@ -17,9 +17,9 @@ import (
 )
 
 const (
-	DEFAULT_WORKERS                   = int64(500)
-	DEFAULT_NUM_STATS                 = 100
-	DEFAULT_SENDING_CONNETIONS_METHOD = "pool"
+	DEFAULT_WORKERS                    = int64(500)
+	DEFAULT_NUM_STATS                  = 100
+	DEFAULT_SENDING_CONNECTIONS_METHOD = "pool"
 )
 
 type SendOut struct {
@@ -53,6 +53,8 @@ func poolWorker(j *SendOut) {
 		if j.server.NetPoolConnections > 0 {
 			outsrv.MaxConnections = j.server.NetPoolConnections
 		}
+		// populate it
+		outsrv.WarmPool()
 		j.server.Outpool[j.outserver] = outsrv
 	}
 	conn, err := outsrv.Open()
@@ -85,6 +87,7 @@ func poolWorker(j *SendOut) {
 	} else {
 		//tell the pool to reset the connection
 		outsrv.Reset()
+		outsrv.WarmPool()
 		j.server.SuccessSendCount.Up(1)
 		StatsdClient.Incr("failed.aborted-connection", 1)
 		j.server.FailSendCount.Up(1)
@@ -150,6 +153,7 @@ func RunRunner(job Runner, out chan string) {
 		timer.Stop()
 		job.Client().Server().WorkerHold <- -1
 	case <-timer.C:
+		timer.Stop()
 		job.Client().Server().WorkerHold <- -1
 		log.Printf("Job Channel Runner Timeout")
 	}
@@ -317,7 +321,7 @@ func NewServer(cfg *Config) (server *Server, err error) {
 	}
 
 	serv.NetPoolConnections = cfg.MaxPoolConnections
-	serv.SendingConnectionMethod = DEFAULT_SENDING_CONNETIONS_METHOD
+	serv.SendingConnectionMethod = DEFAULT_SENDING_CONNECTIONS_METHOD
 
 	if len(cfg.SendingConnectionMethod) > 0 {
 		serv.SendingConnectionMethod = cfg.SendingConnectionMethod
@@ -433,6 +437,7 @@ func (server *Server) tickDisplay() {
 	server.Logger.Printf("Server Rate: UnsendableSendCount: %.2f/s", server.UnsendableSendCount.Rate(server.ticker))
 	server.Logger.Printf("Server Rate: UnknownSendCount: %.2f/s", server.UnknownSendCount.Rate(server.ticker))
 	server.Logger.Printf("Server Rate: AllLinesCount: %.2f/s", server.AllLinesCount.Rate(server.ticker))
+	server.Logger.Printf("Server Send Method:: %s", server.SendingConnectionMethod)
 	for idx, pool := range server.Outpool {
 		server.Logger.Printf("Used NetPools [%s]: %d/%d", idx, pool.NumFree(), pool.MaxConnections)
 
