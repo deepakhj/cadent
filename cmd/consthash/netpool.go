@@ -48,6 +48,7 @@ func (n *Netpool) Reset() {
 
 func (n *Netpool) WarmPool() {
 	n.Reset()
+
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	for i := 0; i < n.MaxConnections; i++ {
@@ -64,6 +65,7 @@ func (n *Netpool) RemoveConn(in_conn net.Conn) {
 	for _, conn := range n.free {
 		if conn == in_conn {
 			conn.Close()
+			n.conns -= 1
 		} else {
 			n.conns += 1
 			new_list = append(new_list, conn)
@@ -87,6 +89,7 @@ func (n *Netpool) Open() (conn net.Conn, err error) {
 		//reset if we can
 		if conn == nil {
 			conn, err = net.DialTimeout(n.protocal, n.name, ConnectionTimeout)
+			n.conns += 1
 		}
 	} else {
 		conn, err = net.DialTimeout(n.protocal, n.name, ConnectionTimeout)
@@ -103,7 +106,10 @@ func (n *Netpool) Close(conn net.Conn) error {
 	if n.NumFree() < n.MaxConnections {
 		n.free = append(n.free, conn)
 	} else {
+		// if somehow we made a connection that's over the limit,
+		// we need to close it to avoid leaking it
 		conn.Close()
+		n.conns -= 1
 	}
 	return nil
 }

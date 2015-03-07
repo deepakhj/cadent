@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"runtime"
+	"sync"
 	"time"
 )
 
@@ -36,6 +37,8 @@ func poolWorker(j *SendOut) {
 
 	var outsrv *Netpool
 
+	// lock out Outpool map
+	j.server.poolmu.Lock()
 	if val, ok := j.server.Outpool[j.outserver]; ok {
 		outsrv = val
 	} else {
@@ -44,6 +47,7 @@ func poolWorker(j *SendOut) {
 			StatsdClient.Incr("failed.bad-url", 1)
 			j.server.FailSendCount.Up(1)
 			log.Printf("Error sending to backend Invalid URL %s", err)
+			j.server.poolmu.Unlock()
 			return
 		}
 		if len(j.server.Outpool) == 0 {
@@ -57,6 +61,10 @@ func poolWorker(j *SendOut) {
 		outsrv.WarmPool()
 		j.server.Outpool[j.outserver] = outsrv
 	}
+	// done with this locking ... the reset of the pool operations
+	// are locked internally
+	j.server.poolmu.Unlock()
+
 	conn, err := outsrv.Open()
 	if err != nil {
 		outsrv.Reset()
@@ -266,6 +274,7 @@ type Server struct {
 	Replicas int
 
 	//pool the connections to the outgoing servers
+	poolmu  sync.Mutex //when we make a new pool need to lock the hash below
 	Outpool map[string]*Netpool
 
 	ticker time.Duration
