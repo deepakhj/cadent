@@ -9,6 +9,7 @@ import (
 
 const MaxConnections = 20
 const ConnectionTimeout = time.Duration(5 * time.Second)
+const RecycleTimeoutDuration = time.Duration(5 * time.Minute)
 
 var ErrMaxConn = errors.New("Maximum connections reached")
 
@@ -18,98 +19,99 @@ type Netpool struct {
 	protocal       string
 	conns          int
 	MaxConnections int
-	free           []net.Conn
+	RecycleTimeout time.Duration
+	free           chan NetpoolConn
+}
+
+// add a "global" timeout in order to pick up any new IPs from names of things
+// in case DNS has changed and to release old connections that are unused
+type NetpoolConn struct {
+	conn    net.Conn
+	started time.Time
 }
 
 func NewNetpool(protocal string, name string) *Netpool {
-	return &Netpool{
+	pool := &Netpool{
 		name:           name,
 		protocal:       protocal,
 		MaxConnections: MaxConnections,
+		RecycleTimeout: RecycleTimeoutDuration,
 	}
+	pool.free = make(chan NetpoolConn, pool.MaxConnections)
+	return pool
 }
 
 func (n *Netpool) NumFree() int {
 	return len(n.free)
+
 }
 
-// reset all the connections
-func (n *Netpool) Reset() {
-	n.mu.Lock()
-	defer n.mu.Unlock()
+// reset and clear a connection
+func (n *Netpool) ResetConn(net_conn NetpoolConn) error {
 
-	for _, conn := range n.free {
-		conn.Close()
+	if net_conn.conn != nil {
+		net_conn.conn.Close()
 	}
+	net_conn.conn = nil
 
-	n.free = make([]net.Conn, 0)
-	n.conns = 0
+	conn, err := net.DialTimeout(n.protocal, n.name, ConnectionTimeout)
+	if err != nil {
+		return err
+	}
+	net_conn.conn = conn
+	net_conn.started = time.Now()
+
+	// put it back on the queue
+	n.free <- net_conn
+
+	return nil
 }
 
-func (n *Netpool) WarmPool() {
-	n.Reset()
+func (n *Netpool) InitPool() error {
 
 	n.mu.Lock()
 	defer n.mu.Unlock()
+
+	n.free = nil
+	n.free = make(chan NetpoolConn, n.MaxConnections)
+
+	//fill up the channels with our connections
 	for i := 0; i < n.MaxConnections; i++ {
-		conn, _ := net.DialTimeout(n.protocal, n.name, ConnectionTimeout)
-		n.free = append(n.free, conn)
-	}
-}
-
-func (n *Netpool) RemoveConn(in_conn net.Conn) {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	new_list := make([]net.Conn, 0)
-	n.conns = 0
-	for _, conn := range n.free {
-		if conn == in_conn {
-			conn.Close()
-			n.conns -= 1
-		} else {
-			n.conns += 1
-			new_list = append(new_list, conn)
+		conn, err := net.DialTimeout(n.protocal, n.name, ConnectionTimeout)
+		if err != nil {
+			return err
 		}
+		n.free <- NetpoolConn{conn: conn, started: time.Now()}
 	}
-	n.free = new_list
-
+	return nil
 }
 
-func (n *Netpool) Open() (conn net.Conn, err error) {
-	if n.conns >= n.MaxConnections && len(n.free) == 0 {
-		return nil, ErrMaxConn
-	}
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	if n.NumFree() > 0 {
-		// return the first free connection in the pool
-		conn = n.free[0]
-		n.free = n.free[1:]
+func (n *Netpool) Open() (conn NetpoolConn, err error) {
+	// pop it off
 
-		//reset if we can
-		if conn == nil {
-			conn, err = net.DialTimeout(n.protocal, n.name, ConnectionTimeout)
-			n.conns += 1
+	net_conn := <-n.free
+
+	//recylce connections if we need to
+
+	if time.Now().Sub(net_conn.started) > n.RecycleTimeout {
+		if net_conn.conn != nil {
+			net_conn.conn.Close()
 		}
-	} else {
-		conn, err = net.DialTimeout(n.protocal, n.name, ConnectionTimeout)
-		n.conns += 1
-	}
+		net_conn.conn = nil
 
-	return conn, err
+		conn, err := net.DialTimeout(n.protocal, n.name, ConnectionTimeout)
+		if err != nil {
+			return net_conn, err
+		}
+		net_conn.conn = conn
+		net_conn.started = time.Now()
+	}
+	return net_conn, nil
+
 }
 
-func (n *Netpool) Close(conn net.Conn) error {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-
-	if n.NumFree() < n.MaxConnections {
-		n.free = append(n.free, conn)
-	} else {
-		// if somehow we made a connection that's over the limit,
-		// we need to close it to avoid leaking it
-		conn.Close()
-		n.conns -= 1
-	}
+//add it back to the queue
+func (n *Netpool) Close(conn NetpoolConn) error {
+	n.free <- conn
 	return nil
 }

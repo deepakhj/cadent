@@ -36,11 +36,12 @@ func poolWorker(j *SendOut) {
 	defer StatsdNanoTimeFunc("worker.process-time-ns", time.Now())
 
 	var outsrv *Netpool
+	var ok bool
 
 	// lock out Outpool map
 	j.server.poolmu.Lock()
-	if val, ok := j.server.Outpool[j.outserver]; ok {
-		outsrv = val
+	if outsrv, ok = j.server.Outpool[j.outserver]; ok {
+		ok = true
 	} else {
 		m_url, err := url.Parse(j.outserver)
 		if err != nil {
@@ -58,45 +59,40 @@ func poolWorker(j *SendOut) {
 			outsrv.MaxConnections = j.server.NetPoolConnections
 		}
 		// populate it
-		outsrv.WarmPool()
+		outsrv.InitPool()
 		j.server.Outpool[j.outserver] = outsrv
 	}
 	// done with this locking ... the reset of the pool operations
 	// are locked internally
 	j.server.poolmu.Unlock()
 
-	conn, err := outsrv.Open()
+	netconn, err := outsrv.Open()
 	if err != nil {
-		outsrv.Reset()
 		StatsdClient.Incr("failed.bad-connection", 1)
 
 		j.server.FailSendCount.Up(1)
 		log.Printf("Error sending to backend %s", err)
 		return
 	}
-	if conn != nil {
+	if netconn.conn != nil {
 		// Conn.Write will raise a timeout error after 1 seconds
-		conn.SetWriteDeadline(time.Now().Add(time.Second))
+		netconn.conn.SetWriteDeadline(time.Now().Add(time.Second))
 		to_send := []byte(j.param + "\n")
-		_, err = conn.Write(to_send)
+		_, err = netconn.conn.Write(to_send)
 		if err != nil {
 			StatsdClient.Incr("failed.connection-timeout", 1)
 			j.server.FailSendCount.Up(1)
-			outsrv.RemoveConn(conn)
+			outsrv.ResetConn(netconn)
 			log.Printf("Error sending (writing) to backend: %s", err)
 			return
 		} else {
 			j.server.SuccessSendCount.Up(1)
 			StatsdClient.Incr("success.send", 1)
 			StatsdClient.Incr("success.sent-bytes", int64(len(to_send)))
-			outsrv.Close(conn)
+			outsrv.Close(netconn)
 		}
 
 	} else {
-		//tell the pool to reset the connection
-		outsrv.Reset()
-		outsrv.WarmPool()
-		j.server.SuccessSendCount.Up(1)
 		StatsdClient.Incr("failed.aborted-connection", 1)
 		j.server.FailSendCount.Up(1)
 		log.Printf("Error sending (writing connection gone) to backend: %s", err)
@@ -274,7 +270,7 @@ type Server struct {
 	Replicas int
 
 	//pool the connections to the outgoing servers
-	poolmu  sync.Mutex //when we make a new pool need to lock the hash below
+	poolmu  *sync.Mutex //when we make a new pool need to lock the hash below
 	Outpool map[string]*Netpool
 
 	ticker time.Duration
@@ -323,6 +319,8 @@ func NewServer(cfg *Config) (server *Server, err error) {
 	serv.RunnerTypeString = cfg.MsgType
 	serv.RunnerConfig = cfg.MsgConfig
 	serv.Replicas = cfg.Replicas
+
+	serv.poolmu = new(sync.Mutex)
 
 	serv.NumStats = DEFAULT_NUM_STATS
 	if cfg.HealthServerPoints > 0 {
@@ -448,8 +446,7 @@ func (server *Server) tickDisplay() {
 	server.Logger.Printf("Server Rate: AllLinesCount: %.2f/s", server.AllLinesCount.Rate(server.ticker))
 	server.Logger.Printf("Server Send Method:: %s", server.SendingConnectionMethod)
 	for idx, pool := range server.Outpool {
-		server.Logger.Printf("Used NetPools [%s]: %d/%d", idx, pool.NumFree(), pool.MaxConnections)
-
+		server.Logger.Printf("Free Connections in Pools [%s]: %d/%d", idx, pool.NumFree(), pool.MaxConnections)
 	}
 
 	server.ResetTickers()
