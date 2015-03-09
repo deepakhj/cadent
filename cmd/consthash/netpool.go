@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"log"
 	"net"
 	"sync"
 	"time"
@@ -50,12 +51,16 @@ func (n *Netpool) NumFree() int {
 func (n *Netpool) ResetConn(net_conn NetpoolConn) error {
 
 	if net_conn.conn != nil {
-		net_conn.conn.Close()
+		goterr := net_conn.conn.Close()
+		if goterr != nil {
+			log.Println("[NetPool:ResetConn] Connection CLOSE error: ", goterr)
+		}
 	}
 	net_conn.conn = nil
 
 	conn, err := net.DialTimeout(n.protocal, n.name, ConnectionTimeout)
 	if err != nil {
+		log.Println("[NetPool:ResetConn] Connection open error: ", err)
 		return err
 	}
 	net_conn.conn = conn
@@ -79,6 +84,7 @@ func (n *Netpool) InitPool() error {
 	for i := 0; i < n.MaxConnections; i++ {
 		conn, err := net.DialTimeout(n.protocal, n.name, ConnectionTimeout)
 		if err != nil {
+			log.Println("[NetPool:InitPool] Connection open error: ", err)
 			return err
 		}
 		n.free <- NetpoolConn{conn: conn, started: time.Now()}
@@ -91,16 +97,20 @@ func (n *Netpool) Open() (conn NetpoolConn, err error) {
 
 	net_conn := <-n.free
 
-	//recylce connections if we need to
+	//recycle connections if we need to
 
 	if time.Now().Sub(net_conn.started) > n.RecycleTimeout {
 		if net_conn.conn != nil {
-			net_conn.conn.Close()
+			goterr := net_conn.conn.Close()
+			if goterr != nil {
+				log.Println("[NetPool:Open] Connection CLOSE error: ", goterr)
+			}
 		}
 		net_conn.conn = nil
 
 		conn, err := net.DialTimeout(n.protocal, n.name, ConnectionTimeout)
 		if err != nil {
+			log.Println("[NetPool:Open] Connection open error: ", err)
 			return net_conn, err
 		}
 		net_conn.conn = conn
