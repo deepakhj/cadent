@@ -261,17 +261,13 @@ func (self *CheckedServerPool) testConnections() error {
 	}
 
 	for self.DoChecks {
-		//self.mu.Lock()
 		for idx, _ := range self.Servers {
 			testerchan := make(chan bool, 1)
-			//done := make(chan bool)
 
 			go self.testUp(&self.Servers[idx], testerchan)
 			go self.gotTestResponse(&self.Servers[idx], testerchan)
-			//close channels when done
-			//go self.cleanChannels(testerchan, done)
+			// channels is closed in gotTestResponse when done
 		}
-		//self.mu.Unlock()
 
 		//re-add any killed servers after X ticker counts just to retest them
 		self.AllPingCounts.Add(1)
