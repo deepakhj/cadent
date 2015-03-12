@@ -196,67 +196,83 @@ func (self *CheckedServerPool) dropServer(server *ServerPoolServer) {
 	self.Servers = new_s
 }
 
+func (self *CheckedServerPool) testSingleConnection(url url.URL, timeout time.Duration) error {
+	if url.Scheme == "tcp" || url.Scheme == "udp" {
+		conn, err := net.DialTimeout(url.Scheme, url.Host, timeout)
+		if err == nil {
+			conn.Close()
+		}
+		return err
+	}
+
+	//http
+	client := &http.Client{
+		Timeout: timeout,
+	}
+	_, err := client.Get(url.String())
+	return err
+}
+
+func (self *CheckedServerPool) testUp(server *ServerPoolServer, out chan bool) {
+	pings := server.ServerPingCounts.Add(1)
+
+	log.Printf("Health Checking %s via %s, check %d", server.Name, server.CheckName, pings)
+	err := self.testSingleConnection(server.CheckURL, self.ConnectionTimeout)
+
+	if err != nil {
+		log.Printf("Healthcheck for %s Failed: %s - Down %d times", server.Name, err, server.ServerDownCounts+1)
+		if self.DownOutCount > 0 && server.ServerCurrentDownCounts.Get()+1 > self.DownOutCount {
+			log.Printf("Health %s Fail too many times, taking out of pool", server.Name)
+			self.dropServer(server)
+		}
+		out <- false
+		return
+	}
+	out <- true
+}
+
+func (self *CheckedServerPool) gotTestResponse(server *ServerPoolServer, in chan bool) {
+	message := <-in
+	if message {
+		server.ServerCurrentDownCounts.Set(0)
+		up := server.ServerUpCounts.Add(1)
+		log.Printf("Healthcheck for %s OK: UP %d pings", server.Name, up)
+	} else {
+		server.ServerDownCounts.Add(1)
+		server.ServerCurrentDownCounts.Add(1)
+	}
+	close(in)
+}
+
+func (self *CheckedServerPool) cleanChannels(tester chan bool, done chan bool) {
+	message := <-done
+	if message {
+		close(tester)
+		close(done)
+		log.Printf("Closed")
+	}
+}
+
 func (self *CheckedServerPool) testConnections() error {
 
-	testConnection := func(url url.URL, timeout time.Duration) error {
-		if url.Scheme == "tcp" || url.Scheme == "udp" {
-			conn, err := net.DialTimeout(url.Scheme, url.Host, timeout)
-			if err == nil {
-				conn.Close()
-			}
-			return err
-		}
-
-		//http
-		client := &http.Client{
-			Timeout: timeout,
-		}
-		_, err := client.Get(url.String())
-		return err
-
-	}
-
-	testUp := func(server *ServerPoolServer, out chan bool) {
-		pings := server.ServerPingCounts.Add(1)
-
-		log.Printf("Health Checking %s via %s, check %d", server.Name, server.CheckName, pings)
-		err := testConnection(server.CheckURL, self.ConnectionTimeout)
-
-		if err != nil {
-			log.Printf("Healthcheck for %s Failed: %s - Down %d times", server.Name, err, server.ServerDownCounts+1)
-			if self.DownOutCount > 0 && server.ServerCurrentDownCounts.Get()+1 > self.DownOutCount {
-				log.Printf("Health %s Fail too many times, taking out of pool", server.Name)
-				self.dropServer(server)
-			}
-			out <- false
-		}
-		out <- true
-	}
-
-	gotResponse := func(server *ServerPoolServer, in <-chan bool) {
-		message := <-in
-		if message {
-			server.ServerCurrentDownCounts.Set(0)
-			server.ServerUpCounts.Add(1)
-		} else {
-			server.ServerDownCounts.Add(1)
-			server.ServerCurrentDownCounts.Add(1)
-		}
-	}
 	if self.ConnectionRetry < 2*self.ConnectionTimeout {
 		log.Printf("Connection Retry CANNOT be less then 2x the Connection Timeout")
 		return nil
 	}
 
 	for self.DoChecks {
-		self.mu.Lock()
+		//self.mu.Lock()
 		for idx, _ := range self.Servers {
-			channel := make(chan bool)
-			defer close(channel)
-			go testUp(&self.Servers[idx], channel)
-			go gotResponse(&self.Servers[idx], channel)
+			testerchan := make(chan bool, 1)
+			//done := make(chan bool)
+
+			go self.testUp(&self.Servers[idx], testerchan)
+			go self.gotTestResponse(&self.Servers[idx], testerchan)
+			//close channels when done
+			//go self.cleanChannels(testerchan, done)
 		}
-		self.mu.Unlock()
+		//self.mu.Unlock()
+
 		//re-add any killed servers after X ticker counts just to retest them
 		self.AllPingCounts.Add(1)
 		if (self.AllPingCounts%DEFAULT_SERVER_RE_ADD_TICK == 0) && len(self.DroppedServers) > 0 {
