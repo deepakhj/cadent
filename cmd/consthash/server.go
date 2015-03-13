@@ -39,10 +39,10 @@ func poolWorker(j *SendOut) {
 	var ok bool
 
 	// lock out Outpool map
+	j.server.poolmu.Lock()
 	if outsrv, ok = j.server.Outpool[j.outserver]; ok {
 		ok = true
 	} else {
-		j.server.poolmu.Lock()
 		m_url, err := url.Parse(j.outserver)
 		if err != nil {
 			StatsdClient.Incr("failed.bad-url", 1)
@@ -63,8 +63,8 @@ func poolWorker(j *SendOut) {
 		j.server.Outpool[j.outserver] = outsrv
 		// done with this locking ... the rest of the pool operations
 		// are locked internally to the pooler
-		j.server.poolmu.Unlock()
 	}
+	j.server.poolmu.Unlock()
 
 	netconn, err := outsrv.Open()
 	if err != nil {
