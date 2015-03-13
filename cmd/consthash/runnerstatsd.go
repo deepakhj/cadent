@@ -15,21 +15,15 @@ type StatsdRunner struct {
 	param     string
 	key_param string
 	params    []string
-	oneAndOne *ConstHasher // if true we can do an optimzation shunt on the for loops
-
 }
 
 func NewStatsdRunner(client Client, conf map[string]interface{}, param string) (*StatsdRunner, error) {
 
 	//<key>:blaaa
 	job := &StatsdRunner{
-		client:    client,
-		Hashers:   client.Hashers(),
-		param:     param,
-		oneAndOne: nil,
-	}
-	if len(client.Hashers()) == 1 && client.Server().Replicas == 1 {
-		job.oneAndOne = client.Hashers()[0]
+		client:  client,
+		Hashers: client.Hashers(),
+		param:   param,
 	}
 	statd_array := strings.Split(param, ":")
 	if len(statd_array) == 2 {
@@ -50,41 +44,7 @@ func (job StatsdRunner) GetKey() string {
 	return job.key_param
 }
 
-func (job StatsdRunner) runone(key string) bool {
-
-	toserv, err := job.oneAndOne.Get(key)
-
-	if err != nil {
-		StatsdClient.Incr("failed.invalid-hash-server", 1)
-		job.Client().Server().UnsendableSendCount.Up(1)
-		return false
-	}
-	// just log the valid lines "once" total ends stats are WorkerValidLineCount
-	job.Client().Server().ValidLineCount.Up(1)
-	StatsdClient.Incr("success.valid-lines", 1)
-	StatsdClient.Incr("success.valid-lines-sent-to-workers", 1)
-	job.Client().Server().WorkerValidLineCount.Up(1)
-
-	sendOut := &SendOut{
-		outserver: toserv,
-		server:    job.Client().Server(),
-		param:     job.param,
-		client:    job.Client(),
-	}
-	job.Client().Server().WorkerHold <- 1
-	job.Client().WorkerQueue() <- sendOut
-	return true
-}
-
 func (job StatsdRunner) run() string {
-
-	//quick exit for no replication
-	if job.oneAndOne != nil {
-		if job.runone(job.GetKey()) {
-			return "ok-statsd"
-		}
-		return "fail-statsd"
-	}
 
 	//replicate the data across our Lists
 	out_str := ""
@@ -111,12 +71,12 @@ func (job StatsdRunner) run() string {
 				job.Client().Server().WorkerHold <- 1
 				job.Client().WorkerQueue() <- sendOut
 			}
-			out_str += "ok-statsd"
+			out_str += fmt.Sprintf("yay statsd %s: %s", servs, string(job.param))
 		} else {
 
 			StatsdClient.Incr("failed.invalid-hash-server", 1)
 			job.Client().Server().UnsendableSendCount.Up(1)
-			out_str += "fail-statsd"
+			out_str += fmt.Sprintf("ERROR ON statsd %s", err)
 		}
 	}
 	return out_str
