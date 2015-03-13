@@ -11,7 +11,7 @@ import (
 
 type StatsdRunner struct {
 	client    Client
-	Hasher    *ConstHasher
+	Hashers   []*ConstHasher
 	param     string
 	key_param string
 	params    []string
@@ -21,9 +21,9 @@ func NewStatsdRunner(client Client, conf map[string]interface{}, param string) (
 
 	//<key>:blaaa
 	job := &StatsdRunner{
-		client: client,
-		Hasher: client.Hasher(),
-		param:  param,
+		client:  client,
+		Hashers: client.Hashers(),
+		param:   param,
 	}
 	statd_array := strings.Split(param, ":")
 	if len(statd_array) == 2 {
@@ -46,24 +46,38 @@ func (job StatsdRunner) GetKey() string {
 
 func (job StatsdRunner) run() string {
 
-	servs, err := job.Hasher.GetN(job.GetKey(), job.Client().Server().Replicas)
-	if err == nil {
-		for _, useme := range servs {
+	//replicate the data across our Lists
+	out_str := ""
+	for idx, hasher := range job.Hashers {
 
-			StatsdClient.Incr("success.valid-lines", 1)
-			job.Client().Server().ValidLineCount.Up(1)
-			sendOut := &SendOut{
-				outserver: useme,
-				param:     job.param,
-				server:    job.Client().Server(),
-				client:    job.Client(),
+		// may have replicas inside the pool too that we need to deal with
+		servs, err := hasher.GetN(job.GetKey(), job.Client().Server().Replicas)
+		if err == nil {
+			for nidx, useme := range servs {
+				// just log the valid lines "once" total ends stats are WorkerValidLineCount
+				if idx == 0 && nidx == 0 {
+					job.Client().Server().ValidLineCount.Up(1)
+					StatsdClient.Incr("success.valid-lines", 1)
+				}
+				StatsdClient.Incr("success.valid-lines-sent-to-workers", 1)
+				job.Client().Server().WorkerValidLineCount.Up(1)
+
+				sendOut := &SendOut{
+					outserver: useme,
+					server:    job.Client().Server(),
+					param:     job.param,
+					client:    job.Client(),
+				}
+				job.Client().Server().WorkerHold <- 1
+				job.Client().WorkerQueue() <- sendOut
 			}
-			job.Client().Server().WorkerHold <- 1
-			job.Client().WorkerQueue() <- sendOut
+			out_str += fmt.Sprintf("yay statsd %s: %s", servs, string(job.param))
+		} else {
+
+			StatsdClient.Incr("failed.invalid-hash-server", 1)
+			job.Client().Server().UnsendableSendCount.Up(1)
+			out_str += fmt.Sprintf("ERROR ON statsd %s", err)
 		}
-		return fmt.Sprintf("yay statsd : %v : %v", servs, string(job.param))
 	}
-	StatsdClient.Incr("failed.invalid-hash-server", 1)
-	job.Client().Server().UnsendableSendCount.Up(1)
-	return fmt.Sprintf("ERROR ON statsd %s", err)
+	return out_str
 }

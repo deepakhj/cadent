@@ -139,7 +139,7 @@ func (self *ConstHasher) CheckingServers() []string {
 }
 
 //make from our basic config object
-func createConstHasherFromConfig(cfg *Config) (hasher *ConstHasher, err error) {
+func createConstHasherFromConfig(cfg *Config, serverlist *ParsedServerConfig) (hasher *ConstHasher, err error) {
 	hasher = new(ConstHasher)
 	hasher.Hasher = consistent.New()
 
@@ -170,7 +170,7 @@ func createConstHasherFromConfig(cfg *Config) (hasher *ConstHasher, err error) {
 	log.Print("Hasher Cache size set to ", hasher.Cache.capacity)
 
 	//s_pool_runner := ServerPoolRunner(hasher)
-	s_pool, err := createServerPoolFromConfig(cfg, hasher) //&s_pool_runner)
+	s_pool, err := createServerPoolFromConfig(cfg, serverlist, hasher) //&s_pool_runner)
 
 	if err != nil {
 		return nil, fmt.Errorf("Error setting up servers: %s", err)

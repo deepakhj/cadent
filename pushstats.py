@@ -66,7 +66,7 @@ def run(ip, port, idx):
         else:
             send_udp(msg_full, ip, port)
             PACKET_FULL_CT += 1
-            time.sleep(0.01)
+            time.sleep(0.05)
             t_delta = time.time()- START
             out_msg = "[{}:{}] Sent {}/{} lines ~{:.2f}/s | {} Packets {:.2f}/s".format(
                 ip, port,

@@ -5,10 +5,10 @@
 package main
 
 type UnknownRunner struct {
-	client Client
-	Hasher *ConstHasher
-	param  string
-	params []string
+	client  Client
+	Hashers []*ConstHasher
+	param   string
+	params  []string
 }
 
 func (job UnknownRunner) Client() Client {

@@ -54,7 +54,7 @@ cache_items=50000
 
 ## Health Checking options
 ### check every "X" seconds
-heartbeat_time_delay=60
+heartbeat_time_delay=5
 
 ### Timeout for failed connections (in Seconds)
 heartbeat_time_timeout=1
@@ -78,7 +78,7 @@ statsd_interval=1  # send to statd every second (buffered)
 
 ## number of workers to chew on the sending queue
 ## adjust this based on the input load
-workers=200
+workers=5
 
 ## there will be an internal health http server set up as well
 ## and will respond to '/ops/status' -> "GET OK"
@@ -114,65 +114,32 @@ hasher_algo="nodejs-hashring"
 hasher_elter="statsd"
 hasher_vnodes=40
 
+  [[statsd-example.servers]]
+    ## the list of servers we hashring send to
+    ## {scheme}://{ip}:{port},...
+    ## scheme = tcp|udp
+    servers="udp://192.168.59.103:8126,udp://192.168.59.103:8136, udp://192.168.59.103:8146"
 
-##
-## Yes this can be MULTIPLE server groups
-## so you can replicate data across farms
-##
+    ## there must be a check server for each `servers` above
+    ## {scheme}://{ip}:{port},...
+    ## scheme = tcp|http -- NOTE NO UDP checks (does not make sense)
+    ## tcp connections are simply checked for a connection and closed
+    ## http connections must respond with a 200 to a GET on the provided url
+    check_servers="tcp://192.168.59.103:8127,tcp://192.168.59.103:8137, tcp://192.168.59.103:8147"
 
-[[statsd-example.servers]]
-## the list of servers we hashring send to
-## {scheme}://{ip}:{port},...
-## scheme = tcp|udp
-servers="udp://192.168.59.103:8126,udp://192.168.59.103:8136, udp://192.168.59.103:8146"
+  [[statsd-example.servers]]
+    ## the list of servers we hashring send to
+    ## {scheme}://{ip}:{port},...
+    ## scheme = tcp|udp
+    servers="udp://192.168.59.103:8126,udp://192.168.59.103:8136, udp://192.168.59.103:8146"
 
-## there must be a check server for each `servers` above
-## {scheme}://{ip}:{port},...
-## scheme = tcp|http -- NOTE NO UDP checks (does not make sense)
-## tcp connections are simply checked for a connection and closed
-## http connections must respond with a 200 to a GET on the provided url
-check_servers="tcp://192.168.59.103:8127,tcp://192.168.59.103:8137, tcp://192.168.59.103:8147"
-
-# replica
-# [[statsd-example.servers]]
-# servers=...
-# check_servers=....
-
-
-
-[graphite-example]
-
-## msg_type = statsd | graphite | regex
-## <time> <key> <value>
-msg_type="graphite"
-
-# graphite style
-hasher_algo="md5"
-hasher_elter="graphite"
-hasher_vnodes=100
-
-[[graphite-example.servers]]
-
-servers="tcp://127.0.0.1:2003,tcp://127.0.0.1:2013,tcp://127.0.0.1:2023"
-#checks will default to the servers
-
-# replica
-# [[graphite-example.servers]]
-# servers=...
+    ## there must be a check server for each `servers` above
+    ## {scheme}://{ip}:{port},...
+    ## scheme = tcp|http -- NOTE NO UDP checks (does not make sense)
+    ## tcp connections are simply checked for a connection and closed
+    ## http connections must respond with a 200 to a GET on the provided url
+    check_servers="tcp://192.168.59.103:8127,tcp://192.168.59.103:8137, tcp://192.168.59.103:8147"
 
 
-[regex-example]
 
-# syslog like to farm specific hosts
-listen="udp://127.0.0.1:6004"
 
-## msg_type = statsd | graphite | regex
-## NOTE  msg_regex needs to have (?P<Key>..) named bit
-msg_type="regex"
-## NOTE: SINGLE QUOTES ARE IMPORTANT otherwise it will try to unescape the string
-msg_regex='^(<\d+>)?(?P<Timestamp>[A-Z][a-z]+\s+\d+\s\d+:\d+:\d+) (?P<Key>\S+) (?P<Logger>\S+):(.*)'
-hasher_algo="fnv"
-
-[[regex-example.servers]]
-servers="udp://127.0.0.1:6080,udp://127.0.0.1:6081,udp://127.0.0.1:6082"
-check_servers="tcp://127.0.0.1:6090,tcp://127.0.0.1:6091,tcp://127.0.0.1:6092"

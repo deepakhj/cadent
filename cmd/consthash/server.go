@@ -39,10 +39,10 @@ func poolWorker(j *SendOut) {
 	var ok bool
 
 	// lock out Outpool map
-	j.server.poolmu.Lock()
 	if outsrv, ok = j.server.Outpool[j.outserver]; ok {
 		ok = true
 	} else {
+		j.server.poolmu.Lock()
 		m_url, err := url.Parse(j.outserver)
 		if err != nil {
 			StatsdClient.Incr("failed.bad-url", 1)
@@ -61,10 +61,10 @@ func poolWorker(j *SendOut) {
 		// populate it
 		outsrv.InitPool()
 		j.server.Outpool[j.outserver] = outsrv
+		// done with this locking ... the rest of the pool operations
+		// are locked internally to the pooler
+		j.server.poolmu.Unlock()
 	}
-	// done with this locking ... the reset of the pool operations
-	// are locked internally
-	j.server.poolmu.Unlock()
 
 	netconn, err := outsrv.Open()
 	if err != nil {
@@ -179,8 +179,8 @@ func NewRunner(client Client, line string) (Runner, error) {
 		runner, err = NewRegExRunner(client, client.Server().RunnerConfig, line)
 	} else {
 		runner = UnknownRunner{
-			client: client,
-			Hasher: client.Hasher(),
+			client:  client,
+			Hashers: client.Hashers(),
 		}
 	}
 	if err != nil {
@@ -197,44 +197,48 @@ func NewRunner(client Client, line string) (Runner, error) {
 
 //helper object for json'ing the basic stat data
 type ServerStats struct {
-	ValidLineCount      int64 `json:"valid_line_count"`
-	InvalidLineCount    int64 `json:"invalid_line_count"`
-	SuccessSendCount    int64 `json:"success_send_count"`
-	FailSendCount       int64 `json:"fail_send_count"`
-	UnsendableSendCount int64 `json:"unsendable_send_count"`
-	UnknownSendCount    int64 `json:"unknown_send_count"`
-	AllLinesCount       int64 `json:"all_lines_count"`
+	ValidLineCount       int64 `json:"valid_line_count"`
+	WorkerValidLineCount int64 `json:"worker_line_count"`
+	InvalidLineCount     int64 `json:"invalid_line_count"`
+	SuccessSendCount     int64 `json:"success_send_count"`
+	FailSendCount        int64 `json:"fail_send_count"`
+	UnsendableSendCount  int64 `json:"unsendable_send_count"`
+	UnknownSendCount     int64 `json:"unknown_send_count"`
+	AllLinesCount        int64 `json:"all_lines_count"`
 
-	CurrentValidLineCount      int64 `json:"current_valid_line_count"`
-	CurrentInvalidLineCount    int64 `json:"current_invalid_line_count"`
-	CurrentSuccessSendCount    int64 `json:"current_success_send_count"`
-	CurrentFailSendCount       int64 `json:"current_fail_send_count"`
-	CurrentUnsendableSendCount int64 `json:"current_unsendable_send_count"`
-	CurrentUnknownSendCount    int64 `json:"current_unknown_send_count"`
-	CurrentAllLinesCount       int64 `json:"current_all_lines_count"`
+	CurrentValidLineCount       int64 `json:"current_valid_line_count"`
+	CurrentWorkerValidLineCount int64 `json:"current_worker_line_count"`
+	CurrentInvalidLineCount     int64 `json:"current_invalid_line_count"`
+	CurrentSuccessSendCount     int64 `json:"current_success_send_count"`
+	CurrentFailSendCount        int64 `json:"current_fail_send_count"`
+	CurrentUnsendableSendCount  int64 `json:"current_unsendable_send_count"`
+	CurrentUnknownSendCount     int64 `json:"current_unknown_send_count"`
+	CurrentAllLinesCount        int64 `json:"current_all_lines_count"`
 
-	ValidLineCountList      []int64 `json:"valid_line_count_list"`
-	InvalidLineCountList    []int64 `json:"invalid_line_count_list"`
-	SuccessSendCountList    []int64 `json:"success_send_count_list"`
-	FailSendCountList       []int64 `json:"fail_send_count_list"`
-	UnsendableSendCountList []int64 `json:"unsendable_send_count_list"`
-	UnknownSendCountList    []int64 `json:"unknown_send_count_list"`
-	AllLinesCountList       []int64 `json:"all_lines_count_list"`
-	GoRoutinesList          []int   `json:"go_routines_list"`
-	TicksList               []int64 `json:ticks_list`
+	ValidLineCountList       []int64 `json:"valid_line_count_list"`
+	WorkerValidLineCountList []int64 `json:"worker_line_count_list"`
+	InvalidLineCountList     []int64 `json:"invalid_line_count_list"`
+	SuccessSendCountList     []int64 `json:"success_send_count_list"`
+	FailSendCountList        []int64 `json:"fail_send_count_list"`
+	UnsendableSendCountList  []int64 `json:"unsendable_send_count_list"`
+	UnknownSendCountList     []int64 `json:"unknown_send_count_list"`
+	AllLinesCountList        []int64 `json:"all_lines_count_list"`
+	GoRoutinesList           []int   `json:"go_routines_list"`
+	TicksList                []int64 `json:ticks_list`
 
-	GoRoutines                int      `json:"go_routines"`
-	UpTimeSeconds             int64    `json:"uptime_sec"`
-	ValidLineCountPerSec      float32  `json:"valid_line_count_persec"`
-	InvalidLineCountPerSec    float32  `json:"invalid_line_count_persec"`
-	SuccessSendCountPerSec    float32  `json:"success_send_count_persec"`
-	UnsendableSendCountPerSec float32  `json:"unsendable_count_persec"`
-	UnknownSendCountPerSec    float32  `json:"unknown_send_count_persec"`
-	AllLinesCountPerSec       float32  `json:"all_lines_count_persec"`
-	Listening                 string   `json:"listening"`
-	ServersUp                 []string `json:"servers_up"`
-	ServersDown               []string `json:"servers_down"`
-	ServersChecks             []string `json:"servers_checking"`
+	GoRoutines                 int      `json:"go_routines"`
+	UpTimeSeconds              int64    `json:"uptime_sec"`
+	ValidLineCountPerSec       float32  `json:"valid_line_count_persec"`
+	WorkerValidLineCountPerSec float32  `json:"worker_line_count_persec"`
+	InvalidLineCountPerSec     float32  `json:"invalid_line_count_persec"`
+	SuccessSendCountPerSec     float32  `json:"success_send_count_persec"`
+	UnsendableSendCountPerSec  float32  `json:"unsendable_count_persec"`
+	UnknownSendCountPerSec     float32  `json:"unknown_send_count_persec"`
+	AllLinesCountPerSec        float32  `json:"all_lines_count_persec"`
+	Listening                  string   `json:"listening"`
+	ServersUp                  []string `json:"servers_up"`
+	ServersDown                []string `json:"servers_down"`
+	ServersChecks              []string `json:"servers_checking"`
 }
 
 // a server set of stats
@@ -242,21 +246,22 @@ type Server struct {
 	Name      string
 	ListenURL *url.URL
 
-	ValidLineCount      StatCount
-	InvalidLineCount    StatCount
-	SuccessSendCount    StatCount
-	FailSendCount       StatCount
-	UnsendableSendCount StatCount
-	UnknownSendCount    StatCount
-	AllLinesCount       StatCount
-	NumStats            uint
+	ValidLineCount       StatCount
+	WorkerValidLineCount StatCount
+	InvalidLineCount     StatCount
+	SuccessSendCount     StatCount
+	FailSendCount        StatCount
+	UnsendableSendCount  StatCount
+	UnknownSendCount     StatCount
+	AllLinesCount        StatCount
+	NumStats             uint
 
 	// our bound connection if TCP
 	Connection net.Listener
 	UDPConn    *net.UDPConn
 
-	//Hasher objects
-	Hasher *ConstHasher
+	//Hasher objects (can have multiple for replication of data)
+	Hashers []*ConstHasher
 
 	// we can use a "pool" of connections, or single connecitons per line
 	// performance will be depending on the system and work load tcp vs udp, etc
@@ -296,6 +301,7 @@ type Server struct {
 
 func (server *Server) ResetTickers() {
 	server.ValidLineCount.ResetTick()
+	server.WorkerValidLineCount.ResetTick()
 	server.InvalidLineCount.ResetTick()
 	server.SuccessSendCount.ResetTick()
 	server.FailSendCount.ResetTick()
@@ -366,6 +372,7 @@ func (server *Server) StatsTick() {
 	t_stamp := time.Now().UnixNano()
 
 	server.stats.ValidLineCount = server.ValidLineCount.TotalCount.Get()
+	server.stats.WorkerValidLineCount = server.WorkerValidLineCount.TotalCount.Get()
 	server.stats.InvalidLineCount = server.InvalidLineCount.TotalCount.Get()
 	server.stats.SuccessSendCount = server.SuccessSendCount.TotalCount.Get()
 	server.stats.FailSendCount = server.FailSendCount.TotalCount.Get()
@@ -374,6 +381,7 @@ func (server *Server) StatsTick() {
 	server.stats.AllLinesCount = server.AllLinesCount.TotalCount.Get()
 
 	server.stats.CurrentValidLineCount = server.ValidLineCount.TickCount.Get()
+	server.stats.CurrentWorkerValidLineCount = server.WorkerValidLineCount.TickCount.Get()
 	server.stats.CurrentInvalidLineCount = server.InvalidLineCount.TickCount.Get()
 	server.stats.CurrentSuccessSendCount = server.SuccessSendCount.TickCount.Get()
 	server.stats.CurrentFailSendCount = server.FailSendCount.TickCount.Get()
@@ -381,6 +389,7 @@ func (server *Server) StatsTick() {
 	server.stats.CurrentAllLinesCount = server.AllLinesCount.TickCount.Get()
 
 	server.stats.ValidLineCountList = append(server.stats.ValidLineCountList, server.ValidLineCount.TickCount.Get())
+	server.stats.WorkerValidLineCountList = append(server.stats.WorkerValidLineCountList, server.WorkerValidLineCount.TickCount.Get())
 	server.stats.InvalidLineCountList = append(server.stats.InvalidLineCountList, server.InvalidLineCount.TickCount.Get())
 	server.stats.SuccessSendCountList = append(server.stats.SuccessSendCountList, server.SuccessSendCount.TickCount.Get())
 	server.stats.FailSendCountList = append(server.stats.FailSendCountList, server.FailSendCount.TickCount.Get())
@@ -393,6 +402,7 @@ func (server *Server) StatsTick() {
 
 	if uint(len(server.stats.ValidLineCountList)) > server.NumStats {
 		server.stats.ValidLineCountList = server.stats.ValidLineCountList[1:server.NumStats]
+		server.stats.WorkerValidLineCountList = server.stats.WorkerValidLineCountList[1:server.NumStats]
 		server.stats.InvalidLineCountList = server.stats.InvalidLineCountList[1:server.NumStats]
 		server.stats.SuccessSendCountList = server.stats.SuccessSendCountList[1:server.NumStats]
 		server.stats.FailSendCountList = server.stats.FailSendCountList[1:server.NumStats]
@@ -405,15 +415,25 @@ func (server *Server) StatsTick() {
 	server.stats.UpTimeSeconds = int64(elasped_sec)
 
 	server.stats.ValidLineCountPerSec = server.ValidLineCount.TotalRate(elapsed)
+	server.stats.WorkerValidLineCountPerSec = server.WorkerValidLineCount.TotalRate(elapsed)
 	server.stats.InvalidLineCountPerSec = server.InvalidLineCount.TotalRate(elapsed)
 	server.stats.SuccessSendCountPerSec = server.SuccessSendCount.TotalRate(elapsed)
 	server.stats.UnsendableSendCountPerSec = server.UnsendableSendCount.TotalRate(elapsed)
 	server.stats.UnknownSendCountPerSec = server.UnknownSendCount.TotalRate(elapsed)
 	server.stats.AllLinesCountPerSec = server.AllLinesCount.TotalRate(elapsed)
 	server.stats.Listening = server.ListenURL.String()
-	server.stats.ServersUp = server.Hasher.Members()
-	server.stats.ServersDown = server.Hasher.DroppedServers()
-	server.stats.ServersChecks = server.Hasher.CheckingServers()
+	//XXX TODO FIX ME
+	for idx, hasher := range server.Hashers {
+		if idx == 0 {
+			server.stats.ServersUp = hasher.Members()
+			server.stats.ServersDown = hasher.DroppedServers()
+			server.stats.ServersChecks = hasher.CheckingServers()
+		} else {
+			server.stats.ServersUp = append(server.stats.ServersUp, hasher.Members()...)
+			server.stats.ServersDown = append(server.stats.ServersDown, hasher.DroppedServers()...)
+			server.stats.ServersChecks = append(server.stats.ServersChecks, hasher.CheckingServers()...)
+		}
+	}
 
 }
 
@@ -428,6 +448,7 @@ func (server *Server) tickDisplay() {
 	server.StatsTick()
 
 	server.Logger.Printf("Server: ValidLineCount: %d", server.ValidLineCount.TotalCount)
+	server.Logger.Printf("Server: WorkerValidLineCount: %d", server.WorkerValidLineCount.TotalCount)
 	server.Logger.Printf("Server: InvalidLineCount: %d", server.InvalidLineCount.TotalCount)
 	server.Logger.Printf("Server: SuccessSendCount: %d", server.SuccessSendCount.TotalCount)
 	server.Logger.Printf("Server: FailSendCount: %d", server.FailSendCount.TotalCount)
@@ -438,6 +459,7 @@ func (server *Server) tickDisplay() {
 	server.Logger.Printf("-------")
 	server.Logger.Printf("Server Rate: Duration %ds", uint64(server.ticker/time.Second))
 	server.Logger.Printf("Server Rate: ValidLineCount: %.2f/s", server.ValidLineCount.Rate(server.ticker))
+	server.Logger.Printf("Server Rate: WorkerLineCount: %.2f/s", server.WorkerValidLineCount.Rate(server.ticker))
 	server.Logger.Printf("Server Rate: InvalidLineCount: %.2f/s", server.InvalidLineCount.Rate(server.ticker))
 	server.Logger.Printf("Server Rate: SuccessSendCount: %.2f/s", server.SuccessSendCount.Rate(server.ticker))
 	server.Logger.Printf("Server Rate: FailSendCount: %.2f/s", server.FailSendCount.Rate(server.ticker))
@@ -477,7 +499,7 @@ func (server *Server) Accepter() (<-chan net.Conn, error) {
 	return conns, nil
 }
 
-func (server *Server) startTCPServer(hasher *ConstHasher, worker_queue chan *SendOut, done chan Client) {
+func (server *Server) startTCPServer(hashers []*ConstHasher, worker_queue chan *SendOut, done chan Client) {
 
 	accepts, err := server.Accepter()
 	if err != nil {
@@ -489,7 +511,7 @@ func (server *Server) startTCPServer(hasher *ConstHasher, worker_queue chan *Sen
 			if !ok {
 				return
 			}
-			client := NewTCPClient(server, hasher, conn, worker_queue, done)
+			client := NewTCPClient(server, hashers, conn, worker_queue, done)
 			go client.handleRequest()
 			go client.handleSend()
 		case workerUpDown := <-server.WorkerHold:
@@ -515,7 +537,11 @@ func (server *Server) AddStatusHandlers() {
 	}
 	status := func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "private, max-age=0, no-cache")
-		if len(server.Hasher.Members()) <= 0 {
+		have_s := 0
+		for _, hasher := range server.Hashers {
+			have_s += len(hasher.Members())
+		}
+		if have_s <= 0 {
 			http.Error(w, "all servers down", http.StatusServiceUnavailable)
 			return
 		} else {
@@ -533,10 +559,10 @@ func (server *Server) AddStatusHandlers() {
 }
 
 // different mechanism for UDP servers
-func (server *Server) startUDPServer(hasher *ConstHasher, worker_queue chan *SendOut, done chan Client) {
+func (server *Server) startUDPServer(hashers []*ConstHasher, worker_queue chan *SendOut, done chan Client) {
 
 	//just need on "client" here as we simply just pull from the socket
-	client := NewUDPClient(server, hasher, server.UDPConn, worker_queue, done)
+	client := NewUDPClient(server, hashers, server.UDPConn, worker_queue, done)
 	go client.handleRequest()
 	go client.handleSend()
 	for {
@@ -552,13 +578,13 @@ func (server *Server) startUDPServer(hasher *ConstHasher, worker_queue chan *Sen
 	}
 }
 
-func CreateServer(cfg *Config, hasher *ConstHasher) (*Server, error) {
+func CreateServer(cfg *Config, hashers []*ConstHasher) (*Server, error) {
 	server, err := NewServer(cfg)
 
 	if err != nil {
 		panic(err)
 	}
-	server.Hasher = hasher
+	server.Hashers = hashers
 	server.Workers = DEFAULT_WORKERS
 	if cfg.Workers > 0 {
 		server.Workers = int64(cfg.Workers)
@@ -577,8 +603,8 @@ func (server *Server) StartServer() {
 		go WorkerOutput(worker_queue, server.SendingConnectionMethod)
 	}
 	if server.UDPConn != nil {
-		server.startUDPServer(server.Hasher, worker_queue, done)
+		server.startUDPServer(server.Hashers, worker_queue, done)
 	} else {
-		server.startTCPServer(server.Hasher, worker_queue, done)
+		server.startTCPServer(server.Hashers, worker_queue, done)
 	}
 }

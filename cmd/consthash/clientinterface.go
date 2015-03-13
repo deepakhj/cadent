@@ -9,6 +9,6 @@ type Client interface {
 	handleSend()
 	Close()
 	Server() *Server
-	Hasher() *ConstHasher
+	Hashers() []*ConstHasher
 	WorkerQueue() chan *SendOut
 }

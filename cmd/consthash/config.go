@@ -2,8 +2,9 @@ package main
 
 import (
 	"fmt"
-	"github.com/bbangert/toml"
+	"github.com/BurntSushi/toml"
 	"log"
+	"math"
 	"net/url"
 	"regexp"
 	"strings"
@@ -19,14 +20,17 @@ type ParsedServerConfig struct {
 	CheckUrls  []*url.URL
 }
 
+type ConfigServerList struct {
+	CheckServers string `toml:"check_servers"`
+	Servers      string `toml:"servers"`
+}
+
 type Config struct {
 	Name                    string
 	PIDfile                 string        `toml:"pid_file"`
 	NumProc                 int           `toml:"num_procs"`
 	MaxPoolConnections      int           `toml:"max_pool_connections"`
 	SendingConnectionMethod string        `toml:"sending_method"`
-	Servers                 string        `toml:"servers"`
-	CheckServers            string        `toml:"check_servers"`
 	MsgType                 string        `toml:"msg_type"`
 	MsgFormatRegEx          string        `toml:"msg_regex"`
 	ListenStr               string        `toml:"listen"`
@@ -40,6 +44,9 @@ type Config struct {
 	HashAlgo                string        `toml:"hasher_algo"`
 	HashElter               string        `toml:"hasher_elter"`
 	HashVNodes              int           `toml:"hasher_vnodes"`
+
+	//the array of potential servers to send stuff to (yes we can dupe data out)
+	ConfServerList []ConfigServerList `toml:"servers"`
 
 	// send some stats to the land
 	StatsdServer   string `toml:"statsd_server"`
@@ -55,7 +62,7 @@ type Config struct {
 	HealthServerPath   string `toml:"internal_health_server_path"`
 
 	ListenURL   *url.URL
-	ServerLists *ParsedServerConfig
+	ServerLists []*ParsedServerConfig //parsing up the ConfServerList after read
 
 	//compiled Regex
 	ComRegEx      *regexp.Regexp
@@ -70,39 +77,39 @@ type Config struct {
 }
 
 const (
-	DEFAULT_CONFIG_SECTION      = "default"
-	DEFAULT_LISTEN              = "tcp://127.0.0.1:6000"
-	DEFAULT_HEARTBEAT_COUNT     = uint64(3)
-	DEFAULT_HEARTBEAT           = time.Duration(30)
-	DEFAULT_HEARTBEAT_TIMEOUT   = time.Duration(5)
-	DEFAULT_SERVERDOWN_POLICY   = "keep"
-	DEFAULT_HASHER_ALGO         = "crc32"
-	DEFAULT_HASHER_ELTER        = "graphite"
-	DEFAULT_HASHER_VNODES       = 4
-	DEFAULT_DUPE_REPLICAS       = 1
-	DEFAULT_MAX_POOL_CONNETIONS = 20
+	DEFAULT_CONFIG_SECTION       = "default"
+	DEFAULT_LISTEN               = "tcp://127.0.0.1:6000"
+	DEFAULT_HEARTBEAT_COUNT      = uint64(3)
+	DEFAULT_HEARTBEAT            = time.Duration(30)
+	DEFAULT_HEARTBEAT_TIMEOUT    = time.Duration(5)
+	DEFAULT_SERVERDOWN_POLICY    = "keep"
+	DEFAULT_HASHER_ALGO          = "crc32"
+	DEFAULT_HASHER_ELTER         = "graphite"
+	DEFAULT_HASHER_VNODES        = 4
+	DEFAULT_DUPE_REPLICAS        = 1
+	DEFAULT_MAX_POOL_CONNECTIONS = 10
 )
 
 type ConfigServers map[string]Config
 
 // make our map of servers to hosts
-func (self *Config) parseServerList() (*ParsedServerConfig, error) {
+func (self *Config) parseServerList(servers string, checkservers string) (*ParsedServerConfig, error) {
 
-	if len(self.Servers) == 0 {
+	if len(servers) == 0 {
 		return nil, fmt.Errorf("No 'servers' in config section, skipping")
 	}
 	parsed := new(ParsedServerConfig)
 
-	var server_spl = strings.Split(self.Servers, ",")
+	var server_spl = strings.Split(servers, ",")
 	var checked_spl []string
 
 	// need to set a defaults
-	if len(self.CheckServers) == 0 {
+	if len(checkservers) == 0 {
 		for _, s_server := range server_spl {
 			checked_spl = append(checked_spl, strings.Trim(s_server, " \t\n"))
 		}
 	} else {
-		checked_spl = strings.Split(self.CheckServers, ",")
+		checked_spl = strings.Split(checkservers, ",")
 		if len(checked_spl) != len(server_spl) {
 			return nil, fmt.Errorf("need to have a servers count be the same as check_servers")
 		}
@@ -144,13 +151,17 @@ func (self *Config) parseServerList() (*ParsedServerConfig, error) {
 }
 
 func (self ConfigServers) parseConfig(defaults Config) (out ConfigServers, err error) {
-
 	for chunk, cfg := range self {
+
+		if chunk == DEFAULT_CONFIG_SECTION {
+			cfg.OkToUse = false
+			self[chunk] = cfg
+			continue
+		}
 
 		cfg.Name = chunk
 
 		//set some defaults
-
 		if len(cfg.ListenStr) == 0 {
 			cfg.ListenStr = DEFAULT_LISTEN
 		}
@@ -160,15 +171,26 @@ func (self ConfigServers) parseConfig(defaults Config) (out ConfigServers, err e
 		}
 		cfg.ListenURL = l_url
 
-		parsedServer, err := cfg.parseServerList()
-		// no servers is ok for the defaults section
-		if err != nil && chunk != DEFAULT_CONFIG_SECTION {
-			return nil, err
-		} else if err != nil && chunk == DEFAULT_CONFIG_SECTION {
-			cfg.OkToUse = false
-			continue
+		//parse our list of servers
+		if len(cfg.ConfServerList) == 0 {
+			return nil, fmt.Errorf("No 'servers' in config section, skipping")
 		}
-		cfg.ServerLists = parsedServer
+		cfg.ServerLists = make([]*ParsedServerConfig, 0)
+		minServerCount := 0
+		for _, confSection := range cfg.ConfServerList {
+			parsed, err := cfg.parseServerList(confSection.Servers, confSection.CheckServers)
+			// no servers is ok for the defaults section
+			if err != nil {
+				return nil, err
+			}
+
+			if minServerCount == 0 {
+				minServerCount = len(parsed.ServerList)
+			} else {
+				minServerCount = int(math.Min(float64(len(parsed.ServerList)), float64(minServerCount)))
+			}
+			cfg.ServerLists = append(cfg.ServerLists, parsed)
+		}
 
 		if cfg.MaxServerHeartBeatFail == 0 {
 			cfg.MaxServerHeartBeatFail = DEFAULT_HEARTBEAT_COUNT
@@ -195,7 +217,7 @@ func (self ConfigServers) parseConfig(defaults Config) (out ConfigServers, err e
 			}
 		}
 		if cfg.MaxPoolConnections <= 0 {
-			cfg.MaxPoolConnections = DEFAULT_MAX_POOL_CONNETIONS
+			cfg.MaxPoolConnections = DEFAULT_MAX_POOL_CONNECTIONS
 			if defaults.MaxPoolConnections > 0 {
 				cfg.MaxPoolConnections = defaults.MaxPoolConnections
 			}
@@ -241,9 +263,9 @@ func (self ConfigServers) parseConfig(defaults Config) (out ConfigServers, err e
 			}
 		}
 
-		if cfg.Replicas > len(parsedServer.ServerList) {
-			log.Printf("[WARN] Changing replica count to %d to match the # servers", len(parsedServer.ServerList))
-			cfg.Replicas = len(parsedServer.ServerList)
+		if cfg.Replicas > minServerCount {
+			log.Printf("[WARN] Changing replica count to %d to match the # servers", minServerCount)
+			cfg.Replicas = minServerCount
 		}
 
 		//need to make things seconds
@@ -280,9 +302,7 @@ func (self ConfigServers) parseConfig(defaults Config) (out ConfigServers, err e
 
 		}
 		cfg.OkToUse = true
-
 		self[chunk] = cfg
-
 	}
 
 	return self, nil
@@ -334,8 +354,10 @@ func (self *ConfigServers) debugConfig() {
 			log.Printf("  Hashing Algo: %s ", cfg.HashAlgo)
 			log.Printf("  Dupe Replicas: %d ", cfg.Replicas)
 			log.Printf("  Servers")
-			for idx, hosts := range cfg.ServerLists.ServerList {
-				log.Printf("    %s Checked via %s", hosts, cfg.ServerLists.CheckList[idx])
+			for _, slist := range cfg.ServerLists {
+				for idx, hosts := range slist.ServerList {
+					log.Printf("    %s Checked via %s", hosts, slist.CheckList[idx])
+				}
 			}
 		}
 	}

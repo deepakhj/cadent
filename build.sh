@@ -30,7 +30,7 @@ git clone git@scm-main-01.dc.myfitnesspal.com:goutil/statsd.git cmd/consthash/st
 
 progress Grabing external packages
 
-go get github.com/bbangert/toml
+go get github.com/BurntSushi/toml
 go get github.com/davecheney/profile
 
 make clean

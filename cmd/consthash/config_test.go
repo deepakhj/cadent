@@ -5,7 +5,7 @@ import (
 )
 
 func TestDecode(t *testing.T) {
-	_, err := parseConfigFile("../../config.toml")
+	_, err := parseConfigFile("testfiles/config.toml")
 	if err != nil {
 		t.Fatal(err)
 	}

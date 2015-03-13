@@ -81,10 +81,23 @@ type CheckedServerPool struct {
 	DoChecks bool
 }
 
-//make from our basic config object
-func createServerPoolFromConfig(cfg *Config, serveraction ServerPoolRunner) (*CheckedServerPool, error) {
+// create a list of pools
+func createServerPoolsFromConfig(cfg *Config, serveraction ServerPoolRunner) (pools []*CheckedServerPool, err error) {
 
-	serverp, err := createServerPool(cfg.ServerLists.ServerUrls, cfg.ServerLists.CheckUrls, serveraction)
+	for _, on_servers := range cfg.ServerLists {
+		serverp, err := createServerPoolFromConfig(cfg, on_servers, serveraction)
+		if err != nil {
+			return nil, fmt.Errorf("Error setting up servers: %s", err)
+		}
+		pools = append(pools, serverp)
+	}
+	return pools, nil
+}
+
+// create a single
+func createServerPoolFromConfig(cfg *Config, serverlist *ParsedServerConfig, serveraction ServerPoolRunner) (*CheckedServerPool, error) {
+
+	serverp, err := createServerPool(serverlist.ServerUrls, serverlist.CheckUrls, serveraction)
 	if err != nil {
 		return nil, fmt.Errorf("Error setting up servers: %s", err)
 	}
@@ -92,9 +105,7 @@ func createServerPoolFromConfig(cfg *Config, serveraction ServerPoolRunner) (*Ch
 	serverp.DownOutCount = int64(cfg.MaxServerHeartBeatFail)
 	serverp.ConnectionTimeout = cfg.ServerHeartBeatTimeout
 	serverp.DownPolicy = cfg.ServerDownPolicy
-	//log.Print("createServerPoolFromConfig ", &serveraction)
 	return serverp, nil
-
 }
 
 func createServerPool(serverlist []*url.URL, checklist []*url.URL, serveraction ServerPoolRunner) (serverp *CheckedServerPool, err error) {

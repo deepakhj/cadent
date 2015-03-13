@@ -13,7 +13,7 @@ import (
 
 type GraphiteRunner struct {
 	client    Client
-	Hasher    *ConstHasher
+	Hashers   []*ConstHasher
 	key_param string
 	param     string
 	params    []string
@@ -23,9 +23,9 @@ func NewGraphiteRunner(client Client, conf map[string]interface{}, param string)
 
 	// <time> <key> <value>
 	job := &GraphiteRunner{
-		client: client,
-		Hasher: client.Hasher(),
-		param:  param,
+		client:  client,
+		Hashers: client.Hashers(),
+		param:   param,
 	}
 	graphite_array := strings.Split(param, " ")
 	if len(graphite_array) == 3 {
@@ -47,26 +47,38 @@ func (job GraphiteRunner) GetKey() string {
 
 func (job GraphiteRunner) run() string {
 
-	// may have replicas we need to deal with
-	servs, err := job.Hasher.GetN(job.GetKey(), job.Client().Server().Replicas)
-	if err == nil {
-		for _, useme := range servs {
+	//replicate the data across our Lists
+	out_str := ""
+	for idx, hasher := range job.Hashers {
 
-			StatsdClient.Incr("success.valid-lines", 1)
-			job.Client().Server().ValidLineCount.Up(1)
-			sendOut := &SendOut{
-				outserver: useme,
-				server:    job.Client().Server(),
-				param:     job.param,
-				client:    job.Client(),
+		// may have replicas inside the pool too that we need to deal with
+		servs, err := hasher.GetN(job.GetKey(), job.Client().Server().Replicas)
+		if err == nil {
+			for nidx, useme := range servs {
+
+				if idx == 0 && nidx == 0 {
+					job.Client().Server().ValidLineCount.Up(1)
+					StatsdClient.Incr("success.valid-lines", 1)
+				}
+				StatsdClient.Incr("success.valid-lines-sent-to-workers", 1)
+				job.Client().Server().WorkerValidLineCount.Up(1)
+
+				sendOut := &SendOut{
+					outserver: useme,
+					server:    job.Client().Server(),
+					param:     job.param,
+					client:    job.Client(),
+				}
+				job.Client().Server().WorkerHold <- 1
+				job.Client().WorkerQueue() <- sendOut
 			}
-			job.Client().Server().WorkerHold <- 1
-			job.Client().WorkerQueue() <- sendOut
-		}
+			out_str += fmt.Sprintf("yay graphite %s: %s", servs, string(job.param))
+		} else {
 
-		return fmt.Sprintf("yay graphite %s: %s", servs, string(job.param))
+			StatsdClient.Incr("failed.invalid-hash-server", 1)
+			job.Client().Server().UnsendableSendCount.Up(1)
+			out_str += fmt.Sprintf("ERROR ON graphite %s", err)
+		}
 	}
-	StatsdClient.Incr("failed.invalid-hash-server", 1)
-	job.Client().Server().UnsendableSendCount.Up(1)
-	return fmt.Sprintf("ERROR ON graphite %s", err)
+	return out_str
 }

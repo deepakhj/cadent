@@ -129,7 +129,7 @@ func main() {
 
 	setSystemStuff(def.NumProc)
 
-	/// main block as we want to "defer" it's removale at main exit
+	// main block as we want to "defer" it's removal at main exit
 	var pidFile = def.PIDfile
 	if pidFile != "" {
 		contents, err := ioutil.ReadFile(pidFile)
@@ -179,12 +179,22 @@ func main() {
 	useconfigs := config.ServableConfigs()
 
 	for _, cfg := range useconfigs {
-		hasher, err := createConstHasherFromConfig(&cfg)
+
+		var hashers []*ConstHasher
+
+		for _, serverlist := range cfg.ServerLists {
+			hasher, err := createConstHasherFromConfig(&cfg, serverlist)
+
+			if err != nil {
+				panic(err)
+			}
+			go hasher.ServerPool.startChecks()
+			hashers = append(hashers, hasher)
+		}
+		server, err := CreateServer(&cfg, hashers)
 		if err != nil {
 			panic(err)
 		}
-		go hasher.ServerPool.startChecks()
-		server, err := CreateServer(&cfg, hasher)
 		servers = append(servers, server)
 		go server.StartServer()
 	}

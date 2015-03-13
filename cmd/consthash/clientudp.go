@@ -11,8 +11,8 @@ import (
 )
 
 type UDPClient struct {
-	server *Server
-	hasher *ConstHasher
+	server  *Server
+	hashers []*ConstHasher
 
 	Connection   *net.UDPConn
 	LineCount    uint64
@@ -24,11 +24,11 @@ type UDPClient struct {
 	worker_queue chan *SendOut
 }
 
-func NewUDPClient(server *Server, hasher *ConstHasher, conn *net.UDPConn, worker_queue chan *SendOut, done chan Client) *UDPClient {
+func NewUDPClient(server *Server, hashers []*ConstHasher, conn *net.UDPConn, worker_queue chan *SendOut, done chan Client) *UDPClient {
 
 	client := new(UDPClient)
 	client.server = server
-	client.hasher = hasher
+	client.hashers = hashers
 
 	client.LineCount = 0
 	client.Connection = conn
@@ -48,15 +48,15 @@ func (client UDPClient) Server() (server *Server) {
 	return client.server
 }
 
-func (client UDPClient) Hasher() (hasher *ConstHasher) {
-	return client.hasher
+func (client UDPClient) Hashers() (hasher []*ConstHasher) {
+	return client.hashers
 }
 func (client UDPClient) WorkerQueue() chan *SendOut {
 	return client.worker_queue
 }
 func (client UDPClient) Close() {
 	client.server = nil
-	client.hasher = nil
+	client.hashers = nil
 	if client.Connection != nil {
 		client.Connection.Close()
 	}
