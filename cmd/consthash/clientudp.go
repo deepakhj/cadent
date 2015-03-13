@@ -61,6 +61,16 @@ func (client UDPClient) Close() {
 		client.Connection.Close()
 	}
 }
+
+func (client UDPClient) run(line string) {
+	StatsdClient.Incr("incoming.udp.lines", 1)
+	client.LineCount += 1
+	job, err := NewRunner(client, strings.Trim(line, "\n\t "))
+	if err == nil {
+		RunRunner(job, client.channel)
+	}
+}
+
 func (client UDPClient) handleRequest() {
 	for {
 		var buf [1024]byte
@@ -70,14 +80,8 @@ func (client UDPClient) handleRequest() {
 			if len(line) == 0 {
 				continue
 			}
-			StatsdClient.Incr("incoming.udp.lines", 1)
-			client.LineCount += 1
-			job, err := NewRunner(client, strings.Trim(line, "\n\t "))
-			if err == nil {
-				go RunRunner(job, client.channel)
-			}
+			go client.run(line)
 		}
-
 	}
 
 }
