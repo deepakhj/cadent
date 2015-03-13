@@ -68,6 +68,15 @@ func (client TCPClient) Close() {
 
 }
 
+func (client TCPClient) run(line string) {
+	//client.LineCount += 1
+
+	job, err := NewRunner(client, strings.Trim(line, "\n\t "))
+	if err == nil {
+		RunRunner(job, client.channel)
+	}
+}
+
 func (client TCPClient) handleRequest() {
 
 	for {
@@ -78,13 +87,8 @@ func (client TCPClient) handleRequest() {
 		}
 
 		StatsdClient.Incr("incoming.tcp.lines", 1)
+		go client.run(line)
 
-		client.LineCount += 1
-
-		job, err := NewRunner(client, strings.Trim(line, "\n\t "))
-		if err == nil {
-			RunRunner(job, client.channel)
-		}
 	}
 	//close it
 	//client.done <- client
