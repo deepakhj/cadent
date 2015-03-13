@@ -63,6 +63,7 @@ func (client UDPClient) Close() {
 }
 
 func (client UDPClient) run(line string) {
+	go StatsdClient.Incr("incoming.udp.lines", 1)
 	//client.LineCount += 1
 	job, err := NewRunner(client, strings.Trim(line, "\n\t "))
 	if err == nil {
@@ -79,7 +80,6 @@ func (client UDPClient) handleRequest() {
 			if len(line) == 0 {
 				continue
 			}
-			StatsdClient.Incr("incoming.udp.lines", 1)
 			go client.run(line)
 		}
 	}
