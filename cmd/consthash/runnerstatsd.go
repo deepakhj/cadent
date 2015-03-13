@@ -11,7 +11,7 @@ import (
 
 type StatsdRunner struct {
 	client    Client
-	Hashers   []*ConstHasher
+	Hashers   *[]*ConstHasher
 	param     string
 	key_param string
 	params    []string
@@ -48,7 +48,7 @@ func (job StatsdRunner) run() string {
 
 	//replicate the data across our Lists
 	out_str := ""
-	for idx, hasher := range job.Hashers {
+	for idx, hasher := range *job.Hashers {
 
 		// may have replicas inside the pool too that we need to deal with
 		servs, err := hasher.GetN(job.GetKey(), job.Client().Server().Replicas)

@@ -11,7 +11,7 @@ import (
 
 type RegExRunner struct {
 	client          Client
-	Hashers         []*ConstHasher
+	Hashers         *[]*ConstHasher
 	param           string
 	key_regex       *regexp.Regexp
 	key_regex_names []string
@@ -58,7 +58,7 @@ func (job RegExRunner) run() string {
 
 	//replicate the data across our Lists
 	out_str := ""
-	for idx, hasher := range job.Hashers {
+	for idx, hasher := range *job.Hashers {
 
 		// may have replicas inside the pool too that we need to deal with
 		servs, err := hasher.GetN(job.GetKey(), job.Client().Server().Replicas)

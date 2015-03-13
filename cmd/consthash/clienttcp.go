@@ -52,8 +52,8 @@ func (client TCPClient) Server() (server *Server) {
 	return client.server
 }
 
-func (client TCPClient) Hashers() (server []*ConstHasher) {
-	return *client.hashers
+func (client TCPClient) Hashers() (server *[]*ConstHasher) {
+	return client.hashers
 }
 func (client TCPClient) WorkerQueue() chan *SendOut {
 	return client.worker_queue

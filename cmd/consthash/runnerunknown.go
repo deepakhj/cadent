@@ -6,7 +6,7 @@ package main
 
 type UnknownRunner struct {
 	client  Client
-	Hashers []*ConstHasher
+	Hashers *[]*ConstHasher
 	param   string
 	params  []string
 }

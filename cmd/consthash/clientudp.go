@@ -48,8 +48,8 @@ func (client UDPClient) Server() (server *Server) {
 	return client.server
 }
 
-func (client UDPClient) Hashers() (hasher []*ConstHasher) {
-	return *client.hashers
+func (client UDPClient) Hashers() (hasher *[]*ConstHasher) {
+	return client.hashers
 }
 func (client UDPClient) WorkerQueue() chan *SendOut {
 	return client.worker_queue

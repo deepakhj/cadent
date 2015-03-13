@@ -13,7 +13,7 @@ import (
 
 type GraphiteRunner struct {
 	client    Client
-	Hashers   []*ConstHasher
+	Hashers   *[]*ConstHasher
 	key_param string
 	param     string
 	params    []string
@@ -49,7 +49,7 @@ func (job GraphiteRunner) run() string {
 
 	//replicate the data across our Lists
 	out_str := ""
-	for idx, hasher := range job.Hashers {
+	for idx, hasher := range *job.Hashers {
 
 		// may have replicas inside the pool too that we need to deal with
 		servs, err := hasher.GetN(job.GetKey(), job.Client().Server().Replicas)
