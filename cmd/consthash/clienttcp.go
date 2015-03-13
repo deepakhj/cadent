@@ -12,7 +12,7 @@ import (
 
 type TCPClient struct {
 	server  *Server
-	hashers []*ConstHasher
+	hashers *[]*ConstHasher
 
 	Connection   net.Conn
 	LineCount    uint64
@@ -27,7 +27,7 @@ type TCPClient struct {
 	worker_queue chan *SendOut
 }
 
-func NewTCPClient(server *Server, hashers []*ConstHasher, conn net.Conn, worker_queue chan *SendOut, done chan Client) *TCPClient {
+func NewTCPClient(server *Server, hashers *[]*ConstHasher, conn net.Conn, worker_queue chan *SendOut, done chan Client) *TCPClient {
 
 	client := new(TCPClient)
 	client.server = server
@@ -53,7 +53,7 @@ func (client TCPClient) Server() (server *Server) {
 }
 
 func (client TCPClient) Hashers() (server []*ConstHasher) {
-	return client.hashers
+	return *client.hashers
 }
 func (client TCPClient) WorkerQueue() chan *SendOut {
 	return client.worker_queue

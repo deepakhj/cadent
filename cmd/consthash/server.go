@@ -61,9 +61,9 @@ func poolWorker(j *SendOut) {
 		// populate it
 		outsrv.InitPool()
 		j.server.Outpool[j.outserver] = outsrv
-		// done with this locking ... the rest of the pool operations
-		// are locked internally to the pooler
 	}
+	// done with this locking ... the rest of the pool operations
+	// are locked internally to the pooler
 	j.server.poolmu.Unlock()
 
 	netconn, err := outsrv.Open()
@@ -171,18 +171,20 @@ func NewRunner(client Client, line string) (Runner, error) {
 
 	var runner Runner
 	var err error
-	if msg_type == "statsd" {
+	switch {
+	case msg_type == "statsd":
 		runner, err = NewStatsdRunner(client, client.Server().RunnerConfig, line)
-	} else if msg_type == "graphite" {
+	case msg_type == "graphite":
 		runner, err = NewGraphiteRunner(client, client.Server().RunnerConfig, line)
-	} else if msg_type == "regex" {
+	case msg_type == "regex":
 		runner, err = NewRegExRunner(client, client.Server().RunnerConfig, line)
-	} else {
+	default:
 		runner = UnknownRunner{
 			client:  client,
 			Hashers: client.Hashers(),
 		}
 	}
+
 	if err != nil {
 		return nil, fmt.Errorf("Failed to configure Runner, aborting")
 	}
@@ -499,7 +501,7 @@ func (server *Server) Accepter() (<-chan net.Conn, error) {
 	return conns, nil
 }
 
-func (server *Server) startTCPServer(hashers []*ConstHasher, worker_queue chan *SendOut, done chan Client) {
+func (server *Server) startTCPServer(hashers *[]*ConstHasher, worker_queue chan *SendOut, done chan Client) {
 
 	accepts, err := server.Accepter()
 	if err != nil {
@@ -559,7 +561,7 @@ func (server *Server) AddStatusHandlers() {
 }
 
 // different mechanism for UDP servers
-func (server *Server) startUDPServer(hashers []*ConstHasher, worker_queue chan *SendOut, done chan Client) {
+func (server *Server) startUDPServer(hashers *[]*ConstHasher, worker_queue chan *SendOut, done chan Client) {
 
 	//just need on "client" here as we simply just pull from the socket
 	client := NewUDPClient(server, hashers, server.UDPConn, worker_queue, done)
@@ -603,8 +605,8 @@ func (server *Server) StartServer() {
 		go WorkerOutput(worker_queue, server.SendingConnectionMethod)
 	}
 	if server.UDPConn != nil {
-		server.startUDPServer(server.Hashers, worker_queue, done)
+		server.startUDPServer(&server.Hashers, worker_queue, done)
 	} else {
-		server.startTCPServer(server.Hashers, worker_queue, done)
+		server.startTCPServer(&server.Hashers, worker_queue, done)
 	}
 }
