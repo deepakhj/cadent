@@ -150,7 +150,9 @@ func WorkerOutput(jobs <-chan *SendOut, sendmethod string) {
 
 func RunRunner(job Runner, out chan string) {
 	//direct timer to void leaks (i.e. NOT time.After(...))
+
 	timer := time.NewTimer(500 * time.Millisecond)
+	defer StatsdNanoTimeFunc(fmt.Sprintf("factory.runner.process-time-ns"), time.Now())
 
 	select {
 	case out <- job.run() + "\n":
