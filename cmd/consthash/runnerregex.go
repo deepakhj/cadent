@@ -82,12 +82,12 @@ func (job RegExRunner) run() string {
 				job.Client().Server().WorkerHold <- 1
 				job.Client().WorkerQueue() <- sendOut
 			}
-			out_str += fmt.Sprintf("yay regex %s: %s", servs, string(job.param))
+			out_str += "ok regex"
 		} else {
 
 			StatsdClient.Incr("failed.invalid-hash-server", 1)
 			job.Client().Server().UnsendableSendCount.Up(1)
-			out_str += fmt.Sprintf("ERROR ON regex %s", err)
+			out_str += "failed regex"
 		}
 	}
 	return out_str

@@ -72,12 +72,12 @@ func (job GraphiteRunner) run() string {
 				job.Client().Server().WorkerHold <- 1
 				job.Client().WorkerQueue() <- sendOut
 			}
-			out_str += fmt.Sprintf("yay graphite %s: %s", servs, string(job.param))
+			out_str += "ok graphite"
 		} else {
 
 			StatsdClient.Incr("failed.invalid-hash-server", 1)
 			job.Client().Server().UnsendableSendCount.Up(1)
-			out_str += fmt.Sprintf("ERROR ON graphite %s", err)
+			out_str += "failed graphite"
 		}
 	}
 	return out_str

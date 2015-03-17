@@ -71,12 +71,12 @@ func (job StatsdRunner) run() string {
 				job.Client().Server().WorkerHold <- 1
 				job.Client().WorkerQueue() <- sendOut
 			}
-			out_str += fmt.Sprintf("yay statsd %s: %s", servs, string(job.param))
+			out_str += "ok statsd"
 		} else {
 
 			StatsdClient.Incr("failed.invalid-hash-server", 1)
 			job.Client().Server().UnsendableSendCount.Up(1)
-			out_str += fmt.Sprintf("ERROR ON statsd %s", err)
+			out_str += "failed statsd"
 		}
 	}
 	return out_str
