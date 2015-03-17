@@ -161,6 +161,8 @@ func RunRunner(job Runner, out chan string) {
 	case <-timer.C:
 		timer.Stop()
 		job.Client().Server().WorkerHold <- -1
+		StatsdClient.Incr("failed.connection-timeout", 1)
+		job.Client().Server().FailSendCount.Up(1)
 		log.Printf("Job Channel Runner Timeout")
 	}
 }
