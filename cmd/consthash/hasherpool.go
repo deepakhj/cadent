@@ -98,18 +98,19 @@ func (self *ConstHasher) GetN(in_key string, num int) ([]string, error) {
 	srv, ok := self.Cache.Get(cache_key)
 
 	if !ok {
-		StatsdClient.Incr("lrucache.miss", 1)
+		go StatsdClient.Incr("lrucache.miss", 1)
 		srv, err := self.Hasher.GetN(in_key, num)
 		self.Cache.Set(cache_key, MultiServerCacheItem(srv))
 		for _, useme := range srv {
-			StatsdClient.Incr(fmt.Sprintf("hashserver.%s.used", self.cleanKey(useme)), 1)
+			go StatsdClient.Incr(fmt.Sprintf("hashserver.%s.used", self.cleanKey(useme)), 1)
 		}
 		return srv, err
 	}
 	for _, useme := range srv.(MultiServerCacheItem) {
-		StatsdClient.Incr(fmt.Sprintf("hashserver.%s.used", self.cleanKey(useme)), 1)
+		go StatsdClient.Incr(fmt.Sprintf("hashserver.%s.used", self.cleanKey(useme)), 1)
 	}
-	StatsdClient.Incr("lrucache.hit", 1)
+
+	go StatsdClient.Incr("lrucache.hit", 1)
 	return srv.(MultiServerCacheItem), nil
 }
 

@@ -439,6 +439,12 @@ func (server *Server) StatsTick() {
 			server.stats.ServersDown = append(server.stats.ServersDown, hasher.DroppedServers()...)
 			server.stats.ServersChecks = append(server.stats.ServersChecks, hasher.CheckingServers()...)
 		}
+		//tick the cacher stats
+		length, size, capacity, _ := hasher.Cache.Stats()
+		StatsdClient.Gauge("lrucache.length", int64(length))
+		StatsdClient.Gauge("lrucache.size", int64(size))
+		StatsdClient.Gauge("lrucache.capacity", int64(capacity))
+
 	}
 
 }
