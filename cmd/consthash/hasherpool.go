@@ -51,7 +51,7 @@ func (self *ConstHasher) onServerUp(server url.URL) {
 	log.Printf("Adding server %s to hasher", server.String())
 	StatsdClient.Incr("hasher.added-server", 1)
 	self.Hasher.Add(server.String())
-	StatsdClient.Gauge("hasher.up-servers", int64(len(self.Members())))
+	StatsdClient.GaugeAbsolute("hasher.up-servers", int64(len(self.Members())))
 	//evil as this is we must clear the cache
 	self.Cache.Clear()
 	log.Printf("[onServerUp] Current members %s from hasher", self.Members())
@@ -61,7 +61,7 @@ func (self *ConstHasher) onServerDown(server url.URL) {
 	log.Printf("Removing server %s from hasher", server.String())
 	StatsdClient.Incr("hasher.removed-server", 1)
 	self.Hasher.Remove(server.String())
-	StatsdClient.Gauge("hasher.up-servers", int64(len(self.Members())))
+	StatsdClient.GaugeAbsolute("hasher.up-servers", int64(len(self.Members())))
 	//evil as this is we must clear the cache
 	self.Cache.Clear()
 	log.Printf("[onServerDown] Current members %s from hasher", self.Members())

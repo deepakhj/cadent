@@ -528,9 +528,13 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, worker_queue chan 
 			go client.handleSend()
 		case workerUpDown := <-server.WorkerHold:
 			server.InWorkQueue.Add(workerUpDown)
-			if server.InWorkQueue.Get() == server.Workers {
-				server.Logger.Printf("Worker Queue Full %d", server.InWorkQueue.Get())
+			ct := server.InWorkQueue.Get()
+			if ct == server.Workers {
+				StatsdClient.Incr("worker.queue.isfull", 1)
+				server.Logger.Printf("Worker Queue Full %d", ct)
 			}
+			StatsdClient.GaugeAvg("worker.queue.length", ct)
+
 		case client := <-done:
 			client.Close()
 		}
@@ -581,9 +585,13 @@ func (server *Server) startUDPServer(hashers *[]*ConstHasher, worker_queue chan 
 		select {
 		case workerUpDown := <-server.WorkerHold:
 			server.InWorkQueue.Add(workerUpDown)
-			if server.InWorkQueue.Get() == server.Workers {
-				server.Logger.Printf("Worker Queue Full %d", server.InWorkQueue.Get())
+			ct := server.InWorkQueue.Get()
+			if ct == server.Workers {
+				StatsdClient.Incr("worker.queue.isfull", 1)
+				server.Logger.Printf("Worker Queue Full %d", ct)
 			}
+			StatsdClient.GaugeAvg("worker.queue.length", ct)
+
 		case client := <-done:
 			client.Close()
 		}
