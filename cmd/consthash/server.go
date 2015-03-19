@@ -441,9 +441,9 @@ func (server *Server) StatsTick() {
 		}
 		//tick the cacher stats
 		length, size, capacity, _ := hasher.Cache.Stats()
-		StatsdClient.Gauge("lrucache.length", int64(length))
-		StatsdClient.Gauge("lrucache.size", int64(size))
-		StatsdClient.Gauge("lrucache.capacity", int64(capacity))
+		StatsdClient.GaugeAbsolute("lrucache.length", int64(length))
+		StatsdClient.GaugeAbsolute("lrucache.size", int64(size))
+		StatsdClient.GaugeAbsolute("lrucache.capacity", int64(capacity))
 
 	}
 
