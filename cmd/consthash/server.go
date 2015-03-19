@@ -139,10 +139,10 @@ func singleWorker(j *SendOut) {
 //spins up the queue of go routines to handle outgoing
 func WorkerOutput(jobs <-chan *SendOut, sendmethod string) {
 	for j := range jobs {
-		if sendmethod == "single" {
+		switch sendmethod {
+		case "single":
 			singleWorker(j)
-
-		} else {
+		default:
 			poolWorker(j)
 		}
 	}
@@ -196,8 +196,6 @@ func NewRunner(client Client, line string) (Runner, error) {
 	return runner, nil
 
 }
-
-/****************** CLIENTS *********************/
 
 /****************** SERVERS *********************/
 
