@@ -10,85 +10,32 @@ import (
 )
 
 type RegExRunner struct {
-	client          Client
-	Hashers         *[]*ConstHasher
-	param           string
 	key_regex       *regexp.Regexp
 	key_regex_names []string
-	key_param       string
-	params          []string
 }
 
-func NewRegExRunner(client Client, conf map[string]interface{}, param string) (*RegExRunner, error) {
+func NewRegExRunner(conf map[string]interface{}) (*RegExRunner, error) {
 
 	//<key>:blaaa
-	job := &RegExRunner{
-		client:  client,
-		Hashers: client.Hashers(),
-		param:   param,
-	}
+	job := &RegExRunner{}
 	job.key_regex = conf["regexp"].(*regexp.Regexp)
 	job.key_regex_names = conf["regexpNames"].([]string)
+	return job, nil
+}
 
-	matched := job.key_regex.FindAllStringSubmatch(param, -1)[0]
+func (job RegExRunner) ProcessLine(line string) (key string, orig_line string, err error) {
+	var key_param string
+
+	matched := job.key_regex.FindAllStringSubmatch(line, -1)[0]
 	for i, n := range matched {
 		//fmt.Printf("%d. match='%s'\tname='%s'\n", i, n, n1[i])
 		if job.key_regex_names[i] == "Key" {
-			job.key_param = n
+			key_param = n
 		}
 	}
-
-	if len(job.key_param) > 0 {
-		job.param = param
-		job.params = matched
-		return job, nil
+	if len(key_param) > 0 {
+		return key_param, line, nil
 	}
-	return nil, fmt.Errorf("Invalid RegEx line")
-}
+	return "", "", fmt.Errorf("Invalid Regex (cannot find key) line")
 
-func (job RegExRunner) Client() Client {
-	return job.client
-}
-
-func (job RegExRunner) GetKey() string {
-	return job.key_param
-}
-
-func (job RegExRunner) run() string {
-
-	//replicate the data across our Lists
-	out_str := ""
-	for idx, hasher := range *job.Hashers {
-
-		// may have replicas inside the pool too that we need to deal with
-		servs, err := hasher.GetN(job.GetKey(), job.Client().Server().Replicas)
-		if err == nil {
-			for nidx, useme := range servs {
-
-				if idx == 0 && nidx == 0 {
-
-					job.Client().Server().ValidLineCount.Up(1)
-					StatsdClient.Incr("success.valid-lines", 1)
-				}
-				StatsdClient.Incr("success.valid-lines-sent-to-workers", 1)
-				job.Client().Server().WorkerValidLineCount.Up(1)
-
-				sendOut := &SendOut{
-					outserver: useme,
-					server:    job.Client().Server(),
-					param:     job.param,
-					client:    job.Client(),
-				}
-				job.Client().Server().WorkerHold <- 1
-				job.Client().WorkerQueue() <- sendOut
-			}
-			out_str += "ok regex"
-		} else {
-
-			StatsdClient.Incr("failed.invalid-hash-server", 1)
-			job.Client().Server().UnsendableSendCount.Up(1)
-			out_str += "failed regex"
-		}
-	}
-	return out_str
 }

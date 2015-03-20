@@ -148,55 +148,6 @@ func WorkerOutput(jobs <-chan *SendOut, sendmethod string) {
 	}
 }
 
-func RunRunner(job Runner, out chan string) {
-	//direct timer to void leaks (i.e. NOT time.After(...))
-
-	timer := time.NewTimer(500 * time.Millisecond)
-	defer StatsdNanoTimeFunc(fmt.Sprintf("factory.runner.process-time-ns"), time.Now())
-
-	select {
-	case out <- job.run() + "\n":
-		timer.Stop()
-		job.Client().Server().WorkerHold <- -1
-	case <-timer.C:
-		timer.Stop()
-		job.Client().Server().WorkerHold <- -1
-		StatsdClient.Incr("failed.connection-timeout", 1)
-		job.Client().Server().FailSendCount.Up(1)
-		log.Printf("Job Channel Runner Timeout")
-	}
-}
-
-func NewRunner(client Client, line string) (Runner, error) {
-	msg_type := client.Server().RunnerTypeString
-
-	defer StatsdNanoTimeFunc(fmt.Sprintf("factory.%s.process-time-ns", msg_type), time.Now())
-	client.Server().AllLinesCount.Up(1)
-
-	var runner Runner
-	var err error
-	switch {
-	case msg_type == "statsd":
-		runner, err = NewStatsdRunner(client, client.Server().RunnerConfig, line)
-	case msg_type == "graphite":
-		runner, err = NewGraphiteRunner(client, client.Server().RunnerConfig, line)
-	case msg_type == "regex":
-		runner, err = NewRegExRunner(client, client.Server().RunnerConfig, line)
-	default:
-		runner = UnknownRunner{
-			client:  client,
-			Hashers: client.Hashers(),
-		}
-	}
-
-	if err != nil {
-		return nil, fmt.Errorf("Failed to configure Runner, aborting")
-	}
-
-	return runner, nil
-
-}
-
 /****************** SERVERS *********************/
 
 //helper object for json'ing the basic stat data
@@ -287,13 +238,15 @@ type Server struct {
 	WriteTimeout time.Duration
 
 	//workers and ques sizes
+	WorkQueue   chan *SendOut
 	WorkerHold  chan int64
 	InWorkQueue AtomicInt
 	Workers     int64
 
-	//the Runner type to determin "keys"
+	//the Runner type to determine the keys to hash on
 	RunnerTypeString string
 	RunnerConfig     map[string]interface{}
+	LineProcessor    Runner
 
 	//uptime
 	StartTime time.Time
@@ -301,6 +254,83 @@ type Server struct {
 	stats ServerStats
 
 	Logger *log.Logger
+}
+
+func (server *Server) GetLineProcessor() (Runner, error) {
+	msg_type := server.RunnerTypeString
+
+	var runner Runner
+	var err error = nil
+	switch {
+	case msg_type == "statsd":
+		runner, err = NewStatsdRunner(server.RunnerConfig)
+	case msg_type == "graphite":
+		runner, err = NewGraphiteRunner(server.RunnerConfig)
+	case msg_type == "regex":
+		runner, err = NewRegExRunner(server.RunnerConfig)
+	default:
+		return nil, fmt.Errorf("Failed to configure Runner, aborting")
+	}
+
+	return runner, err
+
+}
+
+func (server *Server) RunRunner(key string, line string, out chan string) {
+	//direct timer to void leaks (i.e. NOT time.After(...))
+
+	timer := time.NewTimer(500 * time.Millisecond)
+	defer StatsdNanoTimeFunc(fmt.Sprintf("factory.runner.process-time-ns"), time.Now())
+
+	select {
+	case out <- server.PushLine(key, line) + "\n":
+		timer.Stop()
+		server.WorkerHold <- -1
+	case <-timer.C:
+		timer.Stop()
+		server.WorkerHold <- -1
+		StatsdClient.Incr("failed.connection-timeout", 1)
+		server.FailSendCount.Up(1)
+		log.Printf("Job Channel Runner Timeout")
+	}
+}
+
+// the "main" hash chooser for a give line, the attaches it to a sender queue
+func (server *Server) PushLine(key string, line string) string {
+
+	//replicate the data across our Lists
+	out_str := ""
+	for idx, hasher := range server.Hashers {
+
+		// may have replicas inside the pool too that we need to deal with
+		servs, err := hasher.GetN(key, server.Replicas)
+		if err == nil {
+			for nidx, useme := range servs {
+				// just log the valid lines "once" total ends stats are WorkerValidLineCount
+				if idx == 0 && nidx == 0 {
+					server.ValidLineCount.Up(1)
+					StatsdClient.Incr("success.valid-lines", 1)
+				}
+				StatsdClient.Incr("success.valid-lines-sent-to-workers", 1)
+				server.WorkerValidLineCount.Up(1)
+
+				sendOut := &SendOut{
+					outserver: useme,
+					server:    server,
+					param:     line,
+				}
+				server.WorkerHold <- 1
+				server.WorkQueue <- sendOut
+			}
+			out_str += "ok"
+		} else {
+
+			StatsdClient.Incr("failed.invalid-hash-server", 1)
+			server.UnsendableSendCount.Up(1)
+			out_str += "failed"
+		}
+	}
+	return out_str
 }
 
 func (server *Server) ResetTickers() {
@@ -515,6 +545,12 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, worker_queue chan 
 	if err != nil {
 		panic(err)
 	}
+
+	server.LineProcessor, err = server.GetLineProcessor()
+	if err != nil {
+		panic(err)
+	}
+
 	for {
 		select {
 		case conn, ok := <-accepts:
@@ -575,8 +611,15 @@ func (server *Server) AddStatusHandlers() {
 // different mechanism for UDP servers
 func (server *Server) startUDPServer(hashers *[]*ConstHasher, worker_queue chan *SendOut, done chan Client) {
 
+	var err error
+	server.LineProcessor, err = server.GetLineProcessor()
+	if err != nil {
+		panic(err)
+	}
+
 	//just need on "client" here as we simply just pull from the socket
 	client := NewUDPClient(server, hashers, server.UDPConn, worker_queue, done)
+
 	go client.handleRequest()
 	go client.handleSend()
 	for {
@@ -620,6 +663,10 @@ func (server *Server) StartServer() {
 	for w := int64(1); w <= server.Workers; w++ {
 		go WorkerOutput(worker_queue, server.SendingConnectionMethod)
 	}
+
+	//the mighty queue for the main runner to push to
+	server.WorkQueue = worker_queue
+
 	if server.UDPConn != nil {
 		server.startUDPServer(&server.Hashers, worker_queue, done)
 	} else {

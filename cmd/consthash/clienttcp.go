@@ -11,13 +11,13 @@ import (
 )
 
 type TCPClient struct {
-	server  *Server
-	hashers *[]*ConstHasher
+	server     *Server
+	hashers    *[]*ConstHasher
+	LineParser Runner
 
-	Connection   net.Conn
-	LineCount    uint64
-	MaxLineCount uint64
-	CycleCount   uint64
+	Connection net.Conn
+	LineCount  uint64
+
 	//ins and outs
 	writer *bufio.Writer
 	reader *bufio.Reader
@@ -36,10 +36,6 @@ func NewTCPClient(server *Server, hashers *[]*ConstHasher, conn net.Conn, worker
 	//client.writer = bufio.NewWriter(conn)
 	client.reader = bufio.NewReader(conn)
 	client.LineCount = 0
-
-	// we "parrael" this many processes then block until we are done
-	client.MaxLineCount = 1024
-	client.CycleCount = 0
 	client.Connection = conn
 
 	client.channel = make(chan string)
@@ -69,13 +65,12 @@ func (client TCPClient) Close() {
 }
 
 func (client TCPClient) run(line string) {
-	//client.LineCount += 1
-	go StatsdClient.Incr("incoming.tcp.lines", 1)
 
-	job, err := NewRunner(client, strings.Trim(line, "\n\t "))
+	key, line, err := client.server.LineProcessor.ProcessLine(strings.Trim(line, "\n\t "))
 	if err == nil {
-		go RunRunner(job, client.channel)
+		go client.server.RunRunner(key, line, client.channel)
 	}
+	StatsdClient.Incr("incoming.tcp.lines", 1)
 }
 
 func (client TCPClient) handleRequest() {
