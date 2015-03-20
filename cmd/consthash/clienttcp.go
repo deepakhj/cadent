@@ -65,7 +65,7 @@ func (client TCPClient) Close() {
 }
 
 func (client TCPClient) run(line string) {
-
+	client.server.AllLinesCount.Up(1)
 	key, line, err := client.server.LineProcessor.ProcessLine(strings.Trim(line, "\n\t "))
 	if err == nil {
 		go client.server.RunRunner(key, line, client.channel)
