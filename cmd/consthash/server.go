@@ -38,7 +38,7 @@ type SendOut struct {
 func poolWorker(j *SendOut) {
 	defer StatsdNanoTimeFunc("worker.process-time-ns", time.Now())
 
-	var outsrv *Netpool
+	var outsrv *BufferedNetpool
 	var ok bool
 
 	// lock out Outpool map
@@ -55,11 +55,11 @@ func poolWorker(j *SendOut) {
 			return
 		}
 		if len(j.server.Outpool) == 0 {
-			j.server.Outpool = make(map[string]*Netpool)
+			j.server.Outpool = make(map[string]*BufferedNetpool)
 		}
-		outsrv = NewNetpool(m_url.Scheme, m_url.Host)
+		outsrv = NewBufferedNetpool(m_url.Scheme, m_url.Host)
 		if j.server.NetPoolConnections > 0 {
-			outsrv.MaxConnections = j.server.NetPoolConnections
+			outsrv.SetMaxConnections(j.server.NetPoolConnections)
 		}
 		// populate it
 		outsrv.InitPool()
@@ -77,11 +77,11 @@ func poolWorker(j *SendOut) {
 		log.Printf("Error sending to backend %s", err)
 		return
 	}
-	if netconn.conn != nil {
+	if netconn.Conn() != nil {
 		// Conn.Write will raise a timeout error after 1 seconds
-		netconn.conn.SetWriteDeadline(time.Now().Add(time.Second))
+		netconn.SetWriteDeadline(time.Now().Add(time.Second))
 		to_send := []byte(j.param + "\n")
-		_, err = netconn.conn.Write(to_send)
+		_, err = netconn.Write(to_send)
 		if err != nil {
 			StatsdClient.Incr("failed.connection-timeout", 1)
 			j.server.FailSendCount.Up(1)
@@ -222,7 +222,7 @@ type Server struct {
 
 	//pool the connections to the outgoing servers
 	poolmu  *sync.Mutex //when we make a new pool need to lock the hash below
-	Outpool map[string]*Netpool
+	Outpool map[string]*BufferedNetpool
 
 	ticker time.Duration
 
@@ -520,7 +520,7 @@ func (server *Server) tickDisplay() {
 	server.Logger.Printf("Server Rate: AllLinesCount: %.2f/s", server.AllLinesCount.Rate(server.ticker))
 	server.Logger.Printf("Server Send Method:: %s", server.SendingConnectionMethod)
 	for idx, pool := range server.Outpool {
-		server.Logger.Printf("Free Connections in Pools [%s]: %d/%d", idx, pool.NumFree(), pool.MaxConnections)
+		server.Logger.Printf("Free Connections in Pools [%s]: %d/%d", idx, pool.NumFree(), pool.GetMaxConnections())
 	}
 
 	server.ResetTickers()
