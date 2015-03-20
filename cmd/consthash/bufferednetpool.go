@@ -6,7 +6,6 @@ Here we have a NetPooler but that buffers writes before sending things in specif
 package main
 
 import (
-	//"log"
 	"net"
 	"sync"
 	"time"
@@ -45,10 +44,11 @@ func NewBufferedNetpoolConn(conn net.Conn) NetpoolConnInterface {
 
 // periodically flush data no matter what
 func (n *BufferedNetpoolConn) PeriodicFlush() {
-	n.Flush()
-	//log.Println("Flushed: ", n.idx)
-	time.Sleep(DEFAULT_FORCE_FLUSH)
-	go n.PeriodicFlush()
+	for {
+		n.Flush()
+		//log.Println("Flushed: ", n.idx)
+		time.Sleep(DEFAULT_FORCE_FLUSH)
+	}
 }
 
 func (n *BufferedNetpoolConn) Conn() net.Conn        { return n.conn }
