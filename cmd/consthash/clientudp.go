@@ -10,6 +10,8 @@ import (
 	"strings"
 )
 
+const UDP_BUFFER_SIZE = 2048
+
 type UDPClient struct {
 	server  *Server
 	hashers *[]*ConstHasher
@@ -74,7 +76,7 @@ func (client UDPClient) run(line string) {
 
 func (client UDPClient) handleRequest() {
 	for {
-		var buf [1024]byte
+		var buf [UDP_BUFFER_SIZE]byte
 		rlen, _, _ := client.Connection.ReadFromUDP(buf[:])
 		in_str := string(buf[0:rlen])
 		for _, line := range strings.Split(in_str, "\n") {

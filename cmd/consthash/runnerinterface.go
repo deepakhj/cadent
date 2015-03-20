@@ -1,5 +1,5 @@
 /*
-An interface that is the "runner" for various hashers
+An interface that is the "runner" for various Line Processors
 */
 
 package main

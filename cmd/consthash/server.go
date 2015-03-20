@@ -23,6 +23,9 @@ const (
 	DEFAULT_SENDING_CONNECTIONS_METHOD = "pool"
 )
 
+// the push meathod function type
+type pushFunction func(*SendOut)
+
 type SendOut struct {
 	outserver string
 	param     string
@@ -136,18 +139,6 @@ func singleWorker(j *SendOut) {
 	}
 }
 
-//spins up the queue of go routines to handle outgoing
-func WorkerOutput(jobs <-chan *SendOut, sendmethod string) {
-	for j := range jobs {
-		switch sendmethod {
-		case "single":
-			singleWorker(j)
-		default:
-			poolWorker(j)
-		}
-	}
-}
-
 /****************** SERVERS *********************/
 
 //helper object for json'ing the basic stat data
@@ -218,7 +209,7 @@ type Server struct {
 	//Hasher objects (can have multiple for replication of data)
 	Hashers []*ConstHasher
 
-	// we can use a "pool" of connections, or single connecitons per line
+	// we can use a "pool" of connections, or single connections per line
 	// performance will be depending on the system and work load tcp vs udp, etc
 	// "pool" or "single"
 	// default is pool
@@ -248,6 +239,9 @@ type Server struct {
 	RunnerConfig     map[string]interface{}
 	LineProcessor    Runner
 
+	//the push function
+	PushFunction pushFunction
+
 	//uptime
 	StartTime time.Time
 
@@ -256,7 +250,18 @@ type Server struct {
 	Logger *log.Logger
 }
 
-func (server *Server) GetLineProcessor() (Runner, error) {
+// set the "push" function we are using "pool" or "single"
+func (server *Server) SetPushMethod() pushFunction {
+	switch server.SendingConnectionMethod {
+	case "single":
+		server.PushFunction = singleWorker
+	default:
+		server.PushFunction = poolWorker
+	}
+	return server.PushFunction
+}
+
+func (server *Server) SetLineProcessor() (Runner, error) {
 	msg_type := server.RunnerTypeString
 
 	var runner Runner
@@ -271,9 +276,16 @@ func (server *Server) GetLineProcessor() (Runner, error) {
 	default:
 		return nil, fmt.Errorf("Failed to configure Runner, aborting")
 	}
+	server.LineProcessor = runner
+	return server.LineProcessor, err
 
-	return runner, err
+}
 
+//spins up the queue of go routines to handle outgoing
+func (server *Server) WorkerOutput(jobs <-chan *SendOut) {
+	for j := range jobs {
+		server.PushFunction(j)
+	}
 }
 
 func (server *Server) RunRunner(key string, line string, out chan string) {
@@ -539,43 +551,6 @@ func (server *Server) Accepter() (<-chan net.Conn, error) {
 	return conns, nil
 }
 
-func (server *Server) startTCPServer(hashers *[]*ConstHasher, worker_queue chan *SendOut, done chan Client) {
-
-	accepts, err := server.Accepter()
-	if err != nil {
-		panic(err)
-	}
-
-	server.LineProcessor, err = server.GetLineProcessor()
-	if err != nil {
-		panic(err)
-	}
-
-	for {
-		select {
-		case conn, ok := <-accepts:
-			if !ok {
-				return
-			}
-			client := NewTCPClient(server, hashers, conn, worker_queue, done)
-			go client.handleRequest()
-			go client.handleSend()
-		case workerUpDown := <-server.WorkerHold:
-			server.InWorkQueue.Add(workerUpDown)
-			ct := server.InWorkQueue.Get()
-			if ct == server.Workers {
-				StatsdClient.Incr("worker.queue.isfull", 1)
-				server.Logger.Printf("Worker Queue Full %d", ct)
-			}
-			StatsdClient.GaugeAvg("worker.queue.length", ct)
-
-		case client := <-done:
-			client.Close()
-		}
-	}
-
-}
-
 // Fire up the http server for stats and healthchecks
 // do this only if there is not a
 func (server *Server) AddStatusHandlers() {
@@ -608,14 +583,40 @@ func (server *Server) AddStatusHandlers() {
 
 }
 
-// different mechanism for UDP servers
-func (server *Server) startUDPServer(hashers *[]*ConstHasher, worker_queue chan *SendOut, done chan Client) {
+func (server *Server) startTCPServer(hashers *[]*ConstHasher, worker_queue chan *SendOut, done chan Client) {
 
-	var err error
-	server.LineProcessor, err = server.GetLineProcessor()
+	accepts, err := server.Accepter()
 	if err != nil {
 		panic(err)
 	}
+
+	for {
+		select {
+		case conn, ok := <-accepts:
+			if !ok {
+				return
+			}
+			client := NewTCPClient(server, hashers, conn, worker_queue, done)
+			go client.handleRequest()
+			go client.handleSend()
+		case workerUpDown := <-server.WorkerHold:
+			server.InWorkQueue.Add(workerUpDown)
+			ct := server.InWorkQueue.Get()
+			if ct == server.Workers {
+				StatsdClient.Incr("worker.queue.isfull", 1)
+				server.Logger.Printf("Worker Queue Full %d", ct)
+			}
+			StatsdClient.GaugeAvg("worker.queue.length", ct)
+
+		case client := <-done:
+			client.Close()
+		}
+	}
+
+}
+
+// different mechanism for UDP servers
+func (server *Server) startUDPServer(hashers *[]*ConstHasher, worker_queue chan *SendOut, done chan Client) {
 
 	//just need on "client" here as we simply just pull from the socket
 	client := NewUDPClient(server, hashers, server.UDPConn, worker_queue, done)
@@ -627,7 +628,7 @@ func (server *Server) startUDPServer(hashers *[]*ConstHasher, worker_queue chan 
 		case workerUpDown := <-server.WorkerHold:
 			server.InWorkQueue.Add(workerUpDown)
 			ct := server.InWorkQueue.Get()
-			if ct == server.Workers {
+			if ct >= server.Workers {
 				StatsdClient.Incr("worker.queue.isfull", 1)
 				server.Logger.Printf("Worker Queue Full %d", ct)
 			}
@@ -659,9 +660,21 @@ func (server *Server) StartServer() {
 	log.Printf("Using %d workers to process output", server.Workers)
 	//fire up the send to workers
 	done := make(chan Client)
-	worker_queue := make(chan *SendOut)
+
+	//the queue is only as big as the workers
+	worker_queue := make(chan *SendOut, server.Workers)
+
+	//set the push method (the WorkerOutput depends on it)
+	server.SetPushMethod()
+
 	for w := int64(1); w <= server.Workers; w++ {
-		go WorkerOutput(worker_queue, server.SendingConnectionMethod)
+		go server.WorkerOutput(worker_queue)
+	}
+
+	//get our line proessor in order
+	_, err := server.SetLineProcessor()
+	if err != nil {
+		panic(err)
 	}
 
 	//the mighty queue for the main runner to push to
