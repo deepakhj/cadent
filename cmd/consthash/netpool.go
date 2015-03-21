@@ -14,7 +14,7 @@ const RecycleTimeoutDuration = time.Duration(5 * time.Minute)
 
 var ErrMaxConn = errors.New("Maximum connections reached")
 
-type NewNetPoolConnection func(net.Conn) NetpoolConnInterface
+type NewNetPoolConnection func(net.Conn, NetpoolInterface) NetpoolConnInterface
 
 type NetpoolConnInterface interface {
 	Conn() net.Conn
@@ -47,7 +47,7 @@ type NetpoolConn struct {
 	idx     int
 }
 
-func NewNetPoolConn(conn net.Conn) NetpoolConnInterface {
+func NewNetPoolConn(conn net.Conn, pool NetpoolInterface) NetpoolConnInterface {
 	return &NetpoolConn{
 		conn:    conn,
 		started: time.Now(),
@@ -77,6 +77,17 @@ func (n *NetpoolConn) Write(b []byte) (int, error) {
 }
 
 ///***** POOLER ****///
+
+type NetpoolInterface interface {
+	GetMaxConnections() int
+	SetMaxConnections(int)
+	NumFree() int
+	ResetConn(net_conn NetpoolConnInterface) error
+	InitPoolWith(obj NetpoolInterface) error
+	InitPool() error
+	Open() (conn NetpoolConnInterface, err error)
+	Close(conn NetpoolConnInterface) error
+}
 
 func NewNetpool(protocal string, name string) *Netpool {
 	pool := &Netpool{
@@ -128,8 +139,7 @@ func (n *Netpool) ResetConn(net_conn NetpoolConnInterface) error {
 	return nil
 }
 
-func (n *Netpool) InitPool() error {
-
+func (n *Netpool) InitPoolWith(obj NetpoolInterface) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
@@ -143,11 +153,16 @@ func (n *Netpool) InitPool() error {
 			log.Println("[NetPool:InitPool] Connection open error: ", err)
 			return err
 		}
-		netcon := n.newConnectionFunc(conn)
+		netcon := n.newConnectionFunc(conn, obj)
 		netcon.SetIndex(i)
 		n.free <- netcon
 	}
 	return nil
+}
+
+func (n *Netpool) InitPool() error {
+	return n.InitPoolWith(n)
+
 }
 
 func (n *Netpool) Open() (conn NetpoolConnInterface, err error) {

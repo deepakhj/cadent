@@ -6,6 +6,7 @@ Here we have a NetPooler but that buffers writes before sending things in specif
 package main
 
 import (
+	//"log"
 	"net"
 	"sync"
 	"time"
@@ -28,15 +29,22 @@ type BufferedNetpoolConn struct {
 	started     time.Time
 	idx         int
 	writebuffer []byte
+	buffersize  int
+
+	writeLock sync.Mutex
 }
 
-func NewBufferedNetpoolConn(conn net.Conn) NetpoolConnInterface {
+func NewBufferedNetpoolConn(conn net.Conn, pool NetpoolInterface) NetpoolConnInterface {
 	bconn := &BufferedNetpoolConn{
 		conn:        conn,
 		started:     time.Now(),
 		writebuffer: make([]byte, 0),
+		buffersize:  DEFAULT_BUFFER_SIZE,
 	}
-
+	if pool.(*BufferedNetpool).BufferSize > 0 {
+		bconn.buffersize = pool.(*BufferedNetpool).BufferSize
+	}
+	//log.Printf("BufferSize: ", bconn.buffersize)
 	//set up the flush timer
 	go bconn.PeriodicFlush()
 	return bconn
@@ -66,27 +74,32 @@ func (n *BufferedNetpoolConn) SetWriteDeadline(t time.Time) error {
 
 func (n *BufferedNetpoolConn) Write(b []byte) (wrote int, err error) {
 
-	if len(n.writebuffer) > DEFAULT_BUFFER_SIZE {
+	n.writeLock.Lock()
+	if len(n.writebuffer) > n.buffersize {
 		//log.Println("Conn: ", n.conn.RemoteAddr(), "Wrote: ", wrote, " bin:", len(b), " buffsize: ", len(n.writebuffer))
 		wrote, err = n.conn.Write(n.writebuffer)
 		n.writebuffer = []byte("")
 	}
 	n.writebuffer = append(n.writebuffer, b...)
+	n.writeLock.Unlock()
 
 	return wrote, err
 }
 
 func (n *BufferedNetpoolConn) Flush() (wrote int, err error) {
+
 	if len(n.writebuffer) > 0 {
+		n.writeLock.Lock()
 		wrote, err = n.conn.Write(n.writebuffer)
 		n.writebuffer = []byte("")
+		n.writeLock.Unlock()
 	}
 	return wrote, err
 }
 
 /*** Poooler ***/
 
-func NewBufferedNetpool(protocal string, name string) *BufferedNetpool {
+func NewBufferedNetpool(protocal string, name string, buffersize int) *BufferedNetpool {
 	pool := NewNetpool(protocal, name)
 	//override
 	pool.newConnectionFunc = NewBufferedNetpoolConn
@@ -95,6 +108,9 @@ func NewBufferedNetpool(protocal string, name string) *BufferedNetpool {
 		pool:           pool,
 		BufferSize:     DEFAULT_BUFFER_SIZE,
 		ForceFlushTime: DEFAULT_FORCE_FLUSH,
+	}
+	if buffersize > 0 {
+		bpool.BufferSize = buffersize
 	}
 	return bpool
 }
@@ -116,14 +132,14 @@ func (n *BufferedNetpool) ResetConn(net_conn NetpoolConnInterface) error {
 	return n.pool.ResetConn(net_conn)
 }
 
+// alow us to put _this_ object into the init of a Connection dunction
+func (n *BufferedNetpool) InitPoolWith(obj NetpoolInterface) error {
+	return n.pool.InitPoolWith(obj)
+}
+
 // proxy to pool
 func (n *BufferedNetpool) InitPool() error {
-	err := n.pool.InitPool()
-
-	if err != nil {
-		return err
-	}
-	return err
+	return n.pool.InitPoolWith(n) //use our object not the pool
 }
 
 func (n *BufferedNetpool) Open() (conn NetpoolConnInterface, err error) {

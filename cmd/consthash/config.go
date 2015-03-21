@@ -30,6 +30,7 @@ type Config struct {
 	PIDfile                 string        `toml:"pid_file"`
 	NumProc                 int           `toml:"num_procs"`
 	MaxPoolConnections      int           `toml:"max_pool_connections"`
+	MaxPoolBufferSize       int           `toml:"pool_buffersize"`
 	SendingConnectionMethod string        `toml:"sending_method"`
 	MsgType                 string        `toml:"msg_type"`
 	MsgFormatRegEx          string        `toml:"msg_regex"`
@@ -222,6 +223,13 @@ func (self ConfigServers) parseConfig(defaults Config) (out ConfigServers, err e
 				cfg.MaxPoolConnections = defaults.MaxPoolConnections
 			}
 		}
+		if cfg.MaxPoolBufferSize <= 0 {
+			cfg.MaxPoolBufferSize = 0
+			if defaults.MaxPoolBufferSize > 0 {
+				cfg.MaxPoolBufferSize = defaults.MaxPoolBufferSize
+			}
+		}
+
 		if cfg.HashAlgo == "" {
 			cfg.HashAlgo = DEFAULT_HASHER_ALGO
 			if defaults.HashAlgo != "" {

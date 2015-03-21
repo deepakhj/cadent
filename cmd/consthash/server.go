@@ -20,7 +20,7 @@ import (
 const (
 	DEFAULT_WORKERS                    = int64(500)
 	DEFAULT_NUM_STATS                  = 100
-	DEFAULT_SENDING_CONNECTIONS_METHOD = "pool"
+	DEFAULT_SENDING_CONNECTIONS_METHOD = "bufferedpool"
 )
 
 // the push meathod function type
@@ -38,7 +38,7 @@ type SendOut struct {
 func poolWorker(j *SendOut) {
 	defer StatsdNanoTimeFunc("worker.process-time-ns", time.Now())
 
-	var outsrv *BufferedNetpool
+	var outsrv NetpoolInterface
 	var ok bool
 
 	// lock out Outpool map
@@ -55,9 +55,14 @@ func poolWorker(j *SendOut) {
 			return
 		}
 		if len(j.server.Outpool) == 0 {
-			j.server.Outpool = make(map[string]*BufferedNetpool)
+			j.server.Outpool = make(map[string]NetpoolInterface)
+
 		}
-		outsrv = NewBufferedNetpool(m_url.Scheme, m_url.Host)
+		if j.server.SendingConnectionMethod == "bufferedpool" {
+			outsrv = NewBufferedNetpool(m_url.Scheme, m_url.Host, j.server.BufferPoolSize)
+		} else {
+			outsrv = NewNetpool(m_url.Scheme, m_url.Host)
+		}
 		if j.server.NetPoolConnections > 0 {
 			outsrv.SetMaxConnections(j.server.NetPoolConnections)
 		}
@@ -211,18 +216,20 @@ type Server struct {
 
 	// we can use a "pool" of connections, or single connections per line
 	// performance will be depending on the system and work load tcp vs udp, etc
-	// "pool" or "single"
+	// "bufferedpool" or "pool" or "single"
 	// default is pool
 	SendingConnectionMethod string
 	//number of connections in the NetPool
 	NetPoolConnections int
+	//if using the buffer pool, this is the buffer size
+	BufferPoolSize int
 
 	//number of replicas to fire data to (i.e. dupes)
 	Replicas int
 
 	//pool the connections to the outgoing servers
 	poolmu  *sync.Mutex //when we make a new pool need to lock the hash below
-	Outpool map[string]*BufferedNetpool
+	Outpool map[string]NetpoolInterface
 
 	ticker time.Duration
 
@@ -380,6 +387,7 @@ func NewServer(cfg *Config) (server *Server, err error) {
 	}
 
 	serv.NetPoolConnections = cfg.MaxPoolConnections
+	serv.BufferPoolSize = cfg.MaxPoolBufferSize
 	serv.SendingConnectionMethod = DEFAULT_SENDING_CONNECTIONS_METHOD
 
 	if len(cfg.SendingConnectionMethod) > 0 {
