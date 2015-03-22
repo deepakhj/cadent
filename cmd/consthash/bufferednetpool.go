@@ -87,13 +87,12 @@ func (n *BufferedNetpoolConn) Write(b []byte) (wrote int, err error) {
 }
 
 func (n *BufferedNetpoolConn) Flush() (wrote int, err error) {
-
-	if len(n.writebuffer) > 0 {
-		n.writeLock.Lock()
+	n.writeLock.Lock()
+	if len(n.writebuffer) > 0 && n.conn != nil {
 		wrote, err = n.conn.Write(n.writebuffer)
 		n.writebuffer = []byte("")
-		n.writeLock.Unlock()
 	}
+	n.writeLock.Unlock()
 	return wrote, err
 }
 
