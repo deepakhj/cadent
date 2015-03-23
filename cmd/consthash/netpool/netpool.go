@@ -1,7 +1,6 @@
-package main
+package netpool
 
 import (
-	"errors"
 	"log"
 	"net"
 	"sync"
@@ -11,24 +10,6 @@ import (
 const MaxConnections = 20
 const ConnectionTimeout = time.Duration(5 * time.Second)
 const RecycleTimeoutDuration = time.Duration(5 * time.Minute)
-
-var ErrMaxConn = errors.New("Maximum connections reached")
-
-type NewNetPoolConnection func(net.Conn, NetpoolInterface) NetpoolConnInterface
-
-/** a "connection" **/
-
-type NetpoolConnInterface interface {
-	Conn() net.Conn
-	SetConn(net.Conn)
-	Started() time.Time
-	SetStarted(time.Time)
-	Index() int
-	SetIndex(int)
-	SetWriteDeadline(time.Time) error
-	Write([]byte) (int, error)
-	Flush() (int, error)
-}
 
 type Netpool struct {
 	mu                sync.Mutex
@@ -79,17 +60,6 @@ func (n *NetpoolConn) Write(b []byte) (int, error) {
 }
 
 ///***** POOLER ****///
-
-type NetpoolInterface interface {
-	GetMaxConnections() int
-	SetMaxConnections(int)
-	NumFree() int
-	ResetConn(net_conn NetpoolConnInterface) error
-	InitPoolWith(obj NetpoolInterface) error
-	InitPool() error
-	Open() (conn NetpoolConnInterface, err error)
-	Close(conn NetpoolConnInterface) error
-}
 
 func NewNetpool(protocal string, name string) *Netpool {
 	pool := &Netpool{

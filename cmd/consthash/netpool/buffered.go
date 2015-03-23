@@ -3,12 +3,15 @@ Here we have a NetPooler but that buffers writes before sending things in specif
 
 */
 
-package main
+package netpool
 
 import (
-	//"log"
+	"log"
 	"net"
+	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -47,6 +50,7 @@ func NewBufferedNetpoolConn(conn net.Conn, pool NetpoolInterface) NetpoolConnInt
 	//log.Printf("BufferSize: ", bconn.buffersize)
 	//set up the flush timer
 	go bconn.PeriodicFlush()
+
 	return bconn
 }
 
@@ -111,7 +115,34 @@ func NewBufferedNetpool(protocal string, name string, buffersize int) *BufferedN
 	if buffersize > 0 {
 		bpool.BufferSize = buffersize
 	}
+
+	bpool.TrapExit()
 	return bpool
+}
+
+func (n *BufferedNetpool) TrapExit() {
+	//trap kills to flush the buffer
+	sigc := make(chan os.Signal, 1)
+	signal.Notify(sigc,
+		syscall.SIGINT,
+		syscall.SIGTERM,
+		syscall.SIGQUIT)
+
+	go func() {
+		s := <-sigc
+		log.Printf("Caught %s: Flushing Buffers before quit ", s)
+		close(n.pool.free)
+		for con := range n.pool.free {
+			con.Flush()
+		}
+
+		signal.Stop(sigc)
+		close(sigc)
+
+		// re-raise it
+		process, _ := os.FindProcess(os.Getpid())
+		process.Signal(s)
+	}()
 }
 
 func (n *BufferedNetpool) GetMaxConnections() int {

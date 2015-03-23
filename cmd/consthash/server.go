@@ -5,6 +5,7 @@
 package main
 
 import (
+	"./netpool"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -38,7 +39,7 @@ type SendOut struct {
 func poolWorker(j *SendOut) {
 	defer StatsdNanoTimeFunc("worker.process-time-ns", time.Now())
 
-	var outsrv NetpoolInterface
+	var outsrv netpool.NetpoolInterface
 	var ok bool
 
 	// lock out Outpool map
@@ -55,13 +56,13 @@ func poolWorker(j *SendOut) {
 			return
 		}
 		if len(j.server.Outpool) == 0 {
-			j.server.Outpool = make(map[string]NetpoolInterface)
+			j.server.Outpool = make(map[string]netpool.NetpoolInterface)
 
 		}
 		if j.server.SendingConnectionMethod == "bufferedpool" {
-			outsrv = NewBufferedNetpool(m_url.Scheme, m_url.Host, j.server.BufferPoolSize)
+			outsrv = netpool.NewBufferedNetpool(m_url.Scheme, m_url.Host, j.server.BufferPoolSize)
 		} else {
-			outsrv = NewNetpool(m_url.Scheme, m_url.Host)
+			outsrv = netpool.NewNetpool(m_url.Scheme, m_url.Host)
 		}
 		if j.server.NetPoolConnections > 0 {
 			outsrv.SetMaxConnections(j.server.NetPoolConnections)
@@ -229,7 +230,7 @@ type Server struct {
 
 	//pool the connections to the outgoing servers
 	poolmu  *sync.Mutex //when we make a new pool need to lock the hash below
-	Outpool map[string]NetpoolInterface
+	Outpool map[string]netpool.NetpoolInterface
 
 	ticker time.Duration
 
