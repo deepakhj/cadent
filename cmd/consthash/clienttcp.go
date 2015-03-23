@@ -78,7 +78,10 @@ func (client TCPClient) run() {
 }
 
 func (client TCPClient) handleRequest() {
-	go client.run()
+	//spin up the runners
+	for w := int64(1); w <= client.server.Workers; w++ {
+		go client.run()
+	}
 	for {
 
 		line, err := client.reader.ReadString('\n')
