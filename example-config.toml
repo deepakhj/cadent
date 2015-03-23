@@ -7,17 +7,25 @@ pid_file="/tmp/consthash.pid"
 # 0 == max CPUs
 num_procs=0
 
-## outgoing connections are pooled per outgoign server
+
+## if you DO NOT want to pool connections (might be better for certain situations)
+## `single` -> One connection = one line
+## `pool` -> Pools connections to each server uses `max_pool_connections` for the pooling amount
+## `bufferedpool` -> Like pool, except buffer outgoing writes to save Lots on I/O usage,
+##   your reliever needs to be able to handel multiline inputs,
+##   this is the default method, lines flush automatically every 1 second
+##   even if the buffer is not full
+sending_method="bufferedpool"
+
+## outgoing connections are pooled per outgoing server (above)
 ## this sets the number of pool connections
 ## careful with this number, there will be this number * servers sending to connecitons
 ## (i.e. file descriptors limits may hit if this is too big)
 max_pool_connections=10
 
-## if you DO NOT want to pool connections (might be better for certain situations)
-## `single` -> One connection = one line
-## `pool` -> Pools connections to each server uses `max_pool_connections` for the pooling amount
-sending_method="pool"
-
+## if using the `bufferedpool` this is the size in bytes to use for the buffer
+## (defaults to 512)
+pool_buffersize=512
 
 ## Hashing Algo
 # The hashing algo to use in our hashring

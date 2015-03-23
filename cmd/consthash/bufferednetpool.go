@@ -75,28 +75,28 @@ func (n *BufferedNetpoolConn) SetWriteDeadline(t time.Time) error {
 func (n *BufferedNetpoolConn) Write(b []byte) (wrote int, err error) {
 
 	n.writeLock.Lock()
+	defer n.writeLock.Unlock()
 	if len(n.writebuffer) > n.buffersize {
 		//log.Println("Conn: ", n.conn.RemoteAddr(), "Wrote: ", wrote, " bin:", len(b), " buffsize: ", len(n.writebuffer))
 		wrote, err = n.conn.Write(n.writebuffer)
 		n.writebuffer = []byte("")
 	}
 	n.writebuffer = append(n.writebuffer, b...)
-	n.writeLock.Unlock()
 
 	return wrote, err
 }
 
 func (n *BufferedNetpoolConn) Flush() (wrote int, err error) {
 	n.writeLock.Lock()
+	defer n.writeLock.Unlock()
 	if len(n.writebuffer) > 0 && n.conn != nil {
 		wrote, err = n.conn.Write(n.writebuffer)
 		n.writebuffer = []byte("")
 	}
-	n.writeLock.Unlock()
 	return wrote, err
 }
 
-/*** Poooler ***/
+/*** Pooler ***/
 
 func NewBufferedNetpool(protocal string, name string, buffersize int) *BufferedNetpool {
 	pool := NewNetpool(protocal, name)

@@ -16,6 +16,8 @@ var ErrMaxConn = errors.New("Maximum connections reached")
 
 type NewNetPoolConnection func(net.Conn, NetpoolInterface) NetpoolConnInterface
 
+/** a "connection" **/
+
 type NetpoolConnInterface interface {
 	Conn() net.Conn
 	SetConn(net.Conn)
