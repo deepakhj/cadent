@@ -177,7 +177,7 @@ type ServerStats struct {
 	UnknownSendCountList     []int64 `json:"unknown_send_count_list"`
 	AllLinesCountList        []int64 `json:"all_lines_count_list"`
 	GoRoutinesList           []int   `json:"go_routines_list"`
-	TicksList                []int64 `json:ticks_list`
+	TicksList                []int64 `json:"ticks_list"`
 
 	GoRoutines                 int      `json:"go_routines"`
 	UpTimeSeconds              int64    `json:"uptime_sec"`
@@ -312,7 +312,7 @@ func (server *Server) RunRunner(key string, line string, out chan string) {
 		server.WorkerHold <- -1
 		StatsdClient.Incr("failed.connection-timeout", 1)
 		server.FailSendCount.Up(1)
-		server.Logger.Printf("Timeout %d, %s", len(server.WorkQueue))
+		server.Logger.Printf("Timeout %d, %s", len(server.WorkQueue), key)
 	}
 }
 
