@@ -22,6 +22,7 @@ type BufferedNetpool struct {
 	pool           *Netpool
 	BufferSize     int
 	ForceFlushTime time.Duration
+	didclose       bool
 
 	//lock to grab all the active cons and flush them
 	flushLock sync.Mutex
@@ -78,8 +79,8 @@ func (n *BufferedNetpoolConn) SetWriteDeadline(t time.Time) error {
 
 func (n *BufferedNetpoolConn) Write(b []byte) (wrote int, err error) {
 
-	n.writeLock.Lock()
-	defer n.writeLock.Unlock()
+	//n.writeLock.Lock()
+	//defer n.writeLock.Unlock()
 	if len(n.writebuffer) > n.buffersize {
 		//log.Println("Conn: ", n.conn.RemoteAddr(), "Wrote: ", wrote, " bin:", len(b), " buffsize: ", len(n.writebuffer))
 		wrote, err = n.conn.Write(n.writebuffer)
@@ -111,6 +112,7 @@ func NewBufferedNetpool(protocal string, name string, buffersize int) *BufferedN
 		pool:           pool,
 		BufferSize:     DEFAULT_BUFFER_SIZE,
 		ForceFlushTime: DEFAULT_FORCE_FLUSH,
+		didclose:       false,
 	}
 	if buffersize > 0 {
 		bpool.BufferSize = buffersize
@@ -132,6 +134,7 @@ func (n *BufferedNetpool) TrapExit() {
 		s := <-sigc
 		log.Printf("Caught %s: Flushing Buffers before quit ", s)
 		close(n.pool.free)
+		n.didclose = true
 		for con := range n.pool.free {
 			con.Flush()
 		}
@@ -178,5 +181,8 @@ func (n *BufferedNetpool) Open() (conn NetpoolConnInterface, err error) {
 
 //add it back to the queue
 func (n *BufferedNetpool) Close(conn NetpoolConnInterface) error {
-	return n.pool.Close(conn)
+	if !n.didclose {
+		return n.pool.Close(conn)
+	}
+	return nil
 }

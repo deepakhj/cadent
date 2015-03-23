@@ -22,7 +22,7 @@ const (
 	DEFAULT_WORKERS                    = int64(500)
 	DEFAULT_NUM_STATS                  = 100
 	DEFAULT_SENDING_CONNECTIONS_METHOD = "bufferedpool"
-	DEFAULT_RUNNER_TIMEOUT = 500 * time.Millisecond
+	DEFAULT_RUNNER_TIMEOUT             = 500 * time.Millisecond
 )
 
 // the push meathod function type
@@ -86,7 +86,7 @@ func poolWorker(j *SendOut) {
 	}
 	if netconn.Conn() != nil {
 		// Conn.Write will raise a timeout error after 1 seconds
-		netconn.SetWriteDeadline(time.Now().Add(time.Second))
+		netconn.SetWriteDeadline(time.Now().Add(DEFAULT_RUNNER_TIMEOUT))
 		to_send := []byte(j.param + "\n")
 		_, err = netconn.Write(to_send)
 		if err != nil {
@@ -312,7 +312,7 @@ func (server *Server) RunRunner(key string, line string, out chan string) {
 		server.WorkerHold <- -1
 		StatsdClient.Incr("failed.connection-timeout", 1)
 		server.FailSendCount.Up(1)
-		server.Logger.Printf("Job Channel Runner Timeout %s:%s", key, line)
+		server.Logger.Printf("Timeout %d, %s", len(server.WorkQueue))
 	}
 }
 
@@ -340,8 +340,8 @@ func (server *Server) PushLine(key string, line string) string {
 					server:    server,
 					param:     line,
 				}
-				server.WorkerHold <- 1
 				server.WorkQueue <- sendOut
+				server.WorkerHold <- 1
 			}
 			out_str += "ok"
 		} else {
@@ -352,6 +352,7 @@ func (server *Server) PushLine(key string, line string) string {
 		}
 	}
 	return out_str
+
 }
 
 func (server *Server) ResetTickers() {

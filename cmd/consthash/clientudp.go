@@ -23,6 +23,7 @@ type UDPClient struct {
 
 	channel      chan string
 	done         chan Client
+	input_queue  chan string
 	worker_queue chan *SendOut
 }
 
@@ -39,8 +40,9 @@ func NewUDPClient(server *Server, hashers *[]*ConstHasher, conn *net.UDPConn, wo
 	client.MaxLineCount = 1024
 	client.CycleCount = 0
 
-	client.channel = make(chan string)
 	client.worker_queue = worker_queue
+	client.input_queue = make(chan string, server.Workers)
+	client.channel = make(chan string, server.Workers)
 	client.done = done
 	return client
 
@@ -64,17 +66,25 @@ func (client UDPClient) Close() {
 	}
 }
 
-func (client UDPClient) run(line string) {
-	client.server.AllLinesCount.Up(1)
+func (client UDPClient) run() {
+	for line := range client.input_queue {
+		//log.Println(len(client.input_queue), line)
+		client.server.AllLinesCount.Up(1)
 
-	key, line, err := client.server.LineProcessor.ProcessLine(strings.Trim(line, "\n\t "))
-	if err == nil {
-		go client.server.RunRunner(key, line, client.channel)
+		key, line, err := client.server.LineProcessor.ProcessLine(strings.Trim(line, "\n\t "))
+		if err == nil {
+			client.server.RunRunner(key, line, client.channel)
+		}
+		StatsdClient.Incr("incoming.udp.lines", 1)
 	}
-	StatsdClient.Incr("incoming.udp.lines", 1)
+
 }
 
 func (client UDPClient) handleRequest() {
+	for w := int64(1); w <= client.server.Workers; w++ {
+		go client.run()
+	}
+
 	for {
 		var buf [UDP_BUFFER_SIZE]byte
 		rlen, _, _ := client.Connection.ReadFromUDP(buf[:])
@@ -83,7 +93,8 @@ func (client UDPClient) handleRequest() {
 			if len(line) == 0 {
 				continue
 			}
-			go client.run(line)
+			//log.Println("REQ: ", len(client.input_queue), line)
+			client.input_queue <- line
 		}
 	}
 

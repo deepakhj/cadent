@@ -23,6 +23,7 @@ type TCPClient struct {
 	reader *bufio.Reader
 
 	channel      chan string
+	input_queue  chan string
 	done         chan Client
 	worker_queue chan *SendOut
 }
@@ -38,8 +39,9 @@ func NewTCPClient(server *Server, hashers *[]*ConstHasher, conn net.Conn, worker
 	client.LineCount = 0
 	client.Connection = conn
 
-	client.channel = make(chan string)
+	client.channel = make(chan string, server.Workers)
 	client.worker_queue = worker_queue
+	client.input_queue = make(chan string, server.Workers)
 	client.done = done
 	return client
 }
@@ -57,32 +59,33 @@ func (client TCPClient) WorkerQueue() chan *SendOut {
 
 // close the 2 hooks, channel and connection
 func (client TCPClient) Close() {
-	close(client.channel)
 	client.Connection.Close()
 	client.server = nil
 	client.hashers = nil
 
 }
 
-func (client TCPClient) run(line string) {
-	client.server.AllLinesCount.Up(1)
-	key, line, err := client.server.LineProcessor.ProcessLine(strings.Trim(line, "\n\t "))
-	if err == nil {
-		go client.server.RunRunner(key, line, client.channel)
+func (client TCPClient) run() {
+	for line := range client.input_queue {
+
+		client.server.AllLinesCount.Up(1)
+		key, line, err := client.server.LineProcessor.ProcessLine(strings.Trim(line, "\n\t "))
+		if err == nil {
+			go client.server.RunRunner(key, line, client.channel)
+		}
+		StatsdClient.Incr("incoming.tcp.lines", 1)
 	}
-	StatsdClient.Incr("incoming.tcp.lines", 1)
 }
 
 func (client TCPClient) handleRequest() {
-
+	go client.run()
 	for {
 
 		line, err := client.reader.ReadString('\n')
 		if err != nil || len(line) == 0 {
 			break
 		}
-
-		go client.run(line)
+		client.input_queue <- line
 
 	}
 	//close it
