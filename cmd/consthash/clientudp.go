@@ -77,14 +77,9 @@ func (client UDPClient) run() {
 		}
 		StatsdClient.Incr("incoming.udp.lines", 1)
 	}
-
 }
 
-func (client UDPClient) handleRequest() {
-	for w := int64(1); w <= client.server.Workers; w++ {
-		go client.run()
-	}
-
+func (client UDPClient) getLines(idx int64) {
 	for {
 		var buf [UDP_BUFFER_SIZE]byte
 		rlen, _, _ := client.Connection.ReadFromUDP(buf[:])
@@ -97,7 +92,16 @@ func (client UDPClient) handleRequest() {
 			client.input_queue <- line
 		}
 	}
+}
 
+func (client UDPClient) handleRequest() {
+	for w := int64(1); w <= client.server.Workers; w++ {
+		go client.run()
+	}
+
+	for w := int64(1); w <= client.server.Workers; w++ {
+		go client.getLines(w)
+	}
 }
 
 func (client UDPClient) handleSend() {
