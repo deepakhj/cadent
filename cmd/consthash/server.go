@@ -22,6 +22,7 @@ const (
 	DEFAULT_WORKERS                    = int64(500)
 	DEFAULT_NUM_STATS                  = 100
 	DEFAULT_SENDING_CONNECTIONS_METHOD = "bufferedpool"
+	DEFAULT_RUNNER_TIMEOUT = 500 * time.Millisecond
 )
 
 // the push meathod function type
@@ -299,7 +300,7 @@ func (server *Server) WorkerOutput(jobs <-chan *SendOut) {
 func (server *Server) RunRunner(key string, line string, out chan string) {
 	//direct timer to void leaks (i.e. NOT time.After(...))
 
-	timer := time.NewTimer(500 * time.Millisecond)
+	timer := time.NewTimer(DEFAULT_RUNNER_TIMEOUT)
 	defer StatsdNanoTimeFunc(fmt.Sprintf("factory.runner.process-time-ns"), time.Now())
 
 	select {
@@ -311,7 +312,7 @@ func (server *Server) RunRunner(key string, line string, out chan string) {
 		server.WorkerHold <- -1
 		StatsdClient.Incr("failed.connection-timeout", 1)
 		server.FailSendCount.Up(1)
-		log.Printf("Job Channel Runner Timeout")
+		server.Logger.Printf("Job Channel Runner Timeout %s:%s", key, line)
 	}
 }
 
