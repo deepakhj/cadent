@@ -180,7 +180,7 @@
 					//[time, data, data, data]
 					if (data.length == 0) {
 
-						$.each(chart_data['TicksList'], function (idx, time) {
+						$.each(chart_data['ticks_list'], function (idx, time) {
 							data.push([time])
 						});
 
@@ -194,7 +194,7 @@
 					init_data['labels'].push(servername)
 
 				})
-				console.log(data)
+				//console.log(data)
 				GRAPHS[key]['data'] = data
 				GRAPHS[key]['graph'] = new Dygraph(graph['item'], GRAPHS[key]['data'], init_data);
 			}else{
@@ -210,7 +210,7 @@
 				if(GRAPHS[key]['data'].length > MAX_POINTS){
 					GRAPHS[key]['data'] = GRAPHS[key]['data'].slice(-MAX_POINTS);
 				}
-				console.log(GRAPHS[key]['data'])
+				//console.log(GRAPHS[key]['data'])
 				GRAPHS[key]['graph'].updateOptions( { 'file': GRAPHS[key]['data'] } );
 				
 			}
