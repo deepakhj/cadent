@@ -35,9 +35,11 @@ func (s MultiServerCacheItem) Size() int {
 
 // match the  ServerPoolRunner interface
 type ConstHasher struct {
-	Hasher     *consistent.Consistent
-	Cache      *LRUCache
-	ServerPool *CheckedServerPool
+	Hasher          *consistent.Consistent
+	HashKeyToServer map[string]string
+	ServerToHashkey map[string]string
+	Cache           *LRUCache
+	ServerPool      *CheckedServerPool
 
 	HashAlgo     string
 	HashElter    string
@@ -47,24 +49,45 @@ type ConstHasher struct {
 	ServerGetCounts uint64
 }
 
+func (self *ConstHasher) memberString(members []string) string {
+	member_str := ""
+	for _, m := range members {
+		if m != self.HashKeyToServer[m] {
+			member_str += self.HashKeyToServer[m] + " (key:" + m + ")\t"
+		} else {
+			member_str += self.HashKeyToServer[m]
+		}
+	}
+	return member_str
+}
+
 func (self *ConstHasher) onServerUp(server url.URL) {
 	log.Printf("Adding server %s to hasher", server.String())
 	StatsdClient.Incr("hasher.added-server", 1)
-	self.Hasher.Add(server.String())
+
+	//add the hash key, not the server string
+	hash_key := self.ServerToHashkey[server.String()]
+	self.Hasher.Add(hash_key)
+
 	StatsdClient.GaugeAbsolute("hasher.up-servers", int64(len(self.Members())))
 	//evil as this is we must clear the cache
 	self.Cache.Clear()
-	log.Printf("[onServerUp] Current members %s from hasher", self.Members())
+
+	log.Printf("[onServerUp] Current members %s from hasher", self.memberString(self.Members()))
 }
 
 func (self *ConstHasher) onServerDown(server url.URL) {
 	log.Printf("Removing server %s from hasher", server.String())
 	StatsdClient.Incr("hasher.removed-server", 1)
-	self.Hasher.Remove(server.String())
+
+	//remove the hash key, not the server string
+	hash_key := self.ServerToHashkey[server.String()]
+	self.Hasher.Remove(hash_key)
+
 	StatsdClient.GaugeAbsolute("hasher.up-servers", int64(len(self.Members())))
 	//evil as this is we must clear the cache
 	self.Cache.Clear()
-	log.Printf("[onServerDown] Current members %s from hasher", self.Members())
+	log.Printf("[onServerDown] Current members %s from hasher", self.memberString(self.Members()))
 }
 
 // clean up the server name for statsd
@@ -82,10 +105,15 @@ func (self *ConstHasher) Get(in_key string) (string, error) {
 	if !ok {
 		StatsdClient.Incr("lrucache.miss", 1)
 		srv, err := self.Hasher.Get(in_key)
-		self.Cache.Set(in_key, ServerCacheItem(srv))
 
-		StatsdClient.Incr(fmt.Sprintf("hashserver.%s.used", self.cleanKey(srv)), 1)
-		return srv, err
+		//find out real server string
+		real_server := self.HashKeyToServer[srv]
+
+		self.Cache.Set(in_key, ServerCacheItem(real_server))
+
+		StatsdClient.Incr(fmt.Sprintf("hashserver.%s.used", self.cleanKey(real_server)), 1)
+
+		return real_server, err
 	}
 	StatsdClient.Incr(fmt.Sprintf("hashserver.%s.used", self.cleanKey(srv)), 1)
 	StatsdClient.Incr("lrucache.hit", 1)
@@ -100,11 +128,19 @@ func (self *ConstHasher) GetN(in_key string, num int) ([]string, error) {
 	if !ok {
 		StatsdClient.Incr("lrucache.miss", 1)
 		srv, err := self.Hasher.GetN(in_key, num)
-		self.Cache.Set(cache_key, MultiServerCacheItem(srv))
-		for _, useme := range srv {
+		//find out real server string(s)
+		var real_servers []string
+		for _, s := range srv {
+			real_servers = append(real_servers, self.HashKeyToServer[s])
+		}
+
+		//log.Println("For: ", in_key, " Got: ", srv, " ->", real_servers)
+
+		self.Cache.Set(cache_key, MultiServerCacheItem(real_servers))
+		for _, useme := range real_servers {
 			StatsdClient.Incr(fmt.Sprintf("hashserver.%s.used", self.cleanKey(useme)), 1)
 		}
-		return srv, err
+		return real_servers, err
 	}
 	for _, useme := range srv.(MultiServerCacheItem) {
 		StatsdClient.Incr(fmt.Sprintf("hashserver.%s.used", self.cleanKey(useme)), 1)
@@ -169,6 +205,14 @@ func createConstHasherFromConfig(cfg *Config, serverlist *ParsedServerConfig) (h
 		hasher.Cache = NewLRUCache(cfg.CacheItems)
 	}
 	log.Print("Hasher Cache size set to ", hasher.Cache.capacity)
+
+	//compose our maps and remaps for the hashkey server list maps
+	hasher.HashKeyToServer = serverlist.HashkeyToServer
+	hasher.ServerToHashkey = make(map[string]string)
+	//now flip it
+	for key, value := range hasher.HashKeyToServer {
+		hasher.ServerToHashkey[value] = key
+	}
 
 	//s_pool_runner := ServerPoolRunner(hasher)
 	s_pool, err := createServerPoolFromConfig(cfg, serverlist, hasher) //&s_pool_runner)

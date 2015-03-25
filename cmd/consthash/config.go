@@ -12,17 +12,21 @@ import (
 )
 
 type ParsedServerConfig struct {
-	ServerMap  map[string]*url.URL
-	ServerList []string
-	ServerUrls []*url.URL
-	CheckMap   map[string]*url.URL
-	CheckList  []string
-	CheckUrls  []*url.URL
+	// the server name will default to the hashkey if none is given
+	ServerMap       map[string]*url.URL
+	HashkeyToServer map[string]string
+	ServerList      []string
+	HashkeyList     []string
+	ServerUrls      []*url.URL
+	CheckMap        map[string]*url.URL
+	CheckList       []string
+	CheckUrls       []*url.URL
 }
 
 type ConfigServerList struct {
-	CheckServers string `toml:"check_servers"`
-	Servers      string `toml:"servers"`
+	CheckServers []string `toml:"check_servers"`
+	Servers      []string `toml:"servers"`
+	HashKeys     []string `toml:"hashkeys"`
 }
 
 type Config struct {
@@ -94,48 +98,66 @@ const (
 type ConfigServers map[string]Config
 
 // make our map of servers to hosts
-func (self *Config) parseServerList(servers string, checkservers string) (*ParsedServerConfig, error) {
+func (self *Config) parseServerList(servers []string, checkservers []string, hashkeys []string) (*ParsedServerConfig, error) {
 
 	if len(servers) == 0 {
 		return nil, fmt.Errorf("No 'servers' in config section, skipping")
 	}
 	parsed := new(ParsedServerConfig)
 
-	var server_spl = strings.Split(servers, ",")
-	var checked_spl []string
-
 	// need to set a defaults
 	if len(checkservers) == 0 {
-		for _, s_server := range server_spl {
-			checked_spl = append(checked_spl, strings.Trim(s_server, " \t\n"))
-		}
+		checkservers = servers[:]
 	} else {
-		checked_spl = strings.Split(checkservers, ",")
-		if len(checked_spl) != len(server_spl) {
+		if len(checkservers) != len(servers) {
 			return nil, fmt.Errorf("need to have a servers count be the same as check_servers")
 		}
 	}
+
+	// need to set a defaults
+	if len(hashkeys) == 0 {
+		hashkeys = servers[:]
+	} else {
+		if len(hashkeys) != len(servers) {
+			return nil, fmt.Errorf("need to have a servers count be the same as hashkeys")
+		}
+	}
+
 	parsed.CheckMap = make(map[string]*url.URL)
 	parsed.ServerMap = make(map[string]*url.URL)
-	for idx, s_server := range server_spl {
+	parsed.HashkeyToServer = make(map[string]string)
+	for idx, s_server := range servers {
 
 		//trim white space
-		var line = strings.Trim(s_server, " \t\n")
+		line := strings.Trim(s_server, " \t\n")
 
 		// skip blank lines
 		if len(line) == 0 {
 			continue
 		}
 
-		var check_line = strings.Trim(checked_spl[idx], " \t\n")
+		check_line := strings.Trim(checkservers[idx], " \t\n")
+		hashkey_line := hashkeys[idx] // leave this "as is"
 
+		parsed.HashkeyList = append(parsed.HashkeyList, hashkey_line)
 		parsed.ServerList = append(parsed.ServerList, line)
 		server_url, err := url.Parse(line)
 		if err != nil {
 			return nil, err
 		}
 		parsed.ServerUrls = append(parsed.ServerUrls, server_url)
+
+		if _, ok := parsed.ServerMap[line]; ok {
+			return nil, fmt.Errorf("Servers need to be unique")
+		}
+
 		parsed.ServerMap[line] = server_url
+
+		if _, ok := parsed.HashkeyToServer[hashkey_line]; ok {
+			return nil, fmt.Errorf("Hashkeys need to be unique")
+		}
+
+		parsed.HashkeyToServer[hashkey_line] = line
 
 		//parse up the check URLs
 		parsed.CheckList = append(parsed.CheckList, check_line)
@@ -146,7 +168,7 @@ func (self *Config) parseServerList(servers string, checkservers string) (*Parse
 			return nil, err
 		}
 		parsed.CheckUrls = append(parsed.CheckUrls, check_url)
-		parsed.CheckMap[checked_spl[idx]] = check_url
+		parsed.CheckMap[check_line] = check_url
 	}
 	return parsed, nil
 }
@@ -179,7 +201,7 @@ func (self ConfigServers) parseConfig(defaults Config) (out ConfigServers, err e
 		cfg.ServerLists = make([]*ParsedServerConfig, 0)
 		minServerCount := 0
 		for _, confSection := range cfg.ConfServerList {
-			parsed, err := cfg.parseServerList(confSection.Servers, confSection.CheckServers)
+			parsed, err := cfg.parseServerList(confSection.Servers, confSection.CheckServers, confSection.HashKeys)
 			// no servers is ok for the defaults section
 			if err != nil {
 				return nil, err

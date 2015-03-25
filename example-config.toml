@@ -132,19 +132,31 @@ hasher_vnodes=40
 ## the list of servers we hashring send to
 ## {scheme}://{ip}:{port},...
 ## scheme = tcp|udp
-servers="udp://192.168.59.103:8126,udp://192.168.59.103:8136, udp://192.168.59.103:8146"
+servers=["udp://192.168.59.103:8126", "udp://192.168.59.103:8136", "udp://192.168.59.103:8146"]
 
 ## there must be a check server for each `servers` above
-## {scheme}://{ip}:{port},...
+## {scheme}://{ip}:{port}:{hashkey},...
 ## scheme = tcp|http -- NOTE NO UDP checks (does not make sense)
 ## tcp connections are simply checked for a connection and closed
 ## http connections must respond with a 200 to a GET on the provided url
-check_servers="tcp://192.168.59.103:8127,tcp://192.168.59.103:8137, tcp://192.168.59.103:8147"
+## the `{hashkey}` will default to `{scheme}://{ip}:{port}` if none is provided
+## (this syntax is made to match hash rings key systems for systems you need to replace by this one)
+check_servers=["tcp://192.168.59.103:8127", "tcp://192.168.59.103:8137", "tcp://192.168.59.103:8147"]
+
+##
+## `hashkeys`
+## these are the actual hash keys used in the hashring placement for each server
+## they default to the servers themselves w/o the "udp://, tcp://" attached
+## any distinct string will do here
+## the below is the default for the servers above, this is just explicit
+## hashkeys=["192.168.59.103:8126", "192.168.59.103:8136", "192.168.59.103:8146"]
+#
 
 # replica
 # [[statsd-example.servers]]
 # servers=...
 # check_servers=....
+# haskeys=...
 
 
 
@@ -161,8 +173,19 @@ hasher_vnodes=100
 
 [[graphite-example.servers]]
 
-servers="tcp://127.0.0.1:2003,tcp://127.0.0.1:2013,tcp://127.0.0.1:2023"
+servers=["tcp://192.168.10.200:2003","tcp://192.168.10.201:2003","tcp://192.168.10.202:2003"]
 #checks will default to the servers
+
+##
+## NOTE about graphite's hasher .. typically you have the relay's destinations server set up like
+## `DESTINATIONS=192.168.10.200:2004:a,192.168.10.201:2004:b,192.168.10.202:2004:c`
+## The hash keys it sends to it's internal HashRing are acctually "tuples" put into a string the the port removed
+## so the hash key for things looks like `('192.168.10.200', 'a')`
+## so if you need to match graphites exact hash config, the hashkeys need to be (based on the servers above)
+## you'll need to look up the "a/b/c substring on the
+##
+hashkeys=["""('192.168.10.200', 'a')""","""('192.168.10.201', 'b')""","""('192.168.10.202', 'c')"""]
+
 
 # replica
 # [[graphite-example.servers]]
@@ -182,5 +205,5 @@ msg_regex='^(<\d+>)?(?P<Timestamp>[A-Z][a-z]+\s+\d+\s\d+:\d+:\d+) (?P<Key>\S+) (
 hasher_algo="fnv"
 
 [[regex-example.servers]]
-servers="udp://127.0.0.1:6080,udp://127.0.0.1:6081,udp://127.0.0.1:6082"
-check_servers="tcp://127.0.0.1:6090,tcp://127.0.0.1:6091,tcp://127.0.0.1:6092"
+servers=["udp://127.0.0.1:6080", "udp://127.0.0.1:6081", "udp://127.0.0.1:6082"]
+check_servers=["tcp://127.0.0.1:6090","tcp://127.0.0.1:6091","tcp://127.0.0.1:6092"]

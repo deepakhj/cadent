@@ -111,5 +111,5 @@ func (client TCPClient) handleSend() {
 		//client.reader.Reset(client.Connection)
 	}
 	//close it out
-	client.done <- client
+	client.Close()
 }

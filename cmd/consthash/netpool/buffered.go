@@ -84,9 +84,11 @@ func (n *BufferedNetpoolConn) Write(b []byte) (wrote int, err error) {
 	if len(n.writebuffer) > n.buffersize {
 		//log.Println("Conn: ", n.conn.RemoteAddr(), "Wrote: ", wrote, " bin:", len(b), " buffsize: ", len(n.writebuffer))
 		wrote, err = n.conn.Write(n.writebuffer)
+		//StatsdClient.Incr("success.packets.sent", 1)
 		n.writebuffer = []byte("")
 	}
 	n.writebuffer = append(n.writebuffer, b...)
+	//StatsdClient.Incr("success.packets.buffer-writes", 1)
 
 	return wrote, err
 }
@@ -94,8 +96,11 @@ func (n *BufferedNetpoolConn) Write(b []byte) (wrote int, err error) {
 func (n *BufferedNetpoolConn) Flush() (wrote int, err error) {
 	n.writeLock.Lock()
 	defer n.writeLock.Unlock()
+
+	//StatsdClient.Incr("success.packets.flushes", 1)
 	if len(n.writebuffer) > 0 && n.conn != nil {
 		wrote, err = n.conn.Write(n.writebuffer)
+		//StatsdClient.Incr("success.packets.sent", 1)
 		n.writebuffer = []byte("")
 	}
 	return wrote, err
