@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-const UDP_BUFFER_SIZE = 2048
+const UDP_BUFFER_SIZE = 1048576
 
 type UDPClient struct {
 	server  *Server
@@ -35,6 +35,7 @@ func NewUDPClient(server *Server, hashers *[]*ConstHasher, conn *net.UDPConn, wo
 
 	client.LineCount = 0
 	client.Connection = conn
+	client.Connection.SetReadBuffer(UDP_BUFFER_SIZE)
 
 	// we "parrael" this many processes then block until we are done
 	client.MaxLineCount = 1024
@@ -80,17 +81,22 @@ func (client UDPClient) run() {
 }
 
 func (client UDPClient) getLines(idx int64) {
-	for {
-		var buf [UDP_BUFFER_SIZE]byte
-		rlen, _, _ := client.Connection.ReadFromUDP(buf[:])
-		in_str := string(buf[0:rlen])
-		for _, line := range strings.Split(in_str, "\n") {
+
+	readStr := func(line string) {
+		for _, line := range strings.Split(line, "\n") {
 			if len(line) == 0 {
 				continue
 			}
 			//log.Println("REQ: ", len(client.input_queue), line)
 			client.input_queue <- line
 		}
+	}
+
+	var buf [UDP_BUFFER_SIZE]byte
+	for {
+		rlen, _, _ := client.Connection.ReadFromUDP(buf[:])
+		in_str := string(buf[0:rlen])
+		go readStr(in_str)
 	}
 }
 
