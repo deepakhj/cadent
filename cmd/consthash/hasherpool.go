@@ -125,6 +125,12 @@ func (self *ConstHasher) GetN(in_key string, num int) ([]string, error) {
 	cache_key := in_key + ":" + strconv.Itoa(num)
 	srv, ok := self.Cache.Get(cache_key)
 
+	upStatsd := func(items []string) {
+		for _, useme := range items {
+			StatsdClient.Incr(fmt.Sprintf("hashserver.%s.used", self.cleanKey(useme)), 1)
+		}
+	}
+
 	if !ok {
 		StatsdClient.Incr("lrucache.miss", 1)
 		srv, err := self.Hasher.GetN(in_key, num)
@@ -137,16 +143,12 @@ func (self *ConstHasher) GetN(in_key string, num int) ([]string, error) {
 		//log.Println("For: ", in_key, " Got: ", srv, " ->", real_servers)
 
 		self.Cache.Set(cache_key, MultiServerCacheItem(real_servers))
-		for _, useme := range real_servers {
-			StatsdClient.Incr(fmt.Sprintf("hashserver.%s.used", self.cleanKey(useme)), 1)
-		}
+		go upStatsd(real_servers)
 		return real_servers, err
 	}
-	for _, useme := range srv.(MultiServerCacheItem) {
-		StatsdClient.Incr(fmt.Sprintf("hashserver.%s.used", self.cleanKey(useme)), 1)
-	}
+	go upStatsd(srv.(MultiServerCacheItem))
+	go StatsdClient.Incr("lrucache.hit", 1)
 
-	StatsdClient.Incr("lrucache.hit", 1)
 	return srv.(MultiServerCacheItem), nil
 }
 

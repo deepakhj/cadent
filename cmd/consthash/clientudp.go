@@ -99,9 +99,9 @@ func (client UDPClient) handleRequest() {
 		go client.run()
 	}
 
-	for w := int64(1); w <= client.server.Workers; w++ {
-		go client.getLines(w)
-	}
+	//for w := int64(1); w <= client.server.Workers; w++ {
+	go client.getLines(1)
+	//}
 }
 
 func (client UDPClient) handleSend() {
