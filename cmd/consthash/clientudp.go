@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-const UDP_BUFFER_SIZE = 1048576
+const UDP_BUFFER_SIZE = 5242880
 
 type UDPClient struct {
 	server  *Server
