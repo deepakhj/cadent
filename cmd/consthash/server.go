@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 )
@@ -210,8 +211,9 @@ type Server struct {
 	NumStats             uint
 
 	// our bound connection if TCP
-	Connection net.Listener
-	UDPConn    *net.UDPConn
+	Connection       net.Listener
+	UDPConn          *net.UDPConn
+	ClientBufferSize int //for UDP read buffers
 
 	//Hasher objects (can have multiple for replication of data)
 	Hashers []*ConstHasher
@@ -393,6 +395,8 @@ func NewServer(cfg *Config) (server *Server, err error) {
 	serv.BufferPoolSize = cfg.MaxPoolBufferSize
 	serv.SendingConnectionMethod = DEFAULT_SENDING_CONNECTIONS_METHOD
 
+	serv.ClientBufferSize = cfg.ReadBufferSize
+
 	if len(cfg.SendingConnectionMethod) > 0 {
 		serv.SendingConnectionMethod = cfg.SendingConnectionMethod
 	}
@@ -540,28 +544,6 @@ func (server *Server) tickDisplay() {
 	go server.tickDisplay()
 }
 
-// accept incoming TCP connections and push them into the
-// a connection channel
-func (server *Server) Accepter() (<-chan net.Conn, error) {
-
-	conns := make(chan net.Conn)
-	go func() {
-		defer server.Connection.Close()
-		defer close(conns)
-		for {
-			conn, err := server.Connection.Accept()
-			if err != nil {
-				server.Logger.Printf("Error Accecption Connection: %s", err)
-				return
-			}
-			server.Logger.Printf("Accepted connection from %s", conn.RemoteAddr())
-
-			conns <- conn
-		}
-	}()
-	return conns, nil
-}
-
 // Fire up the http server for stats and healthchecks
 // do this only if there is not a
 func (server *Server) AddStatusHandlers() {
@@ -594,20 +576,65 @@ func (server *Server) AddStatusHandlers() {
 
 }
 
+// accept incoming TCP connections and push them into the
+// a connection channel
+func (server *Server) Accepter() (<-chan *net.TCPConn, error) {
+
+	conns := make(chan *net.TCPConn, server.Workers)
+	go func() {
+		defer server.Connection.Close()
+		defer close(conns)
+		for {
+			conn, err := server.Connection.Accept()
+			if err != nil {
+				server.Logger.Printf("Error Accecption Connection: %s", err)
+				return
+			}
+			server.Logger.Printf("Accepted connection from %s", conn.RemoteAddr())
+
+			conns <- conn.(*net.TCPConn)
+		}
+	}()
+	return conns, nil
+}
+
 func (server *Server) startTCPServer(hashers *[]*ConstHasher, worker_queue chan *SendOut, done chan Client) {
 
-	accepts, err := server.Accepter()
+	//for TCPclients, since we basically create a client on each connect each time (unlike the UDP case)
+	// and we want only one processing Q, set up this "queue" here
+	input_queue := make(chan string, server.Workers)
+	defer close(input_queue)
+	out_queue := make(chan string, server.Workers)
+	defer close(out_queue)
+
+	run := func() {
+		for line := range input_queue {
+			key, line, err := server.LineProcessor.ProcessLine(strings.Trim(line, "\n\t "))
+			if err == nil {
+				go server.RunRunner(key, line, out_queue)
+			}
+			server.AllLinesCount.Up(1)
+			StatsdClient.Incr("incoming.tcp.lines", 1)
+		}
+	}
+	//fire up the workers
+	for w := int64(1); w <= server.Workers; w++ {
+		go run()
+	}
+
+	accepts_queue, err := server.Accepter()
 	if err != nil {
 		panic(err)
 	}
 
 	for {
 		select {
-		case conn, ok := <-accepts:
+		case conn, ok := <-accepts_queue:
 			if !ok {
 				return
 			}
-			client := NewTCPClient(server, hashers, conn, worker_queue, done)
+			client := NewTCPClient(server, hashers, conn, worker_queue, done, input_queue, out_queue)
+			client.SetBufferSize(server.ClientBufferSize)
 			go client.handleRequest()
 			go client.handleSend()
 		case workerUpDown := <-server.WorkerHold:
@@ -620,7 +647,8 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, worker_queue chan 
 			StatsdClient.GaugeAvg("worker.queue.length", ct)
 
 		case client := <-done:
-			client.Close()
+			client.Close() //this will close the connection too
+			client = nil
 		}
 	}
 
@@ -631,7 +659,7 @@ func (server *Server) startUDPServer(hashers *[]*ConstHasher, worker_queue chan 
 
 	//just need on "client" here as we simply just pull from the socket
 	client := NewUDPClient(server, hashers, server.UDPConn, worker_queue, done)
-
+	client.SetBufferSize(server.ClientBufferSize)
 	go client.handleRequest()
 	go client.handleSend()
 	for {

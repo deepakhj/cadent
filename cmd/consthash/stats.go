@@ -23,6 +23,12 @@ func SetUpStatsdClient(cfg *Config) statsd.Statsd {
 	}
 	interval := time.Second * 2 // aggregate stats and flush every 2 seconds
 	statsdclient := statsd.NewStatsdClient(cfg.StatsdServer, cfg.StatsdPrefix+".%HOST%.")
+	if cfg.StatsdTimerSampleRate > 0 {
+		statsdclient.TimerSampleRate = cfg.StatsdTimerSampleRate
+	}
+	if cfg.StatsdSampleRate > 0 {
+		statsdclient.SampleRate = cfg.StatsdSampleRate
+	}
 	//statsdclient.CreateSocket()
 	//StatsdClient = statsdclient
 	//return StatsdClient
@@ -33,6 +39,13 @@ func SetUpStatsdClient(cfg *Config) statsd.Statsd {
 	}
 	stats := statsd.NewStatsdBuffer(interval, statsdclient)
 	stats.RetainKeys = true //retain statsd keys to keep emitting 0's
+	if cfg.StatsdTimerSampleRate > 0 {
+		stats.TimerSampleRate = cfg.StatsdTimerSampleRate
+	}
+	if cfg.StatsdSampleRate > 0 {
+		stats.SampleRate = cfg.StatsdSampleRate
+	}
+
 	StatsdClient = stats
 	log.Printf("Statsd Client to %s, prefix %s, interval %d", cfg.StatsdServer, cfg.StatsdPrefix, cfg.StatsdInterval)
 	return StatsdClient
@@ -40,6 +53,10 @@ func SetUpStatsdClient(cfg *Config) statsd.Statsd {
 
 //a handy "defer" function for timers, in Nano seconds
 func StatsdNanoTimeFunc(statname string, start time.Time) {
+
+	// XXXX
+	//return // BIG Performance HIT here for very fast functions
+
 	elapsed := time.Since(start)
 	StatsdClient.Timing(statname, int64(elapsed))
 }

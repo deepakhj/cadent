@@ -10,16 +10,16 @@ import (
 	"strings"
 )
 
-const UDP_BUFFER_SIZE = 26214400
+// 1Mb default buffer size
+const UDP_BUFFER_SIZE = 1048576
 
 type UDPClient struct {
 	server  *Server
 	hashers *[]*ConstHasher
 
-	Connection   *net.UDPConn
-	LineCount    uint64
-	MaxLineCount uint64
-	CycleCount   uint64
+	Connection *net.UDPConn
+	LineCount  uint64
+	BufferSize int
 
 	channel      chan string
 	done         chan Client
@@ -35,11 +35,8 @@ func NewUDPClient(server *Server, hashers *[]*ConstHasher, conn *net.UDPConn, wo
 
 	client.LineCount = 0
 	client.Connection = conn
+	client.BufferSize = UDP_BUFFER_SIZE
 	client.Connection.SetReadBuffer(UDP_BUFFER_SIZE)
-
-	// we "parrael" this many processes then block until we are done
-	client.MaxLineCount = 1024
-	client.CycleCount = 0
 
 	client.worker_queue = worker_queue
 	client.input_queue = make(chan string, server.Workers)
@@ -47,6 +44,11 @@ func NewUDPClient(server *Server, hashers *[]*ConstHasher, conn *net.UDPConn, wo
 	client.done = done
 	return client
 
+}
+
+func (client UDPClient) SetBufferSize(size int) {
+	client.BufferSize = size
+	client.Connection.SetReadBuffer(client.BufferSize)
 }
 
 func (client UDPClient) Server() (server *Server) {
@@ -72,17 +74,18 @@ func (client UDPClient) run() {
 		if line == "" {
 			continue
 		}
-		//log.Println(len(client.input_queue), line)
 		client.server.AllLinesCount.Up(1)
 		key, line, err := client.server.LineProcessor.ProcessLine(strings.Trim(line, "\n\t "))
 		if err == nil {
 			client.server.RunRunner(key, line, client.channel)
+		} else {
+			log.Printf("Invalid Line: %s (%s)", err, line)
 		}
 		StatsdClient.Incr("incoming.udp.lines", 1)
 	}
 }
 
-func (client UDPClient) getLines(idx int64) {
+func (client UDPClient) getLines() {
 
 	readStr := func(line string) {
 		for _, line := range strings.Split(line, "\n") {
@@ -93,12 +96,15 @@ func (client UDPClient) getLines(idx int64) {
 			client.input_queue <- line
 		}
 	}
-
-	var buf [UDP_BUFFER_SIZE]byte
+	bufsize := UDP_BUFFER_SIZE
+	if client.BufferSize > 0 {
+		bufsize = client.BufferSize
+	}
+	var buf = make([]byte, bufsize)
 	for {
 		rlen, _, _ := client.Connection.ReadFromUDP(buf[:])
 		in_str := string(buf[0:rlen])
-		go readStr(in_str)
+		readStr(in_str)
 	}
 }
 
@@ -107,9 +113,7 @@ func (client UDPClient) handleRequest() {
 		go client.run()
 	}
 
-	//for w := int64(1); w <= client.server.Workers; w++ {
-	go client.getLines(1)
-	//}
+	go client.getLines()
 }
 
 func (client UDPClient) handleSend() {

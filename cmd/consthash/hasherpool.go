@@ -147,7 +147,7 @@ func (self *ConstHasher) GetN(in_key string, num int) ([]string, error) {
 		return real_servers, err
 	}
 	go upStatsd(srv.(MultiServerCacheItem))
-	go StatsdClient.Incr("lrucache.hit", 1)
+	StatsdClient.Incr("lrucache.hit", 1)
 
 	return srv.(MultiServerCacheItem), nil
 }

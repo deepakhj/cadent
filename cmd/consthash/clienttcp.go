@@ -6,114 +6,110 @@ package main
 
 import (
 	"bufio"
+	//"log"
 	"net"
-	"strings"
 )
+
+// not really used in scanner mode
+const TCP_BUFFER_SIZE = 4096
 
 type TCPClient struct {
 	server     *Server
 	hashers    *[]*ConstHasher
 	LineParser Runner
 
-	Connection net.Conn
+	Connection *net.TCPConn
 	LineCount  uint64
+	BufferSize int
 
 	//ins and outs
 	writer *bufio.Writer
 	reader *bufio.Reader
 
-	channel      chan string
+	out_queue    chan string
 	input_queue  chan string
 	done         chan Client
 	worker_queue chan *SendOut
 }
 
-func NewTCPClient(server *Server, hashers *[]*ConstHasher, conn net.Conn, worker_queue chan *SendOut, done chan Client) *TCPClient {
+func NewTCPClient(server *Server,
+	hashers *[]*ConstHasher,
+	conn *net.TCPConn,
+	worker_queue chan *SendOut,
+	done chan Client,
+	input_queue chan string,
+	out_queue chan string) *TCPClient {
 
 	client := new(TCPClient)
 	client.server = server
 	client.hashers = hashers
 
 	//client.writer = bufio.NewWriter(conn)
-	client.reader = bufio.NewReader(conn)
+	//client.reader = bufio.NewReaderSize(conn, TCP_BUFFER_SIZE)
 	client.LineCount = 0
 	client.Connection = conn
+	client.BufferSize = TCP_BUFFER_SIZE
 
-	client.channel = make(chan string, server.Workers)
+	client.out_queue = out_queue
 	client.worker_queue = worker_queue
-	client.input_queue = make(chan string, server.Workers)
+	client.input_queue = input_queue
 	client.done = done
 	return client
 }
 
-func (client TCPClient) Server() (server *Server) {
+//no need for TCP as we use a bufio reader
+func (client *TCPClient) SetBufferSize(size int) {
+	client.BufferSize = size
+}
+
+func (client *TCPClient) Server() (server *Server) {
 	return client.server
 }
 
-func (client TCPClient) Hashers() (server *[]*ConstHasher) {
+func (client *TCPClient) Hashers() (server *[]*ConstHasher) {
 	return client.hashers
 }
-func (client TCPClient) WorkerQueue() chan *SendOut {
+func (client *TCPClient) WorkerQueue() chan *SendOut {
 	return client.worker_queue
 }
 
 // close the 2 hooks, channel and connection
-func (client TCPClient) Close() {
-	client.Connection.Close()
+func (client *TCPClient) Close() {
+	client.reader = nil
+	if client.Connection != nil {
+		client.Connection.Close()
+	}
+	client.Connection = nil
 	client.server = nil
 	client.hashers = nil
-
 }
 
-func (client TCPClient) run() {
-	for line := range client.input_queue {
-		if line == "" {
-			continue
-		}
-
-		client.server.AllLinesCount.Up(1)
-		key, line, err := client.server.LineProcessor.ProcessLine(strings.Trim(line, "\n\t "))
-		if err == nil {
-			go client.server.RunRunner(key, line, client.channel)
-		}
-		StatsdClient.Incr("incoming.tcp.lines", 1)
-	}
-}
-
-func (client TCPClient) handleRequest() {
+func (client *TCPClient) handleRequest() {
 	//spin up the runners
-	for w := int64(1); w <= client.server.Workers; w++ {
-		go client.run()
-	}
+	buf := bufio.NewReaderSize(client.Connection, client.BufferSize)
 	for {
-
-		line, err := client.reader.ReadString('\n')
-		if err != nil || len(line) == 0 {
+		line, err := buf.ReadString('\n')
+		if err != nil {
 			break
 		}
+		if len(line) == 0 {
+			continue
+		}
 		client.input_queue <- line
-
 	}
-	//close it
+
+	buf = nil
+	//close it and end the send routing
+	client.out_queue <- ""
 	client.done <- client
 
 }
 
-func (client TCPClient) handleSend() {
-
+func (client *TCPClient) handleSend() {
+	//just "bleed" it
 	for {
-		message := <-client.channel
-		if len(message) == 0 {
-			break
+		if len(<-client.out_queue) == 0 {
+			return
 		}
-		//log.Print(message)
-
-		//client.writer.WriteString(message)
-		//client.writer.Flush()
-		//clear buffer
-		//client.reader.Reset(client.Connection)
 	}
-	//close it out
-	client.Connection.Close()
-	client.Close()
 }

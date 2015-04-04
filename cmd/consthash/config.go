@@ -49,14 +49,17 @@ type Config struct {
 	HashAlgo                string        `toml:"hasher_algo"`
 	HashElter               string        `toml:"hasher_elter"`
 	HashVNodes              int           `toml:"hasher_vnodes"`
+	ReadBufferSize          int           `toml:"read_buffer_size"`
 
 	//the array of potential servers to send stuff to (yes we can dupe data out)
 	ConfServerList []ConfigServerList `toml:"servers"`
 
 	// send some stats to the land
-	StatsdServer   string `toml:"statsd_server"`
-	StatsdPrefix   string `toml:"statsd_prefix"`
-	StatsdInterval uint   `toml:"statsd_interval"`
+	StatsdServer          string  `toml:"statsd_server"`
+	StatsdPrefix          string  `toml:"statsd_prefix"`
+	StatsdInterval        uint    `toml:"statsd_interval"`
+	StatsdSampleRate      float32 `toml:"statsd_sample_rate"`
+	StatsdTimerSampleRate float32 `toml:"statsd_timer_sample_rate"`
 
 	// number of workers to handle message sending queue
 	Workers int64 `toml:"workers"`
@@ -249,6 +252,13 @@ func (self ConfigServers) parseConfig(defaults Config) (out ConfigServers, err e
 			cfg.MaxPoolBufferSize = 0
 			if defaults.MaxPoolBufferSize > 0 {
 				cfg.MaxPoolBufferSize = defaults.MaxPoolBufferSize
+			}
+		}
+
+		if cfg.ReadBufferSize <= 0 {
+			cfg.ReadBufferSize = 0
+			if defaults.ReadBufferSize > 0 {
+				cfg.ReadBufferSize = defaults.ReadBufferSize
 			}
 		}
 
