@@ -84,6 +84,16 @@ statsd_server="192.168.59.103:8125"
 statsd_prefix="consthash"
 statsd_interval=1  # send to statd every second (buffered)
 
+# global statsd Sample Rates
+## It's HIGHLY recommended you at least put a statsd_timer_sample_rate as we measure
+## rates of very fast functions, and it can take _alot_ of CPU cycles just to do that
+## unless your server not under much stress 1% is a good number
+## `statsd_sample_rate` is for counters
+## `statsd_timer_sample_rate` is for timers
+statsd_timer_sample_rate=0.01
+statsd_sample_rate=0.1
+
+
 ## number of workers to chew on the sending queue
 ## adjust this based on the input load
 workers=200

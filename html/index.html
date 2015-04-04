@@ -65,7 +65,7 @@
 
 	<div class="page-header">
 		<div class="row">
-			<div class="col-sm-12"><h1>ConstHasher Tracker <small>Up: <span id="uptime_sec"></span>s</small></h1></div>
+			<div class="col-sm-12"><h1>ConstHasher Tracker <small>Up: <span id="uptime_sec"></span></small></h1></div>
 		</div>
 	</div>
 	<div class="row">
@@ -141,6 +141,19 @@
 </div>
 
 <script type="text/javascript">
+	function toprettytime(seconds) {
+		var sec_num = parseInt(seconds, 10);
+		var hours   = Math.floor(sec_num / 3600);
+		var minutes = Math.floor((sec_num - (hours * 3600)) / 60);
+		var seconds = sec_num - (hours * 3600) - (minutes * 60);
+
+		if (hours   < 10) {hours   = "0"+hours;}
+		if (minutes < 10) {minutes = "0"+minutes;}
+		if (seconds < 10) {seconds = "0"+seconds;}
+		var time    = hours+':'+minutes+':'+seconds;
+		return time;
+	}
+
 	var HOST="/stats"
 	//HOST="http://fe-2-statsd-infra-prod.mfpaws.com:6061/stats"
 	var DATA = {}
@@ -255,6 +268,9 @@
 							DATA[key][s_k+"_time"].push(now);
 							
 							if($("#"+s_k).get(0) && !$("#"+s_k).hasClass("graph")){
+								if (s_k.match(/uptime/)){
+									d_k = toprettytime(d_k)
+								}
 								$("#"+s_k).html(d_k)
 							}
 						})
