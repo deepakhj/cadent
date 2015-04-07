@@ -27,6 +27,6 @@ func (job StatsdRunner) ProcessLine(line string) (key string, orig_line string, 
 	if len(statd_array) == 2 {
 		return statd_array[0], line, nil
 	}
-	return "", "", fmt.Errorf("Invalid Statsd line")
+	return "", "", fmt.Errorf("Invalid Statsd line: " + line)
 
 }
