@@ -24,7 +24,7 @@ func (job StatsdRunner) ProcessLine(line string) (key string, orig_line string, 
 	defer StatsdNanoTimeFunc("factory.statsd.process-time-ns", time.Now())
 
 	statd_array := strings.Split(line, ":")
-	if len(statd_array) == 2 {
+	if len(statd_array) < 2 {
 		return statd_array[0], line, nil
 	}
 	return "", "", fmt.Errorf("Invalid Statsd line: " + line)
