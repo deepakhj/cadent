@@ -71,11 +71,16 @@ func (client UDPClient) Close() {
 
 func (client UDPClient) run() {
 	for line := range client.input_queue {
+
 		if line == "" {
 			continue
 		}
+		line = strings.Trim(line, "\n\t ")
+		if len(line) == 0 {
+			continue
+		}
 		client.server.AllLinesCount.Up(1)
-		key, line, err := client.server.LineProcessor.ProcessLine(strings.Trim(line, "\n\t "))
+		key, line, err := client.server.LineProcessor.ProcessLine(line)
 		if err == nil {
 			client.server.RunRunner(key, line, client.channel)
 		} else {
