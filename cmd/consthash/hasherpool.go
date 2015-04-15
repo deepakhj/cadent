@@ -27,10 +27,17 @@ func (s ServerCacheItem) Size() int {
 	return len(s)
 }
 
+func (s ServerCacheItem) toString() string {
+	return string(s)
+}
+
 type MultiServerCacheItem []string
 
 func (s MultiServerCacheItem) Size() int {
 	return len(s)
+}
+func (s MultiServerCacheItem) toString() string {
+	return strings.Join(s, ",")
 }
 
 // match the  ServerPoolRunner interface
@@ -91,11 +98,12 @@ func (self *ConstHasher) onServerDown(server url.URL) {
 }
 
 // clean up the server name for statsd
-func (self *ConstHasher) cleanKey(srv interface{}) string {
-	srv_key := strings.Replace(fmt.Sprintf("%s", srv), ":", "-", -1)
-	srv_key = strings.Replace(srv_key, "/", "", -1)
-	srv_key = strings.Replace(srv_key, ".", "-", -1)
-	return srv_key
+func (self *ConstHasher) cleanKey(srv string) string {
+	// NOTE: you may think that we can use the same srv var the entire time
+	// however, golang does NOT guarantee ordering here, so we force the ordering
+	srv_key := strings.Replace(srv, ":", "-", -1)
+	srv_key_2 := strings.Replace(srv_key, "/", "", -1)
+	return strings.Replace(srv_key_2, ".", "-", -1)
 }
 
 //alias to hasher to allow to use our LRU cache
@@ -104,10 +112,10 @@ func (self *ConstHasher) Get(in_key string) (string, error) {
 
 	if !ok {
 		StatsdClient.Incr("lrucache.miss", 1)
-		srv, err := self.Hasher.Get(in_key)
+		r_srv, err := self.Hasher.Get(in_key)
 
 		//find out real server string
-		real_server := self.HashKeyToServer[srv]
+		real_server := self.HashKeyToServer[r_srv]
 
 		self.Cache.Set(in_key, ServerCacheItem(real_server))
 
@@ -115,7 +123,7 @@ func (self *ConstHasher) Get(in_key string) (string, error) {
 
 		return real_server, err
 	}
-	StatsdClient.Incr(fmt.Sprintf("hashserver.%s.used", self.cleanKey(srv)), 1)
+	StatsdClient.Incr(fmt.Sprintf("hashserver.%s.used", self.cleanKey(srv.toString())), 1)
 	StatsdClient.Incr("lrucache.hit", 1)
 	return string(srv.(ServerCacheItem)), nil
 }

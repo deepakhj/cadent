@@ -34,6 +34,7 @@ type LRUCache struct {
 // Values that go into LRUCache need to satisfy this interface.
 type Value interface {
 	Size() int
+	toString() string
 }
 
 type Item struct {

@@ -72,19 +72,20 @@ func (client UDPClient) Close() {
 func (client UDPClient) run() {
 	for line := range client.input_queue {
 
-		if line == "" {
+		if line == "" || len(line) == 0 {
 			continue
 		}
-		line = strings.Trim(line, "\n\t ")
+
+		n_line := strings.Trim(line, "\n\t ")
 		if len(line) == 0 {
 			continue
 		}
 		client.server.AllLinesCount.Up(1)
-		key, line, err := client.server.LineProcessor.ProcessLine(line)
+		key, line, err := client.server.LineProcessor.ProcessLine(n_line)
 		if err == nil {
 			client.server.RunRunner(key, line, client.channel)
 		} else {
-			log.Printf("Invalid Line: %s (%s)", err, line)
+			log.Printf("Invalid Line: %s (%s)", err, n_line)
 		}
 		StatsdClient.Incr("incoming.udp.lines", 1)
 	}
