@@ -72,18 +72,18 @@ func (client UDPClient) Close() {
 func (client UDPClient) run() {
 	for line := range client.input_queue {
 
-		if line == "" || len(line) == 0 {
+		if line == "" {
 			continue
 		}
 
 		n_line := strings.Trim(line, "\n\t ")
-		if len(line) == 0 {
+		if len(n_line) == 0 {
 			continue
 		}
 		client.server.AllLinesCount.Up(1)
-		key, line, err := client.server.LineProcessor.ProcessLine(n_line)
+		key, _, err := client.server.LineProcessor.ProcessLine(n_line)
 		if err == nil {
-			client.server.RunRunner(key, line, client.channel)
+			client.server.RunRunner(key, n_line, client.channel)
 		} else {
 			log.Printf("Invalid Line: %s (%s)", err, n_line)
 		}
@@ -94,12 +94,12 @@ func (client UDPClient) run() {
 func (client UDPClient) getLines() {
 
 	readStr := func(line string) {
-		for _, line := range strings.Split(line, "\n") {
-			if len(line) == 0 {
+		for _, n_line := range strings.Split(line, "\n") {
+			if len(n_line) == 0 {
 				continue
 			}
 			//log.Println("REQ: ", len(client.input_queue), line)
-			client.input_queue <- line
+			client.input_queue <- n_line
 		}
 	}
 	bufsize := UDP_BUFFER_SIZE
