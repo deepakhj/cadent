@@ -422,7 +422,6 @@ func NewServer(cfg *Config) (server *Server, err error) {
 	}
 
 	serv.ticker = time.Duration(5) * time.Second
-	go serv.tickDisplay()
 	return serv, nil
 
 }
@@ -690,6 +689,8 @@ func CreateServer(cfg *Config, hashers []*ConstHasher) (*Server, error) {
 	if cfg.Workers > 0 {
 		server.Workers = int64(cfg.Workers)
 	}
+	//start tickin'
+	go server.tickDisplay()
 
 	return server, err
 }

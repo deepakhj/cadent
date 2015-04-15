@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -22,7 +23,7 @@ type BufferedNetpool struct {
 	pool           *Netpool
 	BufferSize     int
 	ForceFlushTime time.Duration
-	didclose       bool
+	didclose       int32
 
 	//lock to grab all the active cons and flush them
 	flushLock sync.Mutex
@@ -79,8 +80,8 @@ func (n *BufferedNetpoolConn) SetWriteDeadline(t time.Time) error {
 
 func (n *BufferedNetpoolConn) Write(b []byte) (wrote int, err error) {
 
-	//n.writeLock.Lock()
-	//defer n.writeLock.Unlock()
+	n.writeLock.Lock()
+	defer n.writeLock.Unlock()
 	if len(n.writebuffer) > n.buffersize {
 		//log.Println("Conn: ", n.conn.RemoteAddr(), "Wrote: ", wrote, " bin:", len(b), " buffsize: ", len(n.writebuffer))
 		wrote, err = n.conn.Write(n.writebuffer)
@@ -117,7 +118,7 @@ func NewBufferedNetpool(protocal string, name string, buffersize int) *BufferedN
 		pool:           pool,
 		BufferSize:     DEFAULT_BUFFER_SIZE,
 		ForceFlushTime: DEFAULT_FORCE_FLUSH,
-		didclose:       false,
+		didclose:       0,
 	}
 	if buffersize > 0 {
 		bpool.BufferSize = buffersize
@@ -135,12 +136,13 @@ func (n *BufferedNetpool) TrapExit() {
 		syscall.SIGTERM,
 		syscall.SIGQUIT)
 
-	go func() {
+	go func(np *BufferedNetpool) {
 		s := <-sigc
 		log.Printf("Caught %s: Flushing Buffers before quit ", s)
-		close(n.pool.free)
-		n.didclose = true
-		for con := range n.pool.free {
+		atomic.StoreInt32(&np.didclose, 1)
+		defer close(np.pool.free)
+		for i := 0; i < len(np.pool.free); i++ {
+			con := <-np.pool.free
 			con.Flush()
 		}
 
@@ -150,7 +152,7 @@ func (n *BufferedNetpool) TrapExit() {
 		// re-raise it
 		process, _ := os.FindProcess(os.Getpid())
 		process.Signal(s)
-	}()
+	}(n)
 }
 
 func (n *BufferedNetpool) GetMaxConnections() int {
@@ -186,7 +188,7 @@ func (n *BufferedNetpool) Open() (conn NetpoolConnInterface, err error) {
 
 //add it back to the queue
 func (n *BufferedNetpool) Close(conn NetpoolConnInterface) error {
-	if !n.didclose {
+	if atomic.LoadInt32(&n.didclose) == 0 {
 		return n.pool.Close(conn)
 	}
 	return nil
