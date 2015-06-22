@@ -92,10 +92,30 @@ func startStatsServer(defaults *Config, servers []*Server) {
 		}
 	}
 
+	hashcheck := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "private, max-age=0, no-cache")
+		h_key := r.URL.Query().Get("key")
+		if len(h_key) == 0 {
+			http.Error(w, "Please provide a 'key' to process", 404)
+			return
+		}
+		hasher_map := make(map[string]ServerHashCheck)
+
+		for idx, serv := range servers {
+			// note the server itself populates this ever 5 seconds
+			hasher_map[serv.Name] = servers[idx].HasherCheck(h_key)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		resbytes, _ := json.Marshal(hasher_map)
+		fmt.Fprintf(w, string(resbytes))
+
+	}
+
 	http.HandleFunc("/", fileserve)
 	http.HandleFunc("/ops/status", status)
 	http.HandleFunc("/status", status)
 	http.HandleFunc("/stats", stats)
+	http.HandleFunc("/hashcheck", hashcheck)
 
 	log.Fatal(http.ListenAndServe(defaults.HealthServerBind, nil))
 

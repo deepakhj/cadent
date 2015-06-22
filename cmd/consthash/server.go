@@ -195,6 +195,14 @@ type ServerStats struct {
 	ServersChecks              []string `json:"servers_checking"`
 }
 
+// helper object for the json info about a single "key"
+// basically to see "what server" a key will end up going to
+type ServerHashCheck struct {
+	ToServers []string `json:to_servers`
+	HashKey   string   `json:hash_key`
+	HashValue []uint32 `json:hash_value`
+}
+
 // a server set of stats
 type Server struct {
 	Name      string
@@ -316,6 +324,26 @@ func (server *Server) RunRunner(key string, line string, out chan string) {
 		server.FailSendCount.Up(1)
 		server.Logger.Printf("Timeout %d, %s", len(server.WorkQueue), key)
 	}
+}
+
+//return the ServerHashCheck for a given key (more a utility debugger thing for
+// the stats http server)
+func (server *Server) HasherCheck(key string) ServerHashCheck {
+
+	var out_check ServerHashCheck
+	out_check.HashKey = key
+
+	for _, hasher := range server.Hashers {
+		// may have replicas inside the pool too that we need to deal with
+		servs, err := hasher.GetN(key, server.Replicas)
+		if err == nil {
+			for _, useme := range servs {
+				out_check.ToServers = append(out_check.ToServers, useme)
+				out_check.HashValue = append(out_check.HashValue, hasher.Hasher.GetHasherValue(key))
+			}
+		}
+	}
+	return out_check
 }
 
 // the "main" hash chooser for a give line, the attaches it to a sender queue
