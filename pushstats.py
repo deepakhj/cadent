@@ -4,6 +4,7 @@ import time
 import sys
 import socket
 from multiprocessing import Process
+import argparse
 
 MSG_FMT = "{}:{}|c"
 
@@ -14,11 +15,21 @@ rand_words = [rand_str(string.ascii_lowercase, 5) for x in range(1,10)]
 
 rand_words = ["test", "house", "here", "there", "cow", "now"]
 
-def gen_key():
-    return "botests.{}.{}.{}".format(
+def gen_statsd_key(ct):
+    return "botests.{}.{}.{}:{}|c".format(
         random.choice(rand_words),
         random.choice(rand_words),
-        random.choice(rand_words)
+        random.choice(rand_words),
+        ct
+    )
+
+def gen_graphite_key(ct):
+    return "botests-graphite.{}.{}.{} {} {}".format(
+        random.choice(rand_words),
+        random.choice(rand_words),
+        random.choice(rand_words),
+        ct,
+        int(time.time())
     )
 
 FULL_CT = 0
@@ -29,8 +40,6 @@ START=time.time()
 ON_SERVER=[
     ("localhost",8125,),
     ("localhost",8125,),
-    ("localhost",8125,),
- #   ("localhost", 6001,)
 ]
 
 #ON_IP="192.168.59.103"
@@ -40,14 +49,19 @@ ON_SERVER=[
 def send_tcp(msg, ip, port):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.connect((ip, port,))
-    s.send(msg_full)
+    s.send(msg)
     s.close()
 
 def send_udp(msg, ip, port):
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # UDP
     sock.sendto(msg, (ip, port,))
 
-def run(ip, port, idx):
+def run(ip, port, type, idx, rate):
+    msg_func = gen_statsd_key
+    send_func = send_udp
+    if type == "graphite":
+        msg_func = gen_graphite_key
+        send_func = send_tcp
     def gen_msg(num):
         global FULL_CT, START,PACKET_FULL_CT
         msg_full = ""
@@ -56,17 +70,15 @@ def run(ip, port, idx):
         #now connect to the web server on port 80
         # - the normal http port
         while sys.getsizeof(msg_full) < num:
-            msg = MSG_FMT.format(
-                gen_key(),
-                ct
-            )
+            msg = msg_func(ct)
             msg_full += msg +"\n"
             ct += 1
             FULL_CT +=1
         else:
-            send_udp(msg_full, ip, port)
+            #print(msg_full)
+            send_func(msg_full, ip, port)
             PACKET_FULL_CT += 1
-            time.sleep(0.05)
+            time.sleep(rate)
             t_delta = time.time()- START
             out_msg = "[{}:{}] Sent {}/{} lines ~{:.2f}/s | {} Packets {:.2f}/s".format(
                 ip, port,
@@ -80,10 +92,23 @@ def run(ip, port, idx):
         gen_msg(512)
 
 if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(description='Push Stats')
+    parser.add_argument('--type',
+                    help='statd or graphite', default="statsd")
+    parser.add_argument('--port', type=int,
+                        help='server port #', default=8125)
+    parser.add_argument('--numforks', type=int,
+                        help='number of fokrs to run', default=2)
+    parser.add_argument('--host',
+                        help='host name', default="localhost")
+    parser.add_argument('--rate', type=float,
+                    help='send rate', default=0.01)
+
+    args = parser.parse_args()
     idx = 1
-    for ip, port in ON_SERVER:
-        print( "Running to {}:{}".format(ip, port))
-        p = Process(target=run, args=(ip, port, idx,))
+    for i in range(0, args.numforks):
+        print( "Running to {}:{}".format(args.host, args.host))
+        p = Process(target=run, args=(args.host, args.port, args.type, idx, args.rate))
         p.start()
         idx += 1
-        #p.join()
