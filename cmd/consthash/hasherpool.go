@@ -99,11 +99,9 @@ func (self *ConstHasher) onServerDown(server url.URL) {
 
 // clean up the server name for statsd
 func (self *ConstHasher) cleanKey(srv string) string {
-	// NOTE: you may think that we can use the same srv var the entire time
-	// however, golang does NOT guarantee ordering here, so we force the ordering
 	srv_key := strings.Replace(srv, ":", "-", -1)
-	srv_key_2 := strings.Replace(srv_key, "/", "", -1)
-	return strings.Replace(srv_key_2, ".", "-", -1)
+	srv_key = strings.Replace(srv_key, "/", "", -1)
+	return strings.Replace(srv_key, ".", "-", -1)
 }
 
 //alias to hasher to allow to use our LRU cache
