@@ -198,9 +198,9 @@ type ServerStats struct {
 // helper object for the json info about a single "key"
 // basically to see "what server" a key will end up going to
 type ServerHashCheck struct {
-	ToServers []string `json:to_servers`
-	HashKey   string   `json:hash_key`
-	HashValue []uint32 `json:hash_value`
+	ToServers []string `json:"to_servers"`
+	HashKey   string   `json:"hash_key"`
+	HashValue []uint32 `json:"hash_value"`
 }
 
 // a server set of stats
