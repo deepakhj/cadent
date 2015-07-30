@@ -35,4 +35,5 @@ type NetpoolInterface interface {
 	InitPool() error
 	Open() (conn NetpoolConnInterface, err error)
 	Close(conn NetpoolConnInterface) error
+	DestroyAll() error
 }

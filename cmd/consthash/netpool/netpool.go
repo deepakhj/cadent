@@ -106,6 +106,7 @@ func (n *Netpool) ResetConn(net_conn NetpoolConnInterface) error {
 	net_conn.SetStarted(time.Now())
 
 	// put it back on the queue
+	log.Println("[NetPool:ResetConn] Reset Connection %s://%s ", n.protocal, n.name)
 	n.free <- net_conn
 
 	return nil
@@ -122,7 +123,7 @@ func (n *Netpool) InitPoolWith(obj NetpoolInterface) error {
 	for i := 0; i < n.MaxConnections; i++ {
 		conn, err := net.DialTimeout(n.protocal, n.name, ConnectionTimeout)
 		if err != nil {
-			log.Println("[NetPool:InitPool] Connection open error: ", err)
+			log.Println("[NetPool:InitPool] Connection open error:  ", n.protocal, n.name, err)
 			return err
 		}
 		netcon := n.newConnectionFunc(conn, obj)
@@ -142,9 +143,8 @@ func (n *Netpool) Open() (conn NetpoolConnInterface, err error) {
 
 	net_conn := <-n.free
 
-	//recycle connections if we need to
-
-	if time.Now().Sub(net_conn.Started()) > n.RecycleTimeout {
+	//recycle connections if we need to or reconnect if we need to
+	if net_conn.Conn() == nil || time.Now().Sub(net_conn.Started()) > n.RecycleTimeout {
 		if net_conn.Conn() != nil {
 			net_conn.Flush()
 			goterr := net_conn.Conn().Close()
@@ -157,17 +157,29 @@ func (n *Netpool) Open() (conn NetpoolConnInterface, err error) {
 		conn, err := net.DialTimeout(n.protocal, n.name, ConnectionTimeout)
 		if err != nil {
 			log.Println("[NetPool:Open] Connection open error: ", err)
-			return net_conn, err
+			// we CANNOT return here we need the connections in the queue even if they are "dead"
+			// they will get re-tried
+			//return net_conn, err
 		}
 		net_conn.SetConn(conn)
 		net_conn.SetStarted(time.Now())
 	}
-	return net_conn, nil
-
+	return net_conn, err
 }
 
 //add it back to the queue
 func (n *Netpool) Close(conn NetpoolConnInterface) error {
 	n.free <- conn
+
+	return nil
+}
+
+//nuke all the connections
+func (n *Netpool) DestroyAll() error {
+
+	for i := 0; i < len(n.free); i++ {
+		con := <-n.free
+		con.Conn().Close()
+	}
 	return nil
 }

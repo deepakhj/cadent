@@ -83,13 +83,15 @@ func (n *BufferedNetpoolConn) Write(b []byte) (wrote int, err error) {
 	n.writeLock.Lock()
 	defer n.writeLock.Unlock()
 	if len(n.writebuffer) > n.buffersize {
-		//log.Println("Conn: ", n.conn.RemoteAddr(), "Wrote: ", wrote, " bin:", len(b), " buffsize: ", len(n.writebuffer))
 		wrote, err = n.conn.Write(n.writebuffer)
-		//StatsdClient.Incr("success.packets.sent", 1)
+		if err != nil {
+			n.conn.Close() // Open will re-open it
+			n.conn = nil
+			return 0, err
+		}
 		n.writebuffer = []byte("")
 	}
 	n.writebuffer = append(n.writebuffer, b...)
-	//StatsdClient.Incr("success.packets.buffer-writes", 1)
 
 	return wrote, err
 }
@@ -101,7 +103,12 @@ func (n *BufferedNetpoolConn) Flush() (wrote int, err error) {
 	//StatsdClient.Incr("success.packets.flushes", 1)
 	if len(n.writebuffer) > 0 && n.conn != nil {
 		wrote, err = n.conn.Write(n.writebuffer)
-		//StatsdClient.Incr("success.packets.sent", 1)
+		//log.Printf("WROTE: %s -- %s", err, n.writebuffer)
+		if err != nil {
+			n.Conn().Close() // Open will re-open it
+			n.SetConn(nil)
+			return 0, err
+		}
 		n.writebuffer = []byte("")
 	}
 	return wrote, err
@@ -190,6 +197,16 @@ func (n *BufferedNetpool) Open() (conn NetpoolConnInterface, err error) {
 func (n *BufferedNetpool) Close(conn NetpoolConnInterface) error {
 	if atomic.LoadInt32(&n.didclose) == 0 {
 		return n.pool.Close(conn)
+	}
+	return nil
+}
+
+//nuke all the connections
+func (n *BufferedNetpool) DestroyAll() error {
+	for i := 0; i < len(n.pool.free); i++ {
+		con := <-n.pool.free
+		con.Flush()
+		con.Conn().Close()
 	}
 	return nil
 }

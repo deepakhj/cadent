@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import string
 import random
 import time
@@ -95,15 +97,15 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Push Stats')
     parser.add_argument('--type',
-                    help='statd or graphite', default="statsd")
+                    help='statd or graphite - default %(default)s', default="statsd")
     parser.add_argument('--port', type=int,
-                        help='server port #', default=8125)
+                        help='server port # - default %(default)s', default=8125)
     parser.add_argument('--numforks', type=int,
-                        help='number of fokrs to run', default=2)
+                        help='number of forks to run - default %(default)s', default=2)
     parser.add_argument('--host',
-                        help='host name', default="localhost")
+                        help='host name - default %(default)s', default="localhost")
     parser.add_argument('--rate', type=float,
-                    help='send rate', default=0.01)
+                    help='send rate - default %(default)s', default=0.01)
 
     args = parser.parse_args()
     idx = 1

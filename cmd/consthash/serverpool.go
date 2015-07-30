@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"sync"
 	"time"
 )
@@ -79,6 +80,8 @@ type CheckedServerPool struct {
 	ConnectionRetry time.Duration
 
 	DoChecks bool
+
+	logger *log.Logger
 }
 
 // create a list of pools
@@ -110,6 +113,7 @@ func createServerPoolFromConfig(cfg *Config, serverlist *ParsedServerConfig, ser
 
 func createServerPool(serverlist []*url.URL, checklist []*url.URL, serveraction ServerPoolRunner) (serverp *CheckedServerPool, err error) {
 	serverp = new(CheckedServerPool)
+	serverp.logger = log.New(os.Stdout, "[CheckedServerPool] ", log.Ldate|log.Ltime)
 
 	serverp.ServerList = serverlist
 
@@ -118,30 +122,13 @@ func createServerPool(serverlist []*url.URL, checklist []*url.URL, serveraction 
 	serverp.AllPingCounts = 0
 
 	for idx, server := range serverlist {
-
-		//up
-		serverp.ServerActions.onServerUp(*server)
-
-		c_server := ServerPoolServer{
-			Name:                    fmt.Sprintf("%s", server),
-			ServerURL:               *server,
-			CheckName:               fmt.Sprintf("%s", checklist[idx]),
-			CheckURL:                *checklist[idx],
-			ServerPingCounts:        0,
-			ServerUpCounts:          0,
-			ServerDownCounts:        0,
-			ServerCurrentDownCounts: 0,
-			ServerRequestCounts:     0,
-		}
-
-		serverp.Servers = append(serverp.Servers, c_server)
+		serverp.AddServer(server, checklist[idx])
 	}
 
 	serverp.ConnectionRetry = DEFAULT_SERVER_RETRY
 	serverp.DownOutCount = DEFAULT_SERVER_OUT_COUNT
 	serverp.ConnectionTimeout = SERVER_TIMEOUT
 	serverp.DoChecks = true
-
 	return serverp, nil
 }
 
@@ -179,7 +166,7 @@ func (self *CheckedServerPool) reAddAllDroppedServers() {
 		if self.DownPolicy == "remove_node" {
 			self.ServerActions.onServerUp(self.DroppedServers[idx].ServerURL)
 		}
-		log.Printf("Readded old dead server %s", self.DroppedServers[idx].Name)
+		self.logger.Printf("Readded old dead server %s", self.DroppedServers[idx].Name)
 		self.DroppedServers[idx].ServerCurrentDownCounts = 0
 		new_s = append(new_s, self.DroppedServers[idx])
 	}
@@ -187,7 +174,61 @@ func (self *CheckedServerPool) reAddAllDroppedServers() {
 	self.Servers = new_s
 }
 
+func (self *CheckedServerPool) AddServer(serverUrl *url.URL, checkUrl *url.URL) {
+	self.mu.Lock()
+	defer self.mu.Unlock()
+
+	self.ServerActions.onServerUp(*serverUrl)
+
+	c_server := ServerPoolServer{
+		Name:                    fmt.Sprintf("%s", serverUrl),
+		ServerURL:               *serverUrl,
+		CheckName:               fmt.Sprintf("%s", checkUrl),
+		CheckURL:                *checkUrl,
+		ServerPingCounts:        0,
+		ServerUpCounts:          0,
+		ServerDownCounts:        0,
+		ServerCurrentDownCounts: 0,
+		ServerRequestCounts:     0,
+	}
+
+	self.Servers = append(self.Servers, c_server)
+	self.logger.Printf("Added Server %s checked via %s", c_server.Name, c_server.CheckName)
+}
+
+func (self *CheckedServerPool) PurgeServer(serverUrl *url.URL) bool {
+	// REMOVE a server in totality, it does not obey the "drop rules"
+	// and won't be re-added __ever__
+
+	self.mu.Lock()
+	defer self.mu.Unlock()
+
+	//the "new" server list
+	var new_s []ServerPoolServer
+	var new_s_list []*url.URL
+	did := false
+
+	for idx, serv := range self.Servers {
+
+		if serv.ServerURL == *serverUrl {
+			self.ServerActions.onServerDown(self.Servers[idx].ServerURL)
+			did = true
+		} else {
+			new_s_list = append(new_s_list, &serv.ServerURL)
+			new_s = append(new_s, serv)
+		}
+
+	}
+
+	self.Servers = new_s
+	self.ServerList = new_s_list
+	self.logger.Printf("Purged Server %s", serverUrl)
+	return did
+}
+
 func (self *CheckedServerPool) dropServer(server *ServerPoolServer) {
+	// called when we loose connections, only temp takes it out if desired
+
 	self.mu.Lock()
 	defer self.mu.Unlock()
 
@@ -227,13 +268,13 @@ func (self *CheckedServerPool) testSingleConnection(url url.URL, timeout time.Du
 func (self *CheckedServerPool) testUp(server *ServerPoolServer, out chan bool) {
 	pings := server.ServerPingCounts.Add(1)
 
-	log.Printf("Health Checking %s via %s, check %d", server.Name, server.CheckName, pings)
+	self.logger.Printf("Health Checking %s via %s, check %d", server.Name, server.CheckName, pings)
 	err := self.testSingleConnection(server.CheckURL, self.ConnectionTimeout)
 
 	if err != nil {
-		log.Printf("Healthcheck for %s Failed: %s - Down %d times", server.Name, err, server.ServerDownCounts+1)
+		self.logger.Printf("Healthcheck for %s Failed: %s - Down %d times", server.Name, err, server.ServerDownCounts+1)
 		if self.DownOutCount > 0 && server.ServerCurrentDownCounts.Get()+1 > self.DownOutCount {
-			log.Printf("Health %s Fail too many times, taking out of pool", server.Name)
+			self.logger.Printf("Health %s Fail too many times, taking out of pool", server.Name)
 			self.dropServer(server)
 		}
 		out <- false
@@ -247,7 +288,7 @@ func (self *CheckedServerPool) gotTestResponse(server *ServerPoolServer, in chan
 	if message {
 		server.ServerCurrentDownCounts.Set(0)
 		up := server.ServerUpCounts.Add(1)
-		log.Printf("Healthcheck for %s OK: UP %d pings", server.Name, up)
+		self.logger.Printf("Healthcheck for %s OK: UP %d pings", server.Name, up)
 	} else {
 		server.ServerDownCounts.Add(1)
 		server.ServerCurrentDownCounts.Add(1)
@@ -260,14 +301,14 @@ func (self *CheckedServerPool) cleanChannels(tester chan bool, done chan bool) {
 	if message {
 		close(tester)
 		close(done)
-		log.Printf("Closed")
+		self.logger.Printf("Closed")
 	}
 }
 
 func (self *CheckedServerPool) testConnections() error {
 
 	if self.ConnectionRetry < 2*self.ConnectionTimeout {
-		log.Printf("Connection Retry CANNOT be less then 2x the Connection Timeout")
+		self.logger.Printf("Connection Retry CANNOT be less then 2x the Connection Timeout")
 		return nil
 	}
 
@@ -283,7 +324,7 @@ func (self *CheckedServerPool) testConnections() error {
 		//re-add any killed servers after X ticker counts just to retest them
 		self.AllPingCounts.Add(1)
 		if (self.AllPingCounts%DEFAULT_SERVER_RE_ADD_TICK == 0) && len(self.DroppedServers) > 0 {
-			log.Printf("Attempting to re-add old dead server")
+			self.logger.Printf("Attempting to re-add old dead server")
 			self.reAddAllDroppedServers()
 		}
 		time.Sleep(self.ConnectionRetry)

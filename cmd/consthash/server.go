@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -23,7 +24,7 @@ const (
 	DEFAULT_WORKERS                    = int64(500)
 	DEFAULT_NUM_STATS                  = 100
 	DEFAULT_SENDING_CONNECTIONS_METHOD = "bufferedpool"
-	DEFAULT_RUNNER_TIMEOUT             = 500 * time.Millisecond
+	DEFAULT_RUNNER_TIMEOUT             = 1000 * time.Millisecond
 )
 
 // the push meathod function type
@@ -78,6 +79,8 @@ func poolWorker(j *SendOut) {
 	j.server.poolmu.Unlock()
 
 	netconn, err := outsrv.Open()
+	defer outsrv.Close(netconn) //must close to put back in pool queue
+
 	if err != nil {
 		StatsdClient.Incr("failed.bad-connection", 1)
 
@@ -88,8 +91,10 @@ func poolWorker(j *SendOut) {
 	if netconn.Conn() != nil {
 		// Conn.Write will raise a timeout error after 1 seconds
 		netconn.SetWriteDeadline(time.Now().Add(DEFAULT_RUNNER_TIMEOUT))
+		//var wrote int
 		to_send := []byte(j.param + "\n")
 		_, err = netconn.Write(to_send)
+		//log.Printf("SEND %s %s", wrote, err)
 		if err != nil {
 			StatsdClient.Incr("failed.connection-timeout", 1)
 			j.server.FailSendCount.Up(1)
@@ -100,7 +105,6 @@ func poolWorker(j *SendOut) {
 			j.server.SuccessSendCount.Up(1)
 			StatsdClient.Incr("success.send", 1)
 			StatsdClient.Incr("success.sent-bytes", int64(len(to_send)))
-			outsrv.Close(netconn)
 		}
 
 	} else {
@@ -568,6 +572,7 @@ func (server *Server) tickDisplay() {
 	server.ResetTickers()
 	runtime.GC()
 	time.Sleep(server.ticker)
+
 	go server.tickDisplay()
 }
 
@@ -594,12 +599,118 @@ func (server *Server) AddStatusHandlers() {
 		}
 	}
 
+	// add a new hasher node to a server dynamically
+	addnode := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "private, max-age=0, no-cache")
+		r.ParseForm()
+		server_str := strings.TrimSpace(r.Form.Get("server"))
+		if len(server_str) == 0 {
+			http.Error(w, "Invalid server name", http.StatusBadRequest)
+			return
+		}
+		server_url, err := url.Parse(server_str)
+		if err != nil {
+			http.Error(w, "Not a valid server URL", http.StatusBadRequest)
+			return
+		}
+		chk_server_str := strings.TrimSpace(r.Form.Get("check_server"))
+		if len(chk_server_str) == 0 {
+			chk_server_str = server_str
+		}
+		chk_server_url, err := url.Parse(chk_server_str)
+		if err != nil {
+			http.Error(w, "Not a valid Check server URL", http.StatusBadRequest)
+			return
+		}
+		if chk_server_url.Scheme != "tcp" && chk_server_url.Scheme != "http" {
+			http.Error(w, "Check server can only be TCP or HTTP", http.StatusBadRequest)
+			return
+		}
+		// since we can have replicas .. need an index to add it to
+		replica_str := r.Form.Get("replica")
+		if len(replica_str) == 0 {
+			replica_str = "0"
+		}
+		replica_int, err := strconv.Atoi(replica_str)
+		if err != nil {
+			http.Error(w, "Replica index is not an int", http.StatusBadRequest)
+			return
+		}
+		if replica_int > len(server.Hashers)-1 {
+			http.Error(w, "Replica index Too large", http.StatusBadRequest)
+			return
+		}
+		if replica_int < 0 {
+			http.Error(w, "Replica index Too small", http.StatusBadRequest)
+			return
+		}
+
+		//we can also accept a hash key for that server
+		hash_key_str := r.Form.Get("hash_key")
+		if len(hash_key_str) == 0 {
+			hash_key_str = server_str
+		}
+
+		server.Hashers[replica_int].AddServer(server_url, chk_server_url, hash_key_str)
+		fmt.Fprintf(w, "Server "+server_str+" Added")
+	}
+
+	// add a new hasher node to a server dynamically
+	purgenode := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "private, max-age=0, no-cache")
+		r.ParseForm()
+		server_str := strings.TrimSpace(r.Form.Get("server"))
+		if len(server_str) == 0 {
+			http.Error(w, "Invalid server name", http.StatusBadRequest)
+			return
+		}
+		server_url, err := url.Parse(server_str)
+		if err != nil {
+			http.Error(w, "Not a valid server URL", http.StatusBadRequest)
+			return
+		}
+
+		// since we can have replicas .. need an index to add it to
+		replica_str := r.Form.Get("replica")
+		if len(replica_str) == 0 {
+			replica_str = "0"
+		}
+		replica_int, err := strconv.Atoi(replica_str)
+		if err != nil {
+			http.Error(w, "Replica index is not an int", http.StatusBadRequest)
+			return
+		}
+		if replica_int > len(server.Hashers)-1 {
+			http.Error(w, "Replica index Too large", http.StatusBadRequest)
+			return
+		}
+		if replica_int < 0 {
+			http.Error(w, "Replica index Too small", http.StatusBadRequest)
+			return
+		}
+
+		server.Hashers[replica_int].PurgeServer(server_url)
+
+		// we need to CLOSE and thing in the Outpool
+		if serv, ok := server.Outpool[server_str]; ok {
+			serv.DestroyAll()
+			delete(server.Outpool, server_str)
+		}
+
+		fmt.Fprintf(w, "Server "+server_str+" Purged")
+	}
+
+	//stats and status
 	http.HandleFunc(fmt.Sprintf("/%s", server.Name), stats)
 	http.HandleFunc(fmt.Sprintf("/%s/ops/status", server.Name), status)
 	http.HandleFunc(fmt.Sprintf("/%s/ops/status/", server.Name), status)
 	http.HandleFunc(fmt.Sprintf("/%s/status", server.Name), status)
 	http.HandleFunc(fmt.Sprintf("/%s/stats/", server.Name), stats)
 	http.HandleFunc(fmt.Sprintf("/%s/stats", server.Name), stats)
+
+	//admin like functions
+	http.HandleFunc(fmt.Sprintf("/%s/addserver", server.Name), addnode)
+	http.HandleFunc(fmt.Sprintf("/%s/purgeserver", server.Name), purgenode)
 
 }
 
