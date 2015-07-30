@@ -646,7 +646,7 @@ func (server *Server) AddStatusHandlers() {
 		}
 
 		//we can also accept a hash key for that server
-		hash_key_str := r.Form.Get("hash_key")
+		hash_key_str := r.Form.Get("hashkey")
 		if len(hash_key_str) == 0 {
 			hash_key_str = server_str
 		}

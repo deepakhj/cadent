@@ -174,6 +174,7 @@ check_servers=["tcp://192.168.59.103:8127", "tcp://192.168.59.103:8137", "tcp://
 
 ## msg_type = statsd | graphite | regex
 ## <time> <key> <value>
+
 msg_type="graphite"
 
 # graphite style
@@ -184,7 +185,8 @@ hasher_vnodes=100
 [[graphite-example.servers]]
 
 servers=["tcp://192.168.10.200:2003","tcp://192.168.10.201:2003","tcp://192.168.10.202:2003"]
-#checks will default to the servers
+
+#check_servers will default to the servers
 
 ##
 ## NOTE about graphite's hasher .. typically you have the carbon-relay's destinations server set up like
@@ -194,6 +196,7 @@ servers=["tcp://192.168.10.200:2003","tcp://192.168.10.201:2003","tcp://192.168.
 ## so if you need to match graphite's exact hash config, the hashkeys need to be (based on the servers above)
 ## you'll need to look up the "a/b/c substring on the
 ##
+
 hashkeys=["""('192.168.10.200', 'a')""","""('192.168.10.201', 'b')""","""('192.168.10.202', 'c')"""]
 
 
@@ -210,10 +213,14 @@ listen="udp://127.0.0.1:6004"
 ## msg_type = statsd | graphite | regex
 ## NOTE  msg_regex needs to have (?P<Key>..) named bit
 msg_type="regex"
+
 ## NOTE: SINGLE QUOTES ARE IMPORTANT otherwise it will try to unescape the string
+
 msg_regex='^(<\d+>)?(?P<Timestamp>[A-Z][a-z]+\s+\d+\s\d+:\d+:\d+) (?P<Key>\S+) (?P<Logger>\S+):(.*)'
 hasher_algo="fnv"
 
 [[regex-example.servers]]
-servers=["udp://127.0.0.1:6080", "udp://127.0.0.1:6081", "udp://127.0.0.1:6082"]
+servers=["udp://127.0.0.1:6080","udp://127.0.0.1:6081","udp://127.0.0.1:6082"]
 check_servers=["tcp://127.0.0.1:6090","tcp://127.0.0.1:6091","tcp://127.0.0.1:6092"]
+
+
