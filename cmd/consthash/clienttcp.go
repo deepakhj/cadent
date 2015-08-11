@@ -8,9 +8,11 @@ import (
 	"bufio"
 	//"log"
 	"net"
+	"time"
 )
 
 const TCP_BUFFER_SIZE = 1048576
+const TCP_READ_TIMEOUT = 10000 * time.Millisecond
 
 type TCPClient struct {
 	server     *Server
@@ -48,6 +50,8 @@ func NewTCPClient(server *Server,
 	client.LineCount = 0
 	client.Connection = conn
 	client.BufferSize = TCP_BUFFER_SIZE
+	client.Connection.SetReadBuffer(TCP_BUFFER_SIZE)
+	client.Connection.SetReadDeadline(TCP_READ_TIMEOUT) //timeout connection after 10 secs
 
 	client.out_queue = out_queue
 	client.worker_queue = worker_queue
