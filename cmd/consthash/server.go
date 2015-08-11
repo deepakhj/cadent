@@ -24,7 +24,7 @@ const (
 	DEFAULT_WORKERS                    = int64(500)
 	DEFAULT_NUM_STATS                  = 100
 	DEFAULT_SENDING_CONNECTIONS_METHOD = "bufferedpool"
-	DEFAULT_RUNNER_TIMEOUT             = 1000 * time.Millisecond
+	DEFAULT_RUNNER_TIMEOUT             = 5000 * time.Millisecond
 )
 
 // the push meathod function type
