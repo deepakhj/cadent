@@ -428,12 +428,12 @@ func NewServer(cfg *Config) (server *Server, err error) {
 	}
 
 	serv.WriteTimeout = DEFAULT_WRITE_TIMEOUT
-	if cfg.WriteTimeout == 0 {
+	if cfg.WriteTimeout != 0 {
 		serv.WriteTimeout = cfg.WriteTimeout
 	}
 
 	serv.RunnerTimeout = DEFAULT_RUNNER_TIMEOUT
-	if cfg.RunnerTimeout == 0 {
+	if cfg.RunnerTimeout != 0 {
 		serv.RunnerTimeout = cfg.RunnerTimeout
 	}
 

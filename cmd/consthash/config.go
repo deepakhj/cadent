@@ -423,6 +423,8 @@ func (self *ConfigServers) debugConfig() {
 			log.Printf("  Runner Timeout: %v ", cfg.RunnerTimeout)
 			log.Printf("  Out Buffer Size: %v ", cfg.MaxPoolBufferSize)
 			log.Printf("  Out Pool Connections: %v ", cfg.MaxPoolConnections)
+			log.Printf("  Workers: %v ", cfg.Workers)
+
 			log.Printf("  Servers")
 			for _, slist := range cfg.ServerLists {
 				for idx, hosts := range slist.ServerList {
