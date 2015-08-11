@@ -34,7 +34,8 @@ func NewGraphiteRunner(conf map[string]interface{}) (*GraphiteRunner, error) {
 func (job *GraphiteRunner) ProcessLine(line string) (key string, orig_line string, err error) {
 	defer StatsdNanoTimeFunc("factory.graphite.process-time-ns", time.Now())
 	//<key> <value> <time> <more> <more>
-	graphite_array := strings.Fields(line)
+	//graphite_array := strings.Fields(line)
+	graphite_array := strings.Split(line, " ")
 	if len(graphite_array) > job.key_index {
 		return graphite_array[job.key_index], line, nil
 	}
