@@ -742,7 +742,7 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, worker_queue chan 
 	//for TCPclients, since we basically create a client on each connect each time (unlike the UDP case)
 	// and we want only one processing Q, set up this "queue" here
 	// let this queue get big as the workers for TCP may been much more buffering due to bursting
-	input_queue := make(chan string, server.Workers * 100)
+	input_queue := make(chan string, server.Workers)
 	defer close(input_queue)
 	out_queue := make(chan string, server.Workers)
 	defer close(out_queue)
