@@ -116,7 +116,7 @@ the make will make that as well, to run and listen on 3 UDP ports
 
     echoserver --servers=udp://127.0.0.1:6002,udp://127.0.0.1:6003,udp://127.0.0.1:6004
     
-    # 6 tcp servers
+    # 3 tcp servers
     echoserver --servers=tcp://127.0.0.1:6002,tcp://127.0.0.1:6003,tcp://127.0.0.1:6004
     
 

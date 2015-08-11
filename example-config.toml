@@ -17,6 +17,9 @@ num_procs=0
 ##   even if the buffer is not full
 sending_method="bufferedpool"
 
+## timeouts when sending lines to the receiver (in milliseconds)
+write_timeout=1000
+
 ## outgoing connections are pooled per outgoing server (above)
 ## this sets the number of pool connections
 ## careful with this number, there will be this number * servers sending to connections
@@ -97,6 +100,9 @@ statsd_sample_rate=0.1
 ## number of workers to chew on the sending queue
 ## adjust this based on the input load
 workers=200
+
+## timeouts for items on the worker queue in millisconds
+runner_timeout=1000
 
 ## there will be an internal health http server set up as well
 ## and will respond to '/ops/status' -> "GET OK"

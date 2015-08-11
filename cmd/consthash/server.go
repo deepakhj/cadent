@@ -25,6 +25,7 @@ const (
 	DEFAULT_NUM_STATS                  = 100
 	DEFAULT_SENDING_CONNECTIONS_METHOD = "bufferedpool"
 	DEFAULT_RUNNER_TIMEOUT             = 5000 * time.Millisecond
+	DEFAULT_WRITE_TIMEOUT              = 1000 * time.Millisecond
 )
 
 // the push meathod function type
@@ -90,7 +91,7 @@ func poolWorker(j *SendOut) {
 	}
 	if netconn.Conn() != nil {
 		// Conn.Write will raise a timeout error after 1 seconds
-		netconn.SetWriteDeadline(time.Now().Add(DEFAULT_RUNNER_TIMEOUT))
+		netconn.SetWriteDeadline(time.Now().Add(j.server.WriteTimeout))
 		//var wrote int
 		to_send := []byte(j.param + "\n")
 		_, err = netconn.Write(to_send)
@@ -131,7 +132,7 @@ func singleWorker(j *SendOut) {
 	conn, err := net.DialTimeout(m_url.Scheme, m_url.Host, 5*time.Second)
 	if conn != nil {
 
-		conn.SetWriteDeadline(time.Now().Add(DEFAULT_RUNNER_TIMEOUT))
+		conn.SetWriteDeadline(time.Now().Add(j.server.WriteTimeout))
 		//send it and close it
 		to_send := []byte(j.param + "\n")
 		_, err = conn.Write(to_send)
@@ -228,6 +229,10 @@ type Server struct {
 	UDPConn          *net.UDPConn
 	ClientBufferSize int //for UDP read buffers
 
+	// timeouts for tuning
+	WriteTimeout  time.Duration // time out when sending lines
+	RunnerTimeout time.Duration // timeout for work queue items
+
 	//Hasher objects (can have multiple for replication of data)
 	Hashers []*ConstHasher
 
@@ -249,8 +254,6 @@ type Server struct {
 	Outpool map[string]netpool.NetpoolInterface
 
 	ticker time.Duration
-
-	WriteTimeout time.Duration
 
 	//workers and ques sizes
 	WorkQueue   chan *SendOut
@@ -315,7 +318,7 @@ func (server *Server) WorkerOutput(jobs <-chan *SendOut) {
 func (server *Server) RunRunner(key string, line string, out chan string) {
 	//direct timer to void leaks (i.e. NOT time.After(...))
 
-	timer := time.NewTimer(DEFAULT_RUNNER_TIMEOUT)
+	timer := time.NewTimer(server.RunnerTimeout)
 	defer StatsdNanoTimeFunc(fmt.Sprintf("factory.runner.process-time-ns"), time.Now())
 
 	select {
@@ -422,6 +425,16 @@ func NewServer(cfg *Config) (server *Server, err error) {
 	serv.NumStats = DEFAULT_NUM_STATS
 	if cfg.HealthServerPoints > 0 {
 		serv.NumStats = cfg.HealthServerPoints
+	}
+
+	serv.WriteTimeout = DEFAULT_WRITE_TIMEOUT
+	if cfg.WriteTimeout == 0 {
+		serv.WriteTimeout = cfg.WriteTimeout
+	}
+
+	serv.RunnerTimeout = DEFAULT_RUNNER_TIMEOUT
+	if cfg.RunnerTimeout == 0 {
+		serv.RunnerTimeout = cfg.RunnerTimeout
 	}
 
 	serv.NetPoolConnections = cfg.MaxPoolConnections

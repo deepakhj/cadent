@@ -51,6 +51,10 @@ type Config struct {
 	HashVNodes              int           `toml:"hasher_vnodes"`
 	ReadBufferSize          int           `toml:"read_buffer_size"`
 
+	//Timeouts
+	WriteTimeout  time.Duration `toml:"write_timeout"`
+	RunnerTimeout time.Duration `toml:"runner_timeout"`
+
 	//the array of potential servers to send stuff to (yes we can dupe data out)
 	ConfServerList []ConfigServerList `toml:"servers"`
 
@@ -308,9 +312,31 @@ func (self ConfigServers) parseConfig(defaults Config) (out ConfigServers, err e
 			cfg.Replicas = minServerCount
 		}
 
+		if cfg.WriteTimeout == 0 {
+			cfg.WriteTimeout = 0
+			if defaults.WriteTimeout > 0 {
+				cfg.WriteTimeout = defaults.WriteTimeout
+			}
+		}
+
+		if cfg.RunnerTimeout == 0 {
+			cfg.RunnerTimeout = 0
+			if defaults.RunnerTimeout > 0 {
+				cfg.RunnerTimeout = defaults.RunnerTimeout
+			}
+		}
+
 		//need to make things seconds
+		//NOTE: write and runner time are in millisecond
+
 		cfg.ServerHeartBeat = cfg.ServerHeartBeat * time.Second
 		cfg.ServerHeartBeatTimeout = cfg.ServerHeartBeatTimeout * time.Second
+		if cfg.WriteTimeout != 0 {
+			cfg.WriteTimeout = cfg.WriteTimeout * time.Millisecond
+		}
+		if cfg.RunnerTimeout != 0 {
+			cfg.RunnerTimeout = cfg.RunnerTimeout * time.Millisecond
+		}
 
 		cfg.MsgConfig = make(map[string]interface{})
 
@@ -393,6 +419,10 @@ func (self *ConfigServers) debugConfig() {
 			log.Printf("  MsgType: %s ", cfg.MsgType)
 			log.Printf("  Hashing Algo: %s ", cfg.HashAlgo)
 			log.Printf("  Dupe Replicas: %d ", cfg.Replicas)
+			log.Printf("  Write Timeout: %v ", cfg.WriteTimeout)
+			log.Printf("  Runner Timeout: %v ", cfg.RunnerTimeout)
+			log.Printf("  Out Buffer Size: %v ", cfg.MaxPoolBufferSize)
+			log.Printf("  Out Pool Connections: %v ", cfg.MaxPoolConnections)
 			log.Printf("  Servers")
 			for _, slist := range cfg.ServerLists {
 				for idx, hosts := range slist.ServerList {
