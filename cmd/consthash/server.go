@@ -131,6 +131,7 @@ func singleWorker(j *SendOut) {
 	conn, err := net.DialTimeout(m_url.Scheme, m_url.Host, 5*time.Second)
 	if conn != nil {
 
+		conn.SetWriteDeadline(time.Now().Add(DEFAULT_RUNNER_TIMEOUT))
 		//send it and close it
 		to_send := []byte(j.param + "\n")
 		_, err = conn.Write(to_send)
@@ -324,7 +325,7 @@ func (server *Server) RunRunner(key string, line string, out chan string) {
 	case <-timer.C:
 		timer.Stop()
 		server.WorkerHold <- -1
-		StatsdClient.Incr("failed.connection-timeout", 1)
+		StatsdClient.Incr("failed.runner-timeout", 1)
 		server.FailSendCount.Up(1)
 		server.Logger.Printf("Timeout %d, %s", len(server.WorkQueue), key)
 	}

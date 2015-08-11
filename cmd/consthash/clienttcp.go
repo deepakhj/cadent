@@ -10,8 +10,7 @@ import (
 	"net"
 )
 
-// not really used in scanner mode
-const TCP_BUFFER_SIZE = 4096
+const TCP_BUFFER_SIZE = 1048576
 
 type TCPClient struct {
 	server     *Server
