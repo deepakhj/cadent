@@ -89,7 +89,7 @@ func (n *Netpool) NumFree() int {
 func (n *Netpool) ResetConn(net_conn NetpoolConnInterface) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	
+
 	if net_conn.Conn() != nil {
 		net_conn.Flush()
 		goterr := net_conn.Conn().Close()

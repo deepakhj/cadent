@@ -80,13 +80,13 @@ func poolWorker(j *SendOut) {
 	j.server.poolmu.Unlock()
 
 	netconn, err := outsrv.Open()
-	defer outsrv.Close(netconn) //must close to put back in pool queue
 
 	if err != nil {
 		StatsdClient.Incr("failed.bad-connection", 1)
 
 		j.server.FailSendCount.Up(1)
 		log.Printf("Error sending to backend %s", err)
+		outsrv.Close(netconn)
 		return
 	}
 	if netconn.Conn() != nil {
@@ -99,21 +99,24 @@ func poolWorker(j *SendOut) {
 		if err != nil {
 			StatsdClient.Incr("failed.connection-timeout", 1)
 			j.server.FailSendCount.Up(1)
-			outsrv.ResetConn(netconn)
+			outsrv.ResetConn(netconn) // puts it back in the pool it self
 			log.Printf("Error sending (writing) to backend: %s", err)
 			return
 		} else {
 			j.server.SuccessSendCount.Up(1)
 			StatsdClient.Incr("success.send", 1)
 			StatsdClient.Incr("success.sent-bytes", int64(len(to_send)))
+			outsrv.Close(netconn)
 		}
 
 	} else {
 		StatsdClient.Incr("failed.aborted-connection", 1)
 		j.server.FailSendCount.Up(1)
 		log.Printf("Error sending (writing connection gone) to backend: %s", err)
+		outsrv.Close(netconn)
 		return
 	}
+	outsrv.Close(netconn)
 
 }
 
