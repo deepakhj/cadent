@@ -109,7 +109,7 @@ func (n *Netpool) ResetConn(net_conn NetpoolConnInterface) error {
 
 	// put it back on the queue
 	log.Println("[NetPool:ResetConn] Reset Connection %s://%s ", n.protocal, n.name)
-	n.free <- net_conn
+	// NONONO n.free <- net_conn let "Close" do this only
 
 	return nil
 }
