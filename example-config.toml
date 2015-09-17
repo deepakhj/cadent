@@ -38,6 +38,7 @@ pool_buffersize=512
 # 'fnv' -> 32 bit FNV
 # 'fnva' -> 32 bin FNVa -- a faster fnv
 # 'nodejs-hashring' -> an "odd" bitshifting md5 one used by Statsd (nodejs-hashring really)
+# 'mmh' -> Murmur3 32 bit hash (requires github.com/reusee/mmh3)
 hasher_algo="md5"
 
 ## Hashing Etls

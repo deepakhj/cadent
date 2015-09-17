@@ -7,6 +7,7 @@ package main
 import (
 	"bufio"
 	//"log"
+	"./runner"
 	"net"
 )
 
@@ -15,7 +16,7 @@ const TCP_BUFFER_SIZE = 1048576
 type TCPClient struct {
 	server     *Server
 	hashers    *[]*ConstHasher
-	LineParser Runner
+	LineParser runner.Runner
 
 	Connection *net.TCPConn
 	LineCount  uint64

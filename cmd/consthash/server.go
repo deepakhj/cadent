@@ -6,6 +6,7 @@ package main
 
 import (
 	"./netpool"
+	"./runner"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -264,7 +265,7 @@ type Server struct {
 	//the Runner type to determine the keys to hash on
 	RunnerTypeString string
 	RunnerConfig     map[string]interface{}
-	LineProcessor    Runner
+	LineProcessor    runner.Runner
 
 	//the push function
 	PushFunction pushFunction
@@ -288,22 +289,22 @@ func (server *Server) SetPushMethod() pushFunction {
 	return server.PushFunction
 }
 
-func (server *Server) SetLineProcessor() (Runner, error) {
+func (server *Server) SetLineProcessor() (runner.Runner, error) {
 	msg_type := server.RunnerTypeString
 
-	var runner Runner
+	var rner runner.Runner
 	var err error = nil
 	switch {
 	case msg_type == "statsd":
-		runner, err = NewStatsdRunner(server.RunnerConfig)
+		rner, err = runner.NewStatsdRunner(server.RunnerConfig)
 	case msg_type == "graphite":
-		runner, err = NewGraphiteRunner(server.RunnerConfig)
+		rner, err = runner.NewGraphiteRunner(server.RunnerConfig)
 	case msg_type == "regex":
-		runner, err = NewRegExRunner(server.RunnerConfig)
+		rner, err = runner.NewRegExRunner(server.RunnerConfig)
 	default:
 		return nil, fmt.Errorf("Failed to configure Runner, aborting")
 	}
-	server.LineProcessor = runner
+	server.LineProcessor = rner
 	return server.LineProcessor, err
 
 }
@@ -762,6 +763,8 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, worker_queue chan 
 
 	run := func() {
 		for line := range input_queue {
+			defer StatsdNanoTimeFunc(fmt.Sprintf("factory.%s.process-time-ns", server.LineProcessor.Name), time.Now())
+
 			key, line, err := server.LineProcessor.ProcessLine(strings.Trim(line, "\n\t "))
 			if err == nil {
 				go server.RunRunner(key, line, out_queue)
