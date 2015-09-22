@@ -94,7 +94,7 @@ func (client *TCPClient) handleRequest() {
 			break
 		}
 		if len(line) == 0 {
-			continue
+			break
 		}
 		client.input_queue <- line
 	}
