@@ -6,7 +6,6 @@ package main
 
 import (
 	"./netpool"
-	"./runner"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -265,7 +264,7 @@ type Server struct {
 	//the Runner type to determine the keys to hash on
 	RunnerTypeString string
 	RunnerConfig     map[string]interface{}
-	LineProcessor    runner.Runner
+	LineProcessor    Runner
 
 	//the push function
 	PushFunction pushFunction
@@ -289,22 +288,22 @@ func (server *Server) SetPushMethod() pushFunction {
 	return server.PushFunction
 }
 
-func (server *Server) SetLineProcessor() (runner.Runner, error) {
+func (server *Server) SetLineProcessor() (Runner, error) {
 	msg_type := server.RunnerTypeString
 
-	var rner runner.Runner
+	var runner Runner
 	var err error = nil
 	switch {
 	case msg_type == "statsd":
-		rner, err = runner.NewStatsdRunner(server.RunnerConfig)
+		runner, err = NewStatsdRunner(server.RunnerConfig)
 	case msg_type == "graphite":
-		rner, err = runner.NewGraphiteRunner(server.RunnerConfig)
+		runner, err = NewGraphiteRunner(server.RunnerConfig)
 	case msg_type == "regex":
-		rner, err = runner.NewRegExRunner(server.RunnerConfig)
+		runner, err = NewRegExRunner(server.RunnerConfig)
 	default:
 		return nil, fmt.Errorf("Failed to configure Runner, aborting")
 	}
-	server.LineProcessor = rner
+	server.LineProcessor = runner
 	return server.LineProcessor, err
 
 }
@@ -331,7 +330,7 @@ func (server *Server) RunRunner(key string, line string, out chan string) {
 		server.WorkerHold <- -1
 		StatsdClient.Incr("failed.runner-timeout", 1)
 		server.FailSendCount.Up(1)
-		server.Logger.Printf("RunRunner Timeout %s - %d, %s", server.RunnerTimeout, len(server.WorkQueue), key)
+		server.Logger.Printf("Timeout %d, %s", len(server.WorkQueue), key)
 	}
 }
 
@@ -763,8 +762,6 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, worker_queue chan 
 
 	run := func() {
 		for line := range input_queue {
-			defer StatsdNanoTimeFunc(fmt.Sprintf("factory.%s.process-time-ns", server.LineProcessor.Name()), time.Now())
-
 			key, line, err := server.LineProcessor.ProcessLine(strings.Trim(line, "\n\t "))
 			if err == nil {
 				go server.RunRunner(key, line, out_queue)

@@ -4,21 +4,19 @@
    space based line entries with the key as the first item
 */
 
-package runner
+package main
 
 import (
 	"fmt"
 	"strings"
+	"time"
 )
 
 /****************** RUNNERS *********************/
-const GRAPHITE_NAME = "graphite"
 
 type GraphiteRunner struct {
 	key_index int
 }
-
-func (job *GraphiteRunner) Name() (name string) { return GRAPHITE_NAME }
 
 func NewGraphiteRunner(conf map[string]interface{}) (*GraphiteRunner, error) {
 
@@ -34,6 +32,7 @@ func NewGraphiteRunner(conf map[string]interface{}) (*GraphiteRunner, error) {
 }
 
 func (job *GraphiteRunner) ProcessLine(line string) (key string, orig_line string, err error) {
+	defer StatsdNanoTimeFunc("factory.graphite.process-time-ns", time.Now())
 	//<key> <value> <time> <more> <more>
 	//graphite_array := strings.Fields(line)
 	graphite_array := strings.Split(line, " ")

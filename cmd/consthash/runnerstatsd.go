@@ -2,19 +2,16 @@
    statsd Runner and parser <key>:<value>|<type>
 */
 
-package runner
+package main
 
 import (
 	"fmt"
 	"strings"
+	"time"
 )
-
-const STATSD_NAME = "statsd"
 
 type StatsdRunner struct {
 }
-
-func (job *StatsdRunner) Name() (name string) { return STATSD_NAME }
 
 func NewStatsdRunner(conf map[string]interface{}) (*StatsdRunner, error) {
 
@@ -24,6 +21,7 @@ func NewStatsdRunner(conf map[string]interface{}) (*StatsdRunner, error) {
 }
 
 func (job StatsdRunner) ProcessLine(line string) (key string, orig_line string, err error) {
+	defer StatsdNanoTimeFunc("factory.statsd.process-time-ns", time.Now())
 
 	statd_array := strings.Split(line, ":")
 	if len(statd_array) >= 2 {

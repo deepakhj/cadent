@@ -2,21 +2,17 @@
    a Regex runner that takes an arbitrary regex to yank it's key from
 */
 
-package runner
+package main
 
 import (
 	"fmt"
 	"regexp"
 )
 
-const REGEX_NAME = "regex"
-
 type RegExRunner struct {
 	key_regex       *regexp.Regexp
 	key_regex_names []string
 }
-
-func (job *RegExRunner) Name() (name string) { return REGEX_NAME }
 
 func NewRegExRunner(conf map[string]interface{}) (*RegExRunner, error) {
 
