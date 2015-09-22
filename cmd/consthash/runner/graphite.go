@@ -12,20 +12,19 @@ import (
 )
 
 /****************** RUNNERS *********************/
+const GRAPHITE_NAME = "graphite"
 
 type GraphiteRunner struct {
 	key_index int
-	name      string
 }
 
-func (job *GraphiteRunner) Name() (name string) { return name }
+func (job *GraphiteRunner) Name() (name string) { return GRAPHITE_NAME }
 
 func NewGraphiteRunner(conf map[string]interface{}) (*GraphiteRunner, error) {
 
 	//<key> <value> <time> <thigns>
 	job := &GraphiteRunner{
 		key_index: 0,
-		name:      "graphite",
 	}
 	// allow for a config option to pick the proper thing in the line
 	if idx, ok := conf["key_index"].(int); ok {

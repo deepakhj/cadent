@@ -9,16 +9,17 @@ import (
 	"strings"
 )
 
+const STATSD_NAME = "statsd"
+
 type StatsdRunner struct {
-	name string
 }
 
-func (job *StatsdRunner) Name() (name string) { return name }
+func (job *StatsdRunner) Name() (name string) { return STATSD_NAME }
 
 func NewStatsdRunner(conf map[string]interface{}) (*StatsdRunner, error) {
 
 	//<key>:blaaa
-	job := &StatsdRunner{name: "statsd"}
+	job := &StatsdRunner{}
 	return job, nil
 }
 

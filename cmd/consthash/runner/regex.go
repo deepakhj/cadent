@@ -9,18 +9,19 @@ import (
 	"regexp"
 )
 
+const REGEX_NAME = "regex"
+
 type RegExRunner struct {
 	key_regex       *regexp.Regexp
 	key_regex_names []string
-	name            string
 }
 
-func (job *RegExRunner) Name() (name string) { return name }
+func (job *RegExRunner) Name() (name string) { return REGEX_NAME }
 
 func NewRegExRunner(conf map[string]interface{}) (*RegExRunner, error) {
 
 	//<key>:blaaa
-	job := &RegExRunner{name: "regex"}
+	job := &RegExRunner{}
 	job.key_regex = conf["regexp"].(*regexp.Regexp)
 	job.key_regex_names = conf["regexpNames"].([]string)
 	return job, nil

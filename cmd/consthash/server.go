@@ -763,7 +763,7 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, worker_queue chan 
 
 	run := func() {
 		for line := range input_queue {
-			defer StatsdNanoTimeFunc(fmt.Sprintf("factory.%s.process-time-ns", server.LineProcessor.Name), time.Now())
+			defer StatsdNanoTimeFunc(fmt.Sprintf("factory.%s.process-time-ns", server.LineProcessor.Name()), time.Now())
 
 			key, line, err := server.LineProcessor.ProcessLine(strings.Trim(line, "\n\t "))
 			if err == nil {
