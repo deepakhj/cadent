@@ -331,7 +331,7 @@ func (server *Server) RunRunner(key string, line string, out chan string) {
 		server.WorkerHold <- -1
 		StatsdClient.Incr("failed.runner-timeout", 1)
 		server.FailSendCount.Up(1)
-		server.Logger.Printf("Timeout %d, %s", len(server.WorkQueue), key)
+		server.Logger.Printf("RunRunner Timeout %s - %d, %s", server.RunnerTimeout, len(server.WorkQueue), key)
 	}
 }
 
