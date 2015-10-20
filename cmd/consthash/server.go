@@ -528,7 +528,8 @@ func (server *Server) StatsTick() {
 	server.stats.UnknownSendCountPerSec = server.UnknownSendCount.TotalRate(elapsed)
 	server.stats.AllLinesCountPerSec = server.AllLinesCount.TotalRate(elapsed)
 	server.stats.Listening = server.ListenURL.String()
-	//XXX TODO FIX ME
+
+	//XXX TODO FIX ME to look like a multi service line, not one big puddle
 	for idx, hasher := range server.Hashers {
 		if idx == 0 {
 			server.stats.ServersUp = hasher.Members()

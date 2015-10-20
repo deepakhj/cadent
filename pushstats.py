@@ -106,9 +106,17 @@ if __name__ == '__main__':
                         help='host name - default %(default)s', default="localhost")
     parser.add_argument('--rate', type=float,
                     help='send rate - default %(default)s', default=0.01)
+    parser.add_argument('--depth', type=int,
+                    help='number of random of stat permutatins - default %(default)s',
+                    default=5)
 
     args = parser.parse_args()
     idx = 1
+
+    if args.depth > 5:
+        rand_words = [rand_str(string.ascii_lowercase, 5) for x in range(1,args.depth)]
+
+
     for i in range(0, args.numforks):
         print( "Running to {}:{}".format(args.host, args.host))
         p = Process(target=run, args=(args.host, args.port, args.type, idx, args.rate))
