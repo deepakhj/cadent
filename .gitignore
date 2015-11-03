@@ -3,8 +3,8 @@ consthash.iml
 consthash.xcodeproj*
 *.heap
 *.pprof
-cmd/consthash/consistent
-cmd/consthash/statsd
+server/consistent
+server/statsd
 consthashsrv.iml
 *.pyc
 *.pyo
