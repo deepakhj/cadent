@@ -1,0 +1,22 @@
+{
+	"ImportPath": "/Users/bo/MyFitnessPal/anomoly/consthashsrv",
+	"GoVersion": "go1.5.1",
+	"Packages": [
+		"consthash/",
+		"cmd/consthash/"
+	],
+	"Deps": [
+		{
+			"ImportPath": "github.com/BurntSushi/toml",
+			"Rev": "056c9bc7be7190eaa7715723883caffa5f8fa3e4"
+		},
+		{
+			"ImportPath": "github.com/davecheney/profile",
+			"Rev": "c29d1a1565bca9fbeed5eed0e5d52ba78469a16b"
+		},
+		{
+			"ImportPath": "github.com/reusee/mmh3",
+			"Rev": "64b85163255bbb6af4f0d0eab61ecdda7ea7cd96"
+		}
+	]
+}

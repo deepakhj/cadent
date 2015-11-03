@@ -32,6 +32,7 @@ progress Grabing external packages
 
 go get github.com/BurntSushi/toml
 go get github.com/davecheney/profile
+go get github.com/reusee/mmh3
 
 make clean
 

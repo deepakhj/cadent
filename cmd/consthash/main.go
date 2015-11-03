@@ -1,6 +1,7 @@
 package main
 
 import (
+	consthash "../../server"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -50,7 +51,7 @@ func setSystemStuff(num_procs int) {
 }
 
 // Fire up the http server for stats and healthchecks
-func startStatsServer(defaults *Config, servers []*Server) {
+func startStatsServer(defaults *consthash.Config, servers []*consthash.Server) {
 
 	log.Printf("Starting Status server on %s", defaults.HealthServerBind)
 
@@ -73,10 +74,10 @@ func startStatsServer(defaults *Config, servers []*Server) {
 		w.Header().Set("Cache-Control", "private, max-age=0, no-cache")
 		jsonp := r.URL.Query().Get("jsonp")
 
-		stats_map := make(map[string]*ServerStats)
+		stats_map := make(map[string]*consthash.ServerStats)
 		for idx, serv := range servers {
-			// note the server itself populates this ever 5 seconds
-			stats_map[serv.Name] = &servers[idx].stats
+			// note the server itself populates this every 5 seconds
+			stats_map[serv.Name] = servers[idx].GetStats()
 		}
 		resbytes, _ := json.Marshal(stats_map)
 		if len(jsonp) > 0 {
@@ -99,7 +100,7 @@ func startStatsServer(defaults *Config, servers []*Server) {
 			http.Error(w, "Please provide a 'key' to process", 404)
 			return
 		}
-		hasher_map := make(map[string]ServerHashCheck)
+		hasher_map := make(map[string]consthash.ServerHashCheck)
 
 		for idx, serv := range servers {
 			// note the server itself populates this ever 5 seconds
@@ -130,18 +131,18 @@ func main() {
 		os.Exit(0)
 	}
 
-	var config ConfigServers
+	var config consthash.ConfigServers
 	var err error
 
-	config, err = parseConfigFile(*configFile)
+	config, err = consthash.ParseConfigFile(*configFile)
 	if err != nil {
 		log.Printf("Error decoding config file: %s", err)
 		os.Exit(1)
 	}
 
-	config.debugConfig()
+	config.DebugConfig()
 
-	def, err := config.defaultConfig()
+	def, err := config.DefaultConfig()
 	if err != nil {
 		log.Printf("Error decoding config file: Could not find default: %s", err)
 		os.Exit(1)
@@ -193,25 +194,25 @@ func main() {
 	}
 
 	//initiallize the statsd singleton
-	SetUpStatsdClient(def)
+	consthash.SetUpStatsdClient(def)
 
-	var servers []*Server
+	var servers []*consthash.Server
 	useconfigs := config.ServableConfigs()
 
 	for _, cfg := range useconfigs {
 
-		var hashers []*ConstHasher
+		var hashers []*consthash.ConstHasher
 
 		for _, serverlist := range cfg.ServerLists {
-			hasher, err := createConstHasherFromConfig(&cfg, serverlist)
+			hasher, err := consthash.CreateConstHasherFromConfig(&cfg, serverlist)
 
 			if err != nil {
 				panic(err)
 			}
-			go hasher.ServerPool.startChecks()
+			go hasher.ServerPool.StartChecks()
 			hashers = append(hashers, hasher)
 		}
-		server, err := CreateServer(&cfg, hashers)
+		server, err := consthash.CreateServer(&cfg, hashers)
 		if err != nil {
 			panic(err)
 		}
