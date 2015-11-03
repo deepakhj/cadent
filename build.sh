@@ -23,8 +23,8 @@ cd "${WORKSPACE}/git"
 
 # need to clone our other deps
 
-git clone git@scm-main-01.dc.myfitnesspal.com:goutil/consistent.git cmd/consthash/consistent
-git clone git@scm-main-01.dc.myfitnesspal.com:goutil/statsd.git cmd/consthash/statsd
+git clone git@scm-main-01.dc.myfitnesspal.com:goutil/consistent.git server/consistent
+git clone git@scm-main-01.dc.myfitnesspal.com:goutil/statsd.git server/statsd
 
 # grab the external pacakges
 
