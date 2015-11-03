@@ -20,6 +20,7 @@ type TCPClient struct {
 
 	Connection *net.TCPConn
 	LineCount  uint64
+
 	BufferSize int
 
 	//ins and outs
@@ -30,6 +31,7 @@ type TCPClient struct {
 	input_queue  chan string
 	done         chan Client
 	worker_queue chan *SendOut
+
 }
 
 func NewTCPClient(server *Server,
@@ -55,6 +57,7 @@ func NewTCPClient(server *Server,
 	client.worker_queue = worker_queue
 	client.input_queue = input_queue
 	client.done = done
+
 	return client
 }
 
@@ -87,7 +90,10 @@ func (client *TCPClient) Close() {
 
 func (client *TCPClient) handleRequest() {
 	//spin up the runners
+
+
 	buf := bufio.NewReaderSize(client.Connection, client.BufferSize)
+
 	for {
 		line, err := buf.ReadString('\n')
 		if err != nil {
@@ -96,6 +102,8 @@ func (client *TCPClient) handleRequest() {
 		if len(line) == 0 {
 			continue
 		}
+
+		//this will block once the queue is full
 		client.input_queue <- line
 	}
 

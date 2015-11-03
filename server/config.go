@@ -34,7 +34,7 @@ type Config struct {
 	PIDfile                 string        `toml:"pid_file"`
 	NumProc                 int           `toml:"num_procs"`
 	MaxPoolConnections      int           `toml:"max_pool_connections"`
-	MaxPoolBufferSize       int           `toml:"pool_buffersize"`
+	MaxWritePoolBufferSize  int           `toml:"pool_buffersize"`
 	SendingConnectionMethod string        `toml:"sending_method"`
 	MsgType                 string        `toml:"msg_type"`
 	MsgFormatRegEx          string        `toml:"msg_regex"`
@@ -49,7 +49,9 @@ type Config struct {
 	HashAlgo                string        `toml:"hasher_algo"`
 	HashElter               string        `toml:"hasher_elter"`
 	HashVNodes              int           `toml:"hasher_vnodes"`
-	ReadBufferSize          int           `toml:"read_buffer_size"`
+
+	ClientReadBufferSize    int64         `toml:"read_buffer_size"`
+	MaxReadBufferSize		int64		  `toml:"max_read_buffer_size"`
 
 	//Timeouts
 	WriteTimeout  time.Duration `toml:"write_timeout"`
@@ -252,17 +254,24 @@ func (self ConfigServers) ParseConfig(defaults Config) (out ConfigServers, err e
 				cfg.MaxPoolConnections = defaults.MaxPoolConnections
 			}
 		}
-		if cfg.MaxPoolBufferSize <= 0 {
-			cfg.MaxPoolBufferSize = 0
-			if defaults.MaxPoolBufferSize > 0 {
-				cfg.MaxPoolBufferSize = defaults.MaxPoolBufferSize
+		if cfg.MaxWritePoolBufferSize <= 0 {
+			cfg.MaxWritePoolBufferSize = 0
+			if defaults.MaxWritePoolBufferSize > 0 {
+				cfg.MaxWritePoolBufferSize = defaults.MaxWritePoolBufferSize
 			}
 		}
 
-		if cfg.ReadBufferSize <= 0 {
-			cfg.ReadBufferSize = 0
-			if defaults.ReadBufferSize > 0 {
-				cfg.ReadBufferSize = defaults.ReadBufferSize
+		if cfg.ClientReadBufferSize <= 0 {
+			cfg.ClientReadBufferSize = 1024*1024
+			if defaults.ClientReadBufferSize > 0 {
+				cfg.ClientReadBufferSize = defaults.ClientReadBufferSize
+			}
+		}
+
+		if cfg.MaxReadBufferSize <= 0 {
+			cfg.MaxReadBufferSize = cfg.ClientReadBufferSize
+			if defaults.MaxReadBufferSize > 0 {
+				cfg.MaxReadBufferSize = 1000 * defaults.MaxReadBufferSize
 			}
 		}
 
@@ -421,8 +430,8 @@ func (self *ConfigServers) DebugConfig() {
 			log.Printf("  Dupe Replicas: %d ", cfg.Replicas)
 			log.Printf("  Write Timeout: %v ", cfg.WriteTimeout)
 			log.Printf("  Runner Timeout: %v ", cfg.RunnerTimeout)
-			log.Printf("  Out Buffer Size: %v ", cfg.MaxPoolBufferSize)
-			log.Printf("  Out Pool Connections: %v ", cfg.MaxPoolConnections)
+			log.Printf("  Write Buffer Size: %v ", cfg.MaxWritePoolBufferSize)
+			log.Printf("  Write Pool Connections: %v ", cfg.MaxPoolConnections)
 			log.Printf("  Workers: %v ", cfg.Workers)
 
 			log.Printf("  Servers")

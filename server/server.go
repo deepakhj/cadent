@@ -27,6 +27,7 @@ const (
 	DEFAULT_SENDING_CONNECTIONS_METHOD = "bufferedpool"
 	DEFAULT_RUNNER_TIMEOUT             = 5000 * time.Millisecond
 	DEFAULT_WRITE_TIMEOUT              = 1000 * time.Millisecond
+	DEFAULT_BACKPRESSURE_SLEEP		   = 1000 * time.Millisecond
 )
 
 // the push meathod function type
@@ -65,7 +66,7 @@ func poolWorker(j *SendOut) {
 
 		}
 		if j.server.SendingConnectionMethod == "bufferedpool" {
-			outsrv = netpool.NewBufferedNetpool(m_url.Scheme, m_url.Host, j.server.BufferPoolSize)
+			outsrv = netpool.NewBufferedNetpool(m_url.Scheme, m_url.Host, j.server.WriteBufferPoolSize)
 		} else {
 			outsrv = netpool.NewNetpool(m_url.Scheme, m_url.Host)
 		}
@@ -200,6 +201,9 @@ type ServerStats struct {
 	ServersUp                  []string `json:"servers_up"`
 	ServersDown                []string `json:"servers_down"`
 	ServersChecks              []string `json:"servers_checking"`
+
+	CurrentReadBufferSize		int64 	`json:"current_read_buffer_size"`
+	MaxReadBufferSize			int64 	`json:"max_read_buffer_size"`
 }
 
 // helper object for the json info about a single "key"
@@ -228,7 +232,12 @@ type Server struct {
 	// our bound connection if TCP
 	Connection       net.Listener
 	UDPConn          *net.UDPConn
-	ClientBufferSize int //for UDP read buffers
+
+	//if our "buffered" bits exceded this, we're basically out of ram
+	// so we "pause" until we can do something
+	ClientReadBufferSize int64 //for net read buffers
+	MaxReadBufferSize int64 // the biggest we can make this buffer before "failing"
+	CurrentReadBufferRam AtomicInt // the amount of buffer we're on
 
 	// timeouts for tuning
 	WriteTimeout  time.Duration // time out when sending lines
@@ -245,7 +254,8 @@ type Server struct {
 	//number of connections in the NetPool
 	NetPoolConnections int
 	//if using the buffer pool, this is the buffer size
-	BufferPoolSize int
+	WriteBufferPoolSize int
+
 
 	//number of replicas to fire data to (i.e. dupes)
 	Replicas int
@@ -267,6 +277,11 @@ type Server struct {
 	RunnerConfig     map[string]interface{}
 	LineProcessor    runner.Runner
 
+	//allow us to push backpressure on TCP sockets if we need to
+	back_pressure chan bool
+	back_pressure_sleep time.Duration
+	back_pressure_lock sync.Mutex
+
 	//the push function
 	PushFunction pushFunction
 
@@ -276,6 +291,10 @@ type Server struct {
 	stats ServerStats
 
 	Logger *log.Logger
+}
+
+func (server *Server) AddToCurrentTotalBufferSize(length int64) (int64){
+	return server.CurrentReadBufferRam.Add( length )
 }
 
 func (server *Server) GetStats()(stats *ServerStats ){
@@ -313,6 +332,14 @@ func (server *Server) SetLineProcessor() (runner.Runner, error) {
 
 }
 
+func (server *Server) BackPressure(){
+	server.back_pressure <- true
+}
+
+func (server *Server) NeedBackPressure() (bool){
+	return server.CurrentReadBufferRam.Get() > server.MaxReadBufferSize || len(server.WorkQueue) == (int)(server.Workers)
+}
+
 //spins up the queue of go routines to handle outgoing
 func (server *Server) WorkerOutput(jobs <-chan *SendOut) {
 	for j := range jobs {
@@ -325,14 +352,14 @@ func (server *Server) RunRunner(key string, line string, out chan string) {
 
 	timer := time.NewTimer(server.RunnerTimeout)
 	defer StatsdNanoTimeFunc(fmt.Sprintf("factory.runner.process-time-ns"), time.Now())
+	defer func(){ server.WorkerHold <- -1 }()
 
 	select {
 	case out <- server.PushLine(key, line) + "\n":
 		timer.Stop()
-		server.WorkerHold <- -1
+
 	case <-timer.C:
 		timer.Stop()
-		server.WorkerHold <- -1
 		StatsdClient.Incr("failed.runner-timeout", 1)
 		server.FailSendCount.Up(1)
 		server.Logger.Printf("Timeout %d, %s", len(server.WorkQueue), key)
@@ -443,10 +470,17 @@ func NewServer(cfg *Config) (server *Server, err error) {
 	}
 
 	serv.NetPoolConnections = cfg.MaxPoolConnections
-	serv.BufferPoolSize = cfg.MaxPoolBufferSize
+	serv.WriteBufferPoolSize = cfg.MaxWritePoolBufferSize
 	serv.SendingConnectionMethod = DEFAULT_SENDING_CONNECTIONS_METHOD
 
-	serv.ClientBufferSize = cfg.ReadBufferSize
+	serv.ClientReadBufferSize = cfg.ClientReadBufferSize
+	serv.MaxReadBufferSize = cfg.MaxReadBufferSize
+
+	if(serv.MaxReadBufferSize <= 0){
+		serv.MaxReadBufferSize  = 1000 * serv.ClientReadBufferSize // reasonable default for max buff
+	}
+
+	serv.back_pressure_sleep = DEFAULT_BACKPRESSURE_SLEEP
 
 	if len(cfg.SendingConnectionMethod) > 0 {
 		serv.SendingConnectionMethod = cfg.SendingConnectionMethod
@@ -462,7 +496,7 @@ func NewServer(cfg *Config) (server *Server, err error) {
 			return nil, fmt.Errorf("Error binding: %s", err)
 		}
 		serv.UDPConn = conn
-		serv.UDPConn.SetReadBuffer(1048576) //set buffer size to 1024 bytes
+		serv.UDPConn.SetReadBuffer((int)(serv.ClientReadBufferSize)) //set buffer size to 1024 bytes
 
 	} else {
 		conn, err := net.Listen(cfg.ListenURL.Scheme, cfg.ListenURL.Host)
@@ -524,6 +558,8 @@ func (server *Server) StatsTick() {
 		server.stats.GoRoutinesList = server.stats.GoRoutinesList[1:server.NumStats]
 	}
 	server.stats.UpTimeSeconds = int64(elasped_sec)
+	server.stats.CurrentReadBufferSize = server.CurrentReadBufferRam.Get()
+	server.stats.MaxReadBufferSize = server.MaxReadBufferSize
 
 	server.stats.ValidLineCountPerSec = server.ValidLineCount.TotalRate(elapsed)
 	server.stats.WorkerValidLineCountPerSec = server.WorkerValidLineCount.TotalRate(elapsed)
@@ -574,6 +610,7 @@ func (server *Server) tickDisplay() {
 	server.Logger.Printf("Server: UnknownSendCount: %d", server.UnknownSendCount.TotalCount)
 	server.Logger.Printf("Server: AllLinesCount: %d", server.AllLinesCount.TotalCount)
 	server.Logger.Printf("Server: GO Routines Running: %d", runtime.NumGoroutine())
+	server.Logger.Printf("Server: Current Buffer Size: %d/%d bytes", server.CurrentReadBufferRam, server.MaxReadBufferSize)
 	server.Logger.Printf("-------")
 	server.Logger.Printf("Server Rate: Duration %ds", uint64(server.ticker/time.Second))
 	server.Logger.Printf("Server Rate: ValidLineCount: %.2f/s", server.ValidLineCount.Rate(server.ticker))
@@ -743,14 +780,23 @@ func (server *Server) Accepter() (<-chan *net.TCPConn, error) {
 		defer server.Connection.Close()
 		defer close(conns)
 		for {
-			conn, err := server.Connection.Accept()
-			if err != nil {
-				server.Logger.Printf("Error Accecption Connection: %s", err)
-				return
-			}
-			server.Logger.Printf("Accepted connection from %s", conn.RemoteAddr())
+			select {
+			case <- server.back_pressure:
+				server.back_pressure_lock.Lock()
+				server.Logger.Printf("Backpressure triggered pausing connections for : %s", server.back_pressure_sleep)
+				time.Sleep(server.back_pressure_sleep)
+				server.back_pressure_lock.Unlock()
+			default:
+				conn, err := server.Connection.Accept()
+				if err != nil {
+					server.Logger.Printf("Error Accecption Connection: %s", err)
+					return
+				}
+				server.Logger.Printf("Accepted connection from %s", conn.RemoteAddr())
 
-			conns <- conn.(*net.TCPConn)
+				conns <- conn.(*net.TCPConn)
+			}
+
 		}
 	}()
 	return conns, nil
@@ -758,7 +804,7 @@ func (server *Server) Accepter() (<-chan *net.TCPConn, error) {
 
 func (server *Server) startTCPServer(hashers *[]*ConstHasher, worker_queue chan *SendOut, done chan Client) {
 
-	//for TCPclients, since we basically createcreate a client on each connect each time (unlike the UDP case)
+	//for TCPclients, since we basically create a client on each connect each time (unlike the UDP case)
 	// and we want only one processing Q, set up this "queue" here
 	// let this queue get big as the workers for TCP may been much more buffering due to bursting
 	input_queue := make(chan string, server.Workers)
@@ -766,14 +812,32 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, worker_queue chan 
 	out_queue := make(chan string, server.Workers)
 	defer close(out_queue)
 
+	// tells the Acceptor to "sleep" incase we need to apply some back pressure when connections outgoing
+	// servers go "poof"
+	server.back_pressure = make(chan bool)
+	defer close(server.back_pressure)
+
 	run := func() {
 		for line := range input_queue {
-			key, line, err := server.LineProcessor.ProcessLine(strings.Trim(line, "\n\t "))
+			l_len := (int64)(len(line))
+			server.AddToCurrentTotalBufferSize(l_len)
+			/*server.Logger.Printf(
+				"Buffer size, %v | Workers %s",
+				server.CurrentReadBufferRam.Get(),
+				len(server.WorkQueue),
+			)*/
+			if(server.NeedBackPressure()) {
+				server.Logger.Printf("Error::Max Queue or buffer reached dropping connection (Buffer %v, queue len: %v)", server.CurrentReadBufferRam.Get(), len(server.WorkQueue))
+				server.BackPressure()
+			}
+
+			key, procline, err := server.LineProcessor.ProcessLine(strings.Trim(line, "\n\t "))
 			if err == nil {
-				go server.RunRunner(key, line, out_queue)
+				server.RunRunner(key, procline, out_queue)
 			}
 			server.AllLinesCount.Up(1)
 			StatsdClient.Incr("incoming.tcp.lines", 1)
+			server.AddToCurrentTotalBufferSize(-l_len)
 		}
 	}
 	//fire up the workers
@@ -792,8 +856,10 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, worker_queue chan 
 			if !ok {
 				return
 			}
+
 			client := NewTCPClient(server, hashers, conn, worker_queue, done, input_queue, out_queue)
-			client.SetBufferSize(server.ClientBufferSize)
+			client.SetBufferSize((int)(server.ClientReadBufferSize))
+
 			go client.handleRequest()
 			go client.handleSend()
 		case workerUpDown := <-server.WorkerHold:
@@ -803,7 +869,7 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, worker_queue chan 
 				StatsdClient.Incr("worker.queue.isfull", 1)
 				//server.Logger.Printf("Worker Queue Full %d", ct)
 			}
-			StatsdClient.GaugeAvg("worker.queue.length", ct)
+			StatsdClient.GaugeAvg("worker.queue.length", (int64)(len(server.WorkQueue)))
 
 		case client := <-done:
 			client.Close() //this will close the connection too
@@ -818,7 +884,8 @@ func (server *Server) startUDPServer(hashers *[]*ConstHasher, worker_queue chan 
 
 	//just need on "client" here as we simply just pull from the socket
 	client := NewUDPClient(server, hashers, server.UDPConn, worker_queue, done)
-	client.SetBufferSize(server.ClientBufferSize)
+	client.SetBufferSize((int)(server.ClientReadBufferSize))
+
 	go client.handleRequest()
 	go client.handleSend()
 	for {

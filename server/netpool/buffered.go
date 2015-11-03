@@ -99,7 +99,7 @@ func (n *BufferedNetpoolConn) Write(b []byte) (wrote int, err error) {
 func (n *BufferedNetpoolConn) Flush() (wrote int, err error) {
 	n.writeLock.Lock()
 	defer n.writeLock.Unlock()
-
+	//log.Printf("WROTE: %v -- %v", n.conn, len(n.writebuffer))
 	//StatsdClient.Incr("success.packets.flushes", 1)
 	if len(n.writebuffer) > 0 && n.conn != nil {
 		wrote, err = n.conn.Write(n.writebuffer)

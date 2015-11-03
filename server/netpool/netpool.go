@@ -124,6 +124,9 @@ func (n *Netpool) InitPoolWith(obj NetpoolInterface) error {
 	//fill up the channels with our connections
 	for i := 0; i < n.MaxConnections; i++ {
 		conn, err := net.DialTimeout(n.protocal, n.name, ConnectionTimeout)
+		if(n.protocal == "tcp"){
+			conn.(*net.TCPConn).SetNoDelay(true)
+		}
 		if err != nil {
 			log.Println("[NetPool:InitPool] Connection open error:  ", n.protocal, n.name, err)
 			return err
@@ -144,7 +147,6 @@ func (n *Netpool) Open() (conn NetpoolConnInterface, err error) {
 	// pop it off
 
 	net_conn := <-n.free
-
 	//recycle connections if we need to or reconnect if we need to
 	if net_conn.Conn() == nil || time.Now().Sub(net_conn.Started()) > n.RecycleTimeout {
 		if net_conn.Conn() != nil {
@@ -162,6 +164,8 @@ func (n *Netpool) Open() (conn NetpoolConnInterface, err error) {
 			// we CANNOT return here we need the connections in the queue even if they are "dead"
 			// they will get re-tried
 			//return net_conn, err
+		}else {
+			log.Println("[NetPool:Open] New Connection opened to %s : ", conn.RemoteAddr())
 		}
 		net_conn.SetConn(conn)
 		net_conn.SetStarted(time.Now())
