@@ -785,10 +785,9 @@ func (server *Server) Accepter() (<-chan *net.TCPConn, error) {
 	go func() {
 		defer server.Connection.Close()
 		defer close(conns)
-		var apply bool
 		for {
 			select {
-			case apply <- server.back_pressure:
+			case <- server.back_pressure:
 
 				server.back_pressure_lock.Lock()
 				server.Logger.Printf("Backpressure triggered pausing connections for : %s", server.back_pressure_sleep)
