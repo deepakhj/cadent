@@ -39,7 +39,7 @@ FMT_TEST = $(foreach int, $(ALL_LIST), $(int)_fmt)
  
 # All are .PHONY for now because dependencyness is hard
 .PHONY: $(CLEAN_LIST) $(TEST_LIST) $(FMT_LIST) $(INSTALL_LIST) $(BUILD_LIST) $(IREF_LIST)
- 
+SHELL     := /bin/bash
 all: build
 build: $(BUILD_LIST)
 cmd: $(CMD_LIST)
@@ -49,7 +49,10 @@ test: $(TEST_LIST)
 iref: $(IREF_LIST)
 fmt: $(FMT_TEST)
 
-export GOPATH=$(shell godep path)
+if [ which godep ]; then; \
+export GOPATH=$(shell  godep path ) \
+fi \
+
 export build=$(shell git rev-parse HEAD)
 export version=$(shell cat ./version )
 export dated=$(shell date  +'%y.%m.%d-%H:%M:%S')
