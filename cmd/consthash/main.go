@@ -126,9 +126,14 @@ func startStatsServer(defaults *consthash.Config, servers []*consthash.Server) {
 }
 
 func main() {
-	log.Printf("ConstHash git version %s", ConstHashBuild)
+	version := flag.Bool("version", false, "Print version and exit")
 	configFile := flag.String("config", "config.toml", "Consitent Hash configuration file")
 	flag.Parse()
+	if *version {
+		fmt.Printf("ConstHash version %s\n\n", ConstHashBuild)
+		os.Exit(0)
+	}
+	log.Printf("ConstHash version %s", ConstHashBuild)
 
 	if flag.NFlag() == 0 {
 		flag.PrintDefaults()
