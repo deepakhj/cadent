@@ -153,19 +153,19 @@ func (n *Netpool) Open() (conn NetpoolConnInterface, err error) {
 			net_conn.Flush()
 			goterr := net_conn.Conn().Close()
 			if goterr != nil {
-				log.Println("[NetPool:Open] Connection CLOSE error: ", goterr)
+				log.Printf("[NetPool:Open] Connection CLOSE error: %s", goterr)
 			}
 		}
 		net_conn.SetConn(nil)
 
 		conn, err := net.DialTimeout(n.protocal, n.name, ConnectionTimeout)
 		if err != nil {
-			log.Println("[NetPool:Open] Connection open error: ", err)
+			log.Printf("[NetPool:Open] Connection open error: %s", err)
 			// we CANNOT return here we need the connections in the queue even if they are "dead"
 			// they will get re-tried
 			//return net_conn, err
 		}else {
-			log.Println("[NetPool:Open] New Connection opened to %s : ", conn.RemoteAddr())
+			log.Printf("[NetPool:Open] New Connection opened to %s", conn.RemoteAddr())
 		}
 		net_conn.SetConn(conn)
 		net_conn.SetStarted(time.Now())
