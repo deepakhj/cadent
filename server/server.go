@@ -337,12 +337,12 @@ func (server *Server) BackPressure(){
 	if server._back_pressure_on{
 		return
 	}
-	server.back_pressure <- true
+	server.back_pressure <- server.NeedBackPressure()
 	server._back_pressure_on=true
 }
 
 func (server *Server) NeedBackPressure() (bool){
-	return server.CurrentReadBufferRam.Get() > server.MaxReadBufferSize || len(server.WorkQueue) == (int)(server.Workers)
+	return server.CurrentReadBufferRam.Get() > server.MaxReadBufferSize || len(server.WorkQueue) >= (int)(server.Workers)
 }
 
 //spins up the queue of go routines to handle outgoing
@@ -785,14 +785,16 @@ func (server *Server) Accepter() (<-chan *net.TCPConn, error) {
 	go func() {
 		defer server.Connection.Close()
 		defer close(conns)
+		var apply bool
 		for {
 			select {
-			case <- server.back_pressure:
+			case apply <- server.back_pressure:
+
 				server.back_pressure_lock.Lock()
 				server.Logger.Printf("Backpressure triggered pausing connections for : %s", server.back_pressure_sleep)
 				time.Sleep(server.back_pressure_sleep)
-				server._back_pressure_on = false
 				server.back_pressure_lock.Unlock()
+				server._back_pressure_on = false
 
 			default:
 				conn, err := server.Connection.Accept()
@@ -822,7 +824,7 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, worker_queue chan 
 
 	// tells the Acceptor to "sleep" incase we need to apply some back pressure when connections outgoing
 	// servers go "poof"
-	server.back_pressure = make(chan bool)
+	server.back_pressure = make(chan bool, 1)
 	defer close(server.back_pressure)
 
 	run := func() {
