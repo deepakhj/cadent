@@ -611,6 +611,7 @@ func (server *Server) tickDisplay() {
 	server.Logger.Printf("Server: AllLinesCount: %d", server.AllLinesCount.TotalCount)
 	server.Logger.Printf("Server: GO Routines Running: %d", runtime.NumGoroutine())
 	server.Logger.Printf("Server: Current Buffer Size: %d/%d bytes", server.CurrentReadBufferRam, server.MaxReadBufferSize)
+	server.Logger.Printf("Server: Current Queue length: %d", len(server.WorkQueue))
 	server.Logger.Printf("-------")
 	server.Logger.Printf("Server Rate: Duration %ds", uint64(server.ticker/time.Second))
 	server.Logger.Printf("Server Rate: ValidLineCount: %.2f/s", server.ValidLineCount.Rate(server.ticker))
@@ -627,7 +628,7 @@ func (server *Server) tickDisplay() {
 	}
 
 	server.ResetTickers()
-	runtime.GC()
+	//runtime.GC()
 	time.Sleep(server.ticker)
 
 	go server.tickDisplay()
