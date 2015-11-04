@@ -21,6 +21,9 @@ const (
 	DEFAULT_INDEX_STATS_FILE = "index.html"
 )
 
+// compile passing -ldflags "-X main.Build <build sha1>"
+var ConstHashBuild string
+
 // need to up this guy otherwise we quickly run out of sockets
 func setSystemStuff(num_procs int) {
 	if num_procs <= 0 {
@@ -123,6 +126,7 @@ func startStatsServer(defaults *consthash.Config, servers []*consthash.Server) {
 }
 
 func main() {
+	log.Printf("ConstHash git version %s", ConstHashBuild)
 	configFile := flag.String("config", "config.toml", "Consitent Hash configuration file")
 	flag.Parse()
 

@@ -48,9 +48,14 @@ install: $(INSTALL_LIST)
 test: $(TEST_LIST)
 iref: $(IREF_LIST)
 fmt: $(FMT_TEST)
- 
+
+export GOPATH=$(shell godep path)
+export build=$(shell git rev-parse HEAD)
+export version=$(shell cat ./version )
+export dated=$(shell date  +'%y.%m.%d-%H:%M:%S')
+
 $(BUILD_LIST): %_build: %_fmt %_iref
-	$(GOBUILD) $(TOPLEVEL_PKG)/$*
+	$(GOBUILD) -v -ldflags "-X main.ConstHashBuild='$(version)-$(build)-$(dated)'" $(TOPLEVEL_PKG)/$*
 
 $(CLEAN_LIST): %_clean:
 	rm -f echoserver
