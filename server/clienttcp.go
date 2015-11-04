@@ -50,8 +50,7 @@ func NewTCPClient(server *Server,
 	//client.reader = bufio.NewReaderSize(conn, TCP_BUFFER_SIZE)
 	client.LineCount = 0
 	client.Connection = conn
-	client.BufferSize = TCP_BUFFER_SIZE
-	client.Connection.SetReadBuffer(TCP_BUFFER_SIZE)
+	client.SetBufferSize(TCP_BUFFER_SIZE)
 
 	client.out_queue = out_queue
 	client.worker_queue = worker_queue
@@ -64,6 +63,7 @@ func NewTCPClient(server *Server,
 //no need for TCP as we use a bufio reader
 func (client *TCPClient) SetBufferSize(size int) {
 	client.BufferSize = size
+	client.Connection.SetReadBuffer(client.BufferSize)
 }
 
 func (client *TCPClient) Server() (server *Server) {

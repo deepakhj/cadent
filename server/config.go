@@ -269,9 +269,9 @@ func (self ConfigServers) ParseConfig(defaults Config) (out ConfigServers, err e
 		}
 
 		if cfg.MaxReadBufferSize <= 0 {
-			cfg.MaxReadBufferSize = cfg.ClientReadBufferSize
+			cfg.MaxReadBufferSize = 1000* cfg.ClientReadBufferSize
 			if defaults.MaxReadBufferSize > 0 {
-				cfg.MaxReadBufferSize = 1000 * defaults.MaxReadBufferSize
+				cfg.MaxReadBufferSize = defaults.MaxReadBufferSize
 			}
 		}
 
