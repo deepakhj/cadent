@@ -50,8 +50,8 @@ type Config struct {
 	HashElter               string        `toml:"hasher_elter"`
 	HashVNodes              int           `toml:"hasher_vnodes"`
 
-	ClientReadBufferSize    int64         `toml:"read_buffer_size"`
-	MaxReadBufferSize		int64		  `toml:"max_read_buffer_size"`
+	ClientReadBufferSize int64 `toml:"read_buffer_size"`
+	MaxReadBufferSize    int64 `toml:"max_read_buffer_size"`
 
 	//Timeouts
 	WriteTimeout  time.Duration `toml:"write_timeout"`
@@ -262,14 +262,14 @@ func (self ConfigServers) ParseConfig(defaults Config) (out ConfigServers, err e
 		}
 
 		if cfg.ClientReadBufferSize <= 0 {
-			cfg.ClientReadBufferSize = 1024*1024
+			cfg.ClientReadBufferSize = 1024 * 1024
 			if defaults.ClientReadBufferSize > 0 {
 				cfg.ClientReadBufferSize = defaults.ClientReadBufferSize
 			}
 		}
 
 		if cfg.MaxReadBufferSize <= 0 {
-			cfg.MaxReadBufferSize = 1000* cfg.ClientReadBufferSize
+			cfg.MaxReadBufferSize = 1000 * cfg.ClientReadBufferSize
 			if defaults.MaxReadBufferSize > 0 {
 				cfg.MaxReadBufferSize = defaults.MaxReadBufferSize
 			}
@@ -420,7 +420,7 @@ func (self ConfigServers) ServableConfigs() (configs []Config) {
 func (self *ConfigServers) DebugConfig() {
 
 	for chunk, cfg := range *self {
-		log.Printf("Chunk '%s'", chunk)
+		log.Printf("Section '%s'", chunk)
 		if cfg.OkToUse {
 			log.Printf("  Listen: %s", cfg.ListenURL.String())
 			log.Printf("  MaxServerHeartBeatFail: %v", cfg.MaxServerHeartBeatFail)
@@ -431,8 +431,10 @@ func (self *ConfigServers) DebugConfig() {
 			log.Printf("  Write Timeout: %v ", cfg.WriteTimeout)
 			log.Printf("  Runner Timeout: %v ", cfg.RunnerTimeout)
 			log.Printf("  Write Buffer Size: %v ", cfg.MaxWritePoolBufferSize)
+			log.Printf("  Read Buffer Size: %v ", cfg.ClientReadBufferSize)
+			log.Printf("  Max Read Buffer Size: %v ", cfg.MaxReadBufferSize)
 			log.Printf("  Write Pool Connections: %v ", cfg.MaxPoolConnections)
-			log.Printf("  Workers: %v ", cfg.Workers)
+			log.Printf("  Workers/Input Queue Size: %v ", cfg.Workers)
 
 			log.Printf("  Servers")
 			for _, slist := range cfg.ServerLists {

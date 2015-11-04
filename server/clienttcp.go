@@ -31,15 +31,12 @@ type TCPClient struct {
 	input_queue  chan string
 	done         chan Client
 	worker_queue chan *SendOut
-
 }
 
 func NewTCPClient(server *Server,
 	hashers *[]*ConstHasher,
 	conn *net.TCPConn,
-	worker_queue chan *SendOut,
 	done chan Client,
-	input_queue chan string,
 	out_queue chan string) *TCPClient {
 
 	client := new(TCPClient)
@@ -52,9 +49,12 @@ func NewTCPClient(server *Server,
 	client.Connection = conn
 	client.SetBufferSize(TCP_BUFFER_SIZE)
 
+	//to deref things
+	client.worker_queue = server.WorkQueue
+	client.input_queue = server.InputQueue
+
 	client.out_queue = out_queue
-	client.worker_queue = worker_queue
-	client.input_queue = input_queue
+
 	client.done = done
 
 	return client
@@ -90,7 +90,6 @@ func (client *TCPClient) Close() {
 
 func (client *TCPClient) handleRequest() {
 	//spin up the runners
-
 
 	buf := bufio.NewReaderSize(client.Connection, client.BufferSize)
 

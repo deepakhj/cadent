@@ -24,7 +24,7 @@ GOFMT=gofmt -w
 # Package lists
 TOPLEVEL_PKG := .
 INT_LIST := 	#<-- Interface directories
-IMPL_LIST :=	#<-- Implementation directories
+IMPL_LIST := server	#<-- Implementation directories
 CMD_LIST := cmd/consthash cmd/echoserver	#<-- Command directories
  
 # List building

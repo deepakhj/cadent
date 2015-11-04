@@ -118,7 +118,7 @@ if __name__ == '__main__':
 
 
     for i in range(0, args.numforks):
-        print( "Running to {}:{}".format(args.host, args.host))
+        print( "Running to {}:{}".format(args.host, args.port))
         p = Process(target=run, args=(args.host, args.port, args.type, idx, args.rate))
         p.start()
         idx += 1
