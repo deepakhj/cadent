@@ -8,10 +8,10 @@ Generic Consistent hash Server in Go
 Installation
 ------------
 
-    Well, first you need to install go .. https://golang.org  1.4.2
+    Well, first you need to install go .. https://golang.org  1.5.1
 
     git clone git@scm-main-01.dc.myfitnesspal.com:infra/consthashsrv.git
-    cd consthashsrv/cmd/consthash
+    cd consthashsrv/server
     
     // because things are "private" we need to "hack around" go's usual pulling/get mechanism
     //pull in more git repos you'll need

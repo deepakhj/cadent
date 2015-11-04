@@ -119,6 +119,16 @@ internal_health_server_points=500
 ## path to the html files for the internal health serer
 internal_health_server_path="html"
 
+## read buffers for incomming connections
+# UPD need a larger read buffer as there is only "one" client
+# read_buffer_size=1048576
+# max_read_buffer_size=10485760
+
+# TCP connections need a smaller read buffer as there can be MANY connections
+read_buffer_size=8192
+max_read_buffer_size=819200
+
+
 ### Server sections .. note all the above is overridable in each section
 ### (except the `statsd_*` and `internal_health_server_listen`)
 ### NOTE: `hasher_replicas` will NOT use the defaults, be explict there
@@ -138,6 +148,9 @@ hasher_algo="nodejs-hashring"
 hasher_elter="statsd"
 hasher_vnodes=40
 
+# UPD need a larger read buffer as there is only "one" client
+# read_buffer_size=1048576
+# max_read_buffer_size=10485760
 
 ##
 ## Yes this can be MULTIPLE server groups
@@ -187,6 +200,11 @@ msg_type="graphite"
 hasher_algo="md5"
 hasher_elter="graphite"
 hasher_vnodes=100
+
+# TCP connections need a smaller read buffer as there can be MANY connections
+read_buffer_size=8192
+max_read_buffer_size=819200
+
 
 [[graphite-example.servers]]
 
