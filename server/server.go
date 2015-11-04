@@ -279,6 +279,7 @@ type Server struct {
 
 	//allow us to push backpressure on TCP sockets if we need to
 	back_pressure chan bool
+	_back_pressure_on bool // makes sure we dont' fire a billion things in the channel
 	back_pressure_sleep time.Duration
 	back_pressure_lock sync.Mutex
 
@@ -333,7 +334,11 @@ func (server *Server) SetLineProcessor() (runner.Runner, error) {
 }
 
 func (server *Server) BackPressure(){
+	if server._back_pressure_on{
+		return
+	}
 	server.back_pressure <- true
+	server._back_pressure_on=true
 }
 
 func (server *Server) NeedBackPressure() (bool){
@@ -786,7 +791,9 @@ func (server *Server) Accepter() (<-chan *net.TCPConn, error) {
 				server.back_pressure_lock.Lock()
 				server.Logger.Printf("Backpressure triggered pausing connections for : %s", server.back_pressure_sleep)
 				time.Sleep(server.back_pressure_sleep)
+				server._back_pressure_on = false
 				server.back_pressure_lock.Unlock()
+
 			default:
 				conn, err := server.Connection.Accept()
 				if err != nil {
