@@ -1,0 +1,41 @@
+### pre-regex filters to push things around various backends
+### if there are multiple backends or reject some things
+
+[graphite-regex-map]
+msg_type="graphite"  # same as the const hash types
+listen_server="graphite-proxy"
+default_backend="graphite-proxy"
+
+    # another backend
+    [[graphite-regex-map.map]]
+    #what we're regexed from the input
+    regex="""^servers.main.*"""
+    backend="graphite-proxy"
+
+    # anything that starts with the prefix (in lue of a more expesive regex)
+    [[graphite-regex-map.map]]
+    prefix="""servers.main-"""
+    backend="graphite-statsd"
+
+    [[graphite-regex-map.map]]
+    regex="^servers.*"
+    reject=true  # special "reject me" type
+
+[statsd-regex-map]
+msg_type="statsd"  # same as the const hash types
+default_backend="statsd-proxy"
+listen_server="statsd-servers"
+
+    # another backend
+    [[statsd-regex-map.map]]
+    regex="""^stats.timers..*"""   #what we're regexed from the input
+    backend="statsd-proxy"
+
+    # anything that starts with the prefix (in lue of a more expesive regex)
+    [[statsd-regex-map.map]]
+    prefix="stats"
+    backend="statsd-servers"
+
+    [[statsd-regex-map.map]]
+    regex="""^stats_count..*"""
+    reject=true  # special "reject me" type
