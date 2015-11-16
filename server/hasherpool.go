@@ -6,10 +6,10 @@ package consthash
 
 import (
 	"./consistent"
+	"./lrucache"
+	"./stats"
 	"fmt"
-	"log"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
 )
@@ -28,7 +28,7 @@ func (s ServerCacheItem) Size() int {
 	return len(s)
 }
 
-func (s ServerCacheItem) toString() string {
+func (s ServerCacheItem) ToString() string {
 	return string(s)
 }
 
@@ -37,7 +37,7 @@ type MultiServerCacheItem []string
 func (s MultiServerCacheItem) Size() int {
 	return len(s)
 }
-func (s MultiServerCacheItem) toString() string {
+func (s MultiServerCacheItem) ToString() string {
 	return strings.Join(s, ",")
 }
 
@@ -46,7 +46,7 @@ type ConstHasher struct {
 	Hasher          *consistent.Consistent
 	HashKeyToServer map[string]string
 	ServerToHashkey map[string]string
-	Cache           *LRUCache
+	Cache           *lrucache.LRUCache
 	ServerPool      *CheckedServerPool
 
 	HashAlgo     string
@@ -55,8 +55,6 @@ type ConstHasher struct {
 
 	ServerPutCounts uint64
 	ServerGetCounts uint64
-
-	logger *log.Logger
 }
 
 func (self *ConstHasher) memberString(members []string) string {
@@ -72,32 +70,32 @@ func (self *ConstHasher) memberString(members []string) string {
 }
 
 func (self *ConstHasher) onServerUp(server url.URL) {
-	self.logger.Printf("Adding server %s to hasher", server.String())
-	StatsdClient.Incr("hasher.added-server", 1)
+	log.Notice("Adding server %s to hasher", server.String())
+	stats.StatsdClient.Incr("hasher.added-server", 1)
 
 	//add the hash key, not the server string
 	hash_key := self.ServerToHashkey[server.String()]
 	self.Hasher.Add(hash_key)
 
-	StatsdClient.GaugeAbsolute("hasher.up-servers", int64(len(self.Members())))
+	stats.StatsdClient.GaugeAbsolute("hasher.up-servers", int64(len(self.Members())))
 	//evil as this is we must clear the cache
 	self.Cache.Clear()
 
-	self.logger.Printf("[onServerUp] Current members %s from hasher", self.memberString(self.Members()))
+	log.Info("[onServerUp] Current members %s from hasher", self.memberString(self.Members()))
 }
 
 func (self *ConstHasher) onServerDown(server url.URL) {
-	self.logger.Printf("Removing server %s from hasher", server.String())
-	StatsdClient.Incr("hasher.removed-server", 1)
+	log.Notice("Removing server %s from hasher", server.String())
+	stats.StatsdClient.Incr("hasher.removed-server", 1)
 
 	//remove the hash key, not the server string
 	hash_key := self.ServerToHashkey[server.String()]
 	self.Hasher.Remove(hash_key)
 
-	StatsdClient.GaugeAbsolute("hasher.up-servers", int64(len(self.Members())))
+	stats.StatsdClient.GaugeAbsolute("hasher.up-servers", int64(len(self.Members())))
 	//evil as this is we must clear the cache
 	self.Cache.Clear()
-	self.logger.Printf("[onServerDown] Current members %s from hasher", self.memberString(self.Members()))
+	log.Info("[onServerDown] Current members %s from hasher", self.memberString(self.Members()))
 }
 
 func (self *ConstHasher) PurgeServer(serverUrl *url.URL) bool {
@@ -137,7 +135,7 @@ func (self *ConstHasher) Get(in_key string) (string, error) {
 	srv, ok := self.Cache.Get(in_key)
 
 	if !ok {
-		StatsdClient.Incr("lrucache.miss", 1)
+		stats.StatsdClient.Incr("lrucache.miss", 1)
 		r_srv, err := self.Hasher.Get(in_key)
 
 		//find out real server string
@@ -145,12 +143,12 @@ func (self *ConstHasher) Get(in_key string) (string, error) {
 
 		self.Cache.Set(in_key, ServerCacheItem(real_server))
 
-		StatsdClient.Incr(fmt.Sprintf("hashserver.%s.used", self.cleanKey(real_server)), 1)
+		stats.StatsdClient.Incr(fmt.Sprintf("hashserver.%s.used", self.cleanKey(real_server)), 1)
 
 		return real_server, err
 	}
-	StatsdClient.Incr(fmt.Sprintf("hashserver.%s.used", self.cleanKey(srv.toString())), 1)
-	StatsdClient.Incr("lrucache.hit", 1)
+	stats.StatsdClient.Incr(fmt.Sprintf("hashserver.%s.used", self.cleanKey(srv.ToString())), 1)
+	stats.StatsdClient.Incr("lrucache.hit", 1)
 	return string(srv.(ServerCacheItem)), nil
 }
 
@@ -161,12 +159,12 @@ func (self *ConstHasher) GetN(in_key string, num int) ([]string, error) {
 
 	upStatsd := func(items []string) {
 		for _, useme := range items {
-			StatsdClient.Incr(fmt.Sprintf("hashserver.%s.used", self.cleanKey(useme)), 1)
+			stats.StatsdClient.Incr(fmt.Sprintf("hashserver.%s.used", self.cleanKey(useme)), 1)
 		}
 	}
 
 	if !ok {
-		StatsdClient.Incr("lrucache.miss", 1)
+		stats.StatsdClient.Incr("lrucache.miss", 1)
 		srv, err := self.Hasher.GetN(in_key, num)
 		//find out real server string(s)
 		var real_servers []string
@@ -181,12 +179,12 @@ func (self *ConstHasher) GetN(in_key string, num int) ([]string, error) {
 		return real_servers, err
 	}
 	upStatsd(srv.(MultiServerCacheItem))
-	StatsdClient.Incr("lrucache.hit", 1)
+	stats.StatsdClient.Incr("lrucache.hit", 1)
 
 	return srv.(MultiServerCacheItem), nil
 }
 
-//alias to hasher
+// List Memebers in the hashpool
 func (self *ConstHasher) Members() []string {
 	if self.Hasher != nil {
 		return self.Hasher.Members()
@@ -194,15 +192,16 @@ func (self *ConstHasher) Members() []string {
 	return []string{}
 }
 
+// the list of dropped servers
 func (self *ConstHasher) DroppedServers() []string {
 	var n_str []string
 	for _, srv := range self.ServerPool.DroppedServers {
 		n_str = append(n_str, srv.Name)
-
 	}
 	return n_str
 }
 
+// the list of servers that are the "checker" sockets
 func (self *ConstHasher) CheckingServers() []string {
 	var n_str []string
 	for _, srv := range self.ServerPool.Servers {
@@ -211,10 +210,9 @@ func (self *ConstHasher) CheckingServers() []string {
 	return n_str
 }
 
-//make from our basic config object
+//make HasherPool from our basic config object
 func CreateConstHasherFromConfig(cfg *Config, serverlist *ParsedServerConfig) (hasher *ConstHasher, err error) {
 	hasher = new(ConstHasher)
-	hasher.logger = log.New(os.Stdout, "[ConstHasher] ", log.Ldate|log.Ltime)
 	hasher.Hasher = consistent.New()
 
 	hasher.HashAlgo = DEFAULT_HASHER
@@ -237,11 +235,11 @@ func CreateConstHasherFromConfig(cfg *Config, serverlist *ParsedServerConfig) (h
 	hasher.Hasher.SetElterByName(hasher.HashElter)
 
 	if cfg.CacheItems <= 0 {
-		hasher.Cache = NewLRUCache(DEFAULT_CACHE_ITEMS)
+		hasher.Cache = lrucache.NewLRUCache(DEFAULT_CACHE_ITEMS)
 	} else {
-		hasher.Cache = NewLRUCache(cfg.CacheItems)
+		hasher.Cache = lrucache.NewLRUCache(cfg.CacheItems)
 	}
-	hasher.logger.Print("Hasher Cache size set to ", hasher.Cache.capacity)
+	log.Notice("Hasher Cache size set to ", hasher.Cache.GetCapacity())
 
 	//compose our maps and remaps for the hashkey server list maps
 	hasher.HashKeyToServer = serverlist.HashkeyToServer
@@ -268,7 +266,6 @@ func createConstHasher(serverlist []*url.URL, checkerurl []*url.URL) (*ConstHash
 	var hasher = new(ConstHasher)
 
 	hasher.Hasher = consistent.New()
-	hasher.logger = log.New(os.Stdout, "[ConstHasher] ", log.Ldate|log.Ltime)
 
 	// cast it to the interface
 	//s_pool_runner := ServerPoolRunner(hasher)

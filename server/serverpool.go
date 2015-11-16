@@ -5,12 +5,12 @@
 package consthash
 
 import (
+	"./stats"
 	"fmt"
-	"log"
+	"github.com/op/go-logging"
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"sync"
 	"time"
 )
@@ -45,11 +45,11 @@ type ServerPoolServer struct {
 	ServerURL url.URL
 	CheckURL  url.URL
 
-	ServerPingCounts        AtomicInt
-	ServerUpCounts          AtomicInt
-	ServerDownCounts        AtomicInt
-	ServerCurrentDownCounts AtomicInt
-	ServerRequestCounts     AtomicInt
+	ServerPingCounts        stats.AtomicInt
+	ServerUpCounts          stats.AtomicInt
+	ServerDownCounts        stats.AtomicInt
+	ServerCurrentDownCounts stats.AtomicInt
+	ServerRequestCounts     stats.AtomicInt
 }
 
 type CheckedServerPool struct {
@@ -63,7 +63,7 @@ type CheckedServerPool struct {
 
 	Servers        []ServerPoolServer
 	DroppedServers []ServerPoolServer
-	AllPingCounts  AtomicInt
+	AllPingCounts  stats.AtomicInt
 
 	// some stats
 	ServerActiveList map[string]bool
@@ -81,7 +81,7 @@ type CheckedServerPool struct {
 
 	DoChecks bool
 
-	logger *log.Logger
+	log *logging.Logger
 }
 
 // create a list of pools
@@ -113,7 +113,13 @@ func createServerPoolFromConfig(cfg *Config, serverlist *ParsedServerConfig, ser
 
 func createServerPool(serverlist []*url.URL, checklist []*url.URL, serveraction ServerPoolRunner) (serverp *CheckedServerPool, err error) {
 	serverp = new(CheckedServerPool)
-	serverp.logger = log.New(os.Stdout, "[CheckedServerPool] ", log.Ldate|log.Ltime)
+
+	var log_format = "%{color}%{time:0102 15:04:05.000000} [CheckedServerPool %{pid} %{shortfile}] ▶ %{level:.4s} %{color:reset} %{message}"
+	logging.SetFormatter(logging.MustStringFormatter(log_format))
+
+	serverp.log = logging.MustGetLogger("consthash.server")
+
+	//serverp.logger = log.New(os.Stdout, "[CheckedServerPool] ", log.Ldate|log.Ltime)
 
 	serverp.ServerList = serverlist
 
@@ -166,7 +172,7 @@ func (self *CheckedServerPool) reAddAllDroppedServers() {
 		if self.DownPolicy == "remove_node" {
 			self.ServerActions.onServerUp(self.DroppedServers[idx].ServerURL)
 		}
-		self.logger.Printf("Readded old dead server %s", self.DroppedServers[idx].Name)
+		self.log.Notice("Readded old dead server %s", self.DroppedServers[idx].Name)
 		self.DroppedServers[idx].ServerCurrentDownCounts = 0
 		new_s = append(new_s, self.DroppedServers[idx])
 	}
@@ -193,7 +199,7 @@ func (self *CheckedServerPool) AddServer(serverUrl *url.URL, checkUrl *url.URL) 
 	}
 
 	self.Servers = append(self.Servers, c_server)
-	self.logger.Printf("Added Server %s checked via %s", c_server.Name, c_server.CheckName)
+	self.log.Notice("Added Server %s checked via %s", c_server.Name, c_server.CheckName)
 }
 
 func (self *CheckedServerPool) PurgeServer(serverUrl *url.URL) bool {
@@ -222,7 +228,7 @@ func (self *CheckedServerPool) PurgeServer(serverUrl *url.URL) bool {
 
 	self.Servers = new_s
 	self.ServerList = new_s_list
-	self.logger.Printf("Purged Server %s", serverUrl)
+	self.log.Notice("Purged Server %s", serverUrl)
 	return did
 }
 
@@ -268,13 +274,13 @@ func (self *CheckedServerPool) testSingleConnection(url url.URL, timeout time.Du
 func (self *CheckedServerPool) testUp(server *ServerPoolServer, out chan bool) {
 	pings := server.ServerPingCounts.Add(1)
 
-	self.logger.Printf("Health Checking %s via %s, check %d", server.Name, server.CheckName, pings)
+	self.log.Info("Health Checking %s via %s, check %d", server.Name, server.CheckName, pings)
 	err := self.testSingleConnection(server.CheckURL, self.ConnectionTimeout)
 
 	if err != nil {
-		self.logger.Printf("Healthcheck for %s Failed: %s - Down %d times", server.Name, err, server.ServerDownCounts+1)
+		self.log.Warning("Healthcheck for %s Failed: %s - Down %d times", server.Name, err, server.ServerDownCounts+1)
 		if self.DownOutCount > 0 && server.ServerCurrentDownCounts.Get()+1 > self.DownOutCount {
-			self.logger.Printf("Health %s Fail too many times, taking out of pool", server.Name)
+			self.log.Warning("Health %s Fail too many times, taking out of pool", server.Name)
 			self.dropServer(server)
 		}
 		out <- false
@@ -288,7 +294,7 @@ func (self *CheckedServerPool) gotTestResponse(server *ServerPoolServer, in chan
 	if message {
 		server.ServerCurrentDownCounts.Set(0)
 		up := server.ServerUpCounts.Add(1)
-		self.logger.Printf("Healthcheck for %s OK: UP %d pings", server.Name, up)
+		self.log.Info("Healthcheck for %s OK: UP %d pings", server.Name, up)
 	} else {
 		server.ServerDownCounts.Add(1)
 		server.ServerCurrentDownCounts.Add(1)
@@ -301,14 +307,14 @@ func (self *CheckedServerPool) cleanChannels(tester chan bool, done chan bool) {
 	if message {
 		close(tester)
 		close(done)
-		self.logger.Printf("Closed")
+		self.log.Info("Closed all Channels")
 	}
 }
 
 func (self *CheckedServerPool) testConnections() error {
 
 	if self.ConnectionRetry < 2*self.ConnectionTimeout {
-		self.logger.Printf("Connection Retry CANNOT be less then 2x the Connection Timeout")
+		self.log.Critical("Connection Retry CANNOT be less then 2x the Connection Timeout")
 		return nil
 	}
 
@@ -324,7 +330,7 @@ func (self *CheckedServerPool) testConnections() error {
 		//re-add any killed servers after X ticker counts just to retest them
 		self.AllPingCounts.Add(1)
 		if (self.AllPingCounts%DEFAULT_SERVER_RE_ADD_TICK == 0) && len(self.DroppedServers) > 0 {
-			self.logger.Printf("Attempting to re-add old dead server")
+			self.log.Notice("Attempting to re-add old dead server")
 			self.reAddAllDroppedServers()
 		}
 		time.Sleep(self.ConnectionRetry)

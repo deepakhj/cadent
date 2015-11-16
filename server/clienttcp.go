@@ -1,5 +1,6 @@
 /*
 	TCP Client handling
+	this also does UnixSocket connections too
 */
 
 package consthash
@@ -9,6 +10,7 @@ import (
 	//"log"
 	runner "./runner"
 	"net"
+	"reflect"
 )
 
 const TCP_BUFFER_SIZE = 1048576
@@ -18,7 +20,7 @@ type TCPClient struct {
 	hashers    *[]*ConstHasher
 	LineParser runner.Runner
 
-	Connection *net.TCPConn
+	Connection net.Conn
 	LineCount  uint64
 
 	BufferSize int
@@ -35,7 +37,7 @@ type TCPClient struct {
 
 func NewTCPClient(server *Server,
 	hashers *[]*ConstHasher,
-	conn *net.TCPConn,
+	conn net.Conn,
 	done chan Client,
 	out_queue chan string) *TCPClient {
 
@@ -60,10 +62,17 @@ func NewTCPClient(server *Server,
 	return client
 }
 
-//no need for TCP as we use a bufio reader
+func (client *TCPClient) connType() reflect.Type {
+	return reflect.TypeOf(client.Connection)
+}
+
 func (client *TCPClient) SetBufferSize(size int) {
 	client.BufferSize = size
-	client.Connection.SetReadBuffer(client.BufferSize)
+	if client.connType() == reflect.TypeOf(new(net.TCPConn)) {
+		client.Connection.(*net.TCPConn).SetReadBuffer(client.BufferSize)
+	} else if client.connType() == reflect.TypeOf(new(net.UnixConn)) {
+		client.Connection.(*net.UnixConn).SetReadBuffer(client.BufferSize)
+	}
 }
 
 func (client *TCPClient) Server() (server *Server) {
@@ -75,6 +84,9 @@ func (client *TCPClient) Hashers() (server *[]*ConstHasher) {
 }
 func (client *TCPClient) WorkerQueue() chan *SendOut {
 	return client.worker_queue
+}
+func (client *TCPClient) InputQueue() chan string {
+	return client.input_queue
 }
 
 // close the 2 hooks, channel and connection

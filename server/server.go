@@ -6,10 +6,11 @@ package consthash
 
 import (
 	"./netpool"
-	runner "./runner"
+	"./runner"
+	"./stats"
 	"encoding/json"
 	"fmt"
-	"log"
+	"github.com/op/go-logging"
 	"net"
 	"net/http"
 	"net/url"
@@ -46,7 +47,7 @@ type SendOut struct {
 // to send stat lines via a pool of connections
 // rather then one socket per stat
 func poolWorker(j *SendOut) {
-	defer StatsdNanoTimeFunc("worker.process-time-ns", time.Now())
+	defer stats.StatsdNanoTimeFunc("worker.process-time-ns", time.Now())
 
 	var outsrv netpool.NetpoolInterface
 	var ok bool
@@ -58,9 +59,9 @@ func poolWorker(j *SendOut) {
 	} else {
 		m_url, err := url.Parse(j.outserver)
 		if err != nil {
-			StatsdClient.Incr("failed.bad-url", 1)
+			stats.StatsdClient.Incr("failed.bad-url", 1)
 			j.server.FailSendCount.Up(1)
-			log.Printf("Error sending to backend Invalid URL %s", err)
+			log.Error("Error sending to backend Invalid URL %s", err)
 			j.server.poolmu.Unlock()
 			return
 		}
@@ -88,10 +89,10 @@ func poolWorker(j *SendOut) {
 	defer outsrv.Close(netconn)
 
 	if err != nil {
-		StatsdClient.Incr("failed.bad-connection", 1)
+		stats.StatsdClient.Incr("failed.bad-connection", 1)
 
 		j.server.FailSendCount.Up(1)
-		log.Printf("Error sending to backend %s", err)
+		j.server.log.Error("Error sending to backend %s", err)
 		return
 	}
 	if netconn.Conn() != nil {
@@ -102,21 +103,21 @@ func poolWorker(j *SendOut) {
 		_, err = netconn.Write(to_send)
 		//log.Printf("SEND %s %s", wrote, err)
 		if err != nil {
-			StatsdClient.Incr("failed.connection-timeout", 1)
+			stats.StatsdClient.Incr("failed.connection-timeout", 1)
 			j.server.FailSendCount.Up(1)
 			outsrv.ResetConn(netconn)
-			log.Printf("Error sending (writing) to backend: %s", err)
+			j.server.log.Error("Error sending (writing) to backend: %s", err)
 			return
 		} else {
 			j.server.SuccessSendCount.Up(1)
-			StatsdClient.Incr("success.send", 1)
-			StatsdClient.Incr("success.sent-bytes", int64(len(to_send)))
+			stats.StatsdClient.Incr("success.send", 1)
+			stats.StatsdClient.Incr("success.sent-bytes", int64(len(to_send)))
 		}
 
 	} else {
-		StatsdClient.Incr("failed.aborted-connection", 1)
+		stats.StatsdClient.Incr("failed.aborted-connection", 1)
 		j.server.FailSendCount.Up(1)
-		log.Printf("Error sending (writing connection gone) to backend: %s", err)
+		j.server.log.Error("Error sending (writing connection gone) to backend: %s", err)
 		return
 	}
 
@@ -125,13 +126,13 @@ func poolWorker(j *SendOut) {
 //this is for using a simple tcp connection per stat we send out
 //one can quickly run out of sockets if this is used under high load
 func singleWorker(j *SendOut) {
-	defer StatsdNanoTimeFunc("worker.process-time-ns", time.Now())
+	defer stats.StatsdNanoTimeFunc("worker.process-time-ns", time.Now())
 
 	m_url, err := url.Parse(j.outserver)
 	if err != nil {
-		StatsdClient.Incr("failed.bad-url", 1)
+		stats.StatsdClient.Incr("failed.bad-url", 1)
 		j.server.FailSendCount.Up(1)
-		log.Printf("Error sending to backend Invalid URL %s", err)
+		j.server.log.Error("Error sending to backend Invalid URL %s", err)
 		return
 	}
 	conn, err := net.DialTimeout(m_url.Scheme, m_url.Host, 5*time.Second)
@@ -144,16 +145,16 @@ func singleWorker(j *SendOut) {
 		conn.Close()
 		conn = nil
 		if err != nil {
-			StatsdClient.Incr("failed.bad-connection", 1)
+			stats.StatsdClient.Incr("failed.bad-connection", 1)
 			j.server.FailSendCount.Up(1)
-			log.Printf("Error sending (writing) to backend: %s", err)
+			j.server.log.Error("Error sending (writing) to backend: %s", err)
 			return
 		}
-		StatsdClient.Incr("success.sent", 1)
-		StatsdClient.Incr("success.sent-bytes", int64(len(to_send)))
+		stats.StatsdClient.Incr("success.sent", 1)
+		stats.StatsdClient.Incr("success.sent-bytes", int64(len(to_send)))
 		j.server.SuccessSendCount.Up(1)
 	} else {
-		log.Printf("Error sending (connection) to backend: %s", err)
+		j.server.log.Error("Error sending (connection) to backend: %s", err)
 		j.server.FailSendCount.Up(1)
 	}
 }
@@ -224,25 +225,25 @@ type Server struct {
 	Name      string
 	ListenURL *url.URL
 
-	ValidLineCount       StatCount
-	WorkerValidLineCount StatCount
-	InvalidLineCount     StatCount
-	SuccessSendCount     StatCount
-	FailSendCount        StatCount
-	UnsendableSendCount  StatCount
-	UnknownSendCount     StatCount
-	AllLinesCount        StatCount
+	ValidLineCount       stats.StatCount
+	WorkerValidLineCount stats.StatCount
+	InvalidLineCount     stats.StatCount
+	SuccessSendCount     stats.StatCount
+	FailSendCount        stats.StatCount
+	UnsendableSendCount  stats.StatCount
+	UnknownSendCount     stats.StatCount
+	AllLinesCount        stats.StatCount
 	NumStats             uint
 
-	// our bound connection if TCP
+	// our bound connection if TCP or UnixSocket
 	Connection net.Listener
 	UDPConn    *net.UDPConn
 
 	//if our "buffered" bits exceded this, we're basically out of ram
 	// so we "pause" until we can do something
-	ClientReadBufferSize int64     //for net read buffers
-	MaxReadBufferSize    int64     // the biggest we can make this buffer before "failing"
-	CurrentReadBufferRam AtomicInt // the amount of buffer we're on
+	ClientReadBufferSize int64           //for net read buffers
+	MaxReadBufferSize    int64           // the biggest we can make this buffer before "failing"
+	CurrentReadBufferRam stats.AtomicInt // the amount of buffer we're on
 
 	// timeouts for tuning
 	WriteTimeout  time.Duration // time out when sending lines
@@ -276,7 +277,7 @@ type Server struct {
 	//workers and ques sizes
 	WorkQueue   chan *SendOut
 	WorkerHold  chan int64
-	InWorkQueue AtomicInt
+	InWorkQueue stats.AtomicInt
 	Workers     int64
 
 	//the Runner type to determine the keys to hash on
@@ -301,7 +302,7 @@ type Server struct {
 
 	stats ServerStats
 
-	Logger *log.Logger
+	log *logging.Logger
 }
 
 func (server *Server) AddToCurrentTotalBufferSize(length int64) int64 {
@@ -322,7 +323,12 @@ func (server *Server) TrapExit() {
 
 	go func(ins *Server) {
 		s := <-sc
-		ins.Logger.Printf("Caught %s: Closing out before quit ", s)
+		ins.log.Notice("Caught %s: Closing out before quit ", s)
+
+		// need to clen up the socket here otherwise it may not get cleaned
+		if ins.ListenURL != nil && ins.ListenURL.Scheme == "unix" {
+			os.Remove("/" + ins.ListenURL.Host + ins.ListenURL.Path)
+		}
 		ins.ShutDown <- true
 
 		signal.Stop(sc)
@@ -388,7 +394,7 @@ func (server *Server) RunRunner(key string, line string, out chan string) {
 	//direct timer to void leaks (i.e. NOT time.After(...))
 
 	timer := time.NewTimer(server.RunnerTimeout)
-	defer StatsdNanoTimeFunc(fmt.Sprintf("factory.runner.process-time-ns"), time.Now())
+	defer stats.StatsdNanoTimeFunc(fmt.Sprintf("factory.runner.process-time-ns"), time.Now())
 	defer func() { server.WorkerHold <- -1 }()
 
 	select {
@@ -397,9 +403,9 @@ func (server *Server) RunRunner(key string, line string, out chan string) {
 
 	case <-timer.C:
 		timer.Stop()
-		StatsdClient.Incr("failed.runner-timeout", 1)
+		stats.StatsdClient.Incr("failed.runner-timeout", 1)
 		server.FailSendCount.Up(1)
-		server.Logger.Printf("Timeout %d, %s", len(server.WorkQueue), key)
+		server.log.Warning("Timeout %d, %s", len(server.WorkQueue), key)
 	}
 }
 
@@ -437,9 +443,9 @@ func (server *Server) PushLine(key string, line string) string {
 				// just log the valid lines "once" total ends stats are WorkerValidLineCount
 				if idx == 0 && nidx == 0 {
 					server.ValidLineCount.Up(1)
-					StatsdClient.Incr("success.valid-lines", 1)
+					stats.StatsdClient.Incr("success.valid-lines", 1)
 				}
-				StatsdClient.Incr("success.valid-lines-sent-to-workers", 1)
+				stats.StatsdClient.Incr("success.valid-lines-sent-to-workers", 1)
 				server.WorkerValidLineCount.Up(1)
 
 				sendOut := &SendOut{
@@ -453,7 +459,7 @@ func (server *Server) PushLine(key string, line string) string {
 			out_str += "ok"
 		} else {
 
-			StatsdClient.Incr("failed.invalid-hash-server", 1)
+			stats.StatsdClient.Incr("failed.invalid-hash-server", 1)
 			server.UnsendableSendCount.Up(1)
 			out_str += "failed"
 		}
@@ -481,8 +487,14 @@ func NewServer(cfg *Config) (server *Server, err error) {
 	serv.StartTime = time.Now()
 	serv.WorkerHold = make(chan int64)
 
-	serv.Logger = log.New(os.Stdout, fmt.Sprintf("[Server: %s] ", serv.Name), log.Ldate|log.Ltime)
-	serv.Logger.Printf("Binding server to %s", cfg.ListenURL.String())
+	serv.log = logging.MustGetLogger(fmt.Sprintf("server.%s", serv.Name))
+
+	//log.New(os.Stdout, fmt.Sprintf("[Server: %s] ", serv.Name), log.Ldate|log.Ltime)
+	if cfg.ListenURL != nil {
+		serv.log.Notice("Binding server to %s", serv.ListenURL.String())
+	} else {
+		serv.log.Notice("Using as a Backend Only to %s", serv.Name)
+	}
 
 	//find the runner types
 	serv.RunnerTypeString = cfg.MsgType
@@ -525,8 +537,10 @@ func NewServer(cfg *Config) (server *Server, err error) {
 	if len(cfg.SendingConnectionMethod) > 0 {
 		serv.SendingConnectionMethod = cfg.SendingConnectionMethod
 	}
+	if serv.ListenURL == nil {
+		// just a backend, no connections
 
-	if cfg.ListenURL.Scheme == "udp" {
+	} else if cfg.ListenURL.Scheme == "udp" {
 		udp_addr, err := net.ResolveUDPAddr(cfg.ListenURL.Scheme, cfg.ListenURL.Host)
 		if err != nil {
 			return nil, fmt.Errorf("Error binding: %s", err)
@@ -539,7 +553,13 @@ func NewServer(cfg *Config) (server *Server, err error) {
 		serv.UDPConn.SetReadBuffer((int)(serv.ClientReadBufferSize)) //set buffer size to 1024 bytes
 
 	} else {
-		conn, err := net.Listen(cfg.ListenURL.Scheme, cfg.ListenURL.Host)
+		var conn net.Listener
+		var err error
+		if cfg.ListenURL.Scheme == "unix" {
+			conn, err = net.Listen(cfg.ListenURL.Scheme, "/"+cfg.ListenURL.Host+cfg.ListenURL.Path)
+		} else {
+			conn, err = net.Listen(cfg.ListenURL.Scheme, cfg.ListenURL.Host)
+		}
 		if err != nil {
 			return nil, fmt.Errorf("Error binding: %s", err)
 		}
@@ -604,9 +624,9 @@ func (server *Server) StatsTick() {
 	server.stats.InputQueueSize = len(server.InputQueue)
 	server.stats.WorkQueueSize = len(server.WorkQueue)
 
-	StatsdClient.GaugeAbsolute(fmt.Sprintf("%s.inputqueue.length", server.Name), int64(server.stats.InputQueueSize))
-	StatsdClient.GaugeAbsolute(fmt.Sprintf("%s.workqueue.length", server.Name), int64(server.stats.WorkQueueSize))
-	StatsdClient.GaugeAbsolute(fmt.Sprintf("%s.readbuffer.length", server.Name), int64(server.stats.CurrentReadBufferSize))
+	stats.StatsdClient.GaugeAbsolute(fmt.Sprintf("%s.inputqueue.length", server.Name), int64(server.stats.InputQueueSize))
+	stats.StatsdClient.GaugeAbsolute(fmt.Sprintf("%s.workqueue.length", server.Name), int64(server.stats.WorkQueueSize))
+	stats.StatsdClient.GaugeAbsolute(fmt.Sprintf("%s.readbuffer.length", server.Name), int64(server.stats.CurrentReadBufferSize))
 
 	server.stats.ValidLineCountPerSec = server.ValidLineCount.TotalRate(elapsed)
 	server.stats.WorkerValidLineCountPerSec = server.WorkerValidLineCount.TotalRate(elapsed)
@@ -615,7 +635,12 @@ func (server *Server) StatsTick() {
 	server.stats.UnsendableSendCountPerSec = server.UnsendableSendCount.TotalRate(elapsed)
 	server.stats.UnknownSendCountPerSec = server.UnknownSendCount.TotalRate(elapsed)
 	server.stats.AllLinesCountPerSec = server.AllLinesCount.TotalRate(elapsed)
-	server.stats.Listening = server.ListenURL.String()
+
+	if server.ListenURL == nil {
+		server.stats.Listening = "BACKEND-ONLY"
+	} else {
+		server.stats.Listening = server.ListenURL.String()
+	}
 
 	//XXX TODO FIX ME to look like a multi service line, not one big puddle
 	for idx, hasher := range server.Hashers {
@@ -630,9 +655,9 @@ func (server *Server) StatsTick() {
 		}
 		//tick the cacher stats
 		length, size, capacity, _ := hasher.Cache.Stats()
-		StatsdClient.GaugeAbsolute(fmt.Sprintf("%s.lrucache.length", server.Name), int64(length))
-		StatsdClient.GaugeAbsolute(fmt.Sprintf("%s.lrucache.size", server.Name), int64(size))
-		StatsdClient.GaugeAbsolute(fmt.Sprintf("%s.lrucache.capacity", server.Name), int64(capacity))
+		stats.StatsdClient.GaugeAbsolute(fmt.Sprintf("%s.lrucache.length", server.Name), int64(length))
+		stats.StatsdClient.GaugeAbsolute(fmt.Sprintf("%s.lrucache.size", server.Name), int64(size))
+		stats.StatsdClient.GaugeAbsolute(fmt.Sprintf("%s.lrucache.capacity", server.Name), int64(capacity))
 
 	}
 
@@ -648,31 +673,31 @@ func (server *Server) StatsJsonString() string {
 func (server *Server) tickDisplay() {
 	server.StatsTick()
 
-	server.Logger.Printf("Server: ValidLineCount: %d", server.ValidLineCount.TotalCount)
-	server.Logger.Printf("Server: WorkerValidLineCount: %d", server.WorkerValidLineCount.TotalCount)
-	server.Logger.Printf("Server: InvalidLineCount: %d", server.InvalidLineCount.TotalCount)
-	server.Logger.Printf("Server: SuccessSendCount: %d", server.SuccessSendCount.TotalCount)
-	server.Logger.Printf("Server: FailSendCount: %d", server.FailSendCount.TotalCount)
-	server.Logger.Printf("Server: UnsendableSendCount: %d", server.UnsendableSendCount.TotalCount)
-	server.Logger.Printf("Server: UnknownSendCount: %d", server.UnknownSendCount.TotalCount)
-	server.Logger.Printf("Server: AllLinesCount: %d", server.AllLinesCount.TotalCount)
-	server.Logger.Printf("Server: GO Routines Running: %d", runtime.NumGoroutine())
-	server.Logger.Printf("Server: Current Buffer Size: %d/%d bytes", server.CurrentReadBufferRam, server.MaxReadBufferSize)
-	server.Logger.Printf("Server: Current Out Queue length: %d", len(server.WorkQueue))
-	server.Logger.Printf("Server: Current Input Queue length: %d", len(server.InputQueue))
-	server.Logger.Printf("-------")
-	server.Logger.Printf("Server Rate: Duration %ds", uint64(server.ticker/time.Second))
-	server.Logger.Printf("Server Rate: ValidLineCount: %.2f/s", server.ValidLineCount.Rate(server.ticker))
-	server.Logger.Printf("Server Rate: WorkerLineCount: %.2f/s", server.WorkerValidLineCount.Rate(server.ticker))
-	server.Logger.Printf("Server Rate: InvalidLineCount: %.2f/s", server.InvalidLineCount.Rate(server.ticker))
-	server.Logger.Printf("Server Rate: SuccessSendCount: %.2f/s", server.SuccessSendCount.Rate(server.ticker))
-	server.Logger.Printf("Server Rate: FailSendCount: %.2f/s", server.FailSendCount.Rate(server.ticker))
-	server.Logger.Printf("Server Rate: UnsendableSendCount: %.2f/s", server.UnsendableSendCount.Rate(server.ticker))
-	server.Logger.Printf("Server Rate: UnknownSendCount: %.2f/s", server.UnknownSendCount.Rate(server.ticker))
-	server.Logger.Printf("Server Rate: AllLinesCount: %.2f/s", server.AllLinesCount.Rate(server.ticker))
-	server.Logger.Printf("Server Send Method:: %s", server.SendingConnectionMethod)
+	server.log.Info("Server: ValidLineCount: %d", server.ValidLineCount.TotalCount)
+	server.log.Info("Server: WorkerValidLineCount: %d", server.WorkerValidLineCount.TotalCount)
+	server.log.Info("Server: InvalidLineCount: %d", server.InvalidLineCount.TotalCount)
+	server.log.Info("Server: SuccessSendCount: %d", server.SuccessSendCount.TotalCount)
+	server.log.Info("Server: FailSendCount: %d", server.FailSendCount.TotalCount)
+	server.log.Info("Server: UnsendableSendCount: %d", server.UnsendableSendCount.TotalCount)
+	server.log.Info("Server: UnknownSendCount: %d", server.UnknownSendCount.TotalCount)
+	server.log.Info("Server: AllLinesCount: %d", server.AllLinesCount.TotalCount)
+	server.log.Info("Server: GO Routines Running: %d", runtime.NumGoroutine())
+	server.log.Info("Server: Current Buffer Size: %d/%d bytes", server.CurrentReadBufferRam, server.MaxReadBufferSize)
+	server.log.Info("Server: Current Out Queue length: %d", len(server.WorkQueue))
+	server.log.Info("Server: Current Input Queue length: %d", len(server.InputQueue))
+	server.log.Info("-------")
+	server.log.Info("Server Rate: Duration %ds", uint64(server.ticker/time.Second))
+	server.log.Info("Server Rate: ValidLineCount: %.2f/s", server.ValidLineCount.Rate(server.ticker))
+	server.log.Info("Server Rate: WorkerLineCount: %.2f/s", server.WorkerValidLineCount.Rate(server.ticker))
+	server.log.Info("Server Rate: InvalidLineCount: %.2f/s", server.InvalidLineCount.Rate(server.ticker))
+	server.log.Info("Server Rate: SuccessSendCount: %.2f/s", server.SuccessSendCount.Rate(server.ticker))
+	server.log.Info("Server Rate: FailSendCount: %.2f/s", server.FailSendCount.Rate(server.ticker))
+	server.log.Info("Server Rate: UnsendableSendCount: %.2f/s", server.UnsendableSendCount.Rate(server.ticker))
+	server.log.Info("Server Rate: UnknownSendCount: %.2f/s", server.UnknownSendCount.Rate(server.ticker))
+	server.log.Info("Server Rate: AllLinesCount: %.2f/s", server.AllLinesCount.Rate(server.ticker))
+	server.log.Info("Server Send Method:: %s", server.SendingConnectionMethod)
 	for idx, pool := range server.Outpool {
-		server.Logger.Printf("Free Connections in Pools [%s]: %d/%d", idx, pool.NumFree(), pool.GetMaxConnections())
+		server.log.Info("Free Connections in Pools [%s]: %d/%d", idx, pool.NumFree(), pool.GetMaxConnections())
 	}
 
 	server.ResetTickers()
@@ -822,11 +847,16 @@ func (server *Server) AddStatusHandlers() {
 
 // accept incoming TCP connections and push them into the
 // a connection channel
-func (server *Server) Accepter() (<-chan *net.TCPConn, error) {
+func (server *Server) Accepter() (<-chan net.Conn, error) {
 
-	conns := make(chan *net.TCPConn, server.Workers)
+	conns := make(chan net.Conn, server.Workers)
 	go func() {
-		defer server.Connection.Close()
+		defer func() {
+			server.Connection.Close()
+			if server.ListenURL != nil && server.ListenURL.Scheme == "unix" {
+				os.Remove("/" + server.ListenURL.Host + server.ListenURL.Path)
+			}
+		}()
 		defer close(conns)
 		defer close(server.ShutDown)
 		for {
@@ -834,7 +864,7 @@ func (server *Server) Accepter() (<-chan *net.TCPConn, error) {
 			case s := <-server.back_pressure:
 				if s {
 					server.back_pressure_lock.Lock()
-					server.Logger.Printf("Backpressure triggered pausing connections for : %s", server.back_pressure_sleep)
+					server.log.Warning("Backpressure triggered pausing connections for : %s", server.back_pressure_sleep)
 					time.Sleep(server.back_pressure_sleep)
 					server.back_pressure_lock.Unlock()
 				}
@@ -844,12 +874,12 @@ func (server *Server) Accepter() (<-chan *net.TCPConn, error) {
 			default:
 				conn, err := server.Connection.Accept()
 				if err != nil {
-					server.Logger.Printf("Error Accecption Connection: %s", err)
+					server.log.Warning("Error Accecption Connection: %s", err)
 					return
 				}
-				server.Logger.Printf("Accepted connection from %s", conn.RemoteAddr())
+				server.log.Debug("Accepted connection from %s", conn.RemoteAddr())
 
-				conns <- conn.(*net.TCPConn)
+				conns <- conn
 			}
 
 		}
@@ -864,8 +894,6 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, done chan Client) 
 	// the main Server input Queue should be larger then the UDP case as we can have many TCP clients
 	// and only one UDP client
 
-	server.InputQueue = make(chan string, server.Workers)
-	defer close(server.InputQueue)
 	out_queue := make(chan string, server.Workers)
 	defer close(out_queue)
 
@@ -880,7 +908,7 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, done chan Client) 
 			server.AddToCurrentTotalBufferSize(l_len)
 
 			if server.NeedBackPressure() {
-				server.Logger.Printf(
+				server.log.Warning(
 					"Error::Max Queue or buffer reached dropping connection (Buffer %v, queue len: %v)",
 					server.CurrentReadBufferRam.Get(),
 					len(server.WorkQueue))
@@ -892,7 +920,7 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, done chan Client) 
 				server.RunRunner(key, procline, out_queue)
 			}
 			server.AllLinesCount.Up(1)
-			StatsdClient.Incr("incoming.tcp.lines", 1)
+			stats.StatsdClient.Incr("incoming.tcp.lines", 1)
 			server.AddToCurrentTotalBufferSize(-l_len)
 		}
 	}
@@ -923,10 +951,10 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, done chan Client) 
 			server.InWorkQueue.Add(workerUpDown)
 			ct := (int64)(len(server.WorkQueue))
 			if ct >= server.Workers {
-				StatsdClient.Incr("worker.queue.isfull", 1)
+				stats.StatsdClient.Incr("worker.queue.isfull", 1)
 				//server.Logger.Printf("Worker Queue Full %d", ct)
 			}
-			StatsdClient.GaugeAvg("worker.queue.length", ct)
+			stats.StatsdClient.GaugeAvg("worker.queue.length", ct)
 
 		case client := <-done:
 			client.Close() //this will close the connection too
@@ -938,9 +966,6 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, done chan Client) 
 
 // different mechanism for UDP servers
 func (server *Server) startUDPServer(hashers *[]*ConstHasher, done chan Client) {
-
-	server.InputQueue = make(chan string, server.Workers)
-	defer close(server.InputQueue)
 
 	//just need on "client" here as we simply just pull from the socket
 	client := NewUDPClient(server, hashers, server.UDPConn, done)
@@ -958,14 +983,56 @@ func (server *Server) startUDPServer(hashers *[]*ConstHasher, done chan Client) 
 			server.InWorkQueue.Add(workerUpDown)
 			work_len := (int64)(len(server.WorkQueue))
 			if work_len >= server.Workers {
-				StatsdClient.Incr("worker.queue.isfull", 1)
+				stats.StatsdClient.Incr("worker.queue.isfull", 1)
 			}
-			StatsdClient.GaugeAvg("worker.queue.length", work_len)
+			stats.StatsdClient.GaugeAvg("worker.queue.length", work_len)
 
 		case client := <-done:
 			client.Close()
 		}
 	}
+}
+
+func (server *Server) startBackendServer(hashers *[]*ConstHasher, done chan Client) {
+
+	out_queue := make(chan string, server.Workers)
+	defer close(out_queue)
+	// start the "backend only loop"
+	run := func() {
+		for line := range server.InputQueue {
+			l_len := (int64)(len(line))
+			server.AddToCurrentTotalBufferSize(l_len)
+
+			if server.NeedBackPressure() {
+				server.log.Warning(
+					"Error::Max Queue or buffer reached dropping connection (Buffer %v, queue len: %v)",
+					server.CurrentReadBufferRam.Get(),
+					len(server.WorkQueue))
+				server.BackPressure()
+			}
+
+			key, procline, err := server.LineProcessor.ProcessLine(strings.Trim(line, "\n\t "))
+			if err == nil {
+				server.RunRunner(key, procline, out_queue)
+			}
+			server.AllLinesCount.Up(1)
+			stats.StatsdClient.Incr("incoming.tcp.lines", 1)
+			server.AddToCurrentTotalBufferSize(-l_len)
+		}
+	}
+	//fire up the workers
+	for w := int64(1); w <= server.Workers; w++ {
+		go run()
+	}
+
+	//just run and run
+	for {
+		select {
+		case <-server.ShutDown:
+			return
+		}
+	}
+
 }
 
 func CreateServer(cfg *Config, hashers []*ConstHasher) (*Server, error) {
@@ -992,7 +1059,7 @@ func CreateServer(cfg *Config, hashers []*ConstHasher) (*Server, error) {
 
 func (server *Server) StartServer() {
 
-	server.Logger.Printf("Using %d workers to process output", server.Workers)
+	server.log.Info("Using %d workers to process output", server.Workers)
 
 	//fire up the send to workers
 	done := make(chan Client)
@@ -1001,6 +1068,10 @@ func (server *Server) StartServer() {
 	//the queue is only as big as the workers
 	server.WorkQueue = make(chan *SendOut, server.Workers)
 	defer close(server.WorkQueue)
+
+	//input queue
+	server.InputQueue = make(chan string, server.Workers)
+	defer close(server.InputQueue)
 
 	//set the push method (the WorkerOutput depends on it)
 	server.SetPushMethod()
@@ -1015,9 +1086,13 @@ func (server *Server) StartServer() {
 		panic(err)
 	}
 
-	if server.UDPConn != nil {
+	if server.ListenURL == nil {
+		// just the little queue listener
+		server.startBackendServer(&server.Hashers, done)
+	} else if server.UDPConn != nil {
 		server.startUDPServer(&server.Hashers, done)
 	} else {
+		// we treat the generic TCP and UNIX listeners the same
 		server.startTCPServer(&server.Hashers, done)
 	}
 }

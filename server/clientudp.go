@@ -5,7 +5,8 @@
 package consthash
 
 import (
-	"log"
+	"./stats"
+	"github.com/op/go-logging"
 	"net"
 	"strings"
 )
@@ -25,6 +26,8 @@ type UDPClient struct {
 	done         chan Client
 	input_queue  chan string
 	worker_queue chan *SendOut
+
+	log *logging.Logger
 }
 
 func NewUDPClient(server *Server, hashers *[]*ConstHasher, conn *net.UDPConn, done chan Client) *UDPClient {
@@ -42,6 +45,7 @@ func NewUDPClient(server *Server, hashers *[]*ConstHasher, conn *net.UDPConn, do
 	client.input_queue = server.InputQueue
 	client.out_queue = make(chan string, server.Workers)
 	client.done = done
+	client.log = server.log
 	return client
 
 }
@@ -88,9 +92,9 @@ func (client *UDPClient) run() {
 		if err == nil {
 			client.server.RunRunner(key, n_line, client.out_queue)
 		} else {
-			log.Printf("Invalid Line: %s (%s)", err, n_line)
+			client.log.Warning("Invalid Line: %s (%s)", err, n_line)
 		}
-		StatsdClient.Incr("incoming.udp.lines", 1)
+		stats.StatsdClient.Incr("incoming.udp.lines", 1)
 	}
 }
 
@@ -131,7 +135,7 @@ func (client UDPClient) handleSend() {
 			break
 		}
 	}
-	log.Println("Close")
+	client.log.Notice("Closing UDP connection")
 	//close it out
 	client.Close()
 }

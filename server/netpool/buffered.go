@@ -6,7 +6,6 @@ Here we have a NetPooler but that buffers writes before sending things in specif
 package netpool
 
 import (
-	"log"
 	"net"
 	"os"
 	"os/signal"
@@ -145,7 +144,7 @@ func (n *BufferedNetpool) TrapExit() {
 
 	go func(np *BufferedNetpool) {
 		s := <-sigc
-		log.Printf("Caught %s: Flushing Buffers before quit ", s)
+		log.Warning("Caught %s: Flushing Buffers before quit ", s)
 		atomic.StoreInt32(&np.didclose, 1)
 		defer close(np.pool.free)
 		for i := 0; i < len(np.pool.free); i++ {

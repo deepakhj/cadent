@@ -1,15 +1,20 @@
 package consthash
 
 import (
+	prereg "./prereg"
+	"./stats"
+	"./statsd"
 	"fmt"
 	"github.com/BurntSushi/toml"
-	"log"
+	logging "github.com/op/go-logging"
 	"math"
 	"net/url"
 	"regexp"
 	"strings"
 	"time"
 )
+
+var log = logging.MustGetLogger("config")
 
 type ParsedServerConfig struct {
 	// the server name will default to the hashkey if none is given
@@ -78,6 +83,9 @@ type Config struct {
 	ListenURL   *url.URL
 	ServerLists []*ParsedServerConfig //parsing up the ConfServerList after read
 
+	// the pre-reg objects
+	PreRegFilters prereg.PreRegMap
+
 	//compiled Regex
 	ComRegEx      *regexp.Regexp
 	ComRegExNames []string
@@ -92,6 +100,7 @@ type Config struct {
 
 const (
 	DEFAULT_CONFIG_SECTION       = "default"
+	DEFAULT_BACKEND_ONLY         = "backend_only"
 	DEFAULT_LISTEN               = "tcp://127.0.0.1:6000"
 	DEFAULT_HEARTBEAT_COUNT      = uint64(3)
 	DEFAULT_HEARTBEAT            = time.Duration(30)
@@ -105,6 +114,44 @@ const (
 )
 
 type ConfigServers map[string]Config
+
+//init a statsd client from our config object
+func SetUpStatsdClient(cfg *Config) statsd.Statsd {
+
+	if len(cfg.StatsdServer) == 0 {
+		log.Notice("Skipping Statsd setup, no server specified")
+		stats.StatsdClient = new(statsd.StatsdNoop)
+		return stats.StatsdClient
+	}
+	interval := time.Second * 2 // aggregate stats and flush every 2 seconds
+	statsdclient := statsd.NewStatsdClient(cfg.StatsdServer, cfg.StatsdPrefix+".%HOST%.")
+	if cfg.StatsdTimerSampleRate > 0 {
+		statsdclient.TimerSampleRate = cfg.StatsdTimerSampleRate
+	}
+	if cfg.StatsdSampleRate > 0 {
+		statsdclient.SampleRate = cfg.StatsdSampleRate
+	}
+	//statsdclient.CreateSocket()
+	//StatsdClient = statsdclient
+	//return StatsdClient
+
+	// the buffer client seems broken for some reason
+	if cfg.StatsdInterval > 0 {
+		interval = time.Second * time.Duration(cfg.StatsdInterval)
+	}
+	statsder := statsd.NewStatsdBuffer(interval, statsdclient)
+	statsder.RetainKeys = true //retain statsd keys to keep emitting 0's
+	if cfg.StatsdTimerSampleRate > 0 {
+		statsder.TimerSampleRate = cfg.StatsdTimerSampleRate
+	}
+	if cfg.StatsdSampleRate > 0 {
+		statsder.SampleRate = cfg.StatsdSampleRate
+	}
+
+	stats.StatsdClient = statsder
+	log.Notice("Statsd Client to %s, prefix %s, interval %d", cfg.StatsdServer, cfg.StatsdPrefix, cfg.StatsdInterval)
+	return stats.StatsdClient
+}
 
 // make our map of servers to hosts
 func (self *Config) parseServerList(servers []string, checkservers []string, hashkeys []string) (*ParsedServerConfig, error) {
@@ -183,6 +230,8 @@ func (self *Config) parseServerList(servers []string, checkservers []string, has
 }
 
 func (self ConfigServers) ParseConfig(defaults Config) (out ConfigServers, err error) {
+
+	have_listener := false
 	for chunk, cfg := range self {
 
 		if chunk == DEFAULT_CONFIG_SECTION {
@@ -197,11 +246,17 @@ func (self ConfigServers) ParseConfig(defaults Config) (out ConfigServers, err e
 		if len(cfg.ListenStr) == 0 {
 			cfg.ListenStr = DEFAULT_LISTEN
 		}
-		l_url, err := url.Parse(cfg.ListenStr)
-		if err != nil {
-			return nil, err
+		if cfg.ListenStr == DEFAULT_BACKEND_ONLY {
+			log.Info("Configuring %s as a BACKEND only (no listeners)", chunk)
+			cfg.ListenURL = nil
+		} else {
+			l_url, err := url.Parse(cfg.ListenStr)
+			if err != nil {
+				return nil, err
+			}
+			cfg.ListenURL = l_url
+			have_listener = true
 		}
-		cfg.ListenURL = l_url
 
 		//parse our list of servers
 		if len(cfg.ConfServerList) == 0 {
@@ -317,7 +372,7 @@ func (self ConfigServers) ParseConfig(defaults Config) (out ConfigServers, err e
 		}
 
 		if cfg.Replicas > minServerCount {
-			log.Printf("[WARN] Changing replica count to %d to match the # servers", minServerCount)
+			log.Warning("Changing replica count to %d to match the # servers", minServerCount)
 			cfg.Replicas = minServerCount
 		}
 
@@ -379,14 +434,17 @@ func (self ConfigServers) ParseConfig(defaults Config) (out ConfigServers, err e
 		cfg.OkToUse = true
 		self[chunk] = cfg
 	}
-
+	//need to have at least ONE listener
+	if !have_listener {
+		panic("No bind/listeners defined, need at least one")
+	}
 	return self, nil
 }
 
 func ParseConfigFile(filename string) (cfg ConfigServers, err error) {
 
 	if _, err := toml.DecodeFile(filename, &cfg); err != nil {
-		log.Printf("Error decoding config file: %s", err)
+		log.Critical("Error decoding config file: %s", err)
 		return nil, err
 	}
 	var defaults Config
@@ -406,6 +464,32 @@ func (self ConfigServers) DefaultConfig() (def_cfg *Config, err error) {
 	return nil, fmt.Errorf("Could not find default in config file")
 }
 
+func (self ConfigServers) VerifyPreReg(prm prereg.PreRegMap) (err error) {
+
+	// validate that all the backends in the server conf acctually match something
+	// in the regex filtering
+
+	for _, pr := range prm {
+		// check that the listern server is really a listen server and exists
+		var listen_s Config
+		var ok bool
+		if listen_s, ok = self[pr.ListenServer]; !ok {
+			return fmt.Errorf("ListenServer `%s` is not in the Config servers", pr.ListenServer)
+		}
+		if listen_s.ListenStr == "backend_only" {
+			return fmt.Errorf("ListenServer `%s` cannot be a `backend_only` listener", pr.ListenServer)
+		}
+
+		for _, filter := range pr.FilterList {
+			if _, ok := self[filter.Backend()]; !ok {
+				return fmt.Errorf("Backend `%s` is not in the Config servers", filter.Backend())
+			}
+		}
+	}
+	return nil
+
+}
+
 func (self ConfigServers) ServableConfigs() (configs []Config) {
 
 	for _, cfg := range self {
@@ -418,29 +502,38 @@ func (self ConfigServers) ServableConfigs() (configs []Config) {
 }
 
 func (self *ConfigServers) DebugConfig() {
-
+	log.Debug("== Consthash backends ===")
 	for chunk, cfg := range *self {
-		log.Printf("Section '%s'", chunk)
+		log.Debug("Section '%s'", chunk)
 		if cfg.OkToUse {
-			log.Printf("  Listen: %s", cfg.ListenURL.String())
-			log.Printf("  MaxServerHeartBeatFail: %v", cfg.MaxServerHeartBeatFail)
-			log.Printf("  ServerHeartBeat: %v", cfg.ServerHeartBeat)
-			log.Printf("  MsgType: %s ", cfg.MsgType)
-			log.Printf("  Hashing Algo: %s ", cfg.HashAlgo)
-			log.Printf("  Dupe Replicas: %d ", cfg.Replicas)
-			log.Printf("  Write Timeout: %v ", cfg.WriteTimeout)
-			log.Printf("  Runner Timeout: %v ", cfg.RunnerTimeout)
-			log.Printf("  Write Buffer Size: %v ", cfg.MaxWritePoolBufferSize)
-			log.Printf("  Read Buffer Size: %v ", cfg.ClientReadBufferSize)
-			log.Printf("  Max Read Buffer Size: %v ", cfg.MaxReadBufferSize)
-			log.Printf("  Write Pool Connections: %v ", cfg.MaxPoolConnections)
-			log.Printf("  Workers/Input Queue Size: %v ", cfg.Workers)
+			if cfg.ListenURL != nil {
+				log.Debug("  Listen: %s", cfg.ListenURL.String())
+			} else {
+				log.Debug("  BACKEND ONLY: %s", chunk)
+			}
+			log.Debug("  MaxServerHeartBeatFail: %v", cfg.MaxServerHeartBeatFail)
+			log.Debug("  ServerHeartBeat: %v", cfg.ServerHeartBeat)
+			log.Debug("  MsgType: %s ", cfg.MsgType)
+			log.Debug("  Hashing Algo: %s ", cfg.HashAlgo)
+			log.Debug("  Dupe Replicas: %d ", cfg.Replicas)
+			log.Debug("  Write Timeout: %v ", cfg.WriteTimeout)
+			log.Debug("  Runner Timeout: %v ", cfg.RunnerTimeout)
+			log.Debug("  Write Buffer Size: %v ", cfg.MaxWritePoolBufferSize)
+			log.Debug("  Read Buffer Size: %v ", cfg.ClientReadBufferSize)
+			log.Debug("  Max Read Buffer Size: %v ", cfg.MaxReadBufferSize)
+			log.Debug("  Write Pool Connections: %v ", cfg.MaxPoolConnections)
+			log.Debug("  Workers/Input Queue Size: %v ", cfg.Workers)
 
-			log.Printf("  Servers")
+			log.Debug("  Servers")
 			for _, slist := range cfg.ServerLists {
 				for idx, hosts := range slist.ServerList {
-					log.Printf("    %s Checked via %s", hosts, slist.CheckList[idx])
+					log.Debug("    %s Checked via %s", hosts, slist.CheckList[idx])
 				}
+			}
+		} else {
+			log.Debug("  PID: %s", cfg.PIDfile)
+			if cfg.PreRegFilters != nil {
+				cfg.PreRegFilters.LogConfig()
 			}
 		}
 	}

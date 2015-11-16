@@ -2,11 +2,12 @@ package main
 
 import (
 	consthash "../../server"
+	prereg "../../server/prereg"
 	"encoding/json"
 	"flag"
 	"fmt"
+	logging "github.com/op/go-logging"
 	"io/ioutil"
-	"log"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -24,39 +25,48 @@ const (
 // compile passing -ldflags "-X main.Build <build sha1>"
 var ConstHashBuild string
 
+var log = logging.MustGetLogger("main")
+
+func logInit() {
+	var format = "%{color}%{time:2006-01-02 15:04:05.000} [%{module}] ▶ %{level:.4s} %{color:reset} %{message}"
+	logBackend := logging.NewLogBackend(os.Stderr, "", 0)
+	logging.SetFormatter(logging.MustStringFormatter(format))
+	logging.SetBackend(logBackend)
+}
+
 // need to up this guy otherwise we quickly run out of sockets
 func setSystemStuff(num_procs int) {
 	if num_procs <= 0 {
 		num_procs = runtime.NumCPU()
 	}
-	log.Println("[System] Setting GOMAXPROCS to ", num_procs)
+	log.Notice("[System] Setting GOMAXPROCS to %s", num_procs)
 
 	runtime.GOMAXPROCS(num_procs)
 
 	var rLimit syscall.Rlimit
 	err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rLimit)
 	if err != nil {
-		log.Println("[System] Error Getting Rlimit: ", err)
+		log.Warning("[System] Error Getting Rlimit: %s", err)
 	}
-	log.Println("[System] Current Rlimit: ", rLimit)
+	log.Notice("[System] Current Rlimit: %s", rLimit)
 
 	rLimit.Max = 999999
 	rLimit.Cur = 999999
 	err = syscall.Setrlimit(syscall.RLIMIT_NOFILE, &rLimit)
 	if err != nil {
-		log.Println("[System] Error Setting Rlimit: ", err)
+		log.Warning("[System] Error Setting Rlimit: %s", err)
 	}
 	err = syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rLimit)
 	if err != nil {
-		log.Println("[System] Error Getting Rlimit:  ", err)
+		log.Warning("[System] Error Getting Rlimit: %s ", err)
 	}
-	log.Println("[System] Final Rlimit Final: ", rLimit)
+	log.Notice("[System] Final Rlimit Final: %s", rLimit)
 }
 
 // Fire up the http server for stats and healthchecks
 func startStatsServer(defaults *consthash.Config, servers []*consthash.Server) {
 
-	log.Printf("Starting Status server on %s", defaults.HealthServerBind)
+	log.Notice("Starting Status server on %s", defaults.HealthServerBind)
 
 	var names []string
 	for _, serv := range servers {
@@ -121,19 +131,28 @@ func startStatsServer(defaults *consthash.Config, servers []*consthash.Server) {
 	http.HandleFunc("/stats", stats)
 	http.HandleFunc("/hashcheck", hashcheck)
 
-	log.Fatal(http.ListenAndServe(defaults.HealthServerBind, nil))
+	err := http.ListenAndServe(defaults.HealthServerBind, nil)
+	if err != nil {
+		log.Critical("Could not start http server %s", defaults.HealthServerBind)
+		os.Exit(1)
+	}
 
 }
 
 func main() {
 	version := flag.Bool("version", false, "Print version and exit")
 	configFile := flag.String("config", "config.toml", "Consitent Hash configuration file")
+	regConfigFile := flag.String("prereg", "", "File that contains the Regex/Filtering by key to various backends")
 	flag.Parse()
+
 	if *version {
 		fmt.Printf("ConstHash version %s\n\n", ConstHashBuild)
 		os.Exit(0)
 	}
-	log.Printf("ConstHash version %s", ConstHashBuild)
+
+	logInit()
+
+	log.Info("ConstHash version %s", ConstHashBuild)
 
 	if flag.NFlag() == 0 {
 		flag.PrintDefaults()
@@ -145,17 +164,34 @@ func main() {
 
 	config, err = consthash.ParseConfigFile(*configFile)
 	if err != nil {
-		log.Printf("Error decoding config file: %s", err)
+		log.Info("Error decoding config file: %s", err)
 		os.Exit(1)
 	}
-
-	config.DebugConfig()
 
 	def, err := config.DefaultConfig()
 	if err != nil {
-		log.Printf("Error decoding config file: Could not find default: %s", err)
+		log.Critical("Error decoding config file: Could not find default: %s", err)
 		os.Exit(1)
 	}
+
+	// deal with the pre-reg file
+	if len(*regConfigFile) != 0 {
+		pr, err := prereg.ParseConfigFile(*regConfigFile)
+		if err != nil {
+			log.Critical("Error parsing PreReg: %s", err)
+			os.Exit(1)
+		}
+		// make sure that we have all the backends
+		err = config.VerifyPreReg(pr)
+		if err != nil {
+			log.Critical("Error parsing PreReg: %s", err)
+			os.Exit(1)
+		}
+		def.PreRegFilters = pr
+	}
+
+	//some printstuff to verify settings
+	config.DebugConfig()
 
 	setSystemStuff(def.NumProc)
 
@@ -166,7 +202,8 @@ func main() {
 		if err == nil {
 			pid, err := strconv.Atoi(strings.TrimSpace(string(contents)))
 			if err != nil {
-				log.Fatalf("Error reading proccess id from pidfile '%s': %s", pidFile, err)
+				log.Critical("Error reading proccess id from pidfile '%s': %s", pidFile, err)
+				os.Exit(1)
 			}
 
 			process, err := os.FindProcess(pid)
@@ -174,31 +211,31 @@ func main() {
 			// on Windows, err != nil if the process cannot be found
 			if runtime.GOOS == "windows" {
 				if err == nil {
-					log.Fatalf("Process %d is already running.", pid)
+					log.Critical("Process %d is already running.", pid)
 				}
 			} else if process != nil {
 				// err is always nil on POSIX, so we have to send the process
 				// a signal to check whether it exists
 				if err = process.Signal(syscall.Signal(0)); err == nil {
-					log.Fatalf("Process %d is already running.", pid)
+					log.Critical("Process %d is already running.", pid)
 				}
 			}
 		}
 		if err = ioutil.WriteFile(pidFile, []byte(strconv.Itoa(os.Getpid())),
 			0644); err != nil {
 
-			log.Fatalf("Unable to write pidfile '%s': %s", pidFile, err)
+			log.Critical("Unable to write pidfile '%s': %s", pidFile, err)
 		}
-		log.Printf("Wrote pid to pidfile '%s'", pidFile)
+		log.Info("Wrote pid to pidfile '%s'", pidFile)
 		defer func() {
 			if err = os.Remove(pidFile); err != nil {
-				log.Printf("Unable to remove pidfile '%s': %s", pidFile, err)
+				log.Notice("Unable to remove pidfile '%s': %s", pidFile, err)
 			}
 		}()
 	}
 
 	if def.Profile {
-		log.Println("Starting Profiler on localhost:6060")
+		log.Notice("Starting Profiler on localhost:6060")
 		go http.ListenAndServe(":6060", nil)
 	}
 
@@ -233,7 +270,7 @@ func main() {
 	if len(def.HealthServerBind) != 0 {
 		startStatsServer(def, servers)
 	} else {
-		//now we just need to loop
+		//now we just need to loop forever!
 		for {
 		}
 	}

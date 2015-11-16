@@ -7,7 +7,7 @@
 // When an element is accessed it is promoted to the head of the list, and when
 // space is needed the element at the tail of the list (the least recently used
 // element) is evicted.
-package consthash
+package lrucache
 
 import (
 	"container/list"
@@ -34,7 +34,7 @@ type LRUCache struct {
 // Values that go into LRUCache need to satisfy this interface.
 type Value interface {
 	Size() int
-	toString() string
+	ToString() string
 }
 
 type Item struct {
@@ -55,6 +55,9 @@ func NewLRUCache(capacity uint64) *LRUCache {
 		table:    make(map[string]*list.Element),
 		capacity: capacity,
 	}
+}
+func (lru *LRUCache) GetCapacity() uint64 {
+	return lru.capacity
 }
 
 func (lru *LRUCache) Get(key string) (v Value, ok bool) {

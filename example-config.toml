@@ -133,6 +133,8 @@ max_read_buffer_size=819200
 ### (except the `statsd_*` and `internal_health_server_listen`)
 ### NOTE: `hasher_replicas` will NOT use the defaults, be explict there
 
+# ==================== STATSD ====================
+
 [statsd-example]
 
 ## what port/scheme we are listening on for incoming data
@@ -181,6 +183,7 @@ check_servers=["tcp://192.168.59.103:8127", "tcp://192.168.59.103:8137", "tcp://
 ## hashkeys=["192.168.59.103:8126", "192.168.59.103:8136", "192.168.59.103:8146"]
 #
 
+# ---------- replica set ---------------
 # replica
 # [[statsd-example.servers]]
 # servers=...
@@ -188,6 +191,7 @@ check_servers=["tcp://192.168.59.103:8127", "tcp://192.168.59.103:8137", "tcp://
 # haskeys=...
 
 
+# ==================== GRAPHITE ====================
 
 [graphite-example]
 
@@ -223,11 +227,13 @@ servers=["tcp://192.168.10.200:2003","tcp://192.168.10.201:2003","tcp://192.168.
 
 hashkeys=["""('192.168.10.200', 'a')""","""('192.168.10.201', 'b')""","""('192.168.10.202', 'c')"""]
 
+# ---------- replica set ---------------
 
 # replica
 # [[graphite-example.servers]]
 # servers=...
 
+# ==================== REGEX ====================
 
 [regex-example]
 
@@ -247,4 +253,29 @@ hasher_algo="fnv"
 servers=["udp://127.0.0.1:6080","udp://127.0.0.1:6081","udp://127.0.0.1:6082"]
 check_servers=["tcp://127.0.0.1:6090","tcp://127.0.0.1:6091","tcp://127.0.0.1:6092"]
 
+
+# ==================== BackendOnly ====================
+
+## Backends only
+## this is a outgoing only set where by there is no front facing socket to field requests
+## this is to be used for PreReg entities that prefilter any incoming and can be refered
+## to by the name `graphite-aux`
+## (see example-prereg.toml)
+[graphite-aux]
+
+## backend only
+listen="backend_only"
+
+msg_type="graphite"
+
+# graphite style
+hasher_algo="md5"
+hasher_elter="graphite"
+hasher_vnodes=100
+
+# the read buffers here are not relevent
+max_read_buffer_size=819200
+
+[[graphite-aux.servers]]
+servers=["tcp://192.168.12.200:2003","tcp://192.168.12.201:2003","tcp://192.168.12.202:2003"]
 

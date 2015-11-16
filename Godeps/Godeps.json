@@ -17,6 +17,10 @@
 		{
 			"ImportPath": "github.com/reusee/mmh3",
 			"Rev": "64b85163255bbb6af4f0d0eab61ecdda7ea7cd96"
+		},
+		{
+			"ImportPath": "github.com/op/go-logging",
+			"Rev": "e8d5414f0947014548c2334044a0fac13187dfee"
 		}
 	]
 }

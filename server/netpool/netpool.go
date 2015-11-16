@@ -1,7 +1,7 @@
 package netpool
 
 import (
-	"log"
+	"github.com/op/go-logging"
 	"net"
 	"sync"
 	"time"
@@ -10,6 +10,8 @@ import (
 const MaxConnections = 20
 const ConnectionTimeout = time.Duration(5 * time.Second)
 const RecycleTimeoutDuration = time.Duration(5 * time.Minute)
+
+var log = logging.MustGetLogger("netpool")
 
 type Netpool struct {
 	mu                sync.Mutex
@@ -94,21 +96,21 @@ func (n *Netpool) ResetConn(net_conn NetpoolConnInterface) error {
 		net_conn.Flush()
 		goterr := net_conn.Conn().Close()
 		if goterr != nil {
-			log.Println("[NetPool:ResetConn] Connection CLOSE error: ", goterr)
+			log.Error("Connection CLOSE error: ", goterr)
 		}
 	}
 	net_conn.SetConn(nil)
 
 	conn, err := net.DialTimeout(n.protocal, n.name, ConnectionTimeout)
 	if err != nil {
-		log.Println("[NetPool:ResetConn] Connection open error: ", err)
+		log.Error("Connection open error: ", err)
 		return err
 	}
 	net_conn.SetConn(conn)
 	net_conn.SetStarted(time.Now())
 
 	// put it back on the queue
-	log.Println("[NetPool:ResetConn] Reset Connection %s://%s ", n.protocal, n.name)
+	log.Error("Reset Connection %s://%s ", n.protocal, n.name)
 	// NONONO n.free <- net_conn let "Close" do this only
 
 	return nil
@@ -125,7 +127,7 @@ func (n *Netpool) InitPoolWith(obj NetpoolInterface) error {
 	for i := 0; i < n.MaxConnections; i++ {
 		conn, err := net.DialTimeout(n.protocal, n.name, ConnectionTimeout)
 		if err != nil {
-			log.Println("[NetPool:InitPool] Connection open error:  ", n.protocal, n.name, err)
+			log.Info("Connection open error:  ", n.protocal, n.name, err)
 			return err
 		}
 		if n.protocal == "tcp" {
@@ -154,19 +156,19 @@ func (n *Netpool) Open() (conn NetpoolConnInterface, err error) {
 			net_conn.Flush()
 			goterr := net_conn.Conn().Close()
 			if goterr != nil {
-				log.Printf("[NetPool:Open] Output Connection CLOSE error: %s", goterr)
+				log.Error("Output Connection CLOSE error: %s", goterr)
 			}
 		}
 		net_conn.SetConn(nil)
 
 		conn, err := net.DialTimeout(n.protocal, n.name, ConnectionTimeout)
 		if err != nil {
-			log.Printf("[NetPool:Open] Output Connection open error: %s", err)
+			log.Error("Output Connection open error: %s", err)
 			// we CANNOT return here we need the connections in the queue even if they are "dead"
 			// they will get re-tried
 			//return net_conn, err
 		} else {
-			log.Printf("[NetPool:Open] New Output Connection opened to %s", conn.RemoteAddr())
+			log.Info("New Output Connection opened to %s", conn.RemoteAddr())
 		}
 		net_conn.SetConn(conn)
 		net_conn.SetStarted(time.Now())
