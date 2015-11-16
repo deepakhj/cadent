@@ -24,9 +24,12 @@ func (bk *Backend) Send(line string) {
 
 type Backends map[string]*Backend
 
+// a singleton
+var SERVER_BACKENDS Backends = make(Backends)
+
 func (bk Backends) Add(name string, server *Server) {
-	toadd := Backend{Name: name, Queue: server}
-	bk[name] = &toadd
+	toadd := &Backend{Name: name, Queue: server}
+	bk[name] = toadd
 }
 
 // send a line to the backend

@@ -146,7 +146,7 @@ func (pr *PreReg) LogConfig() {
 	log.Debug(" - Pre Filter Group: %s", pr.Name)
 	log.Debug("   - Pinned To Listener: %s", pr.ListenServer)
 	for idx, filter := range pr.FilterList {
-		log.Debug("  - PreFilter %2d:: %s", idx, filter.ToString())
+		log.Debug("   - PreFilter %2d:: %s", idx, filter.ToString())
 	}
 }
 

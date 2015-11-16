@@ -1086,6 +1086,9 @@ func (server *Server) StartServer() {
 		panic(err)
 	}
 
+	// add it to the list of backends available
+	SERVER_BACKENDS.Add(server.Name, server)
+
 	if server.ListenURL == nil {
 		// just the little queue listener
 		server.startBackendServer(&server.Hashers, done)
