@@ -74,7 +74,8 @@ listen_server="statsd-servers" # this needs to be an actual SOCKET based server 
 
 import (
 	"github.com/BurntSushi/toml"
-	"github.com/op/go-logging"
+	logging "github.com/op/go-logging"
+
 	"os"
 )
 
@@ -83,10 +84,11 @@ const DEFALT_SECTION_NAME = "prereg"
 var log = logging.MustGetLogger("prereg")
 
 type ConfigFilter struct {
-	Prefix   string `toml:"prefix"`
-	RegEx    string `toml:"regex"`
-	IsReject bool   `toml:"reject"`
-	Backend  string `toml:"backend"`
+	Prefix    string `toml:"prefix"`
+	SubString string `toml:"substring"`
+	RegEx     string `toml:"regex"`
+	IsReject  bool   `toml:"reject"`
+	Backend   string `toml:"backend"`
 }
 
 type ConfigMap struct {
@@ -130,6 +132,14 @@ func (l ListofConfigMaps) ParseConfig() (PreRegMap, error) {
 				log.Critical("Cannot have BOTH `prefix` and `regex` for `%s`", pr.Name)
 				os.Exit(1)
 			}
+			if len(cmap.SubString) > 0 && len(cmap.Prefix) > 0 {
+				log.Critical("Cannot have BOTH `prefix` and `substring` for `%s`", pr.Name)
+				os.Exit(1)
+			}
+			if len(cmap.RegEx) > 0 && len(cmap.SubString) > 0 {
+				log.Critical("Cannot have BOTH `regex` and `substring` for `%s`", pr.Name)
+				os.Exit(1)
+			}
 
 			if len(cmap.Prefix) > 0 {
 				pf := new(PrefixFilter)
@@ -142,6 +152,16 @@ func (l ListofConfigMaps) ParseConfig() (PreRegMap, error) {
 				pf.Init()
 				pr.FilterList[idx] = pf
 
+			} else if len(cmap.SubString) > 0 {
+				pf := new(SubStringFilter)
+				pf.SubString = cmap.SubString
+				pf.backend = cmap.Backend
+				if len(cmap.Backend) == 0 {
+					pf.backend = pr.DefaultBackEnd
+				}
+				pf.IsReject = cmap.IsReject
+				pf.Init()
+				pr.FilterList[idx] = pf
 			} else {
 				pf := new(RegexFilter)
 				pf.RegexString = cmap.RegEx
@@ -156,7 +176,6 @@ func (l ListofConfigMaps) ParseConfig() (PreRegMap, error) {
 		}
 		prs[pr.Name] = pr
 	}
-	prs.LogConfig()
 	return prs, nil
 }
 
@@ -164,6 +183,16 @@ func ParseConfigFile(filename string) (pr PreRegMap, err error) {
 
 	lcfg := make(ListofConfigMaps)
 	if _, err := toml.DecodeFile(filename, &lcfg); err != nil {
+		log.Critical("Error decoding config file: %s", err)
+		return nil, err
+	}
+
+	return lcfg.ParseConfig()
+}
+func ParseConfigString(inconf string) (pr PreRegMap, err error) {
+
+	lcfg := make(ListofConfigMaps)
+	if _, err := toml.Decode(inconf, &lcfg); err != nil {
 		log.Critical("Error decoding config file: %s", err)
 		return nil, err
 	}

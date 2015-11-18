@@ -4,6 +4,8 @@
    so we can look them up and push things into their respective input quees
    from an external process
 
+   It maintains a singleton that is the list o backends
+
 */
 
 package consthash

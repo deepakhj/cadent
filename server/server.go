@@ -6,11 +6,12 @@ package consthash
 
 import (
 	"./netpool"
+	"./prereg"
 	"./runner"
 	"./stats"
 	"encoding/json"
 	"fmt"
-	"github.com/op/go-logging"
+	logging "github.com/op/go-logging"
 	"net"
 	"net/http"
 	"net/url"
@@ -34,7 +35,7 @@ const (
 	DEFAULT_READ_BUFFER_SIZE           = 4096
 )
 
-// the push meathod function type
+// the push method function type
 type pushFunction func(*SendOut)
 
 type SendOut struct {
@@ -100,7 +101,9 @@ func poolWorker(j *SendOut) {
 		netconn.SetWriteDeadline(time.Now().Add(j.server.WriteTimeout))
 		//var wrote int
 		to_send := []byte(j.param + "\n")
+
 		_, err = netconn.Write(to_send)
+
 		//log.Printf("SEND %s %s", wrote, err)
 		if err != nil {
 			stats.StatsdClient.Incr("failed.connection-timeout", 1)
@@ -120,7 +123,6 @@ func poolWorker(j *SendOut) {
 		j.server.log.Error("Error sending (writing connection gone) to backend: %s", err)
 		return
 	}
-
 }
 
 //this is for using a simple tcp connection per stat we send out
@@ -285,6 +287,9 @@ type Server struct {
 	RunnerConfig     map[string]interface{}
 	LineProcessor    runner.Runner
 
+	// Prereg filters to push to other backends or drop
+	PreRegFilter *prereg.PreReg
+
 	//allow us to push backpressure on TCP sockets if we need to
 	back_pressure       chan bool
 	_back_pressure_on   bool // makes sure we dont' fire a billion things in the channel
@@ -399,6 +404,7 @@ func (server *Server) RunRunner(key string, line string, out chan string) {
 
 	select {
 	case out <- server.PushLine(key, line) + "\n":
+
 		timer.Stop()
 
 	case <-timer.C:
@@ -453,8 +459,10 @@ func (server *Server) PushLine(key string, line string) string {
 					server:    server,
 					param:     line,
 				}
+
 				server.WorkQueue <- sendOut
 				server.WorkerHold <- 1
+
 			}
 			out_str += "ok"
 		} else {
@@ -537,6 +545,16 @@ func NewServer(cfg *Config) (server *Server, err error) {
 	if len(cfg.SendingConnectionMethod) > 0 {
 		serv.SendingConnectionMethod = cfg.SendingConnectionMethod
 	}
+
+	// if there's a PreReg assign to the server
+	if cfg.PreRegFilter != nil {
+		// the config should have checked this already, but just incase
+		if cfg.ListenStr == "backend_only" {
+			return nil, fmt.Errorf("Backend Only cannot have PreReg filters")
+		}
+		serv.PreRegFilter = cfg.PreRegFilter
+	}
+
 	if serv.ListenURL == nil {
 		// just a backend, no connections
 
@@ -916,9 +934,30 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, done chan Client) 
 			}
 
 			key, procline, err := server.LineProcessor.ProcessLine(strings.Trim(line, "\n\t "))
+
 			if err == nil {
+				//based on the Key we get re may need to redirect this to another backend
+				// due to the PreReg items
+				// so you may ask why Here and not before the InputQueue, well backpressure, and we need to
+				// we also want to make sure the NetConn gets sucked in faster before the processing
+				// match on the KEY not the entire string
+				if server.PreRegFilter != nil {
+					use_backend, reject, _ := server.PreRegFilter.FirstMatchBackend(key)
+					if reject {
+						stats.StatsdClient.Incr(fmt.Sprintf("prereg.backend.reject.%s", use_backend), 1)
+					} else if use_backend != server.Name {
+						// redirect to another input queue
+						stats.StatsdClient.Incr(fmt.Sprintf("prereg.backend.redirect.%s", use_backend), 1)
+						SERVER_BACKENDS.Send(use_backend, procline)
+					} else {
+						server.RunRunner(key, procline, out_queue)
+					}
+				} else {
+					server.RunRunner(key, procline, out_queue)
+				}
 				server.RunRunner(key, procline, out_queue)
 			}
+
 			server.AllLinesCount.Up(1)
 			stats.StatsdClient.Incr("incoming.tcp.lines", 1)
 			server.AddToCurrentTotalBufferSize(-l_len)
@@ -952,10 +991,11 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, done chan Client) 
 			ct := (int64)(len(server.WorkQueue))
 			if ct >= server.Workers {
 				stats.StatsdClient.Incr("worker.queue.isfull", 1)
+				stats.StatsdClient.Incr(fmt.Sprintf("worker.%s.queue.isfull", server.Name), 1)
 				//server.Logger.Printf("Worker Queue Full %d", ct)
 			}
 			stats.StatsdClient.GaugeAvg("worker.queue.length", ct)
-
+			stats.StatsdClient.GaugeAvg(fmt.Sprintf("worker.%s.queue.length", server.Name), ct)
 		case client := <-done:
 			client.Close() //this will close the connection too
 			client = nil
@@ -997,39 +1037,46 @@ func (server *Server) startBackendServer(hashers *[]*ConstHasher, done chan Clie
 
 	out_queue := make(chan string, server.Workers)
 	defer close(out_queue)
+
 	// start the "backend only loop"
 	run := func() {
 		for line := range server.InputQueue {
 			l_len := (int64)(len(line))
 			server.AddToCurrentTotalBufferSize(l_len)
-
-			if server.NeedBackPressure() {
-				server.log.Warning(
-					"Error::Max Queue or buffer reached dropping connection (Buffer %v, queue len: %v)",
-					server.CurrentReadBufferRam.Get(),
-					len(server.WorkQueue))
-				server.BackPressure()
-			}
-
 			key, procline, err := server.LineProcessor.ProcessLine(strings.Trim(line, "\n\t "))
 			if err == nil {
+				//backends DO NOT need a PreReg filter as they can only be delgated to and delegate
 				server.RunRunner(key, procline, out_queue)
 			}
 			server.AllLinesCount.Up(1)
-			stats.StatsdClient.Incr("incoming.tcp.lines", 1)
+			stats.StatsdClient.Incr("incoming.backend.lines", 1)
+			stats.StatsdClient.Incr(fmt.Sprintf("incoming.backend.%s.lines", server.Name), 1)
 			server.AddToCurrentTotalBufferSize(-l_len)
 		}
+
 	}
 	//fire up the workers
 	for w := int64(1); w <= server.Workers; w++ {
 		go run()
 	}
 
-	//just run and run
 	for {
 		select {
-		case <-server.ShutDown:
-			return
+		case l := <-out_queue:
+			if len(l) == 0 {
+				return
+			}
+		case workerUpDown := <-server.WorkerHold:
+			server.InWorkQueue.Add(workerUpDown)
+			ct := (int64)(len(server.WorkQueue))
+			if ct >= server.Workers {
+				stats.StatsdClient.Incr("worker.queue.isfull", 1)
+				stats.StatsdClient.Incr(fmt.Sprintf("worker.%s.queue.isfull", server.Name), 1)
+				//server.Logger.Printf("Worker Queue Full %d", ct)
+			}
+			stats.StatsdClient.GaugeAvg("worker.queue.length", ct)
+			stats.StatsdClient.GaugeAvg(fmt.Sprintf("worker.%s.queue.length", server.Name), ct)
+
 		}
 	}
 

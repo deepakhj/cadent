@@ -21,6 +21,11 @@
 		{
 			"ImportPath": "github.com/op/go-logging",
 			"Rev": "e8d5414f0947014548c2334044a0fac13187dfee"
+		},
+		{
+			"ImportPath": "github.com/smartystreets/goconvey/convey",
+			"Rev": "530dd3d2cafa09958178e8c557bc4abeea1651a5"
 		}
+
 	]
 }

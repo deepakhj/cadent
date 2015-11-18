@@ -83,8 +83,11 @@ type Config struct {
 	ListenURL   *url.URL
 	ServerLists []*ParsedServerConfig //parsing up the ConfServerList after read
 
-	// the pre-reg objects
+	// the pre-reg object this is used only in the Default section
 	PreRegFilters prereg.PreRegMap
+
+	//Listener Specific pinned PreReg set
+	PreRegFilter *prereg.PreReg
 
 	//compiled Regex
 	ComRegEx      *regexp.Regexp
@@ -113,7 +116,7 @@ const (
 	DEFAULT_MAX_POOL_CONNECTIONS = 10
 )
 
-type ConfigServers map[string]Config
+type ConfigServers map[string]*Config
 
 //init a statsd client from our config object
 func SetUpStatsdClient(cfg *Config) statsd.Statsd {
@@ -229,7 +232,7 @@ func (self *Config) parseServerList(servers []string, checkservers []string, has
 	return parsed, nil
 }
 
-func (self ConfigServers) ParseConfig(defaults Config) (out ConfigServers, err error) {
+func (self ConfigServers) ParseConfig(defaults *Config) (out ConfigServers, err error) {
 
 	have_listener := false
 	for chunk, cfg := range self {
@@ -247,7 +250,7 @@ func (self ConfigServers) ParseConfig(defaults Config) (out ConfigServers, err e
 			cfg.ListenStr = DEFAULT_LISTEN
 		}
 		if cfg.ListenStr == DEFAULT_BACKEND_ONLY {
-			log.Info("Configuring %s as a BACKEND only (no listeners)", chunk)
+			//log.Info("Configuring %s as a BACKEND only (no listeners)", chunk)
 			cfg.ListenURL = nil
 		} else {
 			l_url, err := url.Parse(cfg.ListenStr)
@@ -447,7 +450,21 @@ func ParseConfigFile(filename string) (cfg ConfigServers, err error) {
 		log.Critical("Error decoding config file: %s", err)
 		return nil, err
 	}
-	var defaults Config
+	var defaults *Config
+	var ok bool
+	if defaults, ok = cfg[DEFAULT_CONFIG_SECTION]; !ok {
+		panic("Need to have a [default] section in the config.")
+	}
+	return cfg.ParseConfig(defaults)
+}
+
+func ParseConfigString(instr string) (cfg ConfigServers, err error) {
+
+	if _, err := toml.Decode(instr, &cfg); err != nil {
+		log.Critical("Error decoding config file: %s", err)
+		return nil, err
+	}
+	var defaults *Config
 	var ok bool
 	if defaults, ok = cfg[DEFAULT_CONFIG_SECTION]; !ok {
 		panic("Need to have a [default] section in the config.")
@@ -458,20 +475,20 @@ func ParseConfigFile(filename string) (cfg ConfigServers, err error) {
 func (self ConfigServers) DefaultConfig() (def_cfg *Config, err error) {
 
 	if val, ok := self[DEFAULT_CONFIG_SECTION]; ok {
-		return &val, nil
+		return val, nil
 	}
 
 	return nil, fmt.Errorf("Could not find default in config file")
 }
 
-func (self ConfigServers) VerifyPreReg(prm prereg.PreRegMap) (err error) {
+func (self ConfigServers) VerifyAndAssignPreReg(prm prereg.PreRegMap) (err error) {
 
 	// validate that all the backends in the server conf acctually match something
 	// in the regex filtering
 
 	for _, pr := range prm {
 		// check that the listern server is really a listen server and exists
-		var listen_s Config
+		var listen_s *Config
 		var ok bool
 		if listen_s, ok = self[pr.ListenServer]; !ok {
 			return fmt.Errorf("ListenServer `%s` is not in the Config servers", pr.ListenServer)
@@ -480,6 +497,9 @@ func (self ConfigServers) VerifyPreReg(prm prereg.PreRegMap) (err error) {
 			return fmt.Errorf("ListenServer `%s` cannot be a `backend_only` listener", pr.ListenServer)
 		}
 
+		// assign the filters to this server so it can use it
+		// (we can do this as listen_s is a ptr .. said here in case i forget)
+		listen_s.PreRegFilter = pr
 		for _, filter := range pr.FilterList {
 			if _, ok := self[filter.Backend()]; !ok {
 				return fmt.Errorf("Backend `%s` is not in the Config servers", filter.Backend())
@@ -490,7 +510,7 @@ func (self ConfigServers) VerifyPreReg(prm prereg.PreRegMap) (err error) {
 
 }
 
-func (self ConfigServers) ServableConfigs() (configs []Config) {
+func (self ConfigServers) ServableConfigs() (configs []*Config) {
 
 	for _, cfg := range self {
 		if !cfg.OkToUse {
@@ -525,9 +545,10 @@ func (self *ConfigServers) DebugConfig() {
 			log.Debug("  Workers/Input Queue Size: %v ", cfg.Workers)
 
 			log.Debug("  Servers")
-			for _, slist := range cfg.ServerLists {
+			for idx, slist := range cfg.ServerLists {
+				log.Debug("   Replica Set %d", idx)
 				for idx, hosts := range slist.ServerList {
-					log.Debug("    %s Checked via %s", hosts, slist.CheckList[idx])
+					log.Debug("     %s Checked via %s", hosts, slist.CheckList[idx])
 				}
 			}
 		} else {

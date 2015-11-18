@@ -51,6 +51,48 @@ func (pref *PrefixFilter) SetBackend(back string) (string, error) {
 	return back, nil
 }
 
+/**********************   ubString filter ***********************/
+type SubStringFilter struct {
+	SubString string `json:"substring"`
+	IsReject  bool   `json:"is_rejected"`
+	backend   string `json:"backend"`
+}
+
+func (sfilter *SubStringFilter) Name() string {
+	return sfilter.SubString
+}
+func (sfilter *SubStringFilter) Type() string {
+	return "substring"
+}
+func (sfilter *SubStringFilter) Rejecting() bool {
+	return sfilter.IsReject
+}
+func (sfilter *SubStringFilter) Init() error {
+	return nil
+}
+func (sfilter *SubStringFilter) Match(in string) (bool, bool, error) {
+	match := strings.Contains(in, sfilter.SubString)
+	return match, sfilter.IsReject, nil
+}
+
+func (sfilter *SubStringFilter) Backend() string {
+	return sfilter.backend
+}
+
+func (sfilter *SubStringFilter) SetBackend(back string) (string, error) {
+	sfilter.backend = back
+	return back, nil
+}
+func (sfilter *SubStringFilter) ToString() string {
+	return fmt.Sprintf(
+		"Type: `%-6s` Match:`%-30s` Rejected: `%v` Backend: `%s`",
+		sfilter.Type(),
+		sfilter.Name(),
+		sfilter.Rejecting(),
+		sfilter.Backend(),
+	)
+}
+
 /**********************   reg filter ***********************/
 type RegexFilter struct {
 	RegexString string `json:"regex"`
@@ -99,7 +141,6 @@ func (refilter *RegexFilter) ToString() string {
 /**********************  filter list ***********************/
 
 type PreReg struct {
-	Type           string `json:"msg_type"`
 	DefaultBackEnd string `json:"default_backend"`
 	Name           string `json:"name"`
 
@@ -159,7 +200,9 @@ func (lpr *PreRegMap) MatchingFilters(line string) []FilterItem {
 	var fitems = make([]FilterItem, 0)
 	for _, pr := range *lpr {
 		gots := pr.MatchingFilters(line)
-		fitems = append(fitems, gots...)
+		if gots != nil {
+			fitems = append(fitems, gots...)
+		}
 	}
 	return fitems
 }
@@ -168,7 +211,9 @@ func (lpr *PreRegMap) FirstMatchingFilters(line string) []FilterItem {
 	var fitems = make([]FilterItem, 0)
 	for _, pr := range *lpr {
 		gots := pr.MatchingFilters(line)
-		fitems = append(fitems, gots...)
+		if gots != nil {
+			fitems = append(fitems, gots...)
+		}
 	}
 	return fitems
 }

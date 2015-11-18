@@ -48,7 +48,7 @@ func GraphiteStr(ct int) string {
 
 func StatsdStr(ct int) string {
 	return fmt.Sprintf(
-		"statdtest.%s.%s.%s|%d\n",
+		"statdtest.%s.%s.%s:%d\n",
 		RandItem(randWords),
 		RandItem(randWords),
 		RandItem(randWords),
@@ -77,6 +77,28 @@ func setUlimits() {
 		fmt.Println("[System] Error Getting Rlimit:  ", err)
 	}
 	fmt.Println("[System] Final Rlimit Final: ", rLimit)
+}
+
+// helper to "pool" TCP connections otherwise we can quickly nuke things by just sheer
+// port overload
+var TCPPOOL map[string][]net.Conn
+var POOLLIMIT int = 50
+
+func TcpConn(i_url *url.URL) (net.Conn, error) {
+	var str = i_url.String()
+	var gots []net.Conn
+	if _, ok := TCPPOOL[str]; !ok {
+		gots = make([]net.Conn, POOLLIMIT)
+		for i := 0; i < POOLLIMIT; i++ {
+			conn, err := net.DialTimeout(i_url.Scheme, i_url.Host, ConnectionTimeout)
+			if err != nil {
+				return nil, fmt.Errorf("Could not connect to %s: %s", str, err)
+			}
+			gots[i] = conn
+		}
+		TCPPOOL[str] = gots
+	}
+	return TCPPOOL[str][rand.Intn(POOLLIMIT)], nil
 }
 
 func SendMsg(i_url *url.URL, msg string) {

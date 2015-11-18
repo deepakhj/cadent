@@ -6,7 +6,8 @@ package consthash
 
 import (
 	"./stats"
-	"github.com/op/go-logging"
+	"fmt"
+	logging "github.com/op/go-logging"
 	"net"
 	"strings"
 )
@@ -90,8 +91,29 @@ func (client *UDPClient) run() {
 		client.server.AllLinesCount.Up(1)
 		key, _, err := client.server.LineProcessor.ProcessLine(n_line)
 		if err == nil {
-			client.server.RunRunner(key, n_line, client.out_queue)
+
+			//based on the Key we get re may need to redirect this to another backend
+			// due to the PreReg items
+			// so you may ask why Here and not before the InputQueue, well backpressure, and we need to
+			// we also want to make sure the NetConn gets sucked in faster before the processing
+			// match on the KEY not the entire string
+			if client.server.PreRegFilter != nil {
+				use_backend, reject, _ := client.server.PreRegFilter.FirstMatchBackend(key)
+				if reject {
+					stats.StatsdClient.Incr(fmt.Sprintf("prereg.backend.reject.%s", use_backend), 1)
+					client.log.Notice("REJECT LINE %s", n_line)
+				} else if use_backend != client.server.Name {
+					// redirect to another input queue
+					stats.StatsdClient.Incr(fmt.Sprintf("prereg.backend.redirect.%s", use_backend), 1)
+					SERVER_BACKENDS.Send(use_backend, n_line)
+				} else {
+					client.server.RunRunner(key, n_line, client.out_queue)
+				}
+			} else {
+				client.server.RunRunner(key, n_line, client.out_queue)
+			}
 		} else {
+			stats.StatsdClient.Incr("incoming.udp.invalidlines", 1)
 			client.log.Warning("Invalid Line: %s (%s)", err, n_line)
 		}
 		stats.StatsdClient.Incr("incoming.udp.lines", 1)

@@ -184,6 +184,14 @@ func (self *ConstHasher) GetN(in_key string, num int) ([]string, error) {
 	return srv.(MultiServerCacheItem), nil
 }
 
+// Original Server list
+func (self *ConstHasher) OriginalMembers() []string {
+	if self.Hasher != nil {
+		return self.ServerPool.ServerNames()
+	}
+	return []string{}
+}
+
 // List Memebers in the hashpool
 func (self *ConstHasher) Members() []string {
 	if self.Hasher != nil {
@@ -239,7 +247,7 @@ func CreateConstHasherFromConfig(cfg *Config, serverlist *ParsedServerConfig) (h
 	} else {
 		hasher.Cache = lrucache.NewLRUCache(cfg.CacheItems)
 	}
-	log.Notice("Hasher Cache size set to ", hasher.Cache.GetCapacity())
+	log.Notice("Hasher Cache size set to %d ", hasher.Cache.GetCapacity())
 
 	//compose our maps and remaps for the hashkey server list maps
 	hasher.HashKeyToServer = serverlist.HashkeyToServer

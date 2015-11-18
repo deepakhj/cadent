@@ -2,7 +2,6 @@
 ### if there are multiple backends or reject some things
 
 [graphite-regex-map]
-msg_type="graphite"  # same as the const hash types
 listen_server="graphite-proxy"
 default_backend="graphite-proxy"
 
@@ -22,9 +21,8 @@ default_backend="graphite-proxy"
     reject=true  # special "reject me" type
 
 [statsd-regex-map]
-msg_type="statsd"  # same as the const hash types
 default_backend="statsd-proxy"
-listen_server="statsd-servers"
+listen_server="statsd-proxy"
 
     # another backend
     [[statsd-regex-map.map]]
@@ -33,9 +31,9 @@ listen_server="statsd-servers"
 
     # anything that starts with the prefix (in lue of a more expesive regex)
     [[statsd-regex-map.map]]
-    prefix="stats"
+    prefix="statdtest.here."
     backend="statsd-servers"
 
     [[statsd-regex-map.map]]
-    regex="""^stats_count..*"""
+    regex="""^statdtest.house..*"""
     reject=true  # special "reject me" type

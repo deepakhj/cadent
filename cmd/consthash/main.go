@@ -182,7 +182,7 @@ func main() {
 			os.Exit(1)
 		}
 		// make sure that we have all the backends
-		err = config.VerifyPreReg(pr)
+		err = config.VerifyAndAssignPreReg(pr)
 		if err != nil {
 			log.Critical("Error parsing PreReg: %s", err)
 			os.Exit(1)
@@ -250,7 +250,7 @@ func main() {
 		var hashers []*consthash.ConstHasher
 
 		for _, serverlist := range cfg.ServerLists {
-			hasher, err := consthash.CreateConstHasherFromConfig(&cfg, serverlist)
+			hasher, err := consthash.CreateConstHasherFromConfig(cfg, serverlist)
 
 			if err != nil {
 				panic(err)
@@ -258,7 +258,7 @@ func main() {
 			go hasher.ServerPool.StartChecks()
 			hashers = append(hashers, hasher)
 		}
-		server, err := consthash.CreateServer(&cfg, hashers)
+		server, err := consthash.CreateServer(cfg, hashers)
 		if err != nil {
 			panic(err)
 		}
@@ -268,7 +268,7 @@ func main() {
 
 	//fire up the http stats if given
 	if len(def.HealthServerBind) != 0 {
-		startStatsServer(def, servers)
+		startStatsServer(def, servers) // will stick as the main event loop
 	} else {
 		//now we just need to loop forever!
 		for {

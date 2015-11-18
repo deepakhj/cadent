@@ -7,7 +7,7 @@ package consthash
 import (
 	"./stats"
 	"fmt"
-	"github.com/op/go-logging"
+	logging "github.com/op/go-logging"
 	"net"
 	"net/http"
 	"net/url"
@@ -84,6 +84,14 @@ type CheckedServerPool struct {
 	log *logging.Logger
 }
 
+func (serv *CheckedServerPool) ServerNames() []string {
+	var slist []string
+	for _, srv := range serv.Servers {
+		slist = append(slist, srv.Name)
+	}
+	return slist
+}
+
 // create a list of pools
 func createServerPoolsFromConfig(cfg *Config, serveraction ServerPoolRunner) (pools []*CheckedServerPool, err error) {
 
@@ -114,12 +122,7 @@ func createServerPoolFromConfig(cfg *Config, serverlist *ParsedServerConfig, ser
 func createServerPool(serverlist []*url.URL, checklist []*url.URL, serveraction ServerPoolRunner) (serverp *CheckedServerPool, err error) {
 	serverp = new(CheckedServerPool)
 
-	var log_format = "%{color}%{time:0102 15:04:05.000000} [CheckedServerPool %{pid} %{shortfile}] ▶ %{level:.4s} %{color:reset} %{message}"
-	logging.SetFormatter(logging.MustStringFormatter(log_format))
-
 	serverp.log = logging.MustGetLogger("consthash.server")
-
-	//serverp.logger = log.New(os.Stdout, "[CheckedServerPool] ", log.Ldate|log.Ltime)
 
 	serverp.ServerList = serverlist
 

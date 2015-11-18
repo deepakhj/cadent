@@ -1,24 +1,23 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
+	"github.com/BurntSushi/toml"
 	"log"
 	"os"
-	"github.com/BurntSushi/toml"
-	"encoding/json"
-
 )
-type server struct{
-	Servers string  `toml:"servers"`
+
+type server struct {
+	Servers      string `toml:"servers"`
 	CheckServers string `toml:"check_servers"`
 }
-type config struct{
-
+type config struct {
 	Ffervers []server `toml:"servers"`
 }
 type ConfigServers map[string]config
 
-func parseConfigFile(filename string) ( err error) {
+func parseConfigFile(filename string) (err error) {
 
 	var cfg ConfigServers
 
