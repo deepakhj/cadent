@@ -7,7 +7,7 @@ package consthash
 import (
 	"./netpool"
 	"./prereg"
-	"./runner"
+	"./splitter"
 	"./stats"
 	"encoding/json"
 	"fmt"
@@ -29,7 +29,7 @@ const (
 	DEFAULT_WORKERS                    = int64(500)
 	DEFAULT_NUM_STATS                  = 100
 	DEFAULT_SENDING_CONNECTIONS_METHOD = "bufferedpool"
-	DEFAULT_RUNNER_TIMEOUT             = 5000 * time.Millisecond
+	DEFAULT_SPLITTER_TIMEOUT           = 5000 * time.Millisecond
 	DEFAULT_WRITE_TIMEOUT              = 1000 * time.Millisecond
 	DEFAULT_BACKPRESSURE_SLEEP         = 1000 * time.Millisecond
 	DEFAULT_READ_BUFFER_SIZE           = 4096
@@ -248,8 +248,8 @@ type Server struct {
 	CurrentReadBufferRam stats.AtomicInt // the amount of buffer we're on
 
 	// timeouts for tuning
-	WriteTimeout  time.Duration // time out when sending lines
-	RunnerTimeout time.Duration // timeout for work queue items
+	WriteTimeout    time.Duration // time out when sending lines
+	SplitterTimeout time.Duration // timeout for work queue items
 
 	//Hasher objects (can have multiple for replication of data)
 	Hashers []*ConstHasher
@@ -282,10 +282,10 @@ type Server struct {
 	InWorkQueue stats.AtomicInt
 	Workers     int64
 
-	//the Runner type to determine the keys to hash on
-	RunnerTypeString string
-	RunnerConfig     map[string]interface{}
-	LineProcessor    runner.Runner
+	//the Splitter type to determine the keys to hash on
+	SplitterTypeString string
+	SplitterConfig     map[string]interface{}
+	SplitterProcessor  splitter.Splitter
 
 	// Prereg filters to push to other backends or drop
 	PreRegFilter *prereg.PreReg
@@ -356,23 +356,23 @@ func (server *Server) SetPushMethod() pushFunction {
 	return server.PushFunction
 }
 
-func (server *Server) SetLineProcessor() (runner.Runner, error) {
-	msg_type := server.RunnerTypeString
+func (server *Server) SetSplitterProcessor() (splitter.Splitter, error) {
+	msg_type := server.SplitterTypeString
 
-	var runn runner.Runner
+	var runn splitter.Splitter
 	var err error = nil
 	switch {
 	case msg_type == "statsd":
-		runn, err = runner.NewStatsdRunner(server.RunnerConfig)
+		runn, err = splitter.NewStatsdSplitter(server.SplitterConfig)
 	case msg_type == "graphite":
-		runn, err = runner.NewGraphiteRunner(server.RunnerConfig)
+		runn, err = splitter.NewGraphiteSplitter(server.SplitterConfig)
 	case msg_type == "regex":
-		runn, err = runner.NewRegExRunner(server.RunnerConfig)
+		runn, err = splitter.NewRegExSplitter(server.SplitterConfig)
 	default:
-		return nil, fmt.Errorf("Failed to configure Runner, aborting")
+		return nil, fmt.Errorf("Failed to configure Splitter, aborting")
 	}
-	server.LineProcessor = runn
-	return server.LineProcessor, err
+	server.SplitterProcessor = runn
+	return server.SplitterProcessor, err
 
 }
 
@@ -395,11 +395,11 @@ func (server *Server) WorkerOutput() {
 	}
 }
 
-func (server *Server) RunRunner(key string, line string, out chan string) {
+func (server *Server) RunSplitter(key string, line string, out chan string) {
 	//direct timer to void leaks (i.e. NOT time.After(...))
 
-	timer := time.NewTimer(server.RunnerTimeout)
-	defer stats.StatsdNanoTimeFunc(fmt.Sprintf("factory.runner.process-time-ns"), time.Now())
+	timer := time.NewTimer(server.SplitterTimeout)
+	defer stats.StatsdNanoTimeFunc(fmt.Sprintf("factory.splitter.process-time-ns"), time.Now())
 	defer func() { server.WorkerHold <- -1 }()
 
 	select {
@@ -409,7 +409,7 @@ func (server *Server) RunRunner(key string, line string, out chan string) {
 
 	case <-timer.C:
 		timer.Stop()
-		stats.StatsdClient.Incr("failed.runner-timeout", 1)
+		stats.StatsdClient.Incr("failed.splitter-timeout", 1)
 		server.FailSendCount.Up(1)
 		server.log.Warning("Timeout %d, %s", len(server.WorkQueue), key)
 	}
@@ -505,8 +505,8 @@ func NewServer(cfg *Config) (server *Server, err error) {
 	}
 
 	//find the runner types
-	serv.RunnerTypeString = cfg.MsgType
-	serv.RunnerConfig = cfg.MsgConfig
+	serv.SplitterTypeString = cfg.MsgType
+	serv.SplitterConfig = cfg.MsgConfig
 	serv.Replicas = cfg.Replicas
 
 	serv.poolmu = new(sync.Mutex)
@@ -521,9 +521,9 @@ func NewServer(cfg *Config) (server *Server, err error) {
 		serv.WriteTimeout = cfg.WriteTimeout
 	}
 
-	serv.RunnerTimeout = DEFAULT_RUNNER_TIMEOUT
-	if cfg.RunnerTimeout != 0 {
-		serv.RunnerTimeout = cfg.RunnerTimeout
+	serv.SplitterTimeout = DEFAULT_SPLITTER_TIMEOUT
+	if cfg.SplitterTimeout != 0 {
+		serv.SplitterTimeout = cfg.SplitterTimeout
 	}
 
 	serv.NetPoolConnections = cfg.MaxPoolConnections
@@ -933,7 +933,7 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, done chan Client) 
 				server.BackPressure()
 			}
 
-			key, procline, err := server.LineProcessor.ProcessLine(strings.Trim(line, "\n\t "))
+			key, procline, err := server.SplitterProcessor.ProcessLine(strings.Trim(line, "\n\t "))
 
 			if err == nil {
 				//based on the Key we get re may need to redirect this to another backend
@@ -950,12 +950,12 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, done chan Client) 
 						stats.StatsdClient.Incr(fmt.Sprintf("prereg.backend.redirect.%s", use_backend), 1)
 						SERVER_BACKENDS.Send(use_backend, procline)
 					} else {
-						server.RunRunner(key, procline, out_queue)
+						server.RunSplitter(key, procline, out_queue)
 					}
 				} else {
-					server.RunRunner(key, procline, out_queue)
+					server.RunSplitter(key, procline, out_queue)
 				}
-				server.RunRunner(key, procline, out_queue)
+				server.RunSplitter(key, procline, out_queue)
 			}
 
 			server.AllLinesCount.Up(1)
@@ -1043,10 +1043,10 @@ func (server *Server) startBackendServer(hashers *[]*ConstHasher, done chan Clie
 		for line := range server.InputQueue {
 			l_len := (int64)(len(line))
 			server.AddToCurrentTotalBufferSize(l_len)
-			key, procline, err := server.LineProcessor.ProcessLine(strings.Trim(line, "\n\t "))
+			key, procline, err := server.SplitterProcessor.ProcessLine(strings.Trim(line, "\n\t "))
 			if err == nil {
 				//backends DO NOT need a PreReg filter as they can only be delgated to and delegate
-				server.RunRunner(key, procline, out_queue)
+				server.RunSplitter(key, procline, out_queue)
 			}
 			server.AllLinesCount.Up(1)
 			stats.StatsdClient.Incr("incoming.backend.lines", 1)
@@ -1128,7 +1128,7 @@ func (server *Server) StartServer() {
 	}
 
 	//get our line proessor in order
-	_, err := server.SetLineProcessor()
+	_, err := server.SetSplitterProcessor()
 	if err != nil {
 		panic(err)
 	}

@@ -2,7 +2,7 @@
    a Regex runner that takes an arbitrary regex to yank it's key from
 */
 
-package runner
+package splitter
 
 import (
 	"fmt"
@@ -11,18 +11,18 @@ import (
 
 const REGEX_NAME = "regex"
 
-type RegExRunner struct {
+type RegExSplitter struct {
 	key_regex       *regexp.Regexp
 	key_regex_names []string
 	key_index       int
 }
 
-func (job *RegExRunner) Name() (name string) { return REGEX_NAME }
+func (job *RegExSplitter) Name() (name string) { return REGEX_NAME }
 
-func NewRegExRunner(conf map[string]interface{}) (*RegExRunner, error) {
+func NewRegExSplitter(conf map[string]interface{}) (*RegExSplitter, error) {
 
 	//<key>:blaaa
-	job := &RegExRunner{}
+	job := &RegExSplitter{}
 	job.key_regex = conf["regexp"].(*regexp.Regexp)
 	job.key_regex_names = conf["regexpNames"].([]string)
 	// get the "Key" index for easy lookup
@@ -37,7 +37,7 @@ func NewRegExRunner(conf map[string]interface{}) (*RegExRunner, error) {
 	return job, nil
 }
 
-func (job RegExRunner) ProcessLine(line string) (key string, orig_line string, err error) {
+func (job *RegExSplitter) ProcessLine(line string) (key string, orig_line string, err error) {
 	var key_param string
 
 	matched := job.key_regex.FindAllStringSubmatch(line, -1)

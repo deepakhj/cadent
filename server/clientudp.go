@@ -89,7 +89,7 @@ func (client *UDPClient) run() {
 			continue
 		}
 		client.server.AllLinesCount.Up(1)
-		key, _, err := client.server.LineProcessor.ProcessLine(n_line)
+		key, _, err := client.server.SplitterProcessor.ProcessLine(n_line)
 		if err == nil {
 
 			//based on the Key we get re may need to redirect this to another backend
@@ -107,10 +107,10 @@ func (client *UDPClient) run() {
 					stats.StatsdClient.Incr(fmt.Sprintf("prereg.backend.redirect.%s", use_backend), 1)
 					SERVER_BACKENDS.Send(use_backend, n_line)
 				} else {
-					client.server.RunRunner(key, n_line, client.out_queue)
+					client.server.RunSplitter(key, n_line, client.out_queue)
 				}
 			} else {
-				client.server.RunRunner(key, n_line, client.out_queue)
+				client.server.RunSplitter(key, n_line, client.out_queue)
 			}
 		} else {
 			stats.StatsdClient.Incr("incoming.udp.invalidlines", 1)

@@ -1,4 +1,4 @@
-package runner
+package splitter
 
 import (
 	. "github.com/smartystreets/goconvey/convey"
@@ -14,7 +14,7 @@ func TestGraphiteRunner(t *testing.T) {
 	good_line := "moo.goo.org 123 123123"
 	Convey("Graphite Runner should parse lines nicely", t, func() {
 
-		gr, _ := NewGraphiteRunner(conf)
+		gr, _ := NewGraphiteSplitter(conf)
 		key, orig_line, _ := gr.ProcessLine(good_line)
 		So(gr.Name(), ShouldEqual, "graphite")
 		So(key, ShouldEqual, "moo.goo.org")
@@ -24,7 +24,7 @@ func TestGraphiteRunner(t *testing.T) {
 	conf["key_index"] = 10
 	Convey("Graphite Runner should not parser this with a bad key index", t, func() {
 
-		gr, _ := NewGraphiteRunner(conf)
+		gr, _ := NewGraphiteSplitter(conf)
 		key, _, err := gr.ProcessLine(good_line)
 		So(key, ShouldEqual, "")
 		So(err, ShouldNotEqual, nil)
@@ -41,7 +41,7 @@ func TestStatsdRunner(t *testing.T) {
 
 	Convey("Statsd Runner should parse lines nicely", t, func() {
 
-		gr, _ := NewStatsdRunner(conf)
+		gr, _ := NewStatsdSplitter(conf)
 		key, orig_line, _ := gr.ProcessLine(good_line)
 		So(key, ShouldEqual, "moo.goo.org")
 		So(gr.Name(), ShouldEqual, "statsd")
@@ -50,7 +50,7 @@ func TestStatsdRunner(t *testing.T) {
 
 	Convey("Statsd Runner should not parser this", t, func() {
 
-		gr, _ := NewStatsdRunner(conf)
+		gr, _ := NewStatsdSplitter(conf)
 		key, _, err := gr.ProcessLine(bad_line)
 		So(key, ShouldEqual, "")
 		So(err, ShouldNotEqual, nil)
@@ -74,7 +74,7 @@ func TestRegexRunner(t *testing.T) {
 
 	Convey("REgex Runner should parse lines nicely", t, func() {
 
-		gr, _ := NewRegExRunner(conf)
+		gr, _ := NewRegExSplitter(conf)
 		key, orig_line, _ := gr.ProcessLine(good_line)
 		So(gr.Name(), ShouldEqual, "regex")
 		So(key, ShouldEqual, "web-7-frontend-lb-prod")
@@ -83,7 +83,7 @@ func TestRegexRunner(t *testing.T) {
 
 	Convey("REgex Runner should not parser this", t, func() {
 
-		gr, _ := NewRegExRunner(conf)
+		gr, _ := NewRegExSplitter(conf)
 		key, _, err := gr.ProcessLine(bad_line_2)
 		So(key, ShouldEqual, "")
 		So(err, ShouldNotEqual, nil)
@@ -93,7 +93,7 @@ func TestRegexRunner(t *testing.T) {
 
 	Convey("REgex Runner should not parser this", t, func() {
 
-		gr, _ := NewRegExRunner(conf)
+		gr, _ := NewRegExSplitter(conf)
 		key, _, err := gr.ProcessLine(bad_line)
 		So(key, ShouldEqual, "")
 		So(err, ShouldNotEqual, nil)

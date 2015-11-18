@@ -8,7 +8,7 @@ package consthash
 import (
 	"bufio"
 	//"log"
-	runner "./runner"
+	"./splitter"
 	"net"
 	"reflect"
 )
@@ -18,7 +18,7 @@ const TCP_BUFFER_SIZE = 1048576
 type TCPClient struct {
 	server     *Server
 	hashers    *[]*ConstHasher
-	LineParser runner.Runner
+	LineParser splitter.Splitter
 
 	Connection net.Conn
 	LineCount  uint64
@@ -101,7 +101,7 @@ func (client *TCPClient) Close() {
 }
 
 func (client *TCPClient) handleRequest() {
-	//spin up the runners
+	//spin up the splitters
 
 	buf := bufio.NewReaderSize(client.Connection, client.BufferSize)
 

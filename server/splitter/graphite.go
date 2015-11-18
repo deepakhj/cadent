@@ -4,7 +4,7 @@
    space based line entries with the key as the first item
 */
 
-package runner
+package splitter
 
 import (
 	"fmt"
@@ -14,16 +14,16 @@ import (
 /****************** RUNNERS *********************/
 const GRAPHITE_NAME = "graphite"
 
-type GraphiteRunner struct {
+type GraphiteSplitter struct {
 	key_index int
 }
 
-func (job *GraphiteRunner) Name() (name string) { return GRAPHITE_NAME }
+func (job *GraphiteSplitter) Name() (name string) { return GRAPHITE_NAME }
 
-func NewGraphiteRunner(conf map[string]interface{}) (*GraphiteRunner, error) {
+func NewGraphiteSplitter(conf map[string]interface{}) (*GraphiteSplitter, error) {
 
 	//<key> <value> <time> <thigns>
-	job := &GraphiteRunner{
+	job := &GraphiteSplitter{
 		key_index: 0,
 	}
 	// allow for a config option to pick the proper thing in the line
@@ -33,7 +33,7 @@ func NewGraphiteRunner(conf map[string]interface{}) (*GraphiteRunner, error) {
 	return job, nil
 }
 
-func (job *GraphiteRunner) ProcessLine(line string) (key string, orig_line string, err error) {
+func (job *GraphiteSplitter) ProcessLine(line string) (key string, orig_line string, err error) {
 	//<key> <value> <time> <more> <more>
 	//graphite_array := strings.Fields(line)
 	graphite_array := strings.Split(line, " ")

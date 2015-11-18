@@ -48,13 +48,14 @@ It Supports health checking to remove nodes from the hash ring should the go out
 outgoing connections.  It also supports various hashing algorithms to attempt to imitate other
 proxies to be transparent to them.
 
-Replication is supported as well to other places
+Replication is supported as well to other places, there is "alot" of polling and line buffereing so we don't 
+waste sockets and time sending one line at a time for things that can support multiline inputs (i.e. statsd/graphite)
 
 The Flow of a given line looks like so
 
-    InLine -> Listener -> PreReg -> Backend -> Hasher -> outLine
-                                      |
-                                      -> Replicator -> Hasher -> outLine
+    InLine -> Listener -> Splitter -> PreReg -> Backend -> Hasher -> OutPool -> Buffer -> outLine(s)
+                                                |
+                                                -> Replicator -> Hasher -> OutPool -> Buffer -> outLine(s)
 
 ### Internal Stats
 

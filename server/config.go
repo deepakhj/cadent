@@ -59,8 +59,8 @@ type Config struct {
 	MaxReadBufferSize    int64 `toml:"max_read_buffer_size"`
 
 	//Timeouts
-	WriteTimeout  time.Duration `toml:"write_timeout"`
-	RunnerTimeout time.Duration `toml:"runner_timeout"`
+	WriteTimeout    time.Duration `toml:"write_timeout"`
+	SplitterTimeout time.Duration `toml:"runner_timeout"`
 
 	//the array of potential servers to send stuff to (yes we can dupe data out)
 	ConfServerList []ConfigServerList `toml:"servers"`
@@ -386,10 +386,10 @@ func (self ConfigServers) ParseConfig(defaults *Config) (out ConfigServers, err 
 			}
 		}
 
-		if cfg.RunnerTimeout == 0 {
-			cfg.RunnerTimeout = 0
-			if defaults.RunnerTimeout > 0 {
-				cfg.RunnerTimeout = defaults.RunnerTimeout
+		if cfg.SplitterTimeout == 0 {
+			cfg.SplitterTimeout = 0
+			if defaults.SplitterTimeout > 0 {
+				cfg.SplitterTimeout = defaults.SplitterTimeout
 			}
 		}
 
@@ -401,8 +401,8 @@ func (self ConfigServers) ParseConfig(defaults *Config) (out ConfigServers, err 
 		if cfg.WriteTimeout != 0 {
 			cfg.WriteTimeout = cfg.WriteTimeout * time.Millisecond
 		}
-		if cfg.RunnerTimeout != 0 {
-			cfg.RunnerTimeout = cfg.RunnerTimeout * time.Millisecond
+		if cfg.SplitterTimeout != 0 {
+			cfg.SplitterTimeout = cfg.SplitterTimeout * time.Millisecond
 		}
 
 		cfg.MsgConfig = make(map[string]interface{})
@@ -537,7 +537,7 @@ func (self *ConfigServers) DebugConfig() {
 			log.Debug("  Hashing Algo: %s ", cfg.HashAlgo)
 			log.Debug("  Dupe Replicas: %d ", cfg.Replicas)
 			log.Debug("  Write Timeout: %v ", cfg.WriteTimeout)
-			log.Debug("  Runner Timeout: %v ", cfg.RunnerTimeout)
+			log.Debug("  Splitter Timeout: %v ", cfg.SplitterTimeout)
 			log.Debug("  Write Buffer Size: %v ", cfg.MaxWritePoolBufferSize)
 			log.Debug("  Read Buffer Size: %v ", cfg.ClientReadBufferSize)
 			log.Debug("  Max Read Buffer Size: %v ", cfg.MaxReadBufferSize)

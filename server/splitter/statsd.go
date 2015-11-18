@@ -2,7 +2,7 @@
    statsd Runner and parser <key>:<value>|<type>
 */
 
-package runner
+package splitter
 
 import (
 	"fmt"
@@ -11,19 +11,19 @@ import (
 
 const STATSD_NAME = "statsd"
 
-type StatsdRunner struct {
+type StatsdSplitter struct {
 }
 
-func (job *StatsdRunner) Name() (name string) { return STATSD_NAME }
+func (job *StatsdSplitter) Name() (name string) { return STATSD_NAME }
 
-func NewStatsdRunner(conf map[string]interface{}) (*StatsdRunner, error) {
+func NewStatsdSplitter(conf map[string]interface{}) (*StatsdSplitter, error) {
 
 	//<key>:blaaa
-	job := &StatsdRunner{}
+	job := &StatsdSplitter{}
 	return job, nil
 }
 
-func (job StatsdRunner) ProcessLine(line string) (key string, orig_line string, err error) {
+func (job *StatsdSplitter) ProcessLine(line string) (key string, orig_line string, err error) {
 
 	statd_array := strings.Split(line, ":")
 	if len(statd_array) >= 2 {
