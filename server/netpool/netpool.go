@@ -9,6 +9,7 @@ import (
 
 const MaxConnections = 20
 const ConnectionTimeout = time.Duration(5 * time.Second)
+const OpenTimeout = time.Duration(5 * time.Second)
 const RecycleTimeoutDuration = time.Duration(5 * time.Minute)
 
 var log = logging.MustGetLogger("netpool")
@@ -84,6 +85,9 @@ func (n *Netpool) SetMaxConnections(maxconn int) {
 }
 
 func (n *Netpool) NumFree() int {
+	if n.free == nil {
+		return 0
+	}
 	return len(n.free)
 }
 
@@ -120,24 +124,30 @@ func (n *Netpool) InitPoolWith(obj NetpoolInterface) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
-	n.free = nil
+	if n.free != nil {
+		close(n.free)
+	}
+
 	n.free = make(chan NetpoolConnInterface, n.MaxConnections)
 
 	//fill up the channels with our connections
 	for i := 0; i < n.MaxConnections; i++ {
 		conn, err := net.DialTimeout(n.protocal, n.name, ConnectionTimeout)
 		if err != nil {
-			log.Info("Connection open error:  ", n.protocal, n.name, err)
+			log.Warning("Pool Connection open error:  %v %v %v", n.protocal, n.name, err)
 			return err
 		}
 		if n.protocal == "tcp" {
 			conn.(*net.TCPConn).SetNoDelay(true)
 		}
+		log.Info("Pool Connected: %v %v", n.protocal, n.name)
 
 		netcon := n.newConnectionFunc(conn, obj)
 		netcon.SetIndex(i)
 		n.free <- netcon
 	}
+	log.Debug("Free pool connections: %d", n.NumFree())
+
 	return nil
 }
 
@@ -150,6 +160,7 @@ func (n *Netpool) Open() (conn NetpoolConnInterface, err error) {
 	// pop it off
 
 	net_conn := <-n.free
+
 	//recycle connections if we need to or reconnect if we need to
 	if net_conn.Conn() == nil || time.Now().Sub(net_conn.Started()) > n.RecycleTimeout {
 		if net_conn.Conn() != nil {
@@ -190,5 +201,6 @@ func (n *Netpool) DestroyAll() error {
 		con := <-n.free
 		con.Conn().Close()
 	}
+	n.free = nil
 	return nil
 }

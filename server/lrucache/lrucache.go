@@ -113,7 +113,8 @@ func (lru *LRUCache) Clear() {
 	lru.mu.Lock()
 	defer lru.mu.Unlock()
 
-	lru.list.Init()
+	lru.list.Init() // = nil;
+	//lru.list = list.New()
 	lru.table = make(map[string]*list.Element)
 	lru.size = 0
 }

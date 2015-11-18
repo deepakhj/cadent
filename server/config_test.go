@@ -141,11 +141,11 @@ msg_type="graphite"
 	stats_listen = TesterUDPMockListener("udp://" + defc.StatsdServer)
 	defer stats_listen.Close()
 
-	Convey("We should be able to set up a statsd client", t,  func() {
+	Convey("We should be able to set up a statsd client", t, func() {
 		So(statsclient.String(), ShouldEqual, defc.StatsdServer)
 	})
 
-	Convey("We should be able to create a statsd socket",  t,  func() {
+	Convey("We should be able to create a statsd socket", t, func() {
 		So(statsclient.CreateSocket(), ShouldEqual, nil)
 		statsclient.Incr("moo.goo.org", 1)
 	})
@@ -164,7 +164,6 @@ msg_type="graphite"
 			//go hasher.ServerPool.StartChecks()
 			hashers = append(hashers, hasher)
 		}
-		golog.Printf("MOMOMOMOMMOMOMOMOMO " + cfg.Name)
 		server, err := CreateServer(cfg, hashers)
 		if err != nil {
 			panic(err)
@@ -173,7 +172,7 @@ msg_type="graphite"
 		go server.StartServer()
 	}
 
-	Convey("We should be able start up and run the hashing servers",  t, func() {
+	Convey("We should be able start up and run the hashing servers", t, func() {
 
 		Convey("Should have 3 server", func() {
 			So(len(servers), ShouldEqual, 3)

@@ -207,5 +207,6 @@ func (n *BufferedNetpool) DestroyAll() error {
 		con.Flush()
 		con.Conn().Close()
 	}
+	n.pool.free = nil
 	return nil
 }

@@ -2,10 +2,9 @@ package runner
 
 import (
 	. "github.com/smartystreets/goconvey/convey"
-	"testing"
 	"regexp"
+	"testing"
 )
-
 
 func TestGraphiteRunner(t *testing.T) {
 
@@ -21,7 +20,6 @@ func TestGraphiteRunner(t *testing.T) {
 		So(key, ShouldEqual, "moo.goo.org")
 		So(orig_line, ShouldEqual, good_line)
 	})
-
 
 	conf["key_index"] = 10
 	Convey("Graphite Runner should not parser this with a bad key index", t, func() {
@@ -50,7 +48,6 @@ func TestStatsdRunner(t *testing.T) {
 		So(orig_line, ShouldEqual, good_line)
 	})
 
-
 	Convey("Statsd Runner should not parser this", t, func() {
 
 		gr, _ := NewStatsdRunner(conf)
@@ -60,7 +57,6 @@ func TestStatsdRunner(t *testing.T) {
 	})
 
 }
-
 
 func TestRegexRunner(t *testing.T) {
 
@@ -84,7 +80,6 @@ func TestRegexRunner(t *testing.T) {
 		So(key, ShouldEqual, "web-7-frontend-lb-prod")
 		So(orig_line, ShouldEqual, good_line)
 	})
-
 
 	Convey("REgex Runner should not parser this", t, func() {
 

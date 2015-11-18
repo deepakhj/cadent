@@ -14,7 +14,7 @@ const REGEX_NAME = "regex"
 type RegExRunner struct {
 	key_regex       *regexp.Regexp
 	key_regex_names []string
-	key_index int
+	key_index       int
 }
 
 func (job *RegExRunner) Name() (name string) { return REGEX_NAME }
@@ -41,13 +41,13 @@ func (job RegExRunner) ProcessLine(line string) (key string, orig_line string, e
 	var key_param string
 
 	matched := job.key_regex.FindAllStringSubmatch(line, -1)
-	if matched == nil{
+	if matched == nil {
 		return "", "", fmt.Errorf("Regex not matched")
 	}
 	if len(matched[0]) < (job.key_index + 1) {
 		return "", "", fmt.Errorf("Named matches not found")
 	}
-	key_param = matched[0][job.key_index + 1] // first string is always the original string
+	key_param = matched[0][job.key_index+1] // first string is always the original string
 
 	if len(key_param) > 0 {
 		return key_param, line, nil
