@@ -2,7 +2,7 @@
 ### if there are multiple backends or reject some things
 
 [graphite-regex-map]
-listen_server="graphite-proxy"
+listen_server="graphite-proxy"   # which listener to sit in front of (must be in the main config)
 default_backend="graphite-proxy"
 
     # another backend
@@ -16,12 +16,13 @@ default_backend="graphite-proxy"
     prefix="""servers.main-"""
     backend="graphite-statsd"
 
+    # Sub string type match
     [[graphite-regex-map.map]]
-    regex="^servers.*"
+    substring=".badline."
     reject=true  # special "reject me" type
 
 [statsd-regex-map]
-default_backend="statsd-proxy"
+default_backend="statsd-proxy" # which listener to sit in front of
 listen_server="statsd-proxy"
 
     # another backend
