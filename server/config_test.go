@@ -4,7 +4,6 @@ import (
 	"./statsd"
 	"fmt"
 	. "github.com/smartystreets/goconvey/convey"
-	golog "log"
 	"net"
 	"net/url"
 	"testing"
