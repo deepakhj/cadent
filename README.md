@@ -30,6 +30,12 @@ Look to the "example-config.toml" for all the options you can set and their mean
 to start
 
     consthash --config=example-config.toml
+    
+There is also the "PreReg" options files as well, this lets one pre-route lines to various backends, that can then 
+be consitently hashed, or "rejected" if so desired
+
+    consthash --config=example-config.toml --prereg=example-prereg.toml
+
 
 What I do
 ---------
@@ -41,6 +47,14 @@ any other "line" that can be regex out a Key.
 It Supports health checking to remove nodes from the hash ring should the go out, and uses a pooling for
 outgoing connections.  It also supports various hashing algorithms to attempt to imitate other
 proxies to be transparent to them.
+
+Replication is supported as well to other places
+
+The Flow of a given line looks like so
+
+    InLine -> Listener -> PreReg -> Backend -> Hasher -> outLine
+                                      |
+                                      -> Replicator -> Hasher -> outLine
 
 ### Internal Stats
 
@@ -124,21 +138,21 @@ You may want to get a statsd deamon (in golang as well) .. (github.com/bitly/sta
 
     statsdaemon -debug -percent-threshold=90 -percent-threshold=99  -persist-count-keys=0 -address=":8136" -admin-address=":8137"  -receive-counter="go-statsd.counts" -graphite="127.0.0.1:2003"
 
-There is also a "line msg" generator (written in python, as it was easy)
+There is also a "line msg" generator "statblast"
 
    
-    usage: pushstats.py [-h] [--type TYPE] [--port PORT] [--numforks NUMFORKS]
-                       [--host HOST] [--rate RATE]
-   
-    Push Stats
-   
-     optional arguments:
-      -h, --help           show this help message and exit
-      --type TYPE          statd or graphite - default statsd
-      --port PORT          server port # - default 8125
-      --numforks NUMFORKS  number of forks to run - default 2
-      --host HOST          host name - default localhost
-      --rate RATE          send rate - default 0.01
+    Usage of statblast:
+      -buffer int
+            send buffer (default 512)
+      -forks int
+            number of concurrent senders (default 2)
+      -rate string
+            fire rate for stat lines (default "0.1s")
+      -servers string
+            list of servers to open (tcp://127.0.0.1:6002,tcp://127.0.0.1:6003) (default "tcp://127.0.0.1:8125")
+      -type string
+            statsd or graphite (default "statsd")
+
 
 
 
