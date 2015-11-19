@@ -16,3 +16,5 @@ statblast
 tester/conf
 consthash
 echoserver
+!consthash.go
+!cmd/consthash

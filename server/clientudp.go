@@ -101,10 +101,12 @@ func (client *UDPClient) run() {
 				use_backend, reject, _ := client.server.PreRegFilter.FirstMatchBackend(key)
 				if reject {
 					stats.StatsdClient.Incr(fmt.Sprintf("prereg.backend.reject.%s", use_backend), 1)
-					client.log.Notice("REJECT LINE %s", n_line)
+					client.server.RejectedLinesCount.Up(1)
+					//client.log.Notice("REJECT LINE %s", n_line)
 				} else if use_backend != client.server.Name {
 					// redirect to another input queue
 					stats.StatsdClient.Incr(fmt.Sprintf("prereg.backend.redirect.%s", use_backend), 1)
+					client.server.RedirectedLinesCount.Up(1)
 					SERVER_BACKENDS.Send(use_backend, n_line)
 				} else {
 					client.server.RunSplitter(key, n_line, client.out_queue)

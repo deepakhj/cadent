@@ -25,16 +25,16 @@ default_backend="graphite-proxy"
 default_backend="statsd-proxy" # which listener to sit in front of
 listen_server="statsd-proxy"
 
+    [[statsd-regex-map.map]]
+    substring="badline"
+    reject=true  # special "reject me" type
+
     # another backend
     [[statsd-regex-map.map]]
-    regex="""^stats.timers..*"""   #what we're regexed from the input
+    regex='^stats.timers..*'  #what we're regexed from the input
     backend="statsd-proxy"
 
     # anything that starts with the prefix (in lue of a more expesive regex)
     [[statsd-regex-map.map]]
     prefix="statdtest.here."
     backend="statsd-servers"
-
-    [[statsd-regex-map.map]]
-    regex="""^statdtest.house..*"""
-    reject=true  # special "reject me" type

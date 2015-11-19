@@ -48,6 +48,24 @@ func TestPreRegConfig(t *testing.T) {
 	regex="""^statdtest.house..*"""
 	reject=true  # special "reject me" type`
 
+	fail_str := `[statsd-regex-map]
+	default_backend="statsd-proxy"
+	listen_server="statsd-proxy"
+
+	# another backend
+	[[statsd-regex-map.map]]
+	regex="""^stats.timers..*"""   #what we're regexed from the input
+	backend="statsd-proxy"
+
+	# anything that has this sub string
+	[[statsd-regex-map.map]]
+	mooo=".here."
+	backend="statsd-servers"
+
+	[[statsd-regex-map.map]]
+	regex="""^statdtest.house..*"""
+	reject=true  # special "reject me" type`
+
 	// Only pass t into top-level Convey calls
 	Convey("Given a config string", t, func() {
 
@@ -72,6 +90,16 @@ func TestPreRegConfig(t *testing.T) {
 			So(pr.FilterList[2].Rejecting(), ShouldEqual, true)
 		})
 	})
+	// Only pass t into top-level Convey calls
+	Convey("Given a config string that failes", t, func() {
+		pp := func() { ParseConfigString(fail_str) }
+
+		Convey("should faile", func() {
+			So(pp, ShouldPanic)
+		})
+
+	})
+
 	// Only pass t into top-level Convey calls
 	Convey("Given a config file", t, func() {
 		fname := "/tmp/__tonfig.toml"

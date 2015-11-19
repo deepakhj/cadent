@@ -166,6 +166,8 @@ func main() {
 	rate := flag.String("rate", "0.1s", "fire rate for stat lines")
 	buffer := flag.Int("buffer", 512, "send buffer")
 	concur := flag.Int("forks", 2, "number of concurrent senders")
+	words := flag.String("words", "test,house,here,there,cow,now", "compose the stat keys from these words")
+
 	flag.Parse()
 
 	if flag.NFlag() == 0 {
@@ -174,7 +176,9 @@ func main() {
 	}
 
 	server_split := strings.Split(*serverList, ",")
-
+	if len(*words) > 0 {
+		randWords = strings.Split(*words, ",")
+	}
 	for _, serv := range server_split {
 		for i := 0; i < *concur; i++ {
 			go Runner(serv, *intype, *rate, *buffer)

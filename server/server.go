@@ -173,6 +173,8 @@ type ServerStats struct {
 	UnsendableSendCount  int64 `json:"unsendable_send_count"`
 	UnknownSendCount     int64 `json:"unknown_send_count"`
 	AllLinesCount        int64 `json:"all_lines_count"`
+	RedirectedLinesCount int64 `json:"redirected_lines_count"`
+	RejectedLinesCount   int64 `json:"rejected_lines_count"`
 
 	CurrentValidLineCount       int64 `json:"current_valid_line_count"`
 	CurrentWorkerValidLineCount int64 `json:"current_worker_line_count"`
@@ -182,6 +184,8 @@ type ServerStats struct {
 	CurrentUnsendableSendCount  int64 `json:"current_unsendable_send_count"`
 	CurrentUnknownSendCount     int64 `json:"current_unknown_send_count"`
 	CurrentAllLinesCount        int64 `json:"current_all_lines_count"`
+	CurrentRejectedLinesCount   int64 `json:"current_rejected_lines_count"`
+	CurrentRedirectedLinesCount int64 `json:"current_redirected_lines_count"`
 
 	ValidLineCountList       []int64 `json:"valid_line_count_list"`
 	WorkerValidLineCountList []int64 `json:"worker_line_count_list"`
@@ -191,6 +195,8 @@ type ServerStats struct {
 	UnsendableSendCountList  []int64 `json:"unsendable_send_count_list"`
 	UnknownSendCountList     []int64 `json:"unknown_send_count_list"`
 	AllLinesCountList        []int64 `json:"all_lines_count_list"`
+	RedirectedCountList      []int64 `json:"redirected_lines_count_list"`
+	RejectedCountList        []int64 `json:"rejected_lines_count_list"`
 	GoRoutinesList           []int   `json:"go_routines_list"`
 	TicksList                []int64 `json:"ticks_list"`
 
@@ -203,6 +209,8 @@ type ServerStats struct {
 	UnsendableSendCountPerSec  float32  `json:"unsendable_count_persec"`
 	UnknownSendCountPerSec     float32  `json:"unknown_send_count_persec"`
 	AllLinesCountPerSec        float32  `json:"all_lines_count_persec"`
+	RedirectedLinesCountPerSec float32  `json:"redirected_lines_count_persec"`
+	RejectedLinesCountPerSec   float32  `json:"rejected_lines_count_persec"`
 	Listening                  string   `json:"listening"`
 	ServersUp                  []string `json:"servers_up"`
 	ServersDown                []string `json:"servers_down"`
@@ -235,6 +243,8 @@ type Server struct {
 	UnsendableSendCount  stats.StatCount
 	UnknownSendCount     stats.StatCount
 	AllLinesCount        stats.StatCount
+	RejectedLinesCount   stats.StatCount
+	RedirectedLinesCount stats.StatCount
 	NumStats             uint
 
 	// our bound connection if TCP or UnixSocket
@@ -485,6 +495,8 @@ func (server *Server) ResetTickers() {
 	server.UnsendableSendCount.ResetTick()
 	server.UnknownSendCount.ResetTick()
 	server.AllLinesCount.ResetTick()
+	server.RedirectedLinesCount.ResetTick()
+	server.RejectedLinesCount.ResetTick()
 }
 
 func NewServer(cfg *Config) (server *Server, err error) {
@@ -602,6 +614,8 @@ func (server *Server) StatsTick() {
 	server.stats.UnsendableSendCount = server.UnsendableSendCount.TotalCount.Get()
 	server.stats.UnknownSendCount = server.UnknownSendCount.TotalCount.Get()
 	server.stats.AllLinesCount = server.AllLinesCount.TotalCount.Get()
+	server.stats.RedirectedLinesCount = server.RedirectedLinesCount.TotalCount.Get()
+	server.stats.RejectedLinesCount = server.RejectedLinesCount.TotalCount.Get()
 
 	server.stats.CurrentValidLineCount = server.ValidLineCount.TickCount.Get()
 	server.stats.CurrentWorkerValidLineCount = server.WorkerValidLineCount.TickCount.Get()
@@ -610,6 +624,8 @@ func (server *Server) StatsTick() {
 	server.stats.CurrentFailSendCount = server.FailSendCount.TickCount.Get()
 	server.stats.CurrentUnknownSendCount = server.UnknownSendCount.TickCount.Get()
 	server.stats.CurrentAllLinesCount = server.AllLinesCount.TickCount.Get()
+	server.stats.CurrentRedirectedLinesCount = server.RedirectedLinesCount.TickCount.Get()
+	server.stats.CurrentRejectedLinesCount = server.RejectedLinesCount.TickCount.Get()
 
 	server.stats.ValidLineCountList = append(server.stats.ValidLineCountList, server.ValidLineCount.TickCount.Get())
 	server.stats.WorkerValidLineCountList = append(server.stats.WorkerValidLineCountList, server.WorkerValidLineCount.TickCount.Get())
@@ -619,6 +635,8 @@ func (server *Server) StatsTick() {
 	server.stats.UnknownSendCountList = append(server.stats.UnknownSendCountList, server.UnknownSendCount.TickCount.Get())
 	server.stats.UnsendableSendCountList = append(server.stats.UnsendableSendCountList, server.UnsendableSendCount.TickCount.Get())
 	server.stats.AllLinesCountList = append(server.stats.AllLinesCountList, server.AllLinesCount.TickCount.Get())
+	server.stats.RejectedCountList = append(server.stats.RejectedCountList, server.RejectedLinesCount.TickCount.Get())
+	server.stats.RedirectedCountList = append(server.stats.RedirectedCountList, server.RedirectedLinesCount.TickCount.Get())
 	// javascript resolution is ms .. not nanos
 	server.stats.TicksList = append(server.stats.TicksList, int64(t_stamp/int64(time.Millisecond)))
 	server.stats.GoRoutinesList = append(server.stats.GoRoutinesList, runtime.NumGoroutine())
@@ -632,6 +650,8 @@ func (server *Server) StatsTick() {
 		server.stats.UnknownSendCountList = server.stats.UnknownSendCountList[1:server.NumStats]
 		server.stats.UnsendableSendCountList = server.stats.UnsendableSendCountList[1:server.NumStats]
 		server.stats.AllLinesCountList = server.stats.AllLinesCountList[1:server.NumStats]
+		server.stats.RejectedCountList = server.stats.RejectedCountList[1:server.NumStats]
+		server.stats.RedirectedCountList = server.stats.RedirectedCountList[1:server.NumStats]
 		server.stats.TicksList = server.stats.TicksList[1:server.NumStats]
 		server.stats.GoRoutinesList = server.stats.GoRoutinesList[1:server.NumStats]
 	}
@@ -653,6 +673,8 @@ func (server *Server) StatsTick() {
 	server.stats.UnsendableSendCountPerSec = server.UnsendableSendCount.TotalRate(elapsed)
 	server.stats.UnknownSendCountPerSec = server.UnknownSendCount.TotalRate(elapsed)
 	server.stats.AllLinesCountPerSec = server.AllLinesCount.TotalRate(elapsed)
+	server.stats.RejectedLinesCountPerSec = server.RedirectedLinesCount.TotalRate(elapsed)
+	server.stats.RejectedLinesCountPerSec = server.RejectedLinesCount.TotalRate(elapsed)
 
 	if server.ListenURL == nil {
 		server.stats.Listening = "BACKEND-ONLY"
@@ -712,6 +734,8 @@ func (server *Server) tickDisplay() {
 	server.log.Info("Server Rate: FailSendCount: %.2f/s", server.FailSendCount.Rate(server.ticker))
 	server.log.Info("Server Rate: UnsendableSendCount: %.2f/s", server.UnsendableSendCount.Rate(server.ticker))
 	server.log.Info("Server Rate: UnknownSendCount: %.2f/s", server.UnknownSendCount.Rate(server.ticker))
+	server.log.Info("Server Rate: RejectedSendCount: %.2f/s", server.RejectedLinesCount.Rate(server.ticker))
+	server.log.Info("Server Rate: RedirectedSendCount: %.2f/s", server.RedirectedLinesCount.Rate(server.ticker))
 	server.log.Info("Server Rate: AllLinesCount: %.2f/s", server.AllLinesCount.Rate(server.ticker))
 	server.log.Info("Server Send Method:: %s", server.SendingConnectionMethod)
 	for idx, pool := range server.Outpool {
@@ -945,9 +969,12 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, done chan Client) 
 					use_backend, reject, _ := server.PreRegFilter.FirstMatchBackend(key)
 					if reject {
 						stats.StatsdClient.Incr(fmt.Sprintf("prereg.backend.reject.%s", use_backend), 1)
+						server.RejectedLinesCount.Up(1)
 					} else if use_backend != server.Name {
 						// redirect to another input queue
 						stats.StatsdClient.Incr(fmt.Sprintf("prereg.backend.redirect.%s", use_backend), 1)
+						server.RedirectedLinesCount.Up(1)
+
 						SERVER_BACKENDS.Send(use_backend, procline)
 					} else {
 						server.RunSplitter(key, procline, out_queue)

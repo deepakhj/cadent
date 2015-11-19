@@ -76,6 +76,7 @@ import (
 	"github.com/BurntSushi/toml"
 	logging "github.com/op/go-logging"
 
+	"fmt"
 	"os"
 )
 
@@ -129,16 +130,16 @@ func (l ListofConfigMaps) ParseConfig() (PreRegMap, error) {
 		pr.FilterList = make([]FilterItem, len(cfg.FilterList))
 		for idx, cmap := range cfg.FilterList {
 			if len(cmap.Prefix) > 0 && len(cmap.RegEx) > 0 {
-				log.Critical("Cannot have BOTH `prefix` and `regex` for `%s`", pr.Name)
-				os.Exit(1)
+				panic(fmt.Sprintf("Cannot have BOTH `prefix` and `regex` for `%s`", pr.Name))
 			}
 			if len(cmap.SubString) > 0 && len(cmap.Prefix) > 0 {
-				log.Critical("Cannot have BOTH `prefix` and `substring` for `%s`", pr.Name)
-				os.Exit(1)
+				panic(fmt.Sprintf("Cannot have BOTH `prefix` and `substring` for `%s`", pr.Name))
 			}
 			if len(cmap.RegEx) > 0 && len(cmap.SubString) > 0 {
-				log.Critical("Cannot have BOTH `regex` and `substring` for `%s`", pr.Name)
-				os.Exit(1)
+				panic(fmt.Sprintf("Cannot have BOTH `regex` and `substring` for `%s`", pr.Name))
+			}
+			if len(cmap.RegEx) == 0 && len(cmap.SubString) == 0 && len(cmap.Prefix) == 0 {
+				panic(fmt.Sprintf("Need `prefix`, `regex`, or `substring` for `%s`", pr.Name))
 			}
 
 			if len(cmap.Prefix) > 0 {

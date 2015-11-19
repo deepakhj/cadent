@@ -551,11 +551,12 @@ func (self *ConfigServers) DebugConfig() {
 					log.Debug("     %s Checked via %s", hosts, slist.CheckList[idx])
 				}
 			}
+
 		} else {
 			log.Debug("  PID: %s", cfg.PIDfile)
-			if cfg.PreRegFilters != nil {
-				cfg.PreRegFilters.LogConfig()
-			}
+		}
+		if cfg.PreRegFilters != nil {
+			cfg.PreRegFilters.LogConfig()
 		}
 	}
 }
