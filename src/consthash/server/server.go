@@ -582,11 +582,24 @@ func NewServer(cfg *Config) (server *Server, err error) {
 		serv.UDPConn = conn
 		serv.UDPConn.SetReadBuffer((int)(serv.ClientReadBufferSize)) //set buffer size to 1024 bytes
 
+	} else if cfg.ListenURL.Scheme == "http" {
+
+		udp_addr, err := net.ResolveUDPAddr(cfg.ListenURL.Scheme, cfg.ListenURL.Host)
+		if err != nil {
+			return nil, fmt.Errorf("Error binding: %s", err)
+		}
+		conn, err := net.ListenUDP(cfg.ListenURL.Scheme, udp_addr)
+		if err != nil {
+			return nil, fmt.Errorf("Error binding: %s", err)
+		}
+		serv.UDPConn = conn
+		serv.UDPConn.SetReadBuffer((int)(serv.ClientReadBufferSize)) //set buffer size to 1024 bytes
+
 	} else {
 		var conn net.Listener
 		var err error
 		if cfg.ListenURL.Scheme == "unix" {
-			conn, err = net.Listen(cfg.ListenURL.Scheme, "/"+cfg.ListenURL.Host+cfg.ListenURL.Path)
+			conn, err = net.Listen(cfg.ListenURL.Scheme, cfg.ListenURL.Host+cfg.ListenURL.Path)
 		} else {
 			conn, err = net.Listen(cfg.ListenURL.Scheme, cfg.ListenURL.Host)
 		}
