@@ -18,3 +18,8 @@ consthash
 echoserver
 !consthash.go
 !cmd/consthash
+bin
+pkg
+src/consistent
+src/statsd
+src/github.com

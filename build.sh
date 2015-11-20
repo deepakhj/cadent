@@ -34,7 +34,6 @@ go get github.com/BurntSushi/toml
 go get github.com/davecheney/profile
 go get github.com/reusee/mmh3
 go get github.com/op/go-logging
-go get github.com/op/go-logging
 go get github.com/smartystreets/goconvey/convey
 
 make clean

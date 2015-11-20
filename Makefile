@@ -24,8 +24,8 @@ GOFMT=gofmt -w
 # Package lists
 TOPLEVEL_PKG := .
 INT_LIST := 	#<-- Interface directories
-IMPL_LIST := server	#<-- Implementation directories
-CMD_LIST := cmd/consthash cmd/echoserver cmd/statblast	#<-- Command directories
+IMPL_LIST := src/consthash/server	#<-- Implementation directories
+CMD_LIST := src/consthash/cmd/consthash src/consthash/cmd/echoserver src/consthash/cmd/statblast	#<-- Command directories
  
 # List building
 ALL_LIST = $(INT_LIST) $(IMPL_LIST) $(CMD_LIST)
@@ -48,9 +48,10 @@ install: $(INSTALL_LIST)
 test: $(TEST_LIST)
 iref: $(IREF_LIST)
 fmt: $(FMT_TEST)
+export GOPATH=$(shell pwd)
 
 if [ which godep ]; then; \
-export GOPATH=$(shell  godep path ) \
+export GOPATH=$GOPATH:$(shell godep path ) \
 fi \
 
 export build=$(shell git rev-parse HEAD)
@@ -63,6 +64,7 @@ $(BUILD_LIST): %_build: %_fmt %_iref
 $(CLEAN_LIST): %_clean:
 	rm -f echoserver
 	rm -f consthash
+	rm -f statblast
 	$(GOCLEAN) $(TOPLEVEL_PKG)/$*
 	
 $(INSTALL_LIST): %_install:
