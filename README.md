@@ -9,16 +9,28 @@ Installation
 ------------
 
     Well, first you need to install go .. https://golang.org  1.5.1
+    
 
     git clone git@scm-main-01.dc.myfitnesspal.com:infra/consthashsrv.git
-    cd consthashsrv/server
+    export GOPATH=$(pwd)/src
     
-    // because things are "private" we need to "hack around" go's usual pulling/get mechanism
-    //pull in more git repos you'll need
+    cd src/
+    
+    # because things are "private" we need to "hack around" go's usual pulling/get mechanism
+    #pull in more git repos you'll need
     git clone git@scm-main-01.dc.myfitnesspal.com:goutil/statsd.git
     git clone git@scm-main-01.dc.myfitnesspal.com:goutil/consistent.git
-     
-    cd ../../
+    
+    
+    #get the deps
+    go get github.com/BurntSushi/toml
+    go get github.com/davecheney/profile
+    go get github.com/reusee/mmh3
+    go get github.com/op/go-logging
+    go get github.com/smartystreets/goconvey/convey
+    
+    
+    cd ../
     make
    
 

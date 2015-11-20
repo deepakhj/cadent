@@ -15,16 +15,18 @@ function progress(){
 export WORKSPACE="${WORKSPACE:-.}"
 export SOURCE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 
-export GOPATH="${WORKSPACE:-.}/gopath"
+export GOPATH="${WORKSPACE:-.}/git/src"
 mkdir -p ${GOPATH}
 
 
-cd "${WORKSPACE}/git"
+cd "${WORKSPACE}/git/src"
 
 # need to clone our other deps
 
 git clone git@scm-main-01.dc.myfitnesspal.com:goutil/consistent.git server/consistent
 git clone git@scm-main-01.dc.myfitnesspal.com:goutil/statsd.git server/statsd
+
+cd "${WORKSPACE}/git"
 
 # grab the external pacakges
 
