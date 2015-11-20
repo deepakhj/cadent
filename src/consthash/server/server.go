@@ -584,25 +584,13 @@ func NewServer(cfg *Config) (server *Server, err error) {
 
 	} else if cfg.ListenURL.Scheme == "http" {
 
-		udp_addr, err := net.ResolveUDPAddr(cfg.ListenURL.Scheme, cfg.ListenURL.Host)
-		if err != nil {
-			return nil, fmt.Errorf("Error binding: %s", err)
-		}
-		conn, err := net.ListenUDP(cfg.ListenURL.Scheme, udp_addr)
-		if err != nil {
-			return nil, fmt.Errorf("Error binding: %s", err)
-		}
-		serv.UDPConn = conn
-		serv.UDPConn.SetReadBuffer((int)(serv.ClientReadBufferSize)) //set buffer size to 1024 bytes
+		//http is yet another "specail" case, client HTTP does the hard work
 
 	} else {
 		var conn net.Listener
 		var err error
-		if cfg.ListenURL.Scheme == "unix" {
-			conn, err = net.Listen(cfg.ListenURL.Scheme, cfg.ListenURL.Host+cfg.ListenURL.Path)
-		} else {
-			conn, err = net.Listen(cfg.ListenURL.Scheme, cfg.ListenURL.Host)
-		}
+		conn, err = net.Listen(cfg.ListenURL.Scheme, cfg.ListenURL.Host+cfg.ListenURL.Path)
+
 		if err != nil {
 			return nil, fmt.Errorf("Error binding: %s", err)
 		}
@@ -1074,6 +1062,37 @@ func (server *Server) startUDPServer(hashers *[]*ConstHasher, done chan Client) 
 	}
 }
 
+// different mechanism for http servers
+func (server *Server) startHTTPServer(hashers *[]*ConstHasher, done chan Client) {
+
+	client, err := NewHTTPClient(server, hashers, server.ListenURL, done)
+	if err != nil {
+		panic(err)
+	}
+	client.SetBufferSize((int)(server.ClientReadBufferSize))
+
+	go client.handleRequest()
+	go client.handleSend()
+
+	for {
+		select {
+		case <-server.ShutDown:
+			client.Close()
+			return
+		case workerUpDown := <-server.WorkerHold:
+			server.InWorkQueue.Add(workerUpDown)
+			work_len := (int64)(len(server.WorkQueue))
+			if work_len >= server.Workers {
+				stats.StatsdClient.Incr("worker.queue.isfull", 1)
+			}
+			stats.StatsdClient.GaugeAvg("worker.queue.length", work_len)
+
+		case client := <-done:
+			client.Close()
+		}
+	}
+}
+
 func (server *Server) startBackendServer(hashers *[]*ConstHasher, done chan Client) {
 
 	out_queue := make(chan string, server.Workers)
@@ -1182,6 +1201,8 @@ func (server *Server) StartServer() {
 		server.startBackendServer(&server.Hashers, done)
 	} else if server.UDPConn != nil {
 		server.startUDPServer(&server.Hashers, done)
+	} else if server.ListenURL.Scheme == "http" {
+		server.startHTTPServer(&server.Hashers, done)
 	} else {
 		// we treat the generic TCP and UNIX listeners the same
 		server.startTCPServer(&server.Hashers, done)

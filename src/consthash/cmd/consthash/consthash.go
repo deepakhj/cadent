@@ -39,16 +39,16 @@ func setSystemStuff(num_procs int) {
 	if num_procs <= 0 {
 		num_procs = runtime.NumCPU()
 	}
-	log.Notice("[System] Setting GOMAXPROCS to %s", num_procs)
+	log.Notice("[System] Setting GOMAXPROCS to %d", num_procs)
 
 	runtime.GOMAXPROCS(num_procs)
 
 	var rLimit syscall.Rlimit
 	err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rLimit)
 	if err != nil {
-		log.Warning("[System] Error Getting Rlimit: %s", err)
+		log.Warning("[System] Error Getting Rlimit: %d", err)
 	}
-	log.Notice("[System] Current Rlimit: %s", rLimit)
+	log.Notice("[System] Current Rlimit: Max %d, Cur %d", rLimit.Max, rLimit.Cur)
 
 	rLimit.Max = 999999
 	rLimit.Cur = 999999
@@ -60,7 +60,7 @@ func setSystemStuff(num_procs int) {
 	if err != nil {
 		log.Warning("[System] Error Getting Rlimit: %s ", err)
 	}
-	log.Notice("[System] Final Rlimit Final: %s", rLimit)
+	log.Notice("[System] Final Rlimit Final: Max %d, Cur %d", rLimit.Max, rLimit.Cur)
 }
 
 // Fire up the http server for stats and healthchecks
