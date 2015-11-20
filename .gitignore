@@ -9,15 +9,16 @@ node_modules
 tester/*/tester
 build
 .DS_Store
+*.DS_Store
 statblast
 tester/conf
 consthash
 echoserver
 !consthash.go
-!cmd/consthash
 bin
 pkg
 src/consistent
 src/statsd
 src/github.com
 !src/consthash
+!src/consthash/cmd/*
