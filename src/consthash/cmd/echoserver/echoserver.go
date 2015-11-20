@@ -213,11 +213,14 @@ func (echo EchoServerTCP) EchoStats() {
 }
 
 func (echo EchoServerTCP) ReadMessages() (err error) {
+
+	//drop the socket if closed
+	if echo.Listen.Scheme == "unix" {
+		defer os.Remove(echo.Listen.Host + echo.Listen.Path)
+	}
 	for {
 		conn, err := echo.Listener.Accept()
-		defer func() {
-
-		}()
+		
 		if err != nil {
 			log.Printf("Error connection from %s", err)
 			return err
