@@ -20,4 +20,4 @@ pkg
 src/consistent
 src/statsd
 src/github.com
-!src/
+!src/consthash
