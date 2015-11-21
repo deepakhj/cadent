@@ -71,9 +71,9 @@ func poolWorker(j *SendOut) {
 
 		}
 		if j.server.SendingConnectionMethod == "bufferedpool" {
-			outsrv = netpool.NewBufferedNetpool(m_url.Scheme, m_url.Host, j.server.WriteBufferPoolSize)
+			outsrv = netpool.NewBufferedNetpool(m_url.Scheme, m_url.Host+m_url.Path, j.server.WriteBufferPoolSize)
 		} else {
-			outsrv = netpool.NewNetpool(m_url.Scheme, m_url.Host)
+			outsrv = netpool.NewNetpool(m_url.Scheme, m_url.Host+m_url.Path)
 		}
 		if j.server.NetPoolConnections > 0 {
 			outsrv.SetMaxConnections(j.server.NetPoolConnections)
@@ -137,7 +137,7 @@ func singleWorker(j *SendOut) {
 		j.server.log.Error("Error sending to backend Invalid URL %s", err)
 		return
 	}
-	conn, err := net.DialTimeout(m_url.Scheme, m_url.Host, 5*time.Second)
+	conn, err := net.DialTimeout(m_url.Scheme, m_url.Host+m_url.Path, 5*time.Second)
 	if conn != nil {
 
 		conn.SetWriteDeadline(time.Now().Add(j.server.WriteTimeout))

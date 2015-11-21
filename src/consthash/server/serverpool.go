@@ -258,8 +258,8 @@ func (self *CheckedServerPool) dropServer(server *ServerPoolServer) {
 }
 
 func (self *CheckedServerPool) testSingleConnection(url url.URL, timeout time.Duration) error {
-	if url.Scheme == "tcp" || url.Scheme == "udp" {
-		conn, err := net.DialTimeout(url.Scheme, url.Host, timeout)
+	if url.Scheme == "tcp" || url.Scheme == "udp" || url.Scheme == "unix" {
+		conn, err := net.DialTimeout(url.Scheme, url.Host+url.Path, timeout)
 		if err == nil {
 			conn.Close()
 		}

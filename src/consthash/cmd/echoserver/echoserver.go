@@ -220,7 +220,7 @@ func (echo EchoServerTCP) ReadMessages() (err error) {
 	}
 	for {
 		conn, err := echo.Listener.Accept()
-		
+
 		if err != nil {
 			log.Printf("Error connection from %s", err)
 			return err
