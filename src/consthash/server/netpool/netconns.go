@@ -79,6 +79,7 @@ func NewWrtiterHttpConn(protocal string, host string, timeout time.Duration) (*W
 }
 
 func (w *WrtiterHttpConn) Write(b []byte) (n int, err error) {
+	defer w.tr.CloseIdleConnections()
 	reader := bytes.NewReader(b)
 	req, err := http.NewRequest(w.Method, w.url.Scheme+"://"+w.url.Host+w.url.Path, reader)
 	//log.Debug(w.url.Scheme+"://"+w.url.Host+w.url.Path)

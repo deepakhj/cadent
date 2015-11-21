@@ -113,7 +113,6 @@ func (client *HTTPClient) HttpHandler(w http.ResponseWriter, r *http.Request) {
 		client.input_queue <- line
 		lines += 1
 	}
-
 	io.WriteString(w, fmt.Sprintf("lines processed %d", lines))
 	// flush it
 	if f, ok := w.(http.Flusher); ok {
