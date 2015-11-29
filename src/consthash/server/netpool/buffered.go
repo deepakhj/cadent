@@ -81,7 +81,7 @@ func (n *BufferedNetpoolConn) Write(b []byte) (wrote int, err error) {
 
 	n.writeLock.Lock()
 	defer n.writeLock.Unlock()
-	if len(n.writebuffer) > n.buffersize {
+	if len(n.writebuffer) > n.buffersize && n.conn != nil {
 		wrote, err = n.conn.Write(n.writebuffer)
 		if err != nil {
 			n.conn.Close() // Open will re-open it
