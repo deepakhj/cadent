@@ -51,7 +51,7 @@ func (pref *PrefixFilter) SetBackend(back string) (string, error) {
 	return back, nil
 }
 
-/**********************   ubString filter ***********************/
+/**********************   SubString filter ***********************/
 type SubStringFilter struct {
 	SubString string `json:"substring"`
 	IsReject  bool   `json:"is_rejected"`
