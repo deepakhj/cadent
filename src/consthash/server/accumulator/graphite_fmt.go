@@ -11,10 +11,14 @@ import (
 
 const GRAPHITE_FMT_NAME = "graphite_formater"
 
-type GraphiteFormater struct{}
+type GraphiteFormatter struct{}
 
-func (g *GraphiteFormater) Type() string { return GRAPHITE_FMT_NAME }
-func (g *GraphiteFormater) ToString(key string, val float64, tstamp int32, stats_type string, tags map[string]string) string {
+func (g *GraphiteFormatter) Init(items ...string) error {
+	return nil
+}
+
+func (g *GraphiteFormatter) Type() string { return GRAPHITE_FMT_NAME }
+func (g *GraphiteFormatter) ToString(key string, val float64, tstamp int32, stats_type string, tags []AccumulatorTags) string {
 	if tstamp <= 0 {
 		tstamp = int32(time.Now().Unix())
 	}

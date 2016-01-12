@@ -9,7 +9,7 @@ func TestPreRegFilters(t *testing.T) {
 
 	//some tester strings
 	statstring := "tester.i.am.a.stat 1234 1234"
-	backend_str := []string{"graphite-prefix", "graphite-substring", "graphite-regex"}
+	backend_str := []string{"graphite-prefix", "graphite-substring", "graphite-regex", "defaultbackend"}
 
 	// Only pass t into top-level Convey calls
 	Convey("Given a prereg Map", t, func() {
@@ -19,7 +19,7 @@ func TestPreRegFilters(t *testing.T) {
 			ListenServer:   "graphite-test",
 		}
 
-		prere.FilterList = make([]FilterItem, 3)
+		prere.FilterList = make([]FilterItem, 4)
 
 		prefix := new(PrefixFilter)
 		prefix.Prefix = "tester.i"
@@ -41,6 +41,11 @@ func TestPreRegFilters(t *testing.T) {
 		reg.SetBackend("graphite-regex")
 
 		prere.FilterList[2] = reg
+
+		nop := new(NoOpFilter)
+		nop.SetBackend("defaultbackend")
+
+		prere.FilterList[3] = nop
 
 		maper := make(PreRegMap)
 		maper["match_section"] = &prere
@@ -92,9 +97,9 @@ func TestPreRegFilters(t *testing.T) {
 				So(f.Backend(), ShouldEqual, "graphite-prefix")
 			})
 
-			Convey("Firstmatch filter of `123123` should not match ", func() {
+			Convey("Firstmatch filter of `123123` should match noop", func() {
 				f, rejected, err := prere.FirstMatchFilter("123123")
-				So(f, ShouldEqual, nil)
+				So(f, ShouldEqual, prere.FilterList[3])
 				So(rejected, ShouldEqual, false)
 				So(err, ShouldEqual, nil)
 			})
@@ -116,7 +121,7 @@ func TestPreRegFilters(t *testing.T) {
 			// full mapper
 			Convey("MatchingFilters filter reg map of `123123` should match ", func() {
 				f := maper.MatchingFilters("123123")
-				So(len(f), ShouldEqual, 0)
+				So(len(f), ShouldEqual, 1)
 			})
 
 			Convey("MatchingBackends filter reg map of `123123` should match `defaultbackend`", func() {

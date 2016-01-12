@@ -5,8 +5,8 @@
 package consthash
 
 import (
+	"consthash/server/splitter"
 	"consthash/server/stats"
-	"fmt"
 	logging "github.com/op/go-logging"
 	"net"
 	"strings"
@@ -23,9 +23,9 @@ type UDPClient struct {
 	LineCount  uint64
 	BufferSize int
 
-	out_queue    chan string
+	out_queue    chan splitter.SplitItem
 	done         chan Client
-	input_queue  chan string
+	input_queue  chan splitter.SplitItem
 	worker_queue chan *SendOut
 
 	log *logging.Logger
@@ -44,7 +44,7 @@ func NewUDPClient(server *Server, hashers *[]*ConstHasher, conn *net.UDPConn, do
 	//to deref things
 	client.worker_queue = server.WorkQueue
 	client.input_queue = server.InputQueue
-	client.out_queue = make(chan string, server.Workers)
+	client.out_queue = make(chan splitter.SplitItem, server.Workers)
 	client.done = done
 	client.log = server.log
 	return client
@@ -63,7 +63,7 @@ func (client UDPClient) Server() (server *Server) {
 func (client UDPClient) Hashers() (hasher *[]*ConstHasher) {
 	return client.hashers
 }
-func (client UDPClient) InputQueue() chan string {
+func (client UDPClient) InputQueue() chan splitter.SplitItem {
 	return client.input_queue
 }
 func (client UDPClient) WorkerQueue() chan *SendOut {
@@ -78,47 +78,10 @@ func (client UDPClient) Close() {
 }
 
 func (client *UDPClient) run() {
-	for line := range client.input_queue {
+	for splitem := range client.input_queue {
 
-		if line == "" {
-			continue
-		}
+		client.server.ProcessSplitItem(splitem, client.out_queue)
 
-		n_line := strings.Trim(line, "\n\t ")
-		if len(n_line) == 0 {
-			continue
-		}
-		client.server.AllLinesCount.Up(1)
-		key, _, err := client.server.SplitterProcessor.ProcessLine(n_line)
-		if err == nil {
-
-			//based on the Key we get re may need to redirect this to another backend
-			// due to the PreReg items
-			// so you may ask why Here and not before the InputQueue, well backpressure, and we need to
-			// we also want to make sure the NetConn gets sucked in faster before the processing
-			// match on the KEY not the entire string
-			if client.server.PreRegFilter != nil {
-				use_backend, reject, _ := client.server.PreRegFilter.FirstMatchBackend(key)
-				if reject {
-					stats.StatsdClient.Incr(fmt.Sprintf("prereg.backend.reject.%s", use_backend), 1)
-					client.server.RejectedLinesCount.Up(1)
-					//client.log.Notice("REJECT LINE %s", n_line)
-				} else if use_backend != client.server.Name {
-					// redirect to another input queue
-					stats.StatsdClient.Incr(fmt.Sprintf("prereg.backend.redirect.%s", use_backend), 1)
-					client.server.RedirectedLinesCount.Up(1)
-					SERVER_BACKENDS.Send(use_backend, n_line)
-				} else {
-					client.server.RunSplitter(key, n_line, client.out_queue)
-				}
-			} else {
-				client.server.RunSplitter(key, n_line, client.out_queue)
-			}
-		} else {
-			stats.StatsdClient.Incr("incoming.udp.invalidlines", 1)
-			client.log.Warning("Invalid Line: %s (%s)", err, n_line)
-		}
-		stats.StatsdClient.Incr("incoming.udp.lines", 1)
 	}
 }
 
@@ -129,7 +92,21 @@ func (client *UDPClient) getLines() {
 			if len(n_line) == 0 {
 				continue
 			}
-			client.input_queue <- n_line
+
+			n_line := strings.Trim(line, "\n\t ")
+			if len(n_line) == 0 {
+				continue
+			}
+			client.server.AllLinesCount.Up(1)
+			splitem, err := client.server.SplitterProcessor.ProcessLine(n_line)
+			if err == nil {
+				client.server.ProcessSplitItem(splitem, client.out_queue)
+				stats.StatsdClient.Incr("incoming.udp.lines", 1)
+			} else {
+				stats.StatsdClient.Incr("incoming.udp.invalidlines", 1)
+				client.log.Warning("Invalid Line: %s (%s)", err, n_line)
+			}
+			client.input_queue <- splitem
 		}
 	}
 
@@ -155,7 +132,7 @@ func (client UDPClient) handleSend() {
 
 	for {
 		message := <-client.out_queue
-		if len(message) == 0 {
+		if !message.IsValid() {
 			break
 		}
 	}

@@ -11,7 +11,7 @@ default_backend="graphite-proxy"
     regex="""^servers.main.*"""
     backend="graphite-proxy"
 
-    # anything that starts with the prefix (in lue of a more expesive regex)
+    # anything that starts with the prefix
     [[graphite-regex-map.map]]
     prefix="""servers.main-"""
     backend="graphite-statsd"
@@ -22,8 +22,8 @@ default_backend="graphite-proxy"
     reject=true  # special "reject me" type
 
 [statsd-regex-map]
-default_backend="statsd-proxy" # which listener to sit in front of
-listen_server="statsd-proxy"
+listen_server="statsd-proxy" # which listener to sit in front of  (must be in the main config)
+default_backend="statsd-proxy"  # failing a match go here
 
     [[statsd-regex-map.map]]
     substring="badline"

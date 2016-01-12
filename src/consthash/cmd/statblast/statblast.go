@@ -16,7 +16,7 @@ import (
 )
 
 var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
-var randWords = []string{"test", "house", "here", "there", "cow", "now"}
+var randWords = []string{"test", "house", "here", "badline", "cow", "now"}
 var sentLines int64
 var startTime = time.Now().Unix()
 var ConnectionTimeout, _ = time.ParseDuration("2s")
@@ -48,7 +48,7 @@ func GraphiteStr(ct int) string {
 
 func StatsdStr(ct int) string {
 	return fmt.Sprintf(
-		"statdtest.%s.%s.%s:%d\n",
+		"statdtest.%s.%s.%s:%d|c\n",
 		RandItem(randWords),
 		RandItem(randWords),
 		RandItem(randWords),
@@ -144,7 +144,7 @@ func main() {
 	rate := flag.String("rate", "0.1s", "fire rate for stat lines")
 	buffer := flag.Int("buffer", 512, "send buffer")
 	concur := flag.Int("forks", 2, "number of concurrent senders")
-	words := flag.String("words", "test,house,here,there,cow,now", "compose the stat keys from these words")
+	words := flag.String("words", "test,house,here,there,badline,cow,now", "compose the stat keys from these words")
 
 	flag.Parse()
 

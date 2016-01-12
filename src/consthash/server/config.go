@@ -505,6 +505,13 @@ func (self ConfigServers) VerifyAndAssignPreReg(prm prereg.PreRegMap) (err error
 				return fmt.Errorf("Backend `%s` is not in the Config servers", filter.Backend())
 			}
 		}
+
+		//verify that if there is an Accumulator that the backend for it does in fact live
+		if pr.Accumulator != nil {
+			if _, ok := self[pr.Accumulator.ToBackend]; !ok {
+				return fmt.Errorf("Backend `%s` is not in the Config servers", pr.Accumulator.ToBackend)
+			}
+		}
 	}
 	return nil
 

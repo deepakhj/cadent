@@ -38,17 +38,19 @@ type StatsdBaseStatItem struct {
 
 func (s *StatsdBaseStatItem) Type() string { return s.InType }
 func (s *StatsdBaseStatItem) Key() string  { return s.InKey }
-func (s *StatsdBaseStatItem) Out(fmatter FormaterItem) []string {
+func (s *StatsdBaseStatItem) Out(fmatter FormatterItem, tags []AccumulatorTags) []string {
 	pref := "stats.counters"
-	if s.InType == "g" {
+	c_type := "c"
+	if s.InType == "g" || s.InType == "-g" || s.InType == "+g" {
 		pref = "stats.gauges"
+		c_type = "g"
 	}
 	return []string{
 		fmatter.ToString(
 			pref+"."+s.InKey,
 			s.Value,
 			0, // let formatter handle the time,
-			"c",
+			c_type,
 			nil,
 		),
 	}
@@ -113,7 +115,7 @@ func (s *StatsdTimerStatItem) Accumulate(val float64) error {
 	return nil
 }
 
-func (s *StatsdTimerStatItem) Out(fmatter FormaterItem) []string {
+func (s *StatsdTimerStatItem) Out(fmatter FormatterItem, tags []AccumulatorTags) []string {
 	pref := "stats.timers"
 	f_key := pref + "." + s.InKey
 
@@ -200,41 +202,50 @@ func (s *StatsdTimerStatItem) Out(fmatter FormaterItem) []string {
 
 type StatsdAccumulate struct {
 	StatsdStats map[string]StatItem
-	OutFormat   FormaterItem
+	OutFormat   FormatterItem
+	InTags      []AccumulatorTags
 
 	mu sync.Mutex
+}
+
+func (s *StatsdAccumulate) Tags() []AccumulatorTags {
+	return s.InTags
+}
+
+func (s *StatsdAccumulate) SetTags(tags []AccumulatorTags) {
+	s.InTags = tags
 }
 
 func (s *StatsdAccumulate) Stats() map[string]StatItem {
 	return s.StatsdStats
 }
 
-func NewStatsdAccumulate(fmatter FormaterItem) (*StatsdAccumulate, error) {
+func NewStatsdAccumulate() (*StatsdAccumulate, error) {
+	return new(StatsdAccumulate), nil
+}
 
-	acc := &StatsdAccumulate{
-		StatsdStats: make(map[string]StatItem),
-		OutFormat:   fmatter,
-	}
-
-	return acc, nil
+func (a *StatsdAccumulate) Init(fmatter FormatterItem) error {
+	a.OutFormat = fmatter
+	a.StatsdStats = make(map[string]StatItem)
+	return nil
 }
 
 func (a *StatsdAccumulate) Name() (name string) { return STATD_ACC_NAME }
 
-func (a *StatsdAccumulate) Reset() {
+func (a *StatsdAccumulate) Reset() error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
 	a.StatsdStats = nil
 	a.StatsdStats = make(map[string]StatItem)
-
+	return nil
 }
 
 func (a *StatsdAccumulate) Flush() []string {
 	base := []string{}
 	a.mu.Lock()
 	for _, stats := range a.StatsdStats {
-		base = append(base, stats.Out(a.OutFormat)...)
+		base = append(base, stats.Out(a.OutFormat, a.Tags())...)
 	}
 	a.mu.Unlock()
 	a.Reset()
@@ -262,6 +273,15 @@ func (a *StatsdAccumulate) ProcessLine(line string) (err error) {
 
 	sample := float64(1.0)
 	val := val_type[0]
+
+	//special gauge types based on val
+	if c_type == "g" {
+		if strings.Contains("-", val) {
+			c_type = "-g"
+		} else if strings.Contains("+", val) {
+			c_type = "+g"
+		}
+	}
 
 	f_val, err := strconv.ParseFloat(val, 64)
 	if err != nil {

@@ -9,8 +9,10 @@ import (
 
 func TestStatsdAccumulator(t *testing.T) {
 	// Only pass t into top-level Convey calls
-	grp := new(GraphiteFormater)
-	statter, err := NewStatsdAccumulate(grp)
+	grp, err := NewFormatterItem("graphite")
+	statter, err := NewAccumulatorItem("statsd")
+	statter.Init(grp)
+
 	Convey("Given an StatsdAccumulate w/ Graphite Formatter", t, func() {
 
 		Convey("Error should be nil", func() {
@@ -52,6 +54,8 @@ func TestStatsdAccumulator(t *testing.T) {
 		})
 
 		err = statter.ProcessLine("moo.goo.org:1|g")
+		err = statter.ProcessLine("moo.goo.org:+1|g")
+		err = statter.ProcessLine("moo.goo.org:-5|g")
 		Convey("`moo.goo.org.gauge:1|g` should not fail", func() {
 			So(err, ShouldEqual, nil)
 		})
@@ -86,17 +90,25 @@ func TestStatsdAccumulator(t *testing.T) {
 		})
 
 	})
-
-	statter.OutFormat = new(StatsdFormater)
+	stsfmt, err := NewFormatterItem("statsd")
+	statter.Init(stsfmt)
 	Convey("Set the formatter to Statsd ", t, func() {
 
 		err = statter.ProcessLine("moo.goo.org:1|c")
 		Convey("statsd out: `moo.goo.org:1|c` should not fail", func() {
 			So(err, ShouldEqual, nil)
 		})
+		err = statter.ProcessLine("moo.goo.org:1")
+		Convey("statsd out: `moo.goo.org:1` should not fail", func() {
+			So(err, ShouldEqual, nil)
+		})
+
 		err = statter.ProcessLine("moo.goo.org:1|g")
 		Convey("statsd out: `moo.goo.org:1|g` should not fail", func() {
 			So(err, ShouldEqual, nil)
+		})
+		Convey("statsd out: type ", func() {
+			So(stsfmt.Type(), ShouldEqual, "statsd_formater")
 		})
 		err = statter.ProcessLine("moo.goo.org:1|ms|@0.1")
 		Convey("statsd out: `moo.goo.org:1|ms|@0.1` should not fail", func() {
@@ -111,14 +123,22 @@ func TestStatsdAccumulator(t *testing.T) {
 			So(len(b_arr), ShouldBeGreaterThan, 3)
 		})
 		got_timer := ""
+		have_upper := ""
 		for _, item := range b_arr {
 			t.Logf("Statsd Line: %s", item)
 			if strings.Contains(item, "stats.timers") {
 				got_timer = item
 			}
+			if strings.Contains(item, "moo.goo.org.upper_95:10.000000|g") {
+				have_upper = item
+			}
+
 		}
 		Convey("Statsd should not have stats.timers ", func() {
 			So(len(got_timer), ShouldEqual, 0)
+		})
+		Convey("Statsd should not have proper upper_95 ", func() {
+			So(len(have_upper), ShouldNotEqual, 0)
 		})
 	})
 }

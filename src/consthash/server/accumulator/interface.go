@@ -9,19 +9,24 @@ package accumulator
 type StatItem interface {
 	Key() string
 	Type() string
-	Out(fmatter FormaterItem) []string
+	Out(fmatter FormatterItem, tags []AccumulatorTags) []string
 	Accumulate(val float64) error
 }
 
 type AccumulatorItem interface {
+	Init(FormatterItem) error
 	Stats() map[string]StatItem
 	Flush() []string
 	Name() string
 	ProcessLine(string) error
 	Reset() error
+	Tags() []AccumulatorTags
+	SetTags([]AccumulatorTags)
 }
 
-type FormaterItem interface {
-	ToString(key string, val float64, tstamp int32, stats_type string, tags map[string]string) string
+type FormatterItem interface {
+	ToString(key string, val float64, tstamp int32, stats_type string, tags []AccumulatorTags) string
 	Type() string
+
+	Init(...string) error
 }

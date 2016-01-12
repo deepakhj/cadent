@@ -14,6 +14,37 @@ import (
 /****************** RUNNERS *********************/
 const GRAPHITE_NAME = "graphite"
 
+type GraphiteSplitItem struct {
+	inkey    string
+	inline   string
+	infields []string
+	inphase  Phase
+}
+
+func (g *GraphiteSplitItem) Key() string {
+	return g.inkey
+}
+
+func (g *GraphiteSplitItem) Line() string {
+	return g.inline
+}
+
+func (g *GraphiteSplitItem) Fields() []string {
+	return g.infields
+}
+
+func (g *GraphiteSplitItem) Phase() Phase {
+	return g.inphase
+}
+
+func (g *GraphiteSplitItem) SetPhase(n Phase) {
+	g.inphase = n
+}
+
+func (g *GraphiteSplitItem) IsValid() bool {
+	return len(g.inline) > 0
+}
+
 type GraphiteSplitter struct {
 	key_index int
 }
@@ -33,13 +64,19 @@ func NewGraphiteSplitter(conf map[string]interface{}) (*GraphiteSplitter, error)
 	return job, nil
 }
 
-func (job *GraphiteSplitter) ProcessLine(line string) (key string, orig_line string, err error) {
+func (job *GraphiteSplitter) ProcessLine(line string) (SplitItem, error) {
 	//<key> <value> <time> <more> <more>
 	//graphite_array := strings.Fields(line)
 	graphite_array := strings.Split(line, " ")
 	if len(graphite_array) > job.key_index {
-		return graphite_array[job.key_index], line, nil
+		gi := &GraphiteSplitItem{
+			inkey:    graphite_array[job.key_index],
+			inline:   line,
+			infields: graphite_array,
+			inphase:  Parsed,
+		}
+		return gi, nil
 	}
-	return "", "", fmt.Errorf("Invalid Graphite/Space line")
+	return nil, fmt.Errorf("Invalid Graphite/Space line")
 
 }

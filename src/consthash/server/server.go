@@ -1,5 +1,26 @@
 /*
-   The server we listen for our data
+   Pretty much the main work hourse
+
+   ties the lot together
+
+   Listener -> [PreReg] -> Backend -> Hasher -> [Replicator] -> NetPool -> Out
+
+   Optional items are in the `[]`
+
+   If we are using accumulators to basically "be" a graphite aggregator or statsd aggregator the flow is a bit
+   Different
+
+   Listener
+   	-> PreReg (for rejection processing)
+   	-> Accumulator
+   		-> `Flush`
+   		-> PreReg (again as the accumulator can generate "more" keys, statsd timers for instance)
+   			-> Backend
+   			-> Hasher
+   				-> [Replicator]
+   				-> Netpool
+   				-> Out
+
 */
 
 package consthash
@@ -284,7 +305,7 @@ type Server struct {
 	ticker time.Duration
 
 	//input queue for incoming lines
-	InputQueue chan string
+	InputQueue chan splitter.SplitItem
 
 	//workers and ques sizes
 	WorkQueue   chan *SendOut
@@ -344,6 +365,12 @@ func (server *Server) TrapExit() {
 		if ins.ListenURL != nil && ins.ListenURL.Scheme == "unix" {
 			os.Remove("/" + ins.ListenURL.Host + ins.ListenURL.Path)
 		}
+
+		//shut this guy down too
+		if ins.PreRegFilter.Accumulator != nil {
+			ins.PreRegFilter.Accumulator.Stop()
+		}
+
 		ins.ShutDown <- true
 
 		signal.Stop(sc)
@@ -367,21 +394,8 @@ func (server *Server) SetPushMethod() pushFunction {
 }
 
 func (server *Server) SetSplitterProcessor() (splitter.Splitter, error) {
-	msg_type := server.SplitterTypeString
-
-	var runn splitter.Splitter
-	var err error = nil
-	switch {
-	case msg_type == "statsd":
-		runn, err = splitter.NewStatsdSplitter(server.SplitterConfig)
-	case msg_type == "graphite":
-		runn, err = splitter.NewGraphiteSplitter(server.SplitterConfig)
-	case msg_type == "regex":
-		runn, err = splitter.NewRegExSplitter(server.SplitterConfig)
-	default:
-		return nil, fmt.Errorf("Failed to configure Splitter, aborting")
-	}
-	server.SplitterProcessor = runn
+	gots, err := splitter.NewSplitterItem(server.SplitterTypeString, server.SplitterConfig)
+	server.SplitterProcessor = gots
 	return server.SplitterProcessor, err
 
 }
@@ -405,7 +419,7 @@ func (server *Server) WorkerOutput() {
 	}
 }
 
-func (server *Server) RunSplitter(key string, line string, out chan string) {
+func (server *Server) SendtoOutputWorkers(spl splitter.SplitItem, out chan splitter.SplitItem) {
 	//direct timer to void leaks (i.e. NOT time.After(...))
 
 	timer := time.NewTimer(server.SplitterTimeout)
@@ -413,7 +427,7 @@ func (server *Server) RunSplitter(key string, line string, out chan string) {
 	defer func() { server.WorkerHold <- -1 }()
 
 	select {
-	case out <- server.PushLine(key, line) + "\n":
+	case out <- server.PushLineToBackend(spl):
 
 		timer.Stop()
 
@@ -421,7 +435,7 @@ func (server *Server) RunSplitter(key string, line string, out chan string) {
 		timer.Stop()
 		stats.StatsdClient.Incr("failed.splitter-timeout", 1)
 		server.FailSendCount.Up(1)
-		server.log.Warning("Timeout %d, %s", len(server.WorkQueue), key)
+		server.log.Warning("Timeout %d, %s", len(server.WorkQueue), spl.Key())
 	}
 }
 
@@ -446,14 +460,14 @@ func (server *Server) HasherCheck(key string) ServerHashCheck {
 }
 
 // the "main" hash chooser for a give line, the attaches it to a sender queue
-func (server *Server) PushLine(key string, line string) string {
+func (server *Server) PushLineToBackend(spl splitter.SplitItem) splitter.SplitItem {
 
 	//replicate the data across our Lists
 	out_str := ""
 	for idx, hasher := range server.Hashers {
 
 		// may have replicas inside the pool too that we need to deal with
-		servs, err := hasher.GetN(key, server.Replicas)
+		servs, err := hasher.GetN(spl.Key(), server.Replicas)
 		if err == nil {
 			for nidx, useme := range servs {
 				// just log the valid lines "once" total ends stats are WorkerValidLineCount
@@ -467,7 +481,7 @@ func (server *Server) PushLine(key string, line string) string {
 				sendOut := &SendOut{
 					outserver: useme,
 					server:    server,
-					param:     line,
+					param:     spl.Line(),
 				}
 
 				server.WorkQueue <- sendOut
@@ -482,7 +496,7 @@ func (server *Server) PushLine(key string, line string) string {
 			out_str += "failed"
 		}
 	}
-	return out_str
+	return spl
 
 }
 
@@ -560,7 +574,7 @@ func NewServer(cfg *Config) (server *Server, err error) {
 
 	// if there's a PreReg assign to the server
 	if cfg.PreRegFilter != nil {
-		// the config should have checked this already, but just incase
+		// the config should have checked this already, but just in case
 		if cfg.ListenStr == "backend_only" {
 			return nil, fmt.Errorf("Backend Only cannot have PreReg filters")
 		}
@@ -584,7 +598,7 @@ func NewServer(cfg *Config) (server *Server, err error) {
 
 	} else if cfg.ListenURL.Scheme == "http" {
 
-		//http is yet another "specail" case, client HTTP does the hard work
+		//http is yet another "special" case, client HTTP does the hard work
 
 	} else {
 		var conn net.Listener
@@ -882,9 +896,57 @@ func (server *Server) AddStatusHandlers() {
 	http.HandleFunc(fmt.Sprintf("/%s/stats/", server.Name), stats)
 	http.HandleFunc(fmt.Sprintf("/%s/stats", server.Name), stats)
 
-	//admin like functions
+	//admin like functions to add and remove servers to a hashring
 	http.HandleFunc(fmt.Sprintf("/%s/addserver", server.Name), addnode)
 	http.HandleFunc(fmt.Sprintf("/%s/purgeserver", server.Name), purgenode)
+
+}
+
+// Takes a split item and processes it, all clients need to call this to actually "do" something
+// once things are split from the incoming
+func (server *Server) ProcessSplitItem(splitem splitter.SplitItem, out_queue chan splitter.SplitItem) error {
+
+	// based on the Key we get re may need to redirect this to another backend
+	// due to the PreReg items
+	// so you may ask why Here and not before the InputQueue
+	// 1. back pressure
+	// 2. input queue buffering
+	// 3. Incoming lines gets sucked in faster before (and "return ok") quickly
+
+	// if the split item has "already been parsed" we DO NOT send it here (AccumulatedParsed)
+	// instead we send it to the Worker output queues
+
+	// nothing to see here move along
+	if server.PreRegFilter == nil {
+		server.SendtoOutputWorkers(splitem, out_queue)
+		return nil
+	}
+
+	//if we've already done the AccumulatedParsed then we do a final pregre
+	// on the new items then direct send, otherwise if there is an Accumulator
+	// we send to that
+	accumulate := splitem.Phase() != splitter.AccumulatedParsed && server.PreRegFilter.Accumulator != nil
+	if accumulate {
+		return server.PreRegFilter.Accumulator.ProcessSplitItem(splitem)
+	}
+
+	// match on the KEY not the entire string
+	use_backend, reject, _ := server.PreRegFilter.FirstMatchBackend(splitem.Key())
+
+	//if server.PreRegFilter
+	if reject {
+		stats.StatsdClient.Incr(fmt.Sprintf("prereg.backend.reject.%s", use_backend), 1)
+		server.RejectedLinesCount.Up(1)
+	} else if use_backend != server.Name {
+		// redirect to another input queue
+		stats.StatsdClient.Incr(fmt.Sprintf("prereg.backend.redirect.%s", use_backend), 1)
+		server.RedirectedLinesCount.Up(1)
+		// send to different backend to "repeat" this process
+		SERVER_BACKENDS.Send(use_backend, splitem)
+	} else {
+		server.SendtoOutputWorkers(splitem, out_queue)
+	}
+	return nil
 
 }
 
@@ -938,7 +1000,7 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, done chan Client) 
 	// the main Server input Queue should be larger then the UDP case as we can have many TCP clients
 	// and only one UDP client
 
-	out_queue := make(chan string, server.Workers)
+	out_queue := make(chan splitter.SplitItem, server.Workers)
 	defer close(out_queue)
 
 	// tells the Acceptor to "sleep" incase we need to apply some back pressure
@@ -947,8 +1009,9 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, done chan Client) 
 	defer close(server.back_pressure)
 
 	run := func() {
-		for line := range server.InputQueue {
-			l_len := (int64)(len(line))
+		// consume the input queue of lines
+		for splitem := range server.InputQueue {
+			l_len := (int64)(len(splitem.Line()))
 			server.AddToCurrentTotalBufferSize(l_len)
 
 			if server.NeedBackPressure() {
@@ -959,36 +1022,7 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, done chan Client) 
 				server.BackPressure()
 			}
 
-			key, procline, err := server.SplitterProcessor.ProcessLine(strings.Trim(line, "\n\t "))
-
-			if err == nil {
-				//based on the Key we get re may need to redirect this to another backend
-				// due to the PreReg items
-				// so you may ask why Here and not before the InputQueue, well backpressure, and we need to
-				// we also want to make sure the NetConn gets sucked in faster before the processing
-				// match on the KEY not the entire string
-				if server.PreRegFilter != nil {
-					use_backend, reject, _ := server.PreRegFilter.FirstMatchBackend(key)
-					if reject {
-						stats.StatsdClient.Incr(fmt.Sprintf("prereg.backend.reject.%s", use_backend), 1)
-						server.RejectedLinesCount.Up(1)
-					} else if use_backend != server.Name {
-						// redirect to another input queue
-						stats.StatsdClient.Incr(fmt.Sprintf("prereg.backend.redirect.%s", use_backend), 1)
-						server.RedirectedLinesCount.Up(1)
-
-						SERVER_BACKENDS.Send(use_backend, procline)
-					} else {
-						server.RunSplitter(key, procline, out_queue)
-					}
-				} else {
-					server.RunSplitter(key, procline, out_queue)
-				}
-				server.RunSplitter(key, procline, out_queue)
-			}
-
-			server.AllLinesCount.Up(1)
-			stats.StatsdClient.Incr("incoming.tcp.lines", 1)
+			server.ProcessSplitItem(splitem, out_queue)
 			server.AddToCurrentTotalBufferSize(-l_len)
 		}
 	}
@@ -1036,7 +1070,7 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, done chan Client) 
 // different mechanism for UDP servers
 func (server *Server) startUDPServer(hashers *[]*ConstHasher, done chan Client) {
 
-	//just need on "client" here as we simply just pull from the socket
+	//just need one "client" here as we simply just pull from the socket
 	client := NewUDPClient(server, hashers, server.UDPConn, done)
 	client.SetBufferSize((int)(server.ClientReadBufferSize))
 
@@ -1062,7 +1096,9 @@ func (server *Server) startUDPServer(hashers *[]*ConstHasher, done chan Client) 
 	}
 }
 
-// different mechanism for http servers
+// different mechanism for http servers much like UDP,
+// client connections are handled by the golang http client bits so it appears
+// as "one" client to us
 func (server *Server) startHTTPServer(hashers *[]*ConstHasher, done chan Client) {
 
 	client, err := NewHTTPClient(server, hashers, server.ListenURL, done)
@@ -1095,26 +1131,22 @@ func (server *Server) startHTTPServer(hashers *[]*ConstHasher, done chan Client)
 
 func (server *Server) startBackendServer(hashers *[]*ConstHasher, done chan Client) {
 
-	out_queue := make(chan string, server.Workers)
+	out_queue := make(chan splitter.SplitItem, server.Workers)
 	defer close(out_queue)
 
 	// start the "backend only loop"
 	run := func() {
-		for line := range server.InputQueue {
-			l_len := (int64)(len(line))
+		for splitem := range server.InputQueue {
+			l_len := (int64)(len(splitem.Line()))
 			server.AddToCurrentTotalBufferSize(l_len)
-			key, procline, err := server.SplitterProcessor.ProcessLine(strings.Trim(line, "\n\t "))
-			if err == nil {
-				//backends DO NOT need a PreReg filter as they can only be delgated to and delegate
-				server.RunSplitter(key, procline, out_queue)
-			}
+			server.ProcessSplitItem(splitem, out_queue)
 			server.AllLinesCount.Up(1)
 			stats.StatsdClient.Incr("incoming.backend.lines", 1)
 			stats.StatsdClient.Incr(fmt.Sprintf("incoming.backend.%s.lines", server.Name), 1)
 			server.AddToCurrentTotalBufferSize(-l_len)
 		}
-
 	}
+
 	//fire up the workers
 	for w := int64(1); w <= server.Workers; w++ {
 		go run()
@@ -1123,7 +1155,7 @@ func (server *Server) startBackendServer(hashers *[]*ConstHasher, done chan Clie
 	for {
 		select {
 		case l := <-out_queue:
-			if len(l) == 0 {
+			if len(l.Line()) == 0 {
 				return
 			}
 		case workerUpDown := <-server.WorkerHold:
@@ -1177,7 +1209,7 @@ func (server *Server) StartServer() {
 	defer close(server.WorkQueue)
 
 	//input queue
-	server.InputQueue = make(chan string, server.Workers)
+	server.InputQueue = make(chan splitter.SplitItem, server.Workers)
 	defer close(server.InputQueue)
 
 	//set the push method (the WorkerOutput depends on it)
@@ -1197,7 +1229,7 @@ func (server *Server) StartServer() {
 	SERVER_BACKENDS.Add(server.Name, server)
 
 	if server.ListenURL == nil {
-		// just the little queue listener
+		// just the little queue listener for pre-reg only redirects
 		server.startBackendServer(&server.Hashers, done)
 	} else if server.UDPConn != nil {
 		server.startUDPServer(&server.Hashers, done)

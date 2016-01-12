@@ -11,6 +11,36 @@ import (
 
 const REGEX_NAME = "regex"
 
+type RegexSplitItem struct {
+	inkey   string
+	inline  string
+	regexed [][]string
+	inphase Phase
+}
+
+func (g *RegexSplitItem) Key() string {
+	return g.inkey
+}
+
+func (g *RegexSplitItem) Line() string {
+	return g.inline
+}
+
+func (g *RegexSplitItem) Fields() []string {
+	return g.regexed[0]
+}
+
+func (g *RegexSplitItem) Phase() Phase {
+	return g.inphase
+}
+func (g *RegexSplitItem) SetPhase(n Phase) {
+	g.inphase = n
+}
+
+func (g *RegexSplitItem) IsValid() bool {
+	return len(g.inline) > 0
+}
+
 type RegExSplitter struct {
 	key_regex       *regexp.Regexp
 	key_regex_names []string
@@ -37,21 +67,27 @@ func NewRegExSplitter(conf map[string]interface{}) (*RegExSplitter, error) {
 	return job, nil
 }
 
-func (job *RegExSplitter) ProcessLine(line string) (key string, orig_line string, err error) {
+func (job *RegExSplitter) ProcessLine(line string) (SplitItem, error) {
 	var key_param string
 
 	matched := job.key_regex.FindAllStringSubmatch(line, -1)
 	if matched == nil {
-		return "", "", fmt.Errorf("Regex not matched")
+		return nil, fmt.Errorf("Regex not matched")
 	}
 	if len(matched[0]) < (job.key_index + 1) {
-		return "", "", fmt.Errorf("Named matches not found")
+		return nil, fmt.Errorf("Named matches not found")
 	}
 	key_param = matched[0][job.key_index+1] // first string is always the original string
 
 	if len(key_param) > 0 {
-		return key_param, line, nil
+		ri := &RegexSplitItem{
+			inkey:   key_param,
+			inline:  line,
+			regexed: matched,
+			inphase: Parsed,
+		}
+		return ri, nil
 	}
-	return "", "", fmt.Errorf("Invalid Regex (cannot find key) line")
+	return nil, fmt.Errorf("Invalid Regex (cannot find key) line")
 
 }

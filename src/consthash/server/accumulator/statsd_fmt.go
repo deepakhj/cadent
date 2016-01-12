@@ -12,10 +12,13 @@ import (
 /****************** RUNNERS *********************/
 const STATSD_FMT_NAME = "statsd_formater"
 
-type StatsdFormater struct{}
+type StatsdFormatter struct{}
 
-func (g *StatsdFormater) Type() string { return STATSD_FMT_NAME }
-func (g *StatsdFormater) ToString(key string, val float64, tstamp int32, stats_type string, tags map[string]string) string {
+func (g *StatsdFormatter) Init(items ...string) error {
+	return nil
+}
+func (g *StatsdFormatter) Type() string { return STATSD_FMT_NAME }
+func (g *StatsdFormatter) ToString(key string, val float64, tstamp int32, stats_type string, tags []AccumulatorTags) string {
 
 	if stats_type == "" {
 		stats_type = "c"

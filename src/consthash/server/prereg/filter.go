@@ -1,6 +1,7 @@
 package prereg
 
 import (
+	"consthash/server/accumulator"
 	"fmt"
 	"regexp"
 	"strings"
@@ -138,6 +139,46 @@ func (refilter *RegexFilter) ToString() string {
 	)
 }
 
+/**********************   no-op filter ***********************/
+type NoOpFilter struct {
+	backend  string `json:"backend"`
+	IsReject bool   `json:"is_rejected"`
+}
+
+func (nop *NoOpFilter) Name() string {
+	return "NoOp"
+}
+func (nop *NoOpFilter) Type() string {
+	return "noop"
+}
+func (nop *NoOpFilter) Rejecting() bool {
+	return false
+}
+func (nop *NoOpFilter) Init() error {
+	return nil
+}
+func (nop *NoOpFilter) Match(in string) (bool, bool, error) {
+	return true, false, nil
+}
+
+func (nop *NoOpFilter) Backend() string {
+	return nop.backend
+}
+
+func (nop *NoOpFilter) SetBackend(back string) (string, error) {
+	nop.backend = back
+	return back, nil
+}
+func (nop *NoOpFilter) ToString() string {
+	return fmt.Sprintf(
+		"Type: `%-6s` Match:`%-30s` Rejected: `%v` Backend: `%s`",
+		nop.Type(),
+		nop.Name(),
+		nop.Rejecting(),
+		nop.Backend(),
+	)
+}
+
 /**********************  filter list ***********************/
 
 type PreReg struct {
@@ -147,7 +188,8 @@ type PreReg struct {
 	// the actual "listening" server that this reg is pinned to
 	ListenServer string `json:listen_server_name`
 
-	FilterList []FilterItem `json:"map"`
+	FilterList  []FilterItem             `json:"map"`
+	Accumulator *accumulator.Accumulator `json:"accumulator"`
 }
 
 func (pr *PreReg) MatchingFilters(line string) []FilterItem {
@@ -188,6 +230,10 @@ func (pr *PreReg) LogConfig() {
 	log.Debug("   - Pinned To Listener: %s", pr.ListenServer)
 	for idx, filter := range pr.FilterList {
 		log.Debug("   - PreFilter %2d:: %s", idx, filter.ToString())
+	}
+	if pr.Accumulator != nil {
+		log.Debug("   - PreFilter Accumulator")
+		pr.Accumulator.LogConfig()
 	}
 }
 

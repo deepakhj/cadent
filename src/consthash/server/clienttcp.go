@@ -9,8 +9,10 @@ import (
 	"bufio"
 	//"log"
 	"consthash/server/splitter"
+	"consthash/server/stats"
 	"net"
 	"reflect"
+	"strings"
 )
 
 const TCP_BUFFER_SIZE = 1048576
@@ -29,8 +31,8 @@ type TCPClient struct {
 	writer *bufio.Writer
 	reader *bufio.Reader
 
-	out_queue    chan string
-	input_queue  chan string
+	out_queue    chan splitter.SplitItem
+	input_queue  chan splitter.SplitItem
 	done         chan Client
 	worker_queue chan *SendOut
 }
@@ -39,7 +41,7 @@ func NewTCPClient(server *Server,
 	hashers *[]*ConstHasher,
 	conn net.Conn,
 	done chan Client,
-	out_queue chan string) *TCPClient {
+	out_queue chan splitter.SplitItem) *TCPClient {
 
 	client := new(TCPClient)
 	client.server = server
@@ -85,7 +87,7 @@ func (client *TCPClient) Hashers() (server *[]*ConstHasher) {
 func (client *TCPClient) WorkerQueue() chan *SendOut {
 	return client.worker_queue
 }
-func (client *TCPClient) InputQueue() chan string {
+func (client *TCPClient) InputQueue() chan splitter.SplitItem {
 	return client.input_queue
 }
 
@@ -113,14 +115,21 @@ func (client *TCPClient) handleRequest() {
 		if len(line) == 0 {
 			continue
 		}
+		client.server.AllLinesCount.Up(1)
+		splitem, err := client.server.SplitterProcessor.ProcessLine(strings.Trim(line, "\n\t "))
+		if err != nil {
+			//this will block once the queue is full
+			client.input_queue <- splitem
+			stats.StatsdClient.Incr("incoming.tcp.invalidlines", 1)
+		} else {
+			stats.StatsdClient.Incr("incoming.tcp.invalidlines", 1)
+		}
 
-		//this will block once the queue is full
-		client.input_queue <- line
 	}
 
 	buf = nil
 	//close it and end the send routing
-	client.out_queue <- ""
+	client.out_queue <- splitter.BlankSplitterItem()
 	client.done <- client
 
 }
@@ -128,7 +137,8 @@ func (client *TCPClient) handleRequest() {
 func (client *TCPClient) handleSend() {
 	//just "bleed" it
 	for {
-		if len(<-client.out_queue) == 0 {
+		message := <-client.out_queue
+		if !message.IsValid() {
 			return
 		}
 	}

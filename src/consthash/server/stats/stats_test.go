@@ -48,6 +48,8 @@ func TestStatsCounter(t *testing.T) {
 		Convey("Reset should take us to 0", func() {
 			So(ctr.TotalCount.Get(), ShouldEqual, 0)
 			So(ctr.TickCount.Get(), ShouldEqual, 0)
+			So(ctr.TotalRate(rt), ShouldEqual, 0)
+			So(ctr.Rate(rt), ShouldEqual, 0)
 		})
 		ctr.Up(1)
 		ctr.ResetTick()

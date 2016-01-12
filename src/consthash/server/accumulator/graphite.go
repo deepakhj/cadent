@@ -87,7 +87,7 @@ type GraphiteBaseStatItem struct {
 
 func (s *GraphiteBaseStatItem) Type() string { return s.InType }
 func (s *GraphiteBaseStatItem) Key() string  { return s.InKey }
-func (s *GraphiteBaseStatItem) Out(fmatter FormaterItem) []string {
+func (s *GraphiteBaseStatItem) Out(fmatter FormatterItem, tags []AccumulatorTags) []string {
 	val := GRAPHITE_ACC_FUN[s.ReduceFunc](s.Values)
 	return []string{
 		fmatter.ToString(
@@ -95,7 +95,7 @@ func (s *GraphiteBaseStatItem) Out(fmatter FormaterItem) []string {
 			val,
 			0, // let formatter handle the time,
 			"c",
-			nil,
+			tags,
 		),
 	}
 }
@@ -116,41 +116,50 @@ func (s *GraphiteBaseStatItem) Accumulate(val float64) error {
 
 type GraphiteAccumulate struct {
 	GraphiteStats map[string]StatItem
-	OutFormat     FormaterItem
+	OutFormat     FormatterItem
+	InTags        []AccumulatorTags
 
 	mu sync.Mutex
+}
+
+func NewGraphiteAccumulate() (*GraphiteAccumulate, error) {
+	return new(GraphiteAccumulate), nil
+}
+
+func (s *GraphiteAccumulate) Tags() []AccumulatorTags {
+	return s.InTags
+}
+
+func (s *GraphiteAccumulate) SetTags(tags []AccumulatorTags) {
+	s.InTags = tags
+}
+
+func (s *GraphiteAccumulate) Init(fmatter FormatterItem) error {
+	s.OutFormat = fmatter
+	s.GraphiteStats = make(map[string]StatItem)
+	return nil
 }
 
 func (s *GraphiteAccumulate) Stats() map[string]StatItem {
 	return s.GraphiteStats
 }
 
-func NewGraphiteAccumulate(fmatter FormaterItem) (*GraphiteAccumulate, error) {
-
-	acc := &GraphiteAccumulate{
-		GraphiteStats: make(map[string]StatItem),
-		OutFormat:     fmatter,
-	}
-
-	return acc, nil
-}
-
 func (a *GraphiteAccumulate) Name() (name string) { return GRAPHITE_ACC_NAME }
 
-func (a *GraphiteAccumulate) Reset() {
+func (a *GraphiteAccumulate) Reset() error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
 	a.GraphiteStats = nil
 	a.GraphiteStats = make(map[string]StatItem)
-
+	return nil
 }
 
 func (a *GraphiteAccumulate) Flush() []string {
 	base := []string{}
 	a.mu.Lock()
 	for _, stats := range a.GraphiteStats {
-		base = append(base, stats.Out(a.OutFormat)...)
+		base = append(base, stats.Out(a.OutFormat, a.Tags())...)
 	}
 	a.mu.Unlock()
 	a.Reset()
@@ -181,22 +190,20 @@ func (a *GraphiteAccumulate) ProcessLine(line string) (err error) {
 	gots, ok := a.GraphiteStats[stat_key]
 	a.mu.Unlock()
 
-	def_agg := "avg"
-
-	//some "tricks" to get the correct agg fun
-	if strings.Contains(key, ".lower") || strings.Contains(key, ".min") {
-		def_agg = "min"
-	} else if strings.Contains(key, ".upper") || strings.Contains(key, ".max") {
-		def_agg = "max"
-	} else if strings.Contains(key, ".sum") {
-		def_agg = "sum"
-	} else if strings.Contains(key, ".gauges") || strings.Contains(key, ".abs") {
-		def_agg = "last"
-	} else if strings.Contains(key, ".counters") || strings.Contains(key, ".count") {
-		def_agg = "sum"
-	}
-
 	if !ok {
+		def_agg := "avg"
+		//some "tricks" to get the correct agg fun
+		if strings.Contains(key, ".lower") || strings.Contains(key, ".min") {
+			def_agg = "min"
+		} else if strings.Contains(key, ".upper") || strings.Contains(key, ".max") {
+			def_agg = "max"
+		} else if strings.Contains(key, ".sum") {
+			def_agg = "sum"
+		} else if strings.Contains(key, ".gauges") || strings.Contains(key, ".abs") || strings.Contains(key, ".absolute") {
+			def_agg = "last"
+		} else if strings.Contains(key, ".counters") || strings.Contains(key, ".count") || strings.Contains(key, ".errors") {
+			def_agg = "sum"
+		}
 		gots = &GraphiteBaseStatItem{
 			InType:     "graphite",
 			InKey:      key,

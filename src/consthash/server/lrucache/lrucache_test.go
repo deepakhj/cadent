@@ -44,6 +44,8 @@ func TestLRUCache(t *testing.T) {
 				tv := TValue(st)
 				lru.Set(st, tv)
 			}
+			// "updateinplace"
+			lru.Set(strs[6], TValue(strs[6]))
 			So(lru.size, ShouldEqual, size)
 			So(lru.size < insize, ShouldBeTrue)
 		})

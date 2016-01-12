@@ -7,8 +7,10 @@ import (
 
 func TestGraphiteAccumulator(t *testing.T) {
 	// Only pass t into top-level Convey calls
-	grp := new(GraphiteFormater)
-	statter, err := NewGraphiteAccumulate(grp)
+	grp, err := NewFormatterItem("graphite")
+	statter, err := NewAccumulatorItem("graphite")
+	statter.Init(grp)
+
 	Convey("Given an GraphiteAcc w/ Graphite Formatter", t, func() {
 
 		Convey("Error should be nil", func() {
@@ -54,8 +56,8 @@ func TestGraphiteAccumulator(t *testing.T) {
 		})
 
 	})
-
-	statter.OutFormat = new(StatsdFormater)
+	stsfmt, err := NewFormatterItem("statsd")
+	statter.Init(stsfmt)
 	Convey("Set the formatter to Statsd ", t, func() {
 
 		err = statter.ProcessLine("moo.goo.max 2 123123")

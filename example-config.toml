@@ -38,6 +38,7 @@ pool_buffersize=512
 # 'fnv' -> 32 bit FNV
 # 'fnva' -> 32 bin FNVa -- a faster fnv
 # 'nodejs-hashring' -> an "odd" bitshifting md5 one used by Statsd (nodejs-hashring really)
+# 'mmh3' -> MurmurHash fast hasher .. the one cassandra uses by default
 hasher_algo="md5"
 
 ## Hashing Etls

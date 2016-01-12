@@ -15,6 +15,13 @@ func TestPreRegConfig(t *testing.T) {
 	listen_server="graphite-proxy"
 	default_backend="graphite-proxy"
 
+	[graphite-regex-map.accumulator]
+	backend="graphite-proxy"
+	input_format = "graphite"
+	output_format = "graphite"
+	flush_time = "5s"
+
+
 	# another backend
 	[[graphite-regex-map.map]]
 	#what we're regexed from the input
@@ -90,12 +97,42 @@ func TestPreRegConfig(t *testing.T) {
 			So(pr.FilterList[2].Rejecting(), ShouldEqual, true)
 		})
 	})
+
 	// Only pass t into top-level Convey calls
 	Convey("Given a config string that failes", t, func() {
 		pp := func() { ParseConfigString(fail_str) }
-
-		Convey("should faile", func() {
+		Convey("should fail", func() {
 			So(pp, ShouldPanic)
+		})
+
+	})
+
+	fail_str2 := `[statsd-regex-map]
+	listen_server="statsd-proxy"
+	`
+	Convey("Given a config string that failes again", t, func() {
+		_, err := ParseConfigString(fail_str2)
+		Convey("should fail", func() {
+			So(err, ShouldNotEqual, nil)
+		})
+	})
+
+	Convey("Given a config string that fail a few times", t, func() {
+		fail_str3 := `[statsd-regex-map]
+			default_backend="statsd-proxy"
+		`
+		_, err := ParseConfigString(fail_str3)
+		Convey("should fail", func() {
+			So(err, ShouldNotEqual, nil)
+		})
+
+		fail_str3 = `[statsd-regex-map]
+			default_backend="statsd-proxy"
+			listen_server="statsd-proxy"
+		`
+		_, err = ParseConfigString(fail_str3)
+		Convey("should fail no filters", func() {
+			So(err, ShouldNotEqual, nil)
 		})
 
 	})

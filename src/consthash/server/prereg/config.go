@@ -41,7 +41,7 @@ listen_server="graphite-proxy" # this needs to be an actual SOCKET based server 
     regex="""^servers..*"""
     backend="graphite-proxy"
 
-    # anything that starts with the prefix (in lue of a more expesive regex)
+    # anything that starts with the prefix (in lue of a more expensive regex)
     [[graphite-regex-map.map]]
     prefix="""servers.main-"""
     backend="graphite-statsd"
@@ -76,8 +76,8 @@ import (
 	"github.com/BurntSushi/toml"
 	logging "github.com/op/go-logging"
 
+	accumulator "consthash/server/accumulator"
 	"fmt"
-	"os"
 )
 
 const DEFALT_SECTION_NAME = "prereg"
@@ -93,8 +93,9 @@ type ConfigFilter struct {
 }
 
 type ConfigMap struct {
-	DefaultBackEnd string `toml:"default_backend"`
-	ListenServer   string `toml:"listen_server"`
+	DefaultBackEnd    string                        `toml:"default_backend"`
+	ListenServer      string                        `toml:"listen_server"`
+	ConfigAccumulator accumulator.ConfigAccumulator `toml:"accumulator"` // the accumulator for a given incoming group
 
 	FilterList []ConfigFilter `toml:"map"`
 }
@@ -113,17 +114,33 @@ func (l ListofConfigMaps) ParseConfig() (PreRegMap, error) {
 		pr.ListenServer = cfg.ListenServer
 
 		if len(cfg.DefaultBackEnd) == 0 {
-			log.Critical("Need a default_backend for PreReg filters in `%s`", pr.Name)
-			os.Exit(1)
+			msg := fmt.Sprintf("Need a default_backend for PreReg filters in `%s`", pr.Name)
+			log.Critical(msg)
+			return nil, fmt.Errorf(msg)
 		}
 		if len(cfg.ListenServer) == 0 {
-			log.Critical("Need a listen_server for `%s`", pr.Name)
-			os.Exit(1)
+			msg := fmt.Sprintf("Need a listen_server for `%s`", pr.Name)
+			log.Critical(msg)
+			return nil, fmt.Errorf(msg)
 		}
 
 		if len(cfg.FilterList) == 0 {
-			log.Critical("Need a Some filters for `%s`", pr.Name)
-			os.Exit(1)
+			msg := fmt.Sprintf("Need a Some filters for `%s`", pr.Name)
+			log.Critical(msg)
+			return nil, fmt.Errorf(msg)
+		}
+
+		if len(cfg.ConfigAccumulator.InputFormat) > 0 {
+			acc, err := cfg.ConfigAccumulator.GetAccumulator()
+			if err != nil {
+				log.Critical("%s", err)
+				return nil, err
+			}
+
+			// the verifcation there is really a "backend" that supports the outgoing is done at the server config
+			// manager level
+
+			pr.Accumulator = acc
 		}
 
 		//deal with maps
@@ -163,9 +180,18 @@ func (l ListofConfigMaps) ParseConfig() (PreRegMap, error) {
 				pf.IsReject = cmap.IsReject
 				pf.Init()
 				pr.FilterList[idx] = pf
-			} else {
+			} else if len(cmap.RegEx) > 0 {
 				pf := new(RegexFilter)
 				pf.RegexString = cmap.RegEx
+				pf.backend = cmap.Backend
+				if len(cmap.Backend) == 0 {
+					pf.backend = pr.DefaultBackEnd
+				}
+				pf.IsReject = cmap.IsReject
+				pf.Init()
+				pr.FilterList[idx] = pf
+			} else {
+				pf := new(NoOpFilter)
 				pf.backend = cmap.Backend
 				if len(cmap.Backend) == 0 {
 					pf.backend = pr.DefaultBackEnd
@@ -190,6 +216,7 @@ func ParseConfigFile(filename string) (pr PreRegMap, err error) {
 
 	return lcfg.ParseConfig()
 }
+
 func ParseConfigString(inconf string) (pr PreRegMap, err error) {
 
 	lcfg := make(ListofConfigMaps)
