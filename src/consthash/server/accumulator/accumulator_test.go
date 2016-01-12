@@ -4,6 +4,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"testing"
 	"time"
+	"consthash/server/splitter"
 )
 
 func TestAccumualtorAccumulator(t *testing.T) {
@@ -155,7 +156,7 @@ func TestAccumualtorAccumulator(t *testing.T) {
 		})
 	})
 
-	tickC := make(chan string)
+	tickC := make(chan splitter.SplitItem)
 	statsd_acc.FlushTime = time.Duration(time.Second)
 	statsd_acc.OutputQueue = tickC
 	tt := time.NewTimer(time.Duration(2 * time.Second))
@@ -169,7 +170,7 @@ func TestAccumualtorAccumulator(t *testing.T) {
 		err = statsd_acc.ProcessLine("moo.goo.goo:24|c")
 		err = statsd_acc.ProcessLine("moo.goo.loo:36|c")
 		err = statsd_acc.ProcessLine("moo.goo.loo||||36|c")
-		outs := []string{}
+		outs := []splitter.SplitItem{}
 		t_f := func() {
 			for {
 				select {
