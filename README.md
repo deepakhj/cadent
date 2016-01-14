@@ -79,6 +79,38 @@ The Flow of a given line looks like so
                                                                 [-> Replicator -> Hasher -> OutPool -> Buffer -> outLine(s)]
 Things in `[]` are optional
 
+### Server Types
+
+All inputs and out puts can be tcp, udp, unix socket, or http
+
+tcp -> tcp://127.0.0.1:2003
+udp -> udp://127.0.0.1:8125
+unix -> unix:///my/socket.sock
+http -> http://moo.org/stats
+
+http expects the BODY of the request to basically be the lines
+
+    GET /stats HTTP/1.1
+    Host: moo.org
+    Accept: */*
+    
+    key value thing
+    key value thing2
+    
+### Input line types for no accumulator
+ 
+Graphite: <key> <value> <time>
+Statsd: <key>:<value>|<type>|<samplerate>
+Regex: (<\d+>)?(?P<Timestamp>[A-Z][a-z]+\s+\d+\s\d+:\d+:\d+) (?P<Key>\S+) (?P<Logger>\S+):(.*)
+
+ - note: regex need a `(?P<Key>...)` group to function as that will be the hashing key, other fields are ignored
+
+### Input line types for using accumulator
+
+Graphite: <key> <value> <time>
+Statsd: <key>:<value>|<type>|<samplerate>
+
+
 ### Internal Stats
 
 It runs it's own micro stats server so you can ping it for it's internal stats (very lightweight at the moment)
