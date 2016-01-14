@@ -83,10 +83,10 @@ Things in `[]` are optional
 
 All inputs and out puts can be tcp, udp, unix socket, or http
 
-tcp -> tcp://127.0.0.1:2003
-udp -> udp://127.0.0.1:8125
-unix -> unix:///my/socket.sock
-http -> http://moo.org/stats
+    tcp -> tcp://127.0.0.1:2003
+    udp -> udp://127.0.0.1:8125
+    unix -> unix:///my/socket.sock
+    http -> http://moo.org/stats
 
 http expects the BODY of the request to basically be the lines
 
@@ -99,16 +99,16 @@ http expects the BODY of the request to basically be the lines
     
 ### Input line types for no accumulator
  
-Graphite: <key> <value> <time>
-Statsd: <key>:<value>|<type>|<samplerate>
-Regex: (<\d+>)?(?P<Timestamp>[A-Z][a-z]+\s+\d+\s\d+:\d+:\d+) (?P<Key>\S+) (?P<Logger>\S+):(.*)
+    Graphite: <key> <value> <time>
+    Statsd: <key>:<value>|<type>|<samplerate>
+    Regex: (<\d+>)?(?P<Timestamp>[A-Z][a-z]+\s+\d+\s\d+:\d+:\d+) (?P<Key>\S+) (?P<Logger>\S+):(.*)
 
  - note: regex need a `(?P<Key>...)` group to function as that will be the hashing key, other fields are ignored
 
 ### Input line types for using accumulator
 
-Graphite: <key> <value> <time>
-Statsd: <key>:<value>|<type>|<samplerate>
+    Graphite: <key> <value> <time>
+    Statsd: <key>:<value>|<type>|<samplerate>
 
 
 ### Internal Stats
