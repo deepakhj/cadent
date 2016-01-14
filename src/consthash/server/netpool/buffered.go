@@ -8,11 +8,11 @@ package netpool
 import (
 	"fmt"
 	"net"
-	//"os"
-	//"os/signal"
+	"os"
+	"os/signal"
 	"sync"
 	"sync/atomic"
-	//"syscall"
+	"syscall"
 	"time"
 )
 
@@ -97,7 +97,7 @@ func (n *BufferedNetpoolConn) Write(b []byte) (wrote int, err error) {
 		if err != nil {
 			c.Close() // Open will re-open it
 			n.SetConn(nil)
-			log.Warning("Error writing buffer: %s", err)
+			log.Warning("Error writing buffer: %s TimeOut: %d", err)
 			return 0, err
 		}
 		n.writebuffer = []byte("")
@@ -151,31 +151,33 @@ func NewBufferedNetpool(protocal string, name string, buffersize int) *BufferedN
 
 func (n *BufferedNetpool) TrapExit() {
 	//trap kills to flush the buffer
-	/*sigc := make(chan os.Signal, 1)
+	sigc := make(chan os.Signal, 1)
 	signal.Notify(sigc,
 		syscall.SIGINT,
 		syscall.SIGTERM,
 		syscall.SIGQUIT)
 
 	go func(np *BufferedNetpool) {
-		s := <-sigc
-		np.closeLock.Lock()
-		defer np.closeLock.Unlock()
-		log.Warning("Caught %s: Flushing Buffers before quit ", s)
-		atomic.StoreInt32(&np.didclose, 1)
-		defer close(np.pool.free)
-		for i := 0; i < len(np.pool.free); i++ {
-			con := <-np.pool.free
-			con.Flush()
-		}
+		<-sigc
+		/*
+			np.closeLock.Lock()
+			defer np.closeLock.Unlock()
+			log.Warning("Caught %s: Flushing Buffers before quit ", s)
+			atomic.StoreInt32(&np.didclose, 1)
+			defer close(np.pool.free)
+			for i := 0; i < len(np.pool.free); i++ {
+				con := <-np.pool.free
+				con.Flush()
+			}
+		*/
 
 		signal.Stop(sigc)
 		close(sigc)
-
+		return
 		// re-raise it
 		//process, _ := os.FindProcess(os.Getpid())
 		//process.Signal(s)
-	}(n)*/
+	}(n)
 }
 
 func (n *BufferedNetpool) GetMaxConnections() int {

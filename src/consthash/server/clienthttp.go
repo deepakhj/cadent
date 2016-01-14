@@ -130,9 +130,11 @@ func (client *HTTPClient) HttpHandler(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			splitem.SetOrigin(splitter.HTTP)
 			stats.StatsdClient.Incr("incoming.http.lines", 1)
+			client.server.ValidLineCount.Up(1)
 			client.input_queue <- splitem
 			lines += 1
 		} else {
+			client.server.InvalidLineCount.Up(1)
 			stats.StatsdClient.Incr("incoming.http.invalidlines", 1)
 			client.log.Warning("Invalid Line: %s (%s)", err, n_line)
 			continue
@@ -159,18 +161,6 @@ func (client *HTTPClient) run(out_queue chan splitter.SplitItem) {
 
 }
 
-// for when we use the input queue in a non-socket fashion
-func (client *HTTPClient) clientLessRun() {
-	for {
-		select {
-		case splitem := <-client.input_queue:
-			client.server.ProcessSplitItem(splitem, client.out_queue)
-		case <-client.close:
-			return
-		}
-	}
-}
-
 func (client HTTPClient) handleRequest(out_queue chan splitter.SplitItem) {
 
 	// multi http servers needs new muxers
@@ -185,7 +175,7 @@ func (client HTTPClient) handleRequest(out_queue chan splitter.SplitItem) {
 
 	for w := int64(1); w <= client.server.Workers; w++ {
 		go client.run(out_queue)
-		go client.clientLessRun()
+		go client.run(client.out_queue) // bleed out non-socket inputs
 	}
 }
 

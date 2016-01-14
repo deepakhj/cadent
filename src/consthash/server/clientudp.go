@@ -97,14 +97,15 @@ func (client *UDPClient) procLines(line string) {
 		}
 		client.server.AllLinesCount.Up(1)
 		splitem, err := client.server.SplitterProcessor.ProcessLine(n_line)
-
 		//log.Notice("MOOO UDP line: %v MOOO", splitem.Fields())
 		if err == nil {
 			splitem.SetOrigin(splitter.UDP)
 			//client.server.ProcessSplitItem(splitem, client.out_queue)
 			stats.StatsdClient.Incr("incoming.udp.lines", 1)
+			client.server.ValidLineCount.Up(1)
 			client.input_queue <- splitem
 		} else {
+			client.server.InvalidLineCount.Up(1)
 			stats.StatsdClient.Incr("incoming.udp.invalidlines", 1)
 			log.Warning("Invalid Line: %s (%s)", err, n_line)
 			continue
@@ -122,17 +123,6 @@ func (client *UDPClient) run(out_queue chan splitter.SplitItem) {
 	}
 }
 
-// for when we use the input queue in a non-socket fashion
-func (client *UDPClient) clientLessRun() {
-	for {
-		select {
-		case splitem := <-client.input_queue:
-			client.server.ProcessSplitItem(splitem, client.out_queue)
-		case <-client.close:
-			return
-		}
-	}
-}
 func (client *UDPClient) getLines() {
 
 	var buf = make([]byte, client.BufferSize)
@@ -143,7 +133,6 @@ func (client *UDPClient) getLines() {
 		in_str := string(buf[0:rlen])
 		if rlen > 0 {
 			client.procLines(in_str)
-			//client.line_queue <- in_str
 		}
 	}
 }
@@ -151,7 +140,7 @@ func (client *UDPClient) getLines() {
 func (client UDPClient) handleRequest(out_queue chan splitter.SplitItem) {
 	for w := int64(1); w <= client.server.Workers; w++ {
 		go client.run(out_queue)
-		go client.clientLessRun()
+		go client.run(client.out_queue) // bleed out non-socket inputs
 	}
 
 	go client.getLines()

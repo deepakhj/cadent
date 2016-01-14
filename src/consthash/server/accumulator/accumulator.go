@@ -72,7 +72,7 @@ func NewAccumlator(inputtype string, outputtype string) (*Accumulator, error) {
 		Name:            fmt.Sprintf("%s -> %s", inputtype, outputtype),
 		FlushTime:       time.Second,
 		Shutdown:        make(chan bool),
-		LineQueue:       make(chan string),
+		LineQueue:       make(chan string, 10000),
 	}
 
 	// determine the splitter from the formatter item

@@ -238,6 +238,8 @@ type ServerStats struct {
 	CurrentAllLinesCount        int64 `json:"current_all_lines_count"`
 	CurrentRejectedLinesCount   int64 `json:"current_rejected_lines_count"`
 	CurrentRedirectedLinesCount int64 `json:"current_redirected_lines_count"`
+	CurrentBytesReadCount       int64 `json:"current_bytes_read_count"`
+	CurrentBytesWrittenCount    int64 `json:"current_bytes_written_count"`
 
 	ValidLineCountList       []int64 `json:"valid_line_count_list"`
 	WorkerValidLineCountList []int64 `json:"worker_line_count_list"`
@@ -249,6 +251,8 @@ type ServerStats struct {
 	AllLinesCountList        []int64 `json:"all_lines_count_list"`
 	RedirectedCountList      []int64 `json:"redirected_lines_count_list"`
 	RejectedCountList        []int64 `json:"rejected_lines_count_list"`
+	BytesReadCountList       []int64 `json:"bytes_read_count_list"`
+	BytesWrittenCountList    []int64 `json:"bytes_written_count_list"`
 	GoRoutinesList           []int   `json:"go_routines_list"`
 	TicksList                []int64 `json:"ticks_list"`
 
@@ -263,6 +267,8 @@ type ServerStats struct {
 	AllLinesCountPerSec        float32  `json:"all_lines_count_persec"`
 	RedirectedLinesCountPerSec float32  `json:"redirected_lines_count_persec"`
 	RejectedLinesCountPerSec   float32  `json:"rejected_lines_count_persec"`
+	BytesReadCountPerSec       float32  `json:"bytes_read_count_persec"`
+	BytesWrittenCountPerSec    float32  `json:"bytes_written_count_persec"`
 	Listening                  string   `json:"listening"`
 	ServersUp                  []string `json:"servers_up"`
 	ServersDown                []string `json:"servers_down"`
@@ -750,6 +756,8 @@ func (server *Server) StatsTick() {
 	server.stats.AllLinesCount = server.AllLinesCount.TotalCount.Get()
 	server.stats.RedirectedLinesCount = server.RedirectedLinesCount.TotalCount.Get()
 	server.stats.RejectedLinesCount = server.RejectedLinesCount.TotalCount.Get()
+	server.stats.BytesReadCount = server.BytesReadCount.TotalCount.Get()
+	server.stats.BytesWrittenCount = server.BytesWrittenCount.TotalCount.Get()
 
 	server.stats.CurrentValidLineCount = server.ValidLineCount.TickCount.Get()
 	server.stats.CurrentWorkerValidLineCount = server.WorkerValidLineCount.TickCount.Get()
@@ -760,6 +768,8 @@ func (server *Server) StatsTick() {
 	server.stats.CurrentAllLinesCount = server.AllLinesCount.TickCount.Get()
 	server.stats.CurrentRedirectedLinesCount = server.RedirectedLinesCount.TickCount.Get()
 	server.stats.CurrentRejectedLinesCount = server.RejectedLinesCount.TickCount.Get()
+	server.stats.CurrentBytesReadCount = server.BytesReadCount.TickCount.Get()
+	server.stats.CurrentBytesWrittenCount = server.BytesWrittenCount.TickCount.Get()
 
 	server.stats.ValidLineCountList = append(server.stats.ValidLineCountList, server.ValidLineCount.TickCount.Get())
 	server.stats.WorkerValidLineCountList = append(server.stats.WorkerValidLineCountList, server.WorkerValidLineCount.TickCount.Get())
@@ -771,6 +781,8 @@ func (server *Server) StatsTick() {
 	server.stats.AllLinesCountList = append(server.stats.AllLinesCountList, server.AllLinesCount.TickCount.Get())
 	server.stats.RejectedCountList = append(server.stats.RejectedCountList, server.RejectedLinesCount.TickCount.Get())
 	server.stats.RedirectedCountList = append(server.stats.RedirectedCountList, server.RedirectedLinesCount.TickCount.Get())
+	server.stats.BytesReadCountList = append(server.stats.BytesReadCountList, server.BytesReadCount.TickCount.Get())
+	server.stats.BytesWrittenCountList = append(server.stats.BytesWrittenCountList, server.BytesWrittenCount.TickCount.Get())
 	// javascript resolution is ms .. not nanos
 	server.stats.TicksList = append(server.stats.TicksList, int64(t_stamp/int64(time.Millisecond)))
 	server.stats.GoRoutinesList = append(server.stats.GoRoutinesList, runtime.NumGoroutine())
@@ -788,6 +800,8 @@ func (server *Server) StatsTick() {
 		server.stats.RedirectedCountList = server.stats.RedirectedCountList[1:server.NumStats]
 		server.stats.TicksList = server.stats.TicksList[1:server.NumStats]
 		server.stats.GoRoutinesList = server.stats.GoRoutinesList[1:server.NumStats]
+		server.stats.BytesReadCountList = server.stats.BytesReadCountList[1:server.NumStats]
+		server.stats.BytesWrittenCountList = server.stats.BytesWrittenCountList[1:server.NumStats]
 	}
 	server.stats.UpTimeSeconds = int64(elasped_sec)
 	server.stats.CurrentReadBufferSize = server.CurrentReadBufferRam.Get()
@@ -807,8 +821,10 @@ func (server *Server) StatsTick() {
 	server.stats.UnsendableSendCountPerSec = server.UnsendableSendCount.TotalRate(elapsed)
 	server.stats.UnknownSendCountPerSec = server.UnknownSendCount.TotalRate(elapsed)
 	server.stats.AllLinesCountPerSec = server.AllLinesCount.TotalRate(elapsed)
-	server.stats.RejectedLinesCountPerSec = server.RedirectedLinesCount.TotalRate(elapsed)
+	server.stats.RedirectedLinesCountPerSec = server.RedirectedLinesCount.TotalRate(elapsed)
 	server.stats.RejectedLinesCountPerSec = server.RejectedLinesCount.TotalRate(elapsed)
+	server.stats.BytesReadCountPerSec = server.BytesReadCount.TotalRate(elapsed)
+	server.stats.BytesWrittenCountPerSec = server.BytesWrittenCount.TotalRate(elapsed)
 
 	if server.ListenURL == nil {
 		server.stats.Listening = "BACKEND-ONLY"
@@ -1330,7 +1346,7 @@ func (server *Server) startBackendServer(hashers *[]*ConstHasher, done chan Clie
 
 }
 
-// bleed the "non-server-backed" otput qeues as we need that for
+// bleed the "non-server-backed" output queues as we need that for
 // items that get placed on a server queue, but does not originate
 // from a socket (where the output queue is needed for server responses and the like)
 // Backend Servers use this exclusively as there are no sockets
