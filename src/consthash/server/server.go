@@ -26,6 +26,7 @@
 package consthash
 
 import (
+	"consthash/server/broadcast"
 	"consthash/server/netpool"
 	"consthash/server/prereg"
 	"consthash/server/splitter"
@@ -278,6 +279,8 @@ type ServerStats struct {
 	MaxReadBufferSize     int64 `json:"max_read_buffer_size"`
 	InputQueueSize        int   `json:"input_queue_size"`
 	WorkQueueSize         int   `json:"work_queue_size"`
+
+	mu sync.Mutex
 }
 
 // helper object for the json info about a single "key"
@@ -369,7 +372,7 @@ type Server struct {
 
 	//trap some signals yo
 	StopTicker chan bool
-	ShutDown   chan bool
+	ShutDown   broadcast.Broadcaster
 
 	//the push function (polling, direct, etc)
 	PushFunction pushFunction
@@ -440,7 +443,9 @@ func (server *Server) StopServer() {
 			outp.DestroyAll()
 		}
 	}
-	server.ShutDown <- true
+
+	//broadcast die
+	server.ShutDown.Send(true)
 	server.log.Notice("Waiting 5 seconds for pools to empty")
 	time.Sleep(5 * time.Second)
 
@@ -511,11 +516,13 @@ func (server *Server) NeedBackPressure() bool {
 //spins up the queue of go routines to handle outgoing
 func (server *Server) WorkerOutput() {
 
+	shuts := server.ShutDown.Listen()
+	defer shuts.Close()
 	for {
 		select {
 		case j := <-server.WorkQueue:
 			server.PushFunction(j)
-		case <-server.ShutDown:
+		case <-shuts.Ch:
 			return
 		}
 	}
@@ -530,6 +537,8 @@ func (server *Server) SendtoOutputWorkers(spl splitter.SplitItem, out chan split
 	defer func() { server.WorkerHold <- -1 }()
 
 	use_chan := out
+	shuts := server.ShutDown.Listen()
+	defer shuts.Close()
 
 	//IF the item's origin is other, we have to use the "generic" outut processor
 	// as we've lost the originating socket channel
@@ -541,7 +550,7 @@ func (server *Server) SendtoOutputWorkers(spl splitter.SplitItem, out chan split
 	case use_chan <- server.PushLineToBackend(spl):
 
 		timer.Stop()
-	case <-server.ShutDown:
+	case <-shuts.Ch:
 		return
 
 	case <-timer.C:
@@ -727,13 +736,13 @@ func NewServer(cfg *Config) (server *Server, err error) {
 	}
 
 	//the queue is only as big as the workers
-	serv.WorkQueue = make(chan *SendOut, serv.Workers*10)
+	serv.WorkQueue = make(chan *SendOut, serv.Workers)
 
 	//input queue
-	serv.InputQueue = make(chan splitter.SplitItem, serv.Workers*10)
+	serv.InputQueue = make(chan splitter.SplitItem, serv.Workers)
 
 	//input queue
-	serv.ProcessedQueue = make(chan splitter.SplitItem, serv.Workers*10)
+	serv.ProcessedQueue = make(chan splitter.SplitItem, serv.Workers)
 
 	serv.ticker = time.Duration(5) * time.Second
 	return serv, nil
@@ -866,6 +875,7 @@ func (server *Server) tickDisplay() {
 	for {
 		select {
 		case <-ticker.C:
+			server.stats.mu.Lock()
 			server.StatsTick()
 
 			server.log.Info("Server: ValidLineCount: %d", server.ValidLineCount.TotalCount.Get())
@@ -902,6 +912,7 @@ func (server *Server) tickDisplay() {
 			}
 
 			server.ResetTickers()
+			server.stats.mu.Unlock()
 
 		case <-server.StopTicker:
 			return
@@ -1117,6 +1128,9 @@ func (server *Server) ProcessSplitItem(splitem splitter.SplitItem, out_queue cha
 func (server *Server) Accepter() (<-chan net.Conn, error) {
 
 	conns := make(chan net.Conn, server.Workers)
+	shuts := server.ShutDown.Listen()
+	defer shuts.Close()
+
 	go func() {
 		defer func() {
 			server.Connection.Close()
@@ -1124,7 +1138,10 @@ func (server *Server) Accepter() (<-chan net.Conn, error) {
 				os.Remove("/" + server.ListenURL.Host + server.ListenURL.Path)
 			}
 		}()
+
+		defer shuts.Close()
 		defer close(conns)
+
 		for {
 			select {
 			case s := <-server.back_pressure:
@@ -1134,8 +1151,7 @@ func (server *Server) Accepter() (<-chan net.Conn, error) {
 					time.Sleep(server.back_pressure_sleep)
 					server.back_pressure_lock.Unlock()
 				}
-			case <-server.ShutDown:
-				//the defers close us out
+			case <-shuts.Ch:
 				return
 			default:
 				conn, err := server.Connection.Accept()
@@ -1169,6 +1185,9 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, done chan Client) 
 	defer close(server.back_pressure)
 
 	run := func() {
+		shuts_runner := server.ShutDown.Listen()
+		defer shuts_runner.Close()
+
 		// consume the input queue of lines
 		for {
 			select {
@@ -1189,7 +1208,7 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, done chan Client) 
 
 				server.ProcessSplitItem(splitem, server.ProcessedQueue)
 				server.AddToCurrentTotalBufferSize(-l_len)
-			case <-server.ShutDown:
+			case <-shuts_runner.Ch:
 				return
 			}
 		}
@@ -1207,6 +1226,8 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, done chan Client) 
 
 	// this queue is just for "real" TCP sockets
 	tcp_socket_out := make(chan splitter.SplitItem)
+	shuts_client := server.ShutDown.Listen()
+	defer shuts_client.Close()
 	for {
 		select {
 		case conn, ok := <-accepts_queue:
@@ -1219,7 +1240,7 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, done chan Client) 
 
 			go client.handleRequest(tcp_socket_out)
 			go client.handleSend(tcp_socket_out)
-		case <-server.ShutDown:
+		case <-shuts_client.Ch:
 			return
 
 		case workerUpDown := <-server.WorkerHold:
@@ -1249,13 +1270,15 @@ func (server *Server) startUDPServer(hashers *[]*ConstHasher, done chan Client) 
 
 	// this queue is just for "real" TCP sockets
 	udp_socket_out := make(chan splitter.SplitItem)
+	shuts := server.ShutDown.Listen()
+	defer shuts.Close()
 
 	go client.handleRequest(udp_socket_out)
 	go client.handleSend(udp_socket_out)
 
 	for {
 		select {
-		case <-server.ShutDown:
+		case <-shuts.Ch:
 			client.ShutDown()
 			return
 		case workerUpDown := <-server.WorkerHold:
@@ -1285,12 +1308,15 @@ func (server *Server) startHTTPServer(hashers *[]*ConstHasher, done chan Client)
 
 	// this queue is just for "real" TCP sockets
 	http_socket_out := make(chan splitter.SplitItem)
+	shuts := server.ShutDown.Listen()
+	defer shuts.Close()
+
 	go client.handleRequest(http_socket_out)
 	go client.handleSend(http_socket_out)
 
 	for {
 		select {
-		case <-server.ShutDown:
+		case <-shuts.Ch:
 			client.ShutDown()
 			return
 		case workerUpDown := <-server.WorkerHold:
@@ -1310,6 +1336,9 @@ func (server *Server) startHTTPServer(hashers *[]*ConstHasher, done chan Client)
 func (server *Server) startBackendServer(hashers *[]*ConstHasher, done chan Client) {
 
 	// start the "backend only loop"
+	shuts := server.ShutDown.Listen()
+	defer shuts.Close()
+
 	run := func() {
 		for {
 			select {
@@ -1324,7 +1353,7 @@ func (server *Server) startBackendServer(hashers *[]*ConstHasher, done chan Clie
 				stats.StatsdClient.Incr("incoming.backend.lines", 1)
 				stats.StatsdClient.Incr(fmt.Sprintf("incoming.backend.%s.lines", server.Name), 1)
 				server.AddToCurrentTotalBufferSize(-l_len)
-			case <-server.ShutDown:
+			case <-shuts.Ch:
 				return
 			}
 		}
@@ -1337,9 +1366,11 @@ func (server *Server) startBackendServer(hashers *[]*ConstHasher, done chan Clie
 
 	// "socket-less" consumers will eat the ProcessedQueue
 	// just loooop
+	shuts_2 := server.ShutDown.Listen()
+	defer shuts_2.Close()
 	for {
 		select {
-		case <-server.ShutDown:
+		case <-shuts_2.Ch:
 			return
 		}
 	}
@@ -1351,6 +1382,8 @@ func (server *Server) startBackendServer(hashers *[]*ConstHasher, done chan Clie
 // from a socket (where the output queue is needed for server responses and the like)
 // Backend Servers use this exclusively as there are no sockets
 func (server *Server) ConsumeProcessedQueue(qu chan splitter.SplitItem) {
+	shuts := server.ShutDown.Listen()
+	defer shuts.Close()
 	for {
 		select {
 		case l := <-qu:
@@ -1367,7 +1400,7 @@ func (server *Server) ConsumeProcessedQueue(qu chan splitter.SplitItem) {
 			}
 			stats.StatsdClient.GaugeAvg("worker.queue.length", ct)
 			stats.StatsdClient.GaugeAvg(fmt.Sprintf("worker.%s.queue.length", server.Name), ct)
-		case <-server.ShutDown:
+		case <-shuts.Ch:
 			return
 
 		}
@@ -1391,7 +1424,6 @@ func CreateServer(cfg *Config, hashers []*ConstHasher) (*Server, error) {
 	//start tickin'
 	go server.tickDisplay()
 
-	server.ShutDown = make(chan bool)
 	server.TrapExit() //trappers
 
 	// add it to the list of backends available

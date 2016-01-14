@@ -148,8 +148,12 @@ func (client *TCPClient) handleRequest(outqueue chan splitter.SplitItem) {
 func (client *TCPClient) handleSend(outqueue chan splitter.SplitItem) {
 	//just "bleed" it
 	for {
-		message := <-outqueue
-		if message == nil || !message.IsValid() {
+		select {
+		case message := <-outqueue:
+			if message == nil || !message.IsValid() {
+				return
+			}
+		case <-client.close:
 			return
 		}
 	}

@@ -17,6 +17,7 @@ var log = logging.MustGetLogger("netpool")
 
 type Netpool struct {
 	mu                sync.Mutex
+	closeMu           sync.Mutex
 	name              string
 	protocal          string
 	conns             int
@@ -197,19 +198,18 @@ func (n *Netpool) Open() (conn NetpoolConnInterface, err error) {
 
 //add it back to the queue
 func (n *Netpool) Close(conn NetpoolConnInterface) error {
-	if n.free != nil {
-		n.free <- conn
-	}
+	n.free <- conn
 	return nil
 }
 
 //nuke all the connections
 func (n *Netpool) DestroyAll() error {
-
+	n.closeMu.Lock()
+	defer n.closeMu.Unlock()
 	for i := 0; i < len(n.free); i++ {
 		con := <-n.free
 		con.Conn().Close()
 	}
-	n.free = nil
+	close(n.free)
 	return nil
 }

@@ -97,7 +97,7 @@ func (n *BufferedNetpoolConn) Write(b []byte) (wrote int, err error) {
 		if err != nil {
 			c.Close() // Open will re-open it
 			n.SetConn(nil)
-			log.Warning("Error writing buffer: %s TimeOut: %d", err)
+			log.Warning("Error writing buffer: %s", err)
 			return 0, err
 		}
 		n.writebuffer = []byte("")
@@ -230,6 +230,5 @@ func (n *BufferedNetpool) DestroyAll() error {
 		con := <-n.pool.free
 		con.Flush()
 	}
-	n.pool.free = nil
 	return nil
 }
