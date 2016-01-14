@@ -40,23 +40,25 @@ type Accumulator struct {
 	Accumulate AccumulatorItem
 	Formatter  FormatterItem
 
-	Splitter splitter.Splitter
+	InSplitter  splitter.Splitter
+	OutSplitter splitter.Splitter
 
 	mu          sync.Mutex
-	timer       *time.Timer
+	timer       *time.Ticker
+	LineQueue   chan string
 	OutputQueue chan splitter.SplitItem
 	Shutdown    chan bool
 }
 
-func NewAccumlator(formatter string, accume_name string) (*Accumulator, error) {
+func NewAccumlator(inputtype string, outputtype string) (*Accumulator, error) {
 
-	fmter, err := NewFormatterItem(formatter)
+	fmter, err := NewFormatterItem(outputtype)
 	if err != nil {
 		return nil, err
 	}
 	fmter.Init()
 
-	acc, err := NewAccumulatorItem(accume_name)
+	acc, err := NewAccumulatorItem(inputtype)
 	if err != nil {
 		return nil, err
 	}
@@ -65,62 +67,68 @@ func NewAccumlator(formatter string, accume_name string) (*Accumulator, error) {
 	ac := &Accumulator{
 		Accumulate:      acc,
 		Formatter:       fmter,
-		AccumulatorName: accume_name,
-		FormatterName:   formatter,
-		Name:            fmt.Sprintf("<accumulator> %s -> %s", accume_name, formatter),
+		AccumulatorName: inputtype,
+		FormatterName:   outputtype,
+		Name:            fmt.Sprintf("%s -> %s", inputtype, outputtype),
 		FlushTime:       time.Second,
+		Shutdown:        make(chan bool),
+		LineQueue:       make(chan string),
 	}
 
 	// determine the splitter from the formatter item
 	nul_conf := make(map[string]interface{})
-	spl, err := splitter.NewSplitterItem(formatter, nul_conf)
+	ispl, err := splitter.NewSplitterItem(inputtype, nul_conf)
 	if err != nil {
 		return nil, err
 	}
-	ac.Splitter = spl
+	ac.InSplitter = ispl
+
+	ospl, err := splitter.NewSplitterItem(outputtype, nul_conf)
+	if err != nil {
+		return nil, err
+	}
+	ac.OutSplitter = ospl
 
 	return ac, nil
 }
 
+func (acc *Accumulator) SetOutputQueue(qu chan splitter.SplitItem) {
+	acc.OutputQueue = qu
+}
+
 func (acc *Accumulator) ProcessSplitItem(sp splitter.SplitItem) error {
-	return acc.Accumulate.ProcessLine(sp.Line())
+	acc.LineQueue <- sp.Line()
+	return nil
+	//log.Notice("Proc Item: %s", sp.Line())
+	//return acc.Accumulate.ProcessLine(sp.Line())
 }
 
 func (acc *Accumulator) ProcessLine(sp string) error {
-	return acc.Accumulate.ProcessLine(sp)
+	acc.LineQueue <- sp
+	return nil
+	//return acc.Accumulate.ProcessLine(sp)
 }
 
 // start the flusher at the time interval
 // best to call this in a go routine
 func (acc *Accumulator) Start() error {
 	acc.mu.Lock()
-	if acc.timer != nil {
-		return fmt.Errorf("Accumulator %s already starter", acc.Name)
-	}
-	acc.timer = time.NewTimer(acc.FlushTime)
-	acc.Shutdown = make(chan bool)
+	acc.timer = time.NewTicker(acc.FlushTime)
 	acc.mu.Unlock()
+	log.Notice("Starting accumulator loop for `%s`", acc.Name)
 
-	do_flush := func() {
-		data, err := acc.Flush()
-		if err != nil {
-			log.Error("Flushing accumulator FAILED %s", err)
-			return
-		}
-		for _, item := range data {
-			acc.OutputQueue <- item
-		}
-	}
 	for {
 		select {
 		case <-acc.timer.C:
 			log.Debug("Flushing accumulator %s", acc.Name)
-			do_flush()
+			acc.FlushAndPost()
+		case line := <-acc.LineQueue:
+			acc.Accumulate.ProcessLine(line)
 		case <-acc.Shutdown:
-			log.Info("Shutting down final flush of accumulator %s", acc.Name)
-			do_flush()
+			acc.timer.Stop()
+			log.Notice("Shutting down final flush of accumulator `%s`", acc.Name)
+			acc.FlushAndPost()
 			acc.timer = nil
-			close(acc.Shutdown)
 			return nil
 		}
 	}
@@ -128,9 +136,33 @@ func (acc *Accumulator) Start() error {
 }
 
 func (acc *Accumulator) Stop() {
-	if acc.timer != nil {
-		acc.Shutdown <- true
+	log.Notice("Initiating shutdown of accumulator `%s`", acc.Name)
+	acc.Shutdown <- true
+}
+
+func (acc *Accumulator) FlushAndPost() ([]splitter.SplitItem, error) {
+	items := acc.Accumulate.Flush()
+	//log.Notice("Flush: %s", items)
+	//return []splitter.SplitItem{}, nil
+	var out_spl []splitter.SplitItem
+	for _, item := range items {
+		spl, err := acc.OutSplitter.ProcessLine(item)
+		if err != nil {
+			log.Error("Invalid Line post flush accumulate `%s` Err:%s", item, err)
+			continue
+		}
+		// this tells the server backends to NOT send to the accumulator anymore
+		// otherwise we'd get serious infinite channel loops
+		//log.Warning("ACC posted: %v  Len %d", spl.Line(), acc.OutputQueue)
+		spl.SetPhase(splitter.AccumulatedParsed)
+		spl.SetOrigin(splitter.Other)
+		out_spl = append(out_spl, spl)
+		//log.Notice("sending: %s Len:%d", spl.Line(), len(acc.OutputQueue))
+		acc.OutputQueue <- spl
 	}
+	log.Debug("Flushed accumulator %s Lines: %d", acc.Name, len(out_spl))
+
+	return out_spl, nil
 }
 
 // flush out the accumulator, and "reparse" the lines
@@ -138,14 +170,15 @@ func (acc *Accumulator) Flush() ([]splitter.SplitItem, error) {
 	items := acc.Accumulate.Flush()
 	var out_spl []splitter.SplitItem
 	for _, item := range items {
-		spl, err := acc.Splitter.ProcessLine(item)
+		spl, err := acc.OutSplitter.ProcessLine(item)
 		if err != nil {
-			log.Error("Invalid Line post flush accumulate `%s`", item)
+			log.Error("Invalid Line post flush accumulate `%s` Err:%s", item, err)
 			continue
 		}
 		// this tells the server backends to NOT send to the accumulator anymore
 		// otherwise we'd get serious infinite channel loops
 		spl.SetPhase(splitter.AccumulatedParsed)
+		spl.SetOrigin(splitter.Other)
 		out_spl = append(out_spl, spl)
 	}
 	return out_spl, nil

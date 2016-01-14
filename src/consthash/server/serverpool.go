@@ -79,7 +79,8 @@ type CheckedServerPool struct {
 
 	ConnectionRetry time.Duration
 
-	DoChecks bool
+	checkLock sync.Mutex
+	DoChecks  bool
 
 	log *logging.Logger
 }
@@ -116,6 +117,7 @@ func createServerPoolFromConfig(cfg *Config, serverlist *ParsedServerConfig, ser
 	serverp.DownOutCount = int64(cfg.MaxServerHeartBeatFail)
 	serverp.ConnectionTimeout = cfg.ServerHeartBeatTimeout
 	serverp.DownPolicy = cfg.ServerDownPolicy
+	serverp.DoChecks = true
 	return serverp, nil
 }
 
@@ -128,7 +130,7 @@ func createServerPool(serverlist []*url.URL, checklist []*url.URL, serveraction 
 
 	serverp.ServerActions = serveraction
 
-	serverp.AllPingCounts = 0
+	serverp.AllPingCounts.Set(0)
 
 	for idx, server := range serverlist {
 		serverp.AddServer(server, checklist[idx])
@@ -142,11 +144,15 @@ func createServerPool(serverlist []*url.URL, checklist []*url.URL, serveraction 
 }
 
 func (self *CheckedServerPool) StopChecks() {
+	self.checkLock.Lock()
 	self.DoChecks = false
+	self.checkLock.Unlock()
 }
 
 func (self *CheckedServerPool) StartChecks() {
+	self.checkLock.Lock()
 	self.DoChecks = true
+	self.checkLock.Unlock()
 	self.testConnections()
 }
 
@@ -176,7 +182,7 @@ func (self *CheckedServerPool) reAddAllDroppedServers() {
 			self.ServerActions.onServerUp(self.DroppedServers[idx].ServerURL)
 		}
 		self.log.Notice("Readded old dead server %s", self.DroppedServers[idx].Name)
-		self.DroppedServers[idx].ServerCurrentDownCounts = 0
+		self.DroppedServers[idx].ServerCurrentDownCounts.Set(0)
 		new_s = append(new_s, self.DroppedServers[idx])
 	}
 	self.DroppedServers = nil
@@ -194,11 +200,11 @@ func (self *CheckedServerPool) AddServer(serverUrl *url.URL, checkUrl *url.URL) 
 		ServerURL:               *serverUrl,
 		CheckName:               fmt.Sprintf("%s", checkUrl),
 		CheckURL:                *checkUrl,
-		ServerPingCounts:        0,
-		ServerUpCounts:          0,
-		ServerDownCounts:        0,
-		ServerCurrentDownCounts: 0,
-		ServerRequestCounts:     0,
+		ServerPingCounts:        stats.AtomicInt{Val: 0},
+		ServerUpCounts:          stats.AtomicInt{Val: 0},
+		ServerDownCounts:        stats.AtomicInt{Val: 0},
+		ServerCurrentDownCounts: stats.AtomicInt{Val: 0},
+		ServerRequestCounts:     stats.AtomicInt{Val: 0},
 	}
 
 	self.Servers = append(self.Servers, c_server)
@@ -281,8 +287,8 @@ func (self *CheckedServerPool) testUp(server *ServerPoolServer, out chan bool) {
 	err := self.testSingleConnection(server.CheckURL, self.ConnectionTimeout)
 
 	if err != nil {
-		self.log.Warning("Healthcheck for %s Failed: %s - Down %d times", server.Name, err, server.ServerDownCounts+1)
-		if self.DownOutCount > 0 && server.ServerCurrentDownCounts.Get()+1 > self.DownOutCount {
+		self.log.Warning("Healthcheck for %s Failed: %s - Down %d times", server.Name, err, server.ServerDownCounts.Get()+1)
+		if self.DownOutCount > 0 && server.ServerCurrentDownCounts.Get()+int64(1) > self.DownOutCount {
 			self.log.Warning("Health %s Fail too many times, taking out of pool", server.Name)
 			self.dropServer(server)
 		}
@@ -295,12 +301,12 @@ func (self *CheckedServerPool) testUp(server *ServerPoolServer, out chan bool) {
 func (self *CheckedServerPool) gotTestResponse(server *ServerPoolServer, in chan bool) {
 	message := <-in
 	if message {
-		server.ServerCurrentDownCounts.Set(0)
-		up := server.ServerUpCounts.Add(1)
+		server.ServerCurrentDownCounts.Set(int64(0))
+		up := server.ServerUpCounts.Add(int64(0))
 		self.log.Info("Healthcheck for %s OK: UP %d pings", server.Name, up)
 	} else {
-		server.ServerDownCounts.Add(1)
-		server.ServerCurrentDownCounts.Add(1)
+		server.ServerDownCounts.Add(int64(0))
+		server.ServerCurrentDownCounts.Add(int64(0))
 	}
 	close(in)
 }
@@ -320,24 +326,31 @@ func (self *CheckedServerPool) testConnections() error {
 		self.log.Critical("Connection Retry CANNOT be less then 2x the Connection Timeout")
 		return nil
 	}
+	for {
+		self.checkLock.Lock()
+		ok := self.DoChecks
+		self.checkLock.Unlock()
+		if ok {
+			for idx, _ := range self.Servers {
+				testerchan := make(chan bool, 1)
 
-	for self.DoChecks {
-		for idx, _ := range self.Servers {
-			testerchan := make(chan bool, 1)
+				go self.testUp(&self.Servers[idx], testerchan)
+				go self.gotTestResponse(&self.Servers[idx], testerchan)
+				// channels is closed in gotTestResponse when done
+			}
 
-			go self.testUp(&self.Servers[idx], testerchan)
-			go self.gotTestResponse(&self.Servers[idx], testerchan)
-			// channels is closed in gotTestResponse when done
+			//re-add any killed servers after X ticker counts just to retest them
+			self.AllPingCounts.Add(1)
+			if (self.AllPingCounts.Get()%DEFAULT_SERVER_RE_ADD_TICK == 0) && len(self.DroppedServers) > 0 {
+				self.log.Notice("Attempting to re-add old dead server")
+				self.reAddAllDroppedServers()
+			}
+			time.Sleep(self.ConnectionRetry)
+		} else {
+			break
 		}
-
-		//re-add any killed servers after X ticker counts just to retest them
-		self.AllPingCounts.Add(1)
-		if (self.AllPingCounts%DEFAULT_SERVER_RE_ADD_TICK == 0) && len(self.DroppedServers) > 0 {
-			self.log.Notice("Attempting to re-add old dead server")
-			self.reAddAllDroppedServers()
-		}
-		time.Sleep(self.ConnectionRetry)
 	}
+
 	return nil
 
 }

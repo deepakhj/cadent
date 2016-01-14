@@ -35,13 +35,14 @@ type TCPClient struct {
 	input_queue  chan splitter.SplitItem
 	done         chan Client
 	worker_queue chan *SendOut
+	close        chan bool
 }
 
 func NewTCPClient(server *Server,
 	hashers *[]*ConstHasher,
 	conn net.Conn,
 	done chan Client,
-	out_queue chan splitter.SplitItem) *TCPClient {
+) *TCPClient {
 
 	client := new(TCPClient)
 	client.server = server
@@ -57,11 +58,16 @@ func NewTCPClient(server *Server,
 	client.worker_queue = server.WorkQueue
 	client.input_queue = server.InputQueue
 
-	client.out_queue = out_queue
+	client.out_queue = server.ProcessedQueue
 
 	client.done = done
+	client.close = make(chan bool)
 
 	return client
+}
+
+func (client *TCPClient) ShutDown() {
+	client.close <- true
 }
 
 func (client *TCPClient) connType() reflect.Type {
@@ -102,43 +108,46 @@ func (client *TCPClient) Close() {
 	client.hashers = nil
 }
 
-func (client *TCPClient) handleRequest() {
+func (client *TCPClient) handleRequest(outqueue chan splitter.SplitItem) {
 	//spin up the splitters
 
 	buf := bufio.NewReaderSize(client.Connection, client.BufferSize)
-
 	for {
 		line, err := buf.ReadString('\n')
+
 		if err != nil {
 			break
 		}
 		if len(line) == 0 {
 			continue
 		}
+		client.server.BytesReadCount.Up(uint64(len(line)))
 		client.server.AllLinesCount.Up(1)
 		splitem, err := client.server.SplitterProcessor.ProcessLine(strings.Trim(line, "\n\t "))
-		if err != nil {
+		if err == nil {
 			//this will block once the queue is full
+			splitem.SetOrigin(splitter.TCP)
 			client.input_queue <- splitem
 			stats.StatsdClient.Incr("incoming.tcp.invalidlines", 1)
 		} else {
 			stats.StatsdClient.Incr("incoming.tcp.invalidlines", 1)
+			log.Warning("Invalid Line: %s (%s)", err, line)
 		}
 
 	}
 
 	buf = nil
 	//close it and end the send routing
-	client.out_queue <- splitter.BlankSplitterItem()
+	outqueue <- splitter.BlankSplitterItem()
 	client.done <- client
 
 }
 
-func (client *TCPClient) handleSend() {
+func (client *TCPClient) handleSend(outqueue chan splitter.SplitItem) {
 	//just "bleed" it
 	for {
-		message := <-client.out_queue
-		if !message.IsValid() {
+		message := <-outqueue
+		if message == nil || !message.IsValid() {
 			return
 		}
 	}

@@ -12,10 +12,11 @@ import (
 const REGEX_NAME = "regex"
 
 type RegexSplitItem struct {
-	inkey   string
-	inline  string
-	regexed [][]string
-	inphase Phase
+	inkey    string
+	inline   string
+	regexed  [][]string
+	inphase  Phase
+	inorigin Origin
 }
 
 func (g *RegexSplitItem) Key() string {
@@ -35,6 +36,14 @@ func (g *RegexSplitItem) Phase() Phase {
 }
 func (g *RegexSplitItem) SetPhase(n Phase) {
 	g.inphase = n
+}
+
+func (g *RegexSplitItem) Origin() Origin {
+	return g.inorigin
+}
+
+func (g *RegexSplitItem) SetOrigin(n Origin) {
+	g.inorigin = n
 }
 
 func (g *RegexSplitItem) IsValid() bool {
@@ -81,10 +90,11 @@ func (job *RegExSplitter) ProcessLine(line string) (SplitItem, error) {
 
 	if len(key_param) > 0 {
 		ri := &RegexSplitItem{
-			inkey:   key_param,
-			inline:  line,
-			regexed: matched,
-			inphase: Parsed,
+			inkey:    key_param,
+			inline:   line,
+			regexed:  matched,
+			inphase:  Parsed,
+			inorigin: Other,
 		}
 		return ri, nil
 	}

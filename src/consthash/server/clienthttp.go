@@ -34,6 +34,7 @@ type HTTPClient struct {
 	done         chan Client
 	input_queue  chan splitter.SplitItem
 	worker_queue chan *SendOut
+	close        chan bool
 
 	log *logging.Logger
 }
@@ -50,8 +51,9 @@ func NewHTTPClient(server *Server, hashers *[]*ConstHasher, url *url.URL, done c
 	//to deref things
 	client.worker_queue = server.WorkQueue
 	client.input_queue = server.InputQueue
-	client.out_queue = make(chan splitter.SplitItem, server.Workers)
+	client.out_queue = server.ProcessedQueue
 	client.done = done
+	client.close = make(chan bool)
 	client.log = server.log
 
 	// we make our own "connection" as we want to fiddle with the timeouts, and buffers
@@ -67,6 +69,9 @@ func NewHTTPClient(server *Server, hashers *[]*ConstHasher, url *url.URL, done c
 	client.SetBufferSize(HTTP_BUFFER_SIZE)
 
 	return client, nil
+}
+func (client *HTTPClient) ShutDown() {
+	client.close <- true
 }
 
 // noop basically
@@ -119,17 +124,20 @@ func (client *HTTPClient) HttpHandler(w http.ResponseWriter, r *http.Request) {
 		if len(n_line) == 0 {
 			continue
 		}
+		client.server.BytesReadCount.Up(uint64(len(line)))
 		client.server.AllLinesCount.Up(1)
 		splitem, err := client.server.SplitterProcessor.ProcessLine(n_line)
 		if err == nil {
+			splitem.SetOrigin(splitter.HTTP)
 			stats.StatsdClient.Incr("incoming.http.lines", 1)
+			client.input_queue <- splitem
+			lines += 1
 		} else {
 			stats.StatsdClient.Incr("incoming.http.invalidlines", 1)
 			client.log.Warning("Invalid Line: %s (%s)", err, n_line)
+			continue
 		}
 
-		client.input_queue <- splitem
-		lines += 1
 	}
 	io.WriteString(w, fmt.Sprintf("lines processed %d", lines))
 	// flush it
@@ -139,16 +147,31 @@ func (client *HTTPClient) HttpHandler(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func (client *HTTPClient) run() {
+func (client *HTTPClient) run(out_queue chan splitter.SplitItem) {
+	for {
+		select {
+		case splitem := <-client.input_queue:
+			client.server.ProcessSplitItem(splitem, out_queue)
+		case <-client.close:
+			return
+		}
+	}
 
-	for splitem := range client.input_queue {
+}
 
-		client.server.ProcessSplitItem(splitem, client.out_queue)
-
+// for when we use the input queue in a non-socket fashion
+func (client *HTTPClient) clientLessRun() {
+	for {
+		select {
+		case splitem := <-client.input_queue:
+			client.server.ProcessSplitItem(splitem, client.out_queue)
+		case <-client.close:
+			return
+		}
 	}
 }
 
-func (client HTTPClient) handleRequest() {
+func (client HTTPClient) handleRequest(out_queue chan splitter.SplitItem) {
 
 	// multi http servers needs new muxers
 	// start up the http listens
@@ -161,14 +184,15 @@ func (client HTTPClient) handleRequest() {
 	go http.Serve(client.Connection, serverMux)
 
 	for w := int64(1); w <= client.server.Workers; w++ {
-		go client.run()
+		go client.run(out_queue)
+		go client.clientLessRun()
 	}
 }
 
-func (client HTTPClient) handleSend() {
+func (client HTTPClient) handleSend(out_queue chan splitter.SplitItem) {
 
 	for {
-		message := <-client.out_queue
+		message := <-out_queue
 		if !message.IsValid() {
 			break
 		}

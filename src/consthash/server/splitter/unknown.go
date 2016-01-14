@@ -31,6 +31,13 @@ func (g *UnkSplitItem) Phase() Phase {
 func (g *UnkSplitItem) SetPhase(n Phase) {
 }
 
+func (g *UnkSplitItem) Origin() Origin {
+	return Other
+}
+
+func (g *UnkSplitItem) SetOrigin(n Origin) {
+}
+
 func (g *UnkSplitItem) IsValid() bool {
 	return false
 }

@@ -508,9 +508,15 @@ func (self ConfigServers) VerifyAndAssignPreReg(prm prereg.PreRegMap) (err error
 
 		//verify that if there is an Accumulator that the backend for it does in fact live
 		if pr.Accumulator != nil {
-			if _, ok := self[pr.Accumulator.ToBackend]; !ok {
-				return fmt.Errorf("Backend `%s` is not in the Config servers", pr.Accumulator.ToBackend)
+			_, ok := self[pr.Accumulator.ToBackend]
+			if !ok {
+				return fmt.Errorf("Backend `%s` for accumulator is not in the Config servers", pr.Accumulator.ToBackend)
 			}
+			// we can only ship accumlated stats to a BACKEND type otherwise the socket based
+			// queues have no way to deplete the output queues (or respond properly to a 'non' socket input)
+			//if bck.ListenStr != "backend_only" {
+			//	return fmt.Errorf("Backend `%s`, for accumulators must be a `backend_only` type", pr.Accumulator.ToBackend)
+			//}
 		}
 	}
 	return nil
@@ -548,6 +554,7 @@ func (self *ConfigServers) DebugConfig() {
 			log.Debug("  Write Buffer Size: %v ", cfg.MaxWritePoolBufferSize)
 			log.Debug("  Read Buffer Size: %v ", cfg.ClientReadBufferSize)
 			log.Debug("  Max Read Buffer Size: %v ", cfg.MaxReadBufferSize)
+			log.Debug("  Write Pool Method: %v ", cfg.SendingConnectionMethod)
 			log.Debug("  Write Pool Connections: %v ", cfg.MaxPoolConnections)
 			log.Debug("  Workers/Input Queue Size: %v ", cfg.Workers)
 

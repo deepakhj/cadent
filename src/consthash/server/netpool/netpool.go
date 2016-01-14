@@ -1,6 +1,7 @@
 package netpool
 
 import (
+	"fmt"
 	logging "github.com/op/go-logging"
 	"net"
 	"sync"
@@ -31,6 +32,8 @@ type NetpoolConn struct {
 	conn    net.Conn
 	started time.Time
 	idx     int
+
+	closeLock sync.Mutex
 }
 
 func NewNetPoolConn(conn net.Conn, pool NetpoolInterface) NetpoolConnInterface {
@@ -53,7 +56,6 @@ func (n *NetpoolConn) SetWriteDeadline(t time.Time) error {
 	return n.conn.SetWriteDeadline(t)
 }
 
-// null function
 func (n *NetpoolConn) Flush() (int, error) {
 	return 0, nil
 }
@@ -95,15 +97,17 @@ func (n *Netpool) NumFree() int {
 func (n *Netpool) ResetConn(net_conn NetpoolConnInterface) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-
-	if net_conn.Conn() != nil {
+	c := net_conn.Conn()
+	if c != nil {
 		net_conn.Flush()
-		goterr := net_conn.Conn().Close()
-		if goterr != nil {
-			log.Error("Connection CLOSE error: ", goterr)
+		if c != nil {
+			goterr := net_conn.Conn().Close()
+			if goterr != nil {
+				log.Error("Output Connection CLOSE error: %s", goterr)
+			}
 		}
+		net_conn.SetConn(nil)
 	}
-	net_conn.SetConn(nil)
 
 	conn, err := NewWriterConn(n.protocal, n.name, ConnectionTimeout)
 	if err != nil {
@@ -114,7 +118,7 @@ func (n *Netpool) ResetConn(net_conn NetpoolConnInterface) error {
 	net_conn.SetStarted(time.Now())
 
 	// put it back on the queue
-	log.Error("Reset Connection %s://%s ", n.protocal, n.name)
+	log.Warning("Reset Connection %s://%s ", n.protocal, n.name)
 	// NONONO n.free <- net_conn let "Close" do this only
 
 	return nil
@@ -153,19 +157,23 @@ func (n *Netpool) InitPoolWith(obj NetpoolInterface) error {
 
 func (n *Netpool) InitPool() error {
 	return n.InitPoolWith(n)
-
 }
 
 func (n *Netpool) Open() (conn NetpoolConnInterface, err error) {
 	// pop it off
-
+	if n.free == nil {
+		log.Error("No connections in queue")
+		return nil, fmt.Errorf("No items in the pool")
+	}
 	net_conn := <-n.free
-
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	c := net_conn.Conn()
 	//recycle connections if we need to or reconnect if we need to
-	if net_conn.Conn() == nil || time.Now().Sub(net_conn.Started()) > n.RecycleTimeout {
-		if net_conn.Conn() != nil {
-			net_conn.Flush()
-			goterr := net_conn.Conn().Close()
+	if net_conn != nil && c == nil || time.Now().Sub(net_conn.Started()) > n.RecycleTimeout {
+		net_conn.Flush()
+		if c != nil {
+			goterr := c.Close()
 			if goterr != nil {
 				log.Error("Output Connection CLOSE error: %s", goterr)
 			}
@@ -189,8 +197,9 @@ func (n *Netpool) Open() (conn NetpoolConnInterface, err error) {
 
 //add it back to the queue
 func (n *Netpool) Close(conn NetpoolConnInterface) error {
-	n.free <- conn
-
+	if n.free != nil {
+		n.free <- conn
+	}
 	return nil
 }
 

@@ -88,6 +88,8 @@ type GraphiteBaseStatItem struct {
 func (s *GraphiteBaseStatItem) Type() string { return s.InType }
 func (s *GraphiteBaseStatItem) Key() string  { return s.InKey }
 func (s *GraphiteBaseStatItem) Out(fmatter FormatterItem, tags []AccumulatorTags) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	val := GRAPHITE_ACC_FUN[s.ReduceFunc](s.Values)
 	return []string{
 		fmatter.ToString(

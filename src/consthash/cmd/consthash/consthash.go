@@ -255,7 +255,7 @@ func main() {
 			if err != nil {
 				panic(err)
 			}
-			go hasher.ServerPool.StartChecks()
+			//go hasher.ServerPool.StartChecks() //started in the startserver
 			hashers = append(hashers, hasher)
 		}
 		server, err := consthash.CreateServer(cfg, hashers)
@@ -265,15 +265,13 @@ func main() {
 		servers = append(servers, server)
 	}
 	// finally we need to set the accumulator backends
-	for _, srv := range consthash.SERVER_BACKENDS {
+	// need to create all the servers first before we can start them as the PreReg mappings
+	// need to know of all the things
+	for _, srv := range servers {
 
-		//set the accumulator to this servers input queue
-		if srv.Queue.PreRegFilter != nil && srv.Queue.PreRegFilter.Accumulator != nil {
-			to_srv := consthash.SERVER_BACKENDS[srv.Queue.PreRegFilter.Accumulator.ToBackend]
-			srv.Queue.PreRegFilter.Accumulator.OutputQueue = to_srv.Queue.InputQueue
-		}
 		// start them up
-		go srv.Queue.StartServer()
+		log.Notice("Staring Server `%s`", srv.Name)
+		go srv.StartServer()
 	}
 
 	//fire up the http stats if given

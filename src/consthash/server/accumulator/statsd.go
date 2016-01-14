@@ -39,6 +39,8 @@ type StatsdBaseStatItem struct {
 func (s *StatsdBaseStatItem) Type() string { return s.InType }
 func (s *StatsdBaseStatItem) Key() string  { return s.InKey }
 func (s *StatsdBaseStatItem) Out(fmatter FormatterItem, tags []AccumulatorTags) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	pref := "stats.counters"
 	c_type := "c"
 	if s.InType == "g" || s.InType == "-g" || s.InType == "+g" {
@@ -116,6 +118,8 @@ func (s *StatsdTimerStatItem) Accumulate(val float64) error {
 }
 
 func (s *StatsdTimerStatItem) Out(fmatter FormatterItem, tags []AccumulatorTags) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	pref := "stats.timers"
 	f_key := pref + "." + s.InKey
 

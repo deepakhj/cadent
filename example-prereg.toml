@@ -25,6 +25,13 @@ default_backend="graphite-proxy"
 listen_server="statsd-proxy" # which listener to sit in front of  (must be in the main config)
 default_backend="statsd-proxy"  # failing a match go here
 
+    [statsd-regex-map.accumulator]
+    backend = "graphite-proxy"
+    input_format = "statsd"
+    output_format = "graphite"
+    flush_time = "2s"
+
+
     [[statsd-regex-map.map]]
     substring="badline"
     reject=true  # special "reject me" type

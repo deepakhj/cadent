@@ -1,10 +1,10 @@
 package accumulator
 
 import (
+	"consthash/server/splitter"
 	. "github.com/smartystreets/goconvey/convey"
 	"testing"
 	"time"
-	"consthash/server/splitter"
 )
 
 func TestAccumualtorAccumulator(t *testing.T) {

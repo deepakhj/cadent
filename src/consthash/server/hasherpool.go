@@ -113,6 +113,7 @@ func (self *ConstHasher) PurgeServer(serverUrl *url.URL) bool {
 }
 
 func (self *ConstHasher) AddServer(serverUrl *url.URL, checkUrl *url.URL, hashkey string) {
+
 	//only add it once
 	if _, ok := self.ServerToHashkey[serverUrl.String()]; ok {
 		return
@@ -203,6 +204,8 @@ func (self *ConstHasher) Members() []string {
 // the list of dropped servers
 func (self *ConstHasher) DroppedServers() []string {
 	var n_str []string
+	self.ServerPool.mu.Lock()
+	defer self.ServerPool.mu.Unlock()
 	for _, srv := range self.ServerPool.DroppedServers {
 		n_str = append(n_str, srv.Name)
 	}
@@ -212,6 +215,8 @@ func (self *ConstHasher) DroppedServers() []string {
 // the list of servers that are the "checker" sockets
 func (self *ConstHasher) CheckingServers() []string {
 	var n_str []string
+	self.ServerPool.mu.Lock()
+	defer self.ServerPool.mu.Unlock()
 	for _, srv := range self.ServerPool.Servers {
 		n_str = append(n_str, srv.CheckName)
 	}

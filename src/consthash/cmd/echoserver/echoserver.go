@@ -19,8 +19,10 @@ import (
 	"time"
 )
 
+var QUIET bool = false
+
 func echoMe(line string) {
-	if len(line) > 0 {
+	if len(line) > 0 && !QUIET {
 		log.Println(line)
 	}
 }
@@ -32,6 +34,7 @@ type EchoStat struct {
 	NumOpenConnections   uint64
 	NumLines             uint64
 	NumClosedConnections uint64
+	NumCurLines          uint64
 }
 
 type EchoServer interface {
@@ -69,6 +72,7 @@ func (echo EchoServerHTTP) ReadMessages() (err error) {
 			str := strings.Split(string(body), "\n")
 			for _, line := range str {
 				atomic.AddUint64(&echo.StatCt.NumLines, 1)
+				atomic.AddUint64(&echo.StatCt.NumCurLines, 1)
 				atomic.AddUint64(&TotalLines, 1)
 				echoMe("[ECHO from " + echo.Listen.String() + "] " + strings.Trim(line, " \t\n"))
 			}
@@ -90,15 +94,18 @@ func (echo EchoServerHTTP) ReadMessages() (err error) {
 }
 
 func (echo EchoServerHTTP) EchoStats() {
-	log.Printf("Server %s: {ValidConnections: %d, OpenConnections: %d, Lines: %d, Total: %d}",
-		echo.String(),
-		echo.StatCt.NumOpenConnections-echo.StatCt.NumClosedConnections,
-		echo.StatCt.NumLines,
-		echo.StatCt.NumConnections,
-		TotalLines)
-
-	time.Sleep(time.Duration(5 * time.Second))
-	go echo.EchoStats()
+	for {
+		log.Printf("Server %s: ValidConnections: %d, OpenConnections: %d, Lines: %d, Lines/s: %0.2f Total: %d",
+			echo.String(),
+			echo.StatCt.NumConnections,
+			echo.StatCt.NumOpenConnections-echo.StatCt.NumClosedConnections,
+			echo.StatCt.NumLines,
+			float32(echo.StatCt.NumCurLines)/float32(5.0),
+			TotalLines,
+		)
+		atomic.StoreUint64(&echo.StatCt.NumCurLines, 0)
+		time.Sleep(time.Duration(5 * time.Second))
+	}
 }
 
 func (echo EchoServerHTTP) String() string {
@@ -136,15 +143,18 @@ func (echo EchoServerUDP) String() string {
 	return echo.Listen.String()
 }
 func (echo EchoServerUDP) EchoStats() {
-	log.Printf("Server %s: {ValidConnections: %d, OpenConnections: %d, Lines: %d, Total: %d}",
-		echo.String(),
-		echo.StatCt.NumOpenConnections-echo.StatCt.NumClosedConnections,
-		echo.StatCt.NumLines,
-		echo.StatCt.NumConnections,
-		TotalLines)
-
-	time.Sleep(time.Duration(5 * time.Second))
-	go echo.EchoStats()
+	for {
+		log.Printf("Server %s: ValidConnections: %d, OpenConnections: %d, Lines: %d, Lines/s: %0.2f Total: %d",
+			echo.String(),
+			echo.StatCt.NumConnections,
+			echo.StatCt.NumOpenConnections-echo.StatCt.NumClosedConnections,
+			echo.StatCt.NumLines,
+			float32(echo.StatCt.NumCurLines)/float32(5.0),
+			TotalLines,
+		)
+		atomic.StoreUint64(&echo.StatCt.NumCurLines, 0)
+		time.Sleep(time.Duration(5 * time.Second))
+	}
 }
 func (echo EchoServerUDP) ReadMessages() (err error) {
 	for {
@@ -164,6 +174,7 @@ func (echo EchoServerUDP) ReadMessages() (err error) {
 				str := strings.Split(string(buf), "\n")
 				for _, line := range str {
 					atomic.AddUint64(&echo.StatCt.NumLines, 1)
+					atomic.AddUint64(&echo.StatCt.NumCurLines, 1)
 					atomic.AddUint64(&TotalLines, 1)
 					echoMe("[ECHO from " + echo.String() + "] " + strings.Trim(line, " \t\n"))
 				}
@@ -201,15 +212,18 @@ func (echo EchoServerTCP) String() string {
 }
 
 func (echo EchoServerTCP) EchoStats() {
-	log.Printf("Server %s: {ValidConnections: %d, OpenConnections: %d, Lines: %d, Total: %d}",
-		echo.String(),
-		echo.StatCt.NumOpenConnections-echo.StatCt.NumClosedConnections,
-		echo.StatCt.NumLines,
-		echo.StatCt.NumConnections,
-		TotalLines)
-
-	time.Sleep(time.Duration(5 * time.Second))
-	go echo.EchoStats()
+	for {
+		log.Printf("Server %s: ValidConnections: %d, OpenConnections: %d, Lines: %d, Lines/s: %0.2f Total: %d",
+			echo.String(),
+			echo.StatCt.NumConnections,
+			echo.StatCt.NumOpenConnections-echo.StatCt.NumClosedConnections,
+			echo.StatCt.NumLines,
+			float32(echo.StatCt.NumCurLines)/float32(5.0),
+			TotalLines,
+		)
+		atomic.StoreUint64(&echo.StatCt.NumCurLines, 0)
+		time.Sleep(time.Duration(5 * time.Second))
+	}
 }
 
 func (echo EchoServerTCP) ReadMessages() (err error) {
@@ -230,7 +244,7 @@ func (echo EchoServerTCP) ReadMessages() (err error) {
 			atomic.AddUint64(&echo.StatCt.NumOpenConnections, 1)
 		}
 
-		log.Printf("Accepted connection from %s", conn.RemoteAddr())
+		log.Printf("[%s] Accepted connection from %s", echo.String(), conn.RemoteAddr())
 		buf := bufio.NewReader(conn)
 		for {
 			line, err := buf.ReadString('\n')
@@ -240,6 +254,8 @@ func (echo EchoServerTCP) ReadMessages() (err error) {
 			}
 			atomic.AddUint64(&TotalLines, 1)
 			atomic.AddUint64(&echo.StatCt.NumLines, 1)
+			atomic.AddUint64(&echo.StatCt.NumCurLines, 1)
+
 			echoMe("[ECHO from " + echo.String() + "] " + strings.Trim(line, " \t\n"))
 
 		}
@@ -297,13 +313,14 @@ func main() {
 	setUlimits()
 	serverList := flag.String("servers", "tcp://127.0.0.1:6002", "list of servers to open (tcp://127.0.0.1:6002,tcp://127.0.0.1:6003), you can choose tcp://, udp://, unix:///, http://")
 	cpuProfile := flag.String("profile", "", "CPU profile? to which file")
+	quiet := flag.Bool("quiet", false, "Quiet, just report number lines in")
 	flag.Parse()
 
 	if flag.NFlag() == 0 {
 		flag.PrintDefaults()
 		os.Exit(0)
 	}
-
+	QUIET = *quiet
 	if *cpuProfile != "" {
 		cfg := profile.Config{
 			CPUProfile:     true,

@@ -12,12 +12,23 @@ const (
 	Sent                           // delivered to output queue
 )
 
+type Origin int
+
+const (
+	TCP Origin = iota
+	UDP
+	HTTP
+	Other
+)
+
 type SplitItem interface {
 	Key() string
 	Line() string
 	Fields() []string
 	Phase() Phase
 	SetPhase(Phase)
+	Origin() Origin
+	SetOrigin(Origin)
 	IsValid() bool
 }
 

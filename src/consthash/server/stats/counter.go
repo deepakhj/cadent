@@ -11,27 +11,34 @@ type StatCount struct {
 	TickCount  AtomicInt
 }
 
+func NewStatCount() StatCount {
+	return StatCount{
+		Name:       "",
+		TotalCount: AtomicInt{Val: 0},
+		TickCount:  AtomicInt{Val: 0},
+	}
+}
 func (stat *StatCount) Up(val uint64) {
-	stat.TotalCount.Add(1)
-	stat.TickCount.Add(1)
+	stat.TotalCount.Add(int64(val))
+	stat.TickCount.Add(int64(val))
 }
 func (stat *StatCount) ResetTick() {
-	stat.TickCount.Set(0)
+	stat.TickCount.Set(int64(0))
 }
 func (stat *StatCount) Rate(duration time.Duration) float32 {
-	if stat.TickCount == 0 {
+	if stat.TickCount.Equal(int64(0)) {
 		return 0
 	}
-	return float32(stat.TickCount) / float32(duration/time.Second)
+	return float32(stat.TickCount.Get()) / float32(duration/time.Second)
 }
 
 func (stat *StatCount) TotalRate(duration time.Duration) float32 {
-	if stat.TotalCount == 0 {
-		return 0
+	if stat.TotalCount.Equal(int64(0)) {
+		return 0.0
 	}
-	return float32(stat.TotalCount) / float32(duration/time.Second)
+	return float32(stat.TotalCount.Get()) / float32(duration/time.Second)
 }
 func (stat *StatCount) Reset() {
-	stat.TickCount.Set(0)
-	stat.TotalCount.Set(0)
+	stat.TickCount.Set(int64(0))
+	stat.TotalCount.Set(int64(0))
 }

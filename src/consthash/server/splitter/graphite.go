@@ -19,6 +19,7 @@ type GraphiteSplitItem struct {
 	inline   string
 	infields []string
 	inphase  Phase
+	inorigin Origin
 }
 
 func (g *GraphiteSplitItem) Key() string {
@@ -39,6 +40,14 @@ func (g *GraphiteSplitItem) Phase() Phase {
 
 func (g *GraphiteSplitItem) SetPhase(n Phase) {
 	g.inphase = n
+}
+
+func (g *GraphiteSplitItem) Origin() Origin {
+	return g.inorigin
+}
+
+func (g *GraphiteSplitItem) SetOrigin(n Origin) {
+	g.inorigin = n
 }
 
 func (g *GraphiteSplitItem) IsValid() bool {
@@ -74,6 +83,7 @@ func (job *GraphiteSplitter) ProcessLine(line string) (SplitItem, error) {
 			inline:   line,
 			infields: graphite_array,
 			inphase:  Parsed,
+			inorigin: Other,
 		}
 		return gi, nil
 	}

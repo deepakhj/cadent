@@ -28,7 +28,7 @@ func TestStatsAtomic(t *testing.T) {
 func TestStatsCounter(t *testing.T) {
 	// Only pass t into top-level Convey calls
 	Convey("Given an Counter", t, func() {
-		var ctr StatCount
+		ctr := NewStatCount()
 		Convey("initial should be 0", func() {
 			So(ctr.TotalCount.Get(), ShouldEqual, 0)
 			So(ctr.TickCount.Get(), ShouldEqual, 0)

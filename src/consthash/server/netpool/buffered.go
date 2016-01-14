@@ -6,12 +6,13 @@ Here we have a NetPooler but that buffers writes before sending things in specif
 package netpool
 
 import (
+	"fmt"
 	"net"
-	"os"
-	"os/signal"
+	//"os"
+	//"os/signal"
 	"sync"
 	"sync/atomic"
-	"syscall"
+	//"syscall"
 	"time"
 )
 
@@ -26,6 +27,7 @@ type BufferedNetpool struct {
 
 	//lock to grab all the active cons and flush them
 	flushLock sync.Mutex
+	closeLock sync.Mutex
 }
 
 type BufferedNetpoolConn struct {
@@ -36,6 +38,7 @@ type BufferedNetpoolConn struct {
 	buffersize  int
 
 	writeLock sync.Mutex
+	connLock  sync.Mutex
 }
 
 func NewBufferedNetpoolConn(conn net.Conn, pool NetpoolInterface) NetpoolConnInterface {
@@ -59,13 +62,20 @@ func NewBufferedNetpoolConn(conn net.Conn, pool NetpoolInterface) NetpoolConnInt
 func (n *BufferedNetpoolConn) PeriodicFlush() {
 	for {
 		n.Flush()
-		//log.Println("Flushed: ", n.idx)
 		time.Sleep(DEFAULT_FORCE_FLUSH)
 	}
 }
 
-func (n *BufferedNetpoolConn) Conn() net.Conn        { return n.conn }
-func (n *BufferedNetpoolConn) SetConn(conn net.Conn) { n.conn = conn }
+func (n *BufferedNetpoolConn) Conn() net.Conn {
+	n.connLock.Lock()
+	defer n.connLock.Unlock()
+	return n.conn
+}
+func (n *BufferedNetpoolConn) SetConn(conn net.Conn) {
+	n.connLock.Lock()
+	defer n.connLock.Unlock()
+	n.conn = conn
+}
 
 func (n *BufferedNetpoolConn) Started() time.Time     { return n.started }
 func (n *BufferedNetpoolConn) SetStarted(t time.Time) { n.started = t }
@@ -74,23 +84,25 @@ func (n *BufferedNetpoolConn) Index() int     { return n.idx }
 func (n *BufferedNetpoolConn) SetIndex(i int) { n.idx = i }
 
 func (n *BufferedNetpoolConn) SetWriteDeadline(t time.Time) error {
-	return n.conn.SetWriteDeadline(t)
+	return n.Conn().SetWriteDeadline(t)
 }
 
 func (n *BufferedNetpoolConn) Write(b []byte) (wrote int, err error) {
 
 	n.writeLock.Lock()
 	defer n.writeLock.Unlock()
-	if len(n.writebuffer) > n.buffersize && n.conn != nil {
-		wrote, err = n.conn.Write(n.writebuffer)
+	c := n.Conn()
+	if len(n.writebuffer) > n.buffersize && c != nil {
+		wrote, err = c.Write(n.writebuffer)
 		if err != nil {
-			n.conn.Close() // Open will re-open it
-			n.conn = nil
+			c.Close() // Open will re-open it
+			n.SetConn(nil)
+			log.Warning("Error writing buffer: %s", err)
 			return 0, err
 		}
 		n.writebuffer = []byte("")
 	}
-	//log.Debug("BUF WRITE %s %d", b, wrote)
+	//log.Debug("BUF WRITE %d/%d wrote: %d", len(n.writebuffer), n.buffersize, wrote)
 	n.writebuffer = append(n.writebuffer, b...)
 
 	return wrote, err
@@ -99,14 +111,16 @@ func (n *BufferedNetpoolConn) Write(b []byte) (wrote int, err error) {
 func (n *BufferedNetpoolConn) Flush() (wrote int, err error) {
 	n.writeLock.Lock()
 	defer n.writeLock.Unlock()
-	//log.Printf("WROTE: %v -- %v", n.conn, len(n.writebuffer))
 	//StatsdClient.Incr("success.packets.flushes", 1)
-	if len(n.writebuffer) > 0 && n.conn != nil {
-		wrote, err = n.conn.Write(n.writebuffer)
+	c := n.Conn()
+
+	if len(n.writebuffer) > 0 && c != nil {
+		wrote, err = c.Write(n.writebuffer)
 		//log.Printf("WROTE: %s -- %s", err, n.writebuffer)
 		if err != nil {
-			n.Conn().Close() // Open will re-open it
+			c.Close() // Open will re-open it
 			n.SetConn(nil)
+			log.Warning("Error writing flush: %s", err)
 			return 0, err
 		}
 		n.writebuffer = []byte("")
@@ -137,7 +151,7 @@ func NewBufferedNetpool(protocal string, name string, buffersize int) *BufferedN
 
 func (n *BufferedNetpool) TrapExit() {
 	//trap kills to flush the buffer
-	sigc := make(chan os.Signal, 1)
+	/*sigc := make(chan os.Signal, 1)
 	signal.Notify(sigc,
 		syscall.SIGINT,
 		syscall.SIGTERM,
@@ -145,6 +159,8 @@ func (n *BufferedNetpool) TrapExit() {
 
 	go func(np *BufferedNetpool) {
 		s := <-sigc
+		np.closeLock.Lock()
+		defer np.closeLock.Unlock()
 		log.Warning("Caught %s: Flushing Buffers before quit ", s)
 		atomic.StoreInt32(&np.didclose, 1)
 		defer close(np.pool.free)
@@ -157,9 +173,9 @@ func (n *BufferedNetpool) TrapExit() {
 		close(sigc)
 
 		// re-raise it
-		process, _ := os.FindProcess(os.Getpid())
-		process.Signal(s)
-	}(n)
+		//process, _ := os.FindProcess(os.Getpid())
+		//process.Signal(s)
+	}(n)*/
 }
 
 func (n *BufferedNetpool) GetMaxConnections() int {
@@ -190,11 +206,16 @@ func (n *BufferedNetpool) InitPool() error {
 }
 
 func (n *BufferedNetpool) Open() (conn NetpoolConnInterface, err error) {
-	return n.pool.Open()
+	if atomic.LoadInt32(&n.didclose) == 0 {
+		return n.pool.Open()
+	}
+	return nil, fmt.Errorf("Closing all buffers, cannot open")
 }
 
 //add it back to the queue
 func (n *BufferedNetpool) Close(conn NetpoolConnInterface) error {
+	//n.closeLock.Lock()
+	//defer n.closeLock.Unlock()
 	if atomic.LoadInt32(&n.didclose) == 0 {
 		return n.pool.Close(conn)
 	}
@@ -206,7 +227,6 @@ func (n *BufferedNetpool) DestroyAll() error {
 	for i := 0; i < len(n.pool.free); i++ {
 		con := <-n.pool.free
 		con.Flush()
-		con.Conn().Close()
 	}
 	n.pool.free = nil
 	return nil

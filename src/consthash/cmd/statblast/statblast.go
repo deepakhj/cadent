@@ -20,6 +20,7 @@ var randWords = []string{"test", "house", "here", "badline", "cow", "now"}
 var sentLines int64
 var startTime = time.Now().Unix()
 var ConnectionTimeout, _ = time.ParseDuration("2s")
+var Statsdtypes = []string{"c", "g", "ms"}
 
 // random char gen
 func RandChars(length uint) string {
@@ -47,12 +48,16 @@ func GraphiteStr(ct int) string {
 }
 
 func StatsdStr(ct int) string {
+	cc := Statsdtypes[rand.Intn(len(Statsdtypes))]
+	sample := float32(rand.Intn(1000)) / float32(1000)
 	return fmt.Sprintf(
-		"statdtest.%s.%s.%s:%d|c\n",
+		"statdtest.%s.%s.%s:%d|%s|@%0.2f\n",
 		RandItem(randWords),
 		RandItem(randWords),
 		RandItem(randWords),
 		ct,
+		cc,
+		sample,
 	)
 }
 
@@ -82,7 +87,7 @@ func setUlimits() {
 func SendMsg(i_url *url.URL, msg string) {
 	conn, err := netpool.NewWriterConn(i_url.Scheme, i_url.Host+i_url.Path, ConnectionTimeout)
 	if err != nil {
-		log.Printf("Error in Rate: %s", err)
+		log.Printf("Error in Connection: %s", err)
 		return
 	}
 	to_send := []byte(msg)
@@ -126,13 +131,14 @@ func Runner(server string, intype string, rate string, buffer int) {
 }
 
 func StatTick() {
-	s_delta := time.Now().UnixNano() - startTime
-	t_sec := s_delta / 1000000000
-	rate := (float64)(sentLines) / float64(t_sec)
-	log.Printf("Sent %d lines in %ds - rate: %0.2f lines/s", sentLines, t_sec, rate)
-	tick_sleep, _ := time.ParseDuration("5s")
-	time.Sleep(tick_sleep)
-	StatTick()
+	for {
+		s_delta := time.Now().UnixNano() - startTime
+		t_sec := s_delta / 1000000000
+		rate := (float64)(sentLines) / float64(t_sec)
+		log.Printf("Sent %d lines in %ds - rate: %0.2f lines/s", sentLines, t_sec, rate)
+		tick_sleep, _ := time.ParseDuration("5s")
+		time.Sleep(tick_sleep)
+	}
 }
 
 func main() {

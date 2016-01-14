@@ -27,8 +27,10 @@ type UDPClient struct {
 	done         chan Client
 	input_queue  chan splitter.SplitItem
 	worker_queue chan *SendOut
+	close        chan bool
 
-	log *logging.Logger
+	line_queue chan string
+	log        *logging.Logger
 }
 
 func NewUDPClient(server *Server, hashers *[]*ConstHasher, conn *net.UDPConn, done chan Client) *UDPClient {
@@ -44,11 +46,17 @@ func NewUDPClient(server *Server, hashers *[]*ConstHasher, conn *net.UDPConn, do
 	//to deref things
 	client.worker_queue = server.WorkQueue
 	client.input_queue = server.InputQueue
-	client.out_queue = make(chan splitter.SplitItem, server.Workers)
+	client.out_queue = server.ProcessedQueue
 	client.done = done
 	client.log = server.log
+	client.close = make(chan bool)
+	client.line_queue = make(chan string, server.Workers)
 	return client
 
+}
+
+func (client *UDPClient) ShutDown() {
+	client.close <- true
 }
 
 func (client *UDPClient) SetBufferSize(size int) error {
@@ -74,65 +82,86 @@ func (client UDPClient) Close() {
 	client.hashers = nil
 	if client.Connection != nil {
 		client.Connection.Close()
+		client.Connection = nil
 	}
 }
 
-func (client *UDPClient) run() {
-	for splitem := range client.input_queue {
+func (client *UDPClient) procLines(line string) {
+	for _, n_line := range strings.Split(line, "\n") {
+		if len(n_line) == 0 {
+			continue
+		}
+		n_line = strings.Trim(n_line, "\r\n\t ")
+		if len(n_line) == 0 {
+			continue
+		}
+		client.server.AllLinesCount.Up(1)
+		splitem, err := client.server.SplitterProcessor.ProcessLine(n_line)
 
-		client.server.ProcessSplitItem(splitem, client.out_queue)
-
-	}
-}
-
-func (client *UDPClient) getLines() {
-
-	readStr := func(line string) {
-		for _, n_line := range strings.Split(line, "\n") {
-			if len(n_line) == 0 {
-				continue
-			}
-
-			n_line := strings.Trim(line, "\n\t ")
-			if len(n_line) == 0 {
-				continue
-			}
-			client.server.AllLinesCount.Up(1)
-			splitem, err := client.server.SplitterProcessor.ProcessLine(n_line)
-			if err == nil {
-				client.server.ProcessSplitItem(splitem, client.out_queue)
-				stats.StatsdClient.Incr("incoming.udp.lines", 1)
-			} else {
-				stats.StatsdClient.Incr("incoming.udp.invalidlines", 1)
-				client.log.Warning("Invalid Line: %s (%s)", err, n_line)
-			}
+		//log.Notice("MOOO UDP line: %v MOOO", splitem.Fields())
+		if err == nil {
+			splitem.SetOrigin(splitter.UDP)
+			//client.server.ProcessSplitItem(splitem, client.out_queue)
+			stats.StatsdClient.Incr("incoming.udp.lines", 1)
 			client.input_queue <- splitem
+		} else {
+			stats.StatsdClient.Incr("incoming.udp.invalidlines", 1)
+			log.Warning("Invalid Line: %s (%s)", err, n_line)
+			continue
 		}
 	}
+}
+func (client *UDPClient) run(out_queue chan splitter.SplitItem) {
+	for {
+		select {
+		case splitem := <-client.input_queue:
+			client.server.ProcessSplitItem(splitem, out_queue)
+		case <-client.close:
+			return
+		}
+	}
+}
+
+// for when we use the input queue in a non-socket fashion
+func (client *UDPClient) clientLessRun() {
+	for {
+		select {
+		case splitem := <-client.input_queue:
+			client.server.ProcessSplitItem(splitem, client.out_queue)
+		case <-client.close:
+			return
+		}
+	}
+}
+func (client *UDPClient) getLines() {
 
 	var buf = make([]byte, client.BufferSize)
 	for {
 		rlen, _, _ := client.Connection.ReadFromUDP(buf[:])
+		client.server.BytesReadCount.Up(uint64(rlen))
+
 		in_str := string(buf[0:rlen])
 		if rlen > 0 {
-			readStr(in_str)
+			client.procLines(in_str)
+			//client.line_queue <- in_str
 		}
 	}
 }
 
-func (client UDPClient) handleRequest() {
+func (client UDPClient) handleRequest(out_queue chan splitter.SplitItem) {
 	for w := int64(1); w <= client.server.Workers; w++ {
-		go client.run()
+		go client.run(out_queue)
+		go client.clientLessRun()
 	}
 
 	go client.getLines()
 }
 
-func (client UDPClient) handleSend() {
+func (client UDPClient) handleSend(out_queue chan splitter.SplitItem) {
 
 	for {
-		message := <-client.out_queue
-		if !message.IsValid() {
+		message := <-out_queue
+		if message == nil || !message.IsValid() {
 			break
 		}
 	}

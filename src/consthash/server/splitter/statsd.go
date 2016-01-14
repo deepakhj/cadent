@@ -16,6 +16,7 @@ type StatsdSplitItem struct {
 	inline   string
 	infields []string
 	inphase  Phase
+	inorigin Origin
 }
 
 func (g *StatsdSplitItem) Key() string {
@@ -36,6 +37,14 @@ func (g *StatsdSplitItem) Phase() Phase {
 
 func (g *StatsdSplitItem) SetPhase(n Phase) {
 	g.inphase = n
+}
+
+func (g *StatsdSplitItem) Origin() Origin {
+	return g.inorigin
+}
+
+func (g *StatsdSplitItem) SetOrigin(n Origin) {
+	g.inorigin = n
 }
 
 func (g *StatsdSplitItem) IsValid() bool {
@@ -63,6 +72,7 @@ func (job *StatsdSplitter) ProcessLine(line string) (SplitItem, error) {
 			inline:   line,
 			infields: statd_array,
 			inphase:  Parsed,
+			inorigin: Other,
 		}
 		return si, nil
 	}
