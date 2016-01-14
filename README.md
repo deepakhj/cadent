@@ -44,7 +44,7 @@ to start
     consthash --config=example-config.toml
     
 There is also the "PreReg" options files as well, this lets one pre-route lines to various backends, that can then 
-be consitently hashed, or "rejected" if so desired
+be consitently hashed, or "rejected" if so desired, as well as "accumulated" (ala statsd or carbon-aggrigate)
 
     consthash --config=example-config.toml --prereg=example-prereg.toml
 
@@ -63,11 +63,21 @@ proxies to be transparent to them.
 Replication is supported as well to other places, there is "alot" of polling and line buffereing so we don't 
 waste sockets and time sending one line at a time for things that can support multiline inputs (i.e. statsd/graphite)
 
+A "PreRegex" filter on all incoming lines to either shift them to other backends (defined in the config) or
+simply reject the incoming line
+
+Finally an Accumulator, which initially "accumulates" lines that can be (thing statsd or carbon-aggrigate) then 
+emits them to a designated backend, which then can be "PreRegex" to other backends if nessesary
+Currently only "graphite" and "statsd" accumulators are available such that one can do statsd -> graphite or even 
+graphite -> graphite or graphite -> statsd (weird) or statsd -> statsd.  The {same}->{same} are more geared
+towards pre-buffering very "loud" inputs so as no to overwhelm the various backends.
+
 The Flow of a given line looks like so
 
-    InLine -> Listener -> Splitter -> PreReg -> Backend -> Hasher -> OutPool -> Buffer -> outLine(s)
-                                                |
-                                                -> Replicator -> Hasher -> OutPool -> Buffer -> outLine(s)
+    InLine(s) -> Listener -> Splitter -> [Accumulator] -> [PreReg] -> Backend -> Hasher -> OutPool -> Buffer -> outLine(s)
+                                                                |
+                                                                [-> Replicator -> Hasher -> OutPool -> Buffer -> outLine(s)]
+Things in `[]` are optional
 
 ### Internal Stats
 
