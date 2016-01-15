@@ -8,9 +8,11 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"net"
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -21,6 +23,9 @@ var sentLines int64
 var startTime = time.Now().Unix()
 var ConnectionTimeout, _ = time.ParseDuration("2s")
 var Statsdtypes = []string{"c", "g", "ms"}
+
+var conLock sync.Mutex
+var outCons map[*url.URL]net.Conn
 
 // random char gen
 func RandChars(length uint) string {
@@ -84,15 +89,33 @@ func setUlimits() {
 	fmt.Println("[System] Final Rlimit Final: ", rLimit)
 }
 
-func SendMsg(i_url *url.URL, msg string) {
+func Conn(i_url *url.URL) (net.Conn, error) {
+	conLock.Lock()
+	defer conLock.Unlock()
+	c, ok := outCons[i_url]
+	if ok {
+		return c, nil
+	}
 	conn, err := netpool.NewWriterConn(i_url.Scheme, i_url.Host+i_url.Path, ConnectionTimeout)
+	if err != nil {
+		return nil, fmt.Errorf("Error in Connection: %s", err)
+	}
+	outCons[i_url] = conn
+	return conn, nil
+}
+
+func SendMsg(i_url *url.URL, msg string) {
+	conn, err := Conn(i_url)
 	if err != nil {
 		log.Printf("Error in Connection: %s", err)
 		return
 	}
 	to_send := []byte(msg)
 	_, err = conn.Write(to_send)
-	conn.Close()
+	if err != nil {
+		log.Printf("Error in Write: %s", err)
+		delete(outCons, i_url)
+	}
 }
 
 func Runner(server string, intype string, rate string, buffer int) {
@@ -158,7 +181,7 @@ func main() {
 		flag.PrintDefaults()
 		os.Exit(0)
 	}
-
+	outCons = make(map[*url.URL]net.Conn)
 	server_split := strings.Split(*serverList, ",")
 	if len(*words) > 0 {
 		randWords = strings.Split(*words, ",")
