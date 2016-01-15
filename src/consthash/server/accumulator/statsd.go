@@ -71,7 +71,7 @@ func (s *StatsdBaseStatItem) Out(fmatter FormatterItem, acc AccumulatorItem) []s
 	if c_type == "c" {
 		val_p_s := val / float64(tick)
 		if acc.GetOption("LegacyStatsd", true).(bool) {
-			rate_pref := root + ".stats_counts."
+			rate_pref := "stats_counts."
 			if len(sufix) > 0 {
 				rate_pref = rate_pref + sufix + "."
 			}
