@@ -158,7 +158,7 @@ func (n *BufferedNetpool) TrapExit() {
 		syscall.SIGQUIT)
 
 	go func(np *BufferedNetpool) {
-		<-sigc
+		s := <-sigc
 		/*
 			np.closeLock.Lock()
 			defer np.closeLock.Unlock()
@@ -173,10 +173,10 @@ func (n *BufferedNetpool) TrapExit() {
 
 		signal.Stop(sigc)
 		close(sigc)
-		return
 		// re-raise it
-		//process, _ := os.FindProcess(os.Getpid())
-		//process.Signal(s)
+		process, _ := os.FindProcess(os.Getpid())
+		process.Signal(s)
+		return
 	}(n)
 }
 

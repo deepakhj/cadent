@@ -38,12 +38,12 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/signal"
+	//"os/signal"
 	"runtime"
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
+	//"syscall"
 	"time"
 )
 
@@ -58,7 +58,7 @@ const (
 )
 
 // the push method function type
-type pushFunction func(*SendOut)
+type pushFunction func(*SendOut) error
 
 type SendOut struct {
 	outserver string
@@ -69,7 +69,7 @@ type SendOut struct {
 
 // to send stat lines via a pool of connections
 // rather then one socket per stat
-func poolWorker(j *SendOut) {
+func poolWorker(j *SendOut) error {
 	defer stats.StatsdNanoTimeFunc("worker.process-time-ns", time.Now())
 
 	var outsrv netpool.NetpoolInterface
@@ -77,12 +77,13 @@ func poolWorker(j *SendOut) {
 
 	// lock out Outpool map
 	if j == nil {
-		return
+		return nil
 	}
 
+	j.server.poolmu.Lock()
+	defer j.server.poolmu.Unlock()
+
 	make_pool := func() int {
-		j.server.poolmu.Lock()
-		defer j.server.poolmu.Unlock()
 
 		if outsrv, ok = j.server.Outpool[j.outserver]; ok {
 			ok = true
@@ -110,7 +111,7 @@ func poolWorker(j *SendOut) {
 			// populate it
 			err = outsrv.InitPool()
 			if err != nil {
-				log.Warning("Pollinit error %s", err)
+				log.Warning("Poll init error %s", err)
 				return 1
 			}
 			j.server.Outpool[j.outserver] = outsrv
@@ -118,18 +119,12 @@ func poolWorker(j *SendOut) {
 		}
 	}
 	// keep retrying
-	for {
-		retcode := make_pool()
-		if retcode == 1 {
-			// retry
-			log.Warning("Pool %s failed to intialize, retrying in 1 second, check the outgoing servers for 'aliveness'", j.outserver)
-			time.Sleep(time.Second)
-		} else if retcode == 2 {
-			log.Warning("Pool %s failed to intialize, Hard failure", j.outserver)
-			return
-		} else {
-			break
-		}
+	retcode := make_pool()
+	if retcode == 1 {
+		time.Sleep(time.Second)
+		return fmt.Errorf("Pool %s failed to intialize,, check the outgoing servers for 'aliveness'", j.outserver)
+	} else if retcode == 2 {
+		return fmt.Errorf("Pool %s failed to intialize, Hard failure", j.outserver)
 	}
 
 	netconn, err := outsrv.Open()
@@ -137,10 +132,8 @@ func poolWorker(j *SendOut) {
 
 	if err != nil {
 		stats.StatsdClient.Incr("failed.bad-connection", 1)
-
 		j.server.FailSendCount.Up(1)
-		j.server.log.Error("Error sending to backend %s", err)
-		return
+		return fmt.Errorf("Error sending to backend %s", err)
 	}
 	if netconn.Conn() != nil {
 		// Conn.Write will raise a timeout error after 1 seconds
@@ -155,8 +148,7 @@ func poolWorker(j *SendOut) {
 			stats.StatsdClient.Incr("failed.connection-timeout", 1)
 			j.server.FailSendCount.Up(1)
 			outsrv.ResetConn(netconn)
-			j.server.log.Error("Error sending (writing) to backend: %s", err)
-			return
+			return fmt.Errorf("Error sending (writing) to backend: %s", err)
 		} else {
 			j.server.BytesWrittenCount.Up(uint64(by))
 			j.server.SuccessSendCount.Up(1)
@@ -167,16 +159,16 @@ func poolWorker(j *SendOut) {
 	} else {
 		stats.StatsdClient.Incr("failed.aborted-connection", 1)
 		j.server.FailSendCount.Up(1)
-		j.server.log.Error("Error sending (writing connection gone) to backend: %s", j.outserver)
-		return
+		return fmt.Errorf("Error sending (writing connection gone) to backend: %s", j.outserver)
 	}
+	return nil
 }
 
 //this is for using a simple tcp connection per stat we send out
 //one can quickly run out of sockets if this is used under high load
-func singleWorker(j *SendOut) {
+func singleWorker(j *SendOut) error {
 	if j == nil {
-		return
+		return nil
 	}
 
 	defer stats.StatsdNanoTimeFunc("worker.process-time-ns", time.Now())
@@ -185,8 +177,7 @@ func singleWorker(j *SendOut) {
 	if err != nil {
 		stats.StatsdClient.Incr("failed.bad-url", 1)
 		j.server.FailSendCount.Up(1)
-		j.server.log.Error("Error sending to backend Invalid URL %s", err)
-		return
+		return fmt.Errorf("Error sending to backend Invalid URL %s", err)
 	}
 	conn, err := net.DialTimeout(m_url.Scheme, m_url.Host+m_url.Path, 5*time.Second)
 	if conn != nil {
@@ -200,16 +191,16 @@ func singleWorker(j *SendOut) {
 		if err != nil {
 			stats.StatsdClient.Incr("failed.bad-connection", 1)
 			j.server.FailSendCount.Up(1)
-			j.server.log.Error("Error sending (writing) to backend: %s", err)
-			return
+			return fmt.Errorf("Error sending (writing) to backend: %s", err)
 		}
 		stats.StatsdClient.Incr("success.sent", 1)
 		stats.StatsdClient.Incr("success.sent-bytes", int64(len(to_send)))
 		j.server.SuccessSendCount.Up(1)
 	} else {
-		j.server.log.Error("Error sending (connection) to backend: %s", err)
 		j.server.FailSendCount.Up(1)
+		return fmt.Errorf("Error sending (connection) to backend: %s", err)
 	}
+	return nil
 }
 
 /****************** SERVERS *********************/
@@ -372,7 +363,7 @@ type Server struct {
 
 	//trap some signals yo
 	StopTicker chan bool
-	ShutDown   broadcast.Broadcaster
+	ShutDown   *broadcast.Broadcaster
 
 	//the push function (polling, direct, etc)
 	PushFunction pushFunction
@@ -395,7 +386,7 @@ func (server *Server) GetStats() (stats *ServerStats) {
 
 func (server *Server) TrapExit() {
 	//trap kills to flush queues and close connections
-	sc := make(chan os.Signal, 1)
+	/*sc := make(chan os.Signal, 1)
 	signal.Notify(sc,
 		syscall.SIGINT,
 		syscall.SIGTERM,
@@ -405,16 +396,16 @@ func (server *Server) TrapExit() {
 		s := <-sc
 		ins.log.Notice("Caught %s: Closing Server out before quit ", s)
 
-		ins.StopServer()
+		//ins.StopServer()
 
 		signal.Stop(sc)
 		close(sc)
 
 		// re-raise it
-		process, _ := os.FindProcess(os.Getpid())
-		process.Signal(s)
+		//process, _ := os.FindProcess(os.Getpid())
+		//process.Signal(s)
 		return
-	}(server)
+	}(server)*/
 }
 
 func (server *Server) StopServer() {
@@ -430,24 +421,51 @@ func (server *Server) StopServer() {
 		hasher.ServerPool.StopChecks()
 	}
 
+	//broadcast die
+	server.ShutDown.Send(true)
+
 	//shut this guy down too
 	if server.PreRegFilter != nil && server.PreRegFilter.Accumulator != nil {
-		server.PreRegFilter.Accumulator.Stop()
-		time.Sleep(2 * time.Second)
+		tick := time.NewTimer(2 * time.Second)
+		did := make(chan bool, 1)
+		go func() {
+			server.PreRegFilter.Accumulator.Stop()
+			did <- true
+			return
+		}()
+
+		for {
+			select {
+			case <-tick.C:
+				break
+			case <-did:
+				break
+			}
+		}
 	}
 
 	// bleed the pools
 	if server.Outpool != nil {
 		for k, outp := range server.Outpool {
 			server.log.Notice("Bleeding buffer pool %s", k)
-			outp.DestroyAll()
+			server.log.Notice("Waiting 5 seconds for pools to empty")
+			tick := time.NewTimer(2 * time.Second)
+			did := make(chan bool, 1)
+			go func() {
+				outp.DestroyAll()
+				did <- true
+				return
+			}()
+			for {
+				select {
+				case <-tick.C:
+					break
+				case <-did:
+					break
+				}
+			}
 		}
 	}
-
-	//broadcast die
-	server.ShutDown.Send(true)
-	server.log.Notice("Waiting 5 seconds for pools to empty")
-	time.Sleep(5 * time.Second)
 
 	// bleed the queues if things get stuck
 	for {
@@ -515,18 +533,21 @@ func (server *Server) NeedBackPressure() bool {
 
 //spins up the queue of go routines to handle outgoing
 func (server *Server) WorkerOutput() {
-
 	shuts := server.ShutDown.Listen()
-	defer shuts.Close()
 	for {
 		select {
 		case j := <-server.WorkQueue:
-			server.PushFunction(j)
+			err := server.PushFunction(j)
+			if err != nil {
+				server.log.Error("%s", err)
+				// add it back to the queue
+				//server.WorkQueue <- j
+			}
 		case <-shuts.Ch:
 			return
 		}
 	}
-
+	return
 }
 
 func (server *Server) SendtoOutputWorkers(spl splitter.SplitItem, out chan splitter.SplitItem) {
@@ -537,8 +558,6 @@ func (server *Server) SendtoOutputWorkers(spl splitter.SplitItem, out chan split
 	defer func() { server.WorkerHold <- -1 }()
 
 	use_chan := out
-	shuts := server.ShutDown.Listen()
-	defer shuts.Close()
 
 	//IF the item's origin is other, we have to use the "generic" outut processor
 	// as we've lost the originating socket channel
@@ -548,10 +567,7 @@ func (server *Server) SendtoOutputWorkers(spl splitter.SplitItem, out chan split
 
 	select {
 	case use_chan <- server.PushLineToBackend(spl):
-
 		timer.Stop()
-	case <-shuts.Ch:
-		return
 
 	case <-timer.C:
 		timer.Stop()
@@ -559,6 +575,7 @@ func (server *Server) SendtoOutputWorkers(spl splitter.SplitItem, out chan split
 		server.FailSendCount.Up(1)
 		server.log.Warning("Timeout Queue len: %d, %s", len(server.WorkQueue), spl.Line())
 	}
+	return
 }
 
 //return the ServerHashCheck for a given key (more a utility debugger thing for
@@ -658,6 +675,8 @@ func NewServer(cfg *Config) (server *Server, err error) {
 	serv.SplitterTypeString = cfg.MsgType
 	serv.SplitterConfig = cfg.MsgConfig
 	serv.Replicas = cfg.Replicas
+
+	serv.ShutDown = broadcast.New(1)
 
 	serv.poolmu = new(sync.Mutex)
 
@@ -914,11 +933,13 @@ func (server *Server) tickDisplay() {
 			server.ResetTickers()
 			server.stats.mu.Unlock()
 
+			runtime.GC()
+
 		case <-server.StopTicker:
 			return
 		}
 	}
-
+	return
 }
 
 // Fire up the http server for stats and healthchecks
@@ -1128,8 +1149,6 @@ func (server *Server) ProcessSplitItem(splitem splitter.SplitItem, out_queue cha
 func (server *Server) Accepter() (<-chan net.Conn, error) {
 
 	conns := make(chan net.Conn, server.Workers)
-	shuts := server.ShutDown.Listen()
-	defer shuts.Close()
 
 	go func() {
 		defer func() {
@@ -1139,6 +1158,7 @@ func (server *Server) Accepter() (<-chan net.Conn, error) {
 			}
 		}()
 
+		shuts := server.ShutDown.Listen()
 		defer shuts.Close()
 		defer close(conns)
 
@@ -1185,8 +1205,6 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, done chan Client) 
 	defer close(server.back_pressure)
 
 	run := func() {
-		shuts_runner := server.ShutDown.Listen()
-		defer shuts_runner.Close()
 
 		// consume the input queue of lines
 		for {
@@ -1208,8 +1226,7 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, done chan Client) 
 
 				server.ProcessSplitItem(splitem, server.ProcessedQueue)
 				server.AddToCurrentTotalBufferSize(-l_len)
-			case <-shuts_runner.Ch:
-				return
+
 			}
 		}
 	}
@@ -1227,7 +1244,7 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, done chan Client) 
 	// this queue is just for "real" TCP sockets
 	tcp_socket_out := make(chan splitter.SplitItem)
 	shuts_client := server.ShutDown.Listen()
-	defer shuts_client.Close()
+	//defer shuts_client.Close()
 	for {
 		select {
 		case conn, ok := <-accepts_queue:
@@ -1237,6 +1254,7 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, done chan Client) 
 
 			client := NewTCPClient(server, hashers, conn, done)
 			client.SetBufferSize((int)(server.ClientReadBufferSize))
+			log.Debug("Accepted con %v", conn.RemoteAddr())
 
 			go client.handleRequest(tcp_socket_out)
 			go client.handleSend(tcp_socket_out)
@@ -1336,8 +1354,6 @@ func (server *Server) startHTTPServer(hashers *[]*ConstHasher, done chan Client)
 func (server *Server) startBackendServer(hashers *[]*ConstHasher, done chan Client) {
 
 	// start the "backend only loop"
-	shuts := server.ShutDown.Listen()
-	defer shuts.Close()
 
 	run := func() {
 		for {
@@ -1353,8 +1369,6 @@ func (server *Server) startBackendServer(hashers *[]*ConstHasher, done chan Clie
 				stats.StatsdClient.Incr("incoming.backend.lines", 1)
 				stats.StatsdClient.Incr(fmt.Sprintf("incoming.backend.%s.lines", server.Name), 1)
 				server.AddToCurrentTotalBufferSize(-l_len)
-			case <-shuts.Ch:
-				return
 			}
 		}
 	}
@@ -1366,11 +1380,10 @@ func (server *Server) startBackendServer(hashers *[]*ConstHasher, done chan Clie
 
 	// "socket-less" consumers will eat the ProcessedQueue
 	// just loooop
-	shuts_2 := server.ShutDown.Listen()
-	defer shuts_2.Close()
+	shuts := server.ShutDown.Listen()
 	for {
 		select {
-		case <-shuts_2.Ch:
+		case <-shuts.Ch:
 			return
 		}
 	}
@@ -1382,8 +1395,6 @@ func (server *Server) startBackendServer(hashers *[]*ConstHasher, done chan Clie
 // from a socket (where the output queue is needed for server responses and the like)
 // Backend Servers use this exclusively as there are no sockets
 func (server *Server) ConsumeProcessedQueue(qu chan splitter.SplitItem) {
-	shuts := server.ShutDown.Listen()
-	defer shuts.Close()
 	for {
 		select {
 		case l := <-qu:
@@ -1400,9 +1411,6 @@ func (server *Server) ConsumeProcessedQueue(qu chan splitter.SplitItem) {
 			}
 			stats.StatsdClient.GaugeAvg("worker.queue.length", ct)
 			stats.StatsdClient.GaugeAvg(fmt.Sprintf("worker.%s.queue.length", server.Name), ct)
-		case <-shuts.Ch:
-			return
-
 		}
 	}
 }

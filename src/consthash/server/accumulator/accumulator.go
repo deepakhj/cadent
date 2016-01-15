@@ -72,7 +72,6 @@ func NewAccumlator(inputtype string, outputtype string) (*Accumulator, error) {
 		Name:            fmt.Sprintf("%s -> %s", inputtype, outputtype),
 		FlushTime:       time.Second,
 		Shutdown:        make(chan bool),
-		LineQueue:       make(chan string, 10000),
 	}
 
 	// determine the splitter from the formatter item
@@ -97,14 +96,13 @@ func (acc *Accumulator) SetOutputQueue(qu chan splitter.SplitItem) {
 }
 
 func (acc *Accumulator) ProcessSplitItem(sp splitter.SplitItem) error {
-	acc.LineQueue <- sp.Line()
-	return nil
-	//log.Notice("Proc Item: %s", sp.Line())
-	//return acc.Accumulate.ProcessLine(sp.Line())
+	return acc.ProcessLine(sp.Line())
 }
 
 func (acc *Accumulator) ProcessLine(sp string) error {
-	acc.LineQueue <- sp
+	if acc.LineQueue != nil {
+		acc.LineQueue <- sp
+	}
 	return nil
 	//return acc.Accumulate.ProcessLine(sp)
 }
@@ -114,6 +112,7 @@ func (acc *Accumulator) ProcessLine(sp string) error {
 func (acc *Accumulator) Start() error {
 	acc.mu.Lock()
 	acc.timer = time.NewTicker(acc.FlushTime)
+	acc.LineQueue = make(chan string, 10000)
 	acc.mu.Unlock()
 	log.Notice("Starting accumulator loop for `%s`", acc.Name)
 
@@ -128,8 +127,16 @@ func (acc *Accumulator) Start() error {
 			acc.timer.Stop()
 			log.Notice("Shutting down final flush of accumulator `%s`", acc.Name)
 			acc.FlushAndPost()
-			acc.timer = nil
-			return nil
+			break
+		}
+	}
+	//bleed
+	for {
+		for i := 0; i < len(acc.LineQueue); i++ {
+			_ = <-acc.LineQueue
+		}
+		if len(acc.LineQueue) == 0 {
+			break
 		}
 	}
 	return nil
@@ -138,6 +145,7 @@ func (acc *Accumulator) Start() error {
 func (acc *Accumulator) Stop() {
 	log.Notice("Initiating shutdown of accumulator `%s`", acc.Name)
 	acc.Shutdown <- true
+	return
 }
 
 func (acc *Accumulator) FlushAndPost() ([]splitter.SplitItem, error) {

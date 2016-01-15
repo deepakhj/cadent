@@ -146,7 +146,7 @@ func (client *HTTPClient) HttpHandler(w http.ResponseWriter, r *http.Request) {
 	if f, ok := w.(http.Flusher); ok {
 		f.Flush()
 	}
-
+	return
 }
 
 func (client *HTTPClient) run(out_queue chan splitter.SplitItem) {
@@ -158,7 +158,7 @@ func (client *HTTPClient) run(out_queue chan splitter.SplitItem) {
 			return
 		}
 	}
-
+	return
 }
 
 func (client HTTPClient) handleRequest(out_queue chan splitter.SplitItem) {
@@ -177,6 +177,7 @@ func (client HTTPClient) handleRequest(out_queue chan splitter.SplitItem) {
 		go client.run(out_queue)
 		go client.run(client.out_queue) // bleed out non-socket inputs
 	}
+	return
 }
 
 func (client HTTPClient) handleSend(out_queue chan splitter.SplitItem) {
@@ -190,4 +191,5 @@ func (client HTTPClient) handleSend(out_queue chan splitter.SplitItem) {
 	client.log.Notice("Closing Http connection")
 	//close it out
 	client.Close()
+	return
 }

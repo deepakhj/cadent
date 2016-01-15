@@ -121,6 +121,7 @@ func (client *TCPClient) handleRequest(outqueue chan splitter.SplitItem) {
 		if len(line) == 0 {
 			continue
 		}
+
 		client.server.BytesReadCount.Up(uint64(len(line)))
 		client.server.AllLinesCount.Up(1)
 		splitem, err := client.server.SplitterProcessor.ProcessLine(strings.Trim(line, "\n\t "))
@@ -142,7 +143,7 @@ func (client *TCPClient) handleRequest(outqueue chan splitter.SplitItem) {
 	//close it and end the send routing
 	outqueue <- splitter.BlankSplitterItem()
 	client.done <- client
-
+	return
 }
 
 func (client *TCPClient) handleSend(outqueue chan splitter.SplitItem) {
@@ -157,4 +158,5 @@ func (client *TCPClient) handleSend(outqueue chan splitter.SplitItem) {
 			return
 		}
 	}
+	return
 }

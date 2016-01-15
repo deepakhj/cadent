@@ -111,6 +111,7 @@ func (client *UDPClient) procLines(line string) {
 			continue
 		}
 	}
+	return
 }
 func (client *UDPClient) run(out_queue chan splitter.SplitItem) {
 	for {
@@ -121,6 +122,7 @@ func (client *UDPClient) run(out_queue chan splitter.SplitItem) {
 			return
 		}
 	}
+	return
 }
 
 func (client *UDPClient) getLines() {
@@ -135,6 +137,7 @@ func (client *UDPClient) getLines() {
 			client.procLines(in_str)
 		}
 	}
+	return
 }
 
 func (client UDPClient) handleRequest(out_queue chan splitter.SplitItem) {
@@ -144,6 +147,7 @@ func (client UDPClient) handleRequest(out_queue chan splitter.SplitItem) {
 	}
 
 	go client.getLines()
+	return
 }
 
 func (client UDPClient) handleSend(out_queue chan splitter.SplitItem) {
@@ -157,4 +161,5 @@ func (client UDPClient) handleSend(out_queue chan splitter.SplitItem) {
 	client.log.Notice("Closing UDP connection")
 	//close it out
 	client.Close()
+	return
 }
