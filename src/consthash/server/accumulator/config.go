@@ -46,11 +46,14 @@ type AccumulatorTags struct {
 	Value string `toml:"value"`
 }
 
+// options for backends
+
 type ConfigAccumulator struct {
 	ToBackend    string            `toml:"backend"` // once "parsed and flushed" re-inject into another pre-reg group for delegation
 	InputFormat  string            `toml:"input_format"`
 	OutoutFormat string            `toml:"output_format"`
 	FlushTime    string            `toml:"flush_time"`
+	Option       [][]string        `toml:"options"` // option=[ [key, value], [key, value] ...]
 	Tags         []AccumulatorTags `toml:"tags"`
 }
 
@@ -75,6 +78,10 @@ func (cf ConfigAccumulator) GetAccumulator() (*Accumulator, error) {
 	}
 	ac.ToBackend = cf.ToBackend
 	ac.Accumulate.SetTags(cf.Tags)
+	err = ac.Accumulate.SetOptions(cf.Option)
+	if err != nil {
+		return nil, err
+	}
 	return ac, nil
 }
 

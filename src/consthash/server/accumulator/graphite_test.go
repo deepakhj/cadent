@@ -7,8 +7,8 @@ import (
 
 func TestGraphiteAccumulator(t *testing.T) {
 	// Only pass t into top-level Convey calls
-	grp, err := NewFormatterItem("graphite")
 	statter, err := NewAccumulatorItem("graphite")
+	grp, err := NewFormatterItem("graphite")
 	statter.Init(grp)
 
 	Convey("Given an GraphiteAcc w/ Graphite Formatter", t, func() {

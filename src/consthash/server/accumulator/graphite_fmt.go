@@ -11,10 +11,19 @@ import (
 
 const GRAPHITE_FMT_NAME = "graphite_formater"
 
-type GraphiteFormatter struct{}
+type GraphiteFormatter struct {
+	acc AccumulatorItem
+}
 
 func (g *GraphiteFormatter) Init(items ...string) error {
 	return nil
+}
+
+func (g *GraphiteFormatter) GetAccumulator() AccumulatorItem {
+	return g.acc
+}
+func (g *GraphiteFormatter) SetAccumulator(acc AccumulatorItem) {
+	g.acc = acc
 }
 
 func (g *GraphiteFormatter) Type() string { return GRAPHITE_FMT_NAME }

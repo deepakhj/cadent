@@ -87,7 +87,7 @@ type GraphiteBaseStatItem struct {
 
 func (s *GraphiteBaseStatItem) Type() string { return s.InType }
 func (s *GraphiteBaseStatItem) Key() string  { return s.InKey }
-func (s *GraphiteBaseStatItem) Out(fmatter FormatterItem, tags []AccumulatorTags) []string {
+func (s *GraphiteBaseStatItem) Out(fmatter FormatterItem, acc AccumulatorItem) []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	val := GRAPHITE_ACC_FUN[s.ReduceFunc](s.Values)
@@ -97,7 +97,7 @@ func (s *GraphiteBaseStatItem) Out(fmatter FormatterItem, tags []AccumulatorTags
 			val,
 			0, // let formatter handle the time,
 			"c",
-			tags,
+			acc.Tags(),
 		),
 	}
 }
@@ -128,6 +128,13 @@ func NewGraphiteAccumulate() (*GraphiteAccumulate, error) {
 	return new(GraphiteAccumulate), nil
 }
 
+func (s *GraphiteAccumulate) SetOptions(ops [][]string) error {
+	return nil
+}
+func (s *GraphiteAccumulate) GetOption(opt string, defaults interface{}) interface{} {
+	return defaults
+}
+
 func (s *GraphiteAccumulate) Tags() []AccumulatorTags {
 	return s.InTags
 }
@@ -138,6 +145,7 @@ func (s *GraphiteAccumulate) SetTags(tags []AccumulatorTags) {
 
 func (s *GraphiteAccumulate) Init(fmatter FormatterItem) error {
 	s.OutFormat = fmatter
+	fmatter.SetAccumulator(s)
 	s.GraphiteStats = make(map[string]StatItem)
 	return nil
 }
@@ -161,7 +169,7 @@ func (a *GraphiteAccumulate) Flush() []string {
 	base := []string{}
 	a.mu.Lock()
 	for _, stats := range a.GraphiteStats {
-		base = append(base, stats.Out(a.OutFormat, a.Tags())...)
+		base = append(base, stats.Out(a.OutFormat, a)...)
 	}
 	a.mu.Unlock()
 	a.Reset()

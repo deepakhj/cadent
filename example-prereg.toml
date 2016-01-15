@@ -30,6 +30,16 @@ default_backend="statsd-proxy"  # failing a match go here
     input_format = "statsd"
     output_format = "graphite"
     flush_time = "2s"
+    # options for statsd input formats (for outputs)
+    options = [
+            ["legacyNamespace", "true"],
+            ["prefixGauge", "gauges"],
+            ["prefixTimer", "timers"],
+            ["prefixCounter", "counters"],
+            ["globalPrefix", ""],
+            ["globalSuffix", "stats"],
+            ["percentThreshold", "0.75,0.90,0.95,0.99"]
+     ]
 
 
     [[statsd-regex-map.map]]

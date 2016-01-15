@@ -12,11 +12,21 @@ import (
 /****************** RUNNERS *********************/
 const STATSD_FMT_NAME = "statsd_formater"
 
-type StatsdFormatter struct{}
+type StatsdFormatter struct {
+	acc AccumulatorItem
+}
 
 func (g *StatsdFormatter) Init(items ...string) error {
 	return nil
 }
+
+func (g *StatsdFormatter) GetAccumulator() AccumulatorItem {
+	return g.acc
+}
+func (g *StatsdFormatter) SetAccumulator(acc AccumulatorItem) {
+	g.acc = acc
+}
+
 func (g *StatsdFormatter) Type() string { return STATSD_FMT_NAME }
 func (g *StatsdFormatter) ToString(key string, val float64, tstamp int32, stats_type string, tags []AccumulatorTags) string {
 
