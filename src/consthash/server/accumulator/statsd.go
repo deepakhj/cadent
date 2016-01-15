@@ -29,9 +29,10 @@ func (a statdInt64arr) Swap(i int, j int)  { a[i], a[j] = a[j], a[i] }
 func (a statdInt64arr) Less(i, j int) bool { return (a[i] - a[j]) > 0 } //this is the sorting statsd uses for its timings
 
 type StatsdBaseStatItem struct {
-	InKey  string
-	Value  float64
-	InType string
+	InKey      string
+	Value      float64
+	InType     string
+	start_time int64
 
 	mu sync.Mutex
 }
@@ -43,9 +44,36 @@ func (s *StatsdBaseStatItem) Out(fmatter FormatterItem, tags []AccumulatorTags) 
 	defer s.mu.Unlock()
 	pref := "stats.counters"
 	c_type := "c"
+	val := s.Value
+
+	tick := time.Now().Unix() - s.start_time
+	if tick == 0 {
+		tick = 1.0
+	}
 	if s.InType == "g" || s.InType == "-g" || s.InType == "+g" {
 		pref = "stats.gauges"
 		c_type = "g"
+	}
+	// reset the ticker
+	s.start_time = time.Now().Unix()
+	if c_type == "c" {
+		val_p_s := val / float64(tick)
+		return []string{
+			fmatter.ToString(
+				pref+"."+s.InKey,
+				val,
+				0, // let formatter handle the time,
+				c_type,
+				nil,
+			),
+			fmatter.ToString(
+				"stats.rates."+s.InKey,
+				val_p_s,
+				0, // let formatter handle the time,
+				c_type,
+				nil,
+			),
+		}
 	}
 	return []string{
 		fmatter.ToString(
@@ -62,6 +90,9 @@ func (s *StatsdBaseStatItem) Accumulate(val float64) error {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.start_time == 0 {
+		s.start_time = time.Now().Unix()
+	}
 
 	switch {
 	case s.InType == "c": //counter
