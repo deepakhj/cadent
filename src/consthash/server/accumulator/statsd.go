@@ -60,14 +60,14 @@ func (s *StatsdBaseStatItem) Out(fmatter FormatterItem, tags []AccumulatorTags) 
 		val_p_s := val / float64(tick)
 		return []string{
 			fmatter.ToString(
-				pref+"."+s.InKey,
+				pref+".count."+s.InKey,
 				val,
 				0, // let formatter handle the time,
 				c_type,
 				nil,
 			),
 			fmatter.ToString(
-				"stats.rates."+s.InKey,
+				pref+".rate."+s.InKey,
 				val_p_s,
 				0, // let formatter handle the time,
 				c_type,
