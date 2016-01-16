@@ -85,6 +85,7 @@ const DEFALT_SECTION_NAME = "prereg"
 var log = logging.MustGetLogger("prereg")
 
 type ConfigFilter struct {
+	NoOp      string `toml:"noop"`
 	Prefix    string `toml:"prefix"`
 	SubString string `toml:"substring"`
 	RegEx     string `toml:"regex"`
@@ -155,8 +156,8 @@ func (l ListofConfigMaps) ParseConfig() (PreRegMap, error) {
 			if len(cmap.RegEx) > 0 && len(cmap.SubString) > 0 {
 				panic(fmt.Sprintf("Cannot have BOTH `regex` and `substring` for `%s`", pr.Name))
 			}
-			if len(cmap.RegEx) == 0 && len(cmap.SubString) == 0 && len(cmap.Prefix) == 0 {
-				panic(fmt.Sprintf("Need `prefix`, `regex`, or `substring` for `%s`", pr.Name))
+			if len(cmap.RegEx) == 0 && len(cmap.SubString) == 0 && len(cmap.Prefix) == 0 && len(cmap.NoOp) == 0 {
+				panic(fmt.Sprintf("Need `noop`, `prefix`, `regex`, or `substring` for `%s`", pr.Name))
 			}
 
 			if len(cmap.Prefix) > 0 {
