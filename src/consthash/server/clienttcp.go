@@ -130,7 +130,7 @@ func (client *TCPClient) handleRequest(outqueue chan splitter.SplitItem) {
 			splitem.SetOrigin(splitter.TCP)
 			client.server.ValidLineCount.Up(1)
 			client.input_queue <- splitem
-			stats.StatsdClient.Incr("incoming.tcp.invalidlines", 1)
+			stats.StatsdClient.Incr("incoming.tcp.lines", 1)
 		} else {
 			client.server.InvalidLineCount.Up(1)
 			stats.StatsdClient.Incr("incoming.tcp.invalidlines", 1)
