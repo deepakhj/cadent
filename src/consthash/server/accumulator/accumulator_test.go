@@ -184,6 +184,15 @@ func TestAccumualtorAccumulator(t *testing.T) {
 
 		err = statsd_acc.ProcessLine("moo.goo.poo:12|c")
 		err = statsd_acc.ProcessLine("moo.goo.poo:0.1|ms|@0.2")
+		err = statsd_acc.ProcessLine("moo.goo.poo:0.1|ms|@0.2")
+		err = statsd_acc.ProcessLine("moo.goo.poo:0.1|ms|@0.2")
+		err = statsd_acc.ProcessLine("moo.goo.poo:0.5|ms|@0.2")
+		err = statsd_acc.ProcessLine("moo.goo.poo:0.3|ms|@0.2")
+		err = statsd_acc.ProcessLine("moo.goo.poo:0.5|ms|@0.2")
+		err = statsd_acc.ProcessLine("moo.goo.poo:0.7|ms|@0.2")
+		err = statsd_acc.ProcessLine("moo.goo.poo:0.7|ms|@0.2")
+		err = statsd_acc.ProcessLine("moo.goo.poo:0.7|ms|@0.2")
+		err = statsd_acc.ProcessLine("moo.goo.poo:0.2|ms|@0.2")
 		err = statsd_acc.ProcessLine("moo.goo.goo:24|c")
 		err = statsd_acc.ProcessLine("moo.goo.goo:24|c")
 		err = statsd_acc.ProcessLine("moo.goo.loo:36|c")
@@ -200,13 +209,13 @@ func TestAccumualtorAccumulator(t *testing.T) {
 
 				case l := <-tickC:
 					outs = append(outs, l)
-					t.Logf("FlushLine %s", l)
+					t.Logf("FlushLine %s", l.Line())
 				}
 			}
 		}
 		t_f()
-		Convey("should have 12 flushed lines", func() {
-			So(len(outs), ShouldEqual, 12)
+		Convey("should have 24 flushed lines", func() {
+			So(len(outs), ShouldEqual, 24)
 		})
 	})
 

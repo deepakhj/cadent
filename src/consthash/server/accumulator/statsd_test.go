@@ -129,7 +129,7 @@ func TestStatsdAccumulator(t *testing.T) {
 			if strings.Contains(item, "stats.timers") {
 				got_timer = item
 			}
-			if strings.Contains(item, "moo.goo.org.upper_95:10.000000|g") {
+			if strings.Contains(item, "moo.goo.org.upper_95:20.000000|g") {
 				have_upper = item
 			}
 
@@ -137,7 +137,7 @@ func TestStatsdAccumulator(t *testing.T) {
 		Convey("Statsd should not have stats.timers ", func() {
 			So(len(got_timer), ShouldEqual, 0)
 		})
-		Convey("Statsd should not have proper upper_95 ", func() {
+		Convey("Statsd should have proper upper_95 ", func() {
 			So(len(have_upper), ShouldNotEqual, 0)
 		})
 	})

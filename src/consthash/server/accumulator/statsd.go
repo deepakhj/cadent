@@ -22,11 +22,18 @@ const STATSD_ACC_MIN_FLAG = math.MinInt64
 
 /** counter/gauge type **/
 // for sorting
-type statdInt64arr []int64
+type statdFloat64arr []float64
 
-func (a statdInt64arr) Len() int           { return len(a) }
-func (a statdInt64arr) Swap(i int, j int)  { a[i], a[j] = a[j], a[i] }
-func (a statdInt64arr) Less(i, j int) bool { return (a[i] - a[j]) > 0 } //this is the sorting statsd uses for its timings
+func (a statdFloat64arr) Len() int           { return len(a) }
+func (a statdFloat64arr) Swap(i int, j int)  { a[i], a[j] = a[j], a[i] }
+func (a statdFloat64arr) Less(i, j int) bool { return (a[i] - a[j]) < 0 } //this is the sorting statsd uses for its timings
+
+func round(a float64) float64 {
+	if a < 0 {
+		return math.Ceil(a - 0.5)
+	}
+	return math.Floor(a + 0.5)
+}
 
 type StatsdBaseStatItem struct {
 	InKey      string
@@ -148,11 +155,11 @@ func (s *StatsdBaseStatItem) Accumulate(val float64) error {
 type StatsdTimerStatItem struct {
 	InKey  string
 	InType string
-	Value  int64
+	Value  float64
 	Count  int64
-	Min    int64
-	Max    int64
-	Values statdInt64arr
+	Min    float64
+	Max    float64
+	Values statdFloat64arr
 
 	PercentThreshold []float64
 
@@ -172,15 +179,14 @@ func (s *StatsdTimerStatItem) Accumulate(val float64) error {
 		s.start_time = time.Now().Unix()
 	}
 	s.Count += 1
-	vv := int64(val)
-	s.Value += vv
-	if s.Min == STATSD_ACC_MIN_FLAG || s.Min > vv {
-		s.Min = vv
+	s.Value += val
+	if s.Min == STATSD_ACC_MIN_FLAG || s.Min > val {
+		s.Min = val
 	}
-	if s.Max < vv {
-		s.Max = vv
+	if s.Max < val {
+		s.Max = val
 	}
-	s.Values = append(s.Values, vv)
+	s.Values = append(s.Values, val)
 	return nil
 }
 
@@ -198,8 +204,8 @@ func (s *StatsdTimerStatItem) Out(fmatter FormatterItem, acc AccumulatorItem) []
 	f_key = f_key + s.InKey
 
 	std := float64(0)
-	avg := float64(s.Value / s.Count)
-	cumulativeValues := []int64{s.Min}
+	avg := s.Value / float64(s.Count)
+	cumulativeValues := []float64{s.Min}
 
 	sort.Sort(s.Values)
 
@@ -208,8 +214,10 @@ func (s *StatsdTimerStatItem) Out(fmatter FormatterItem, acc AccumulatorItem) []
 		if idx > 0 {
 			cumulativeValues = append(cumulativeValues, v+cumulativeValues[idx-1])
 		}
-
 	}
+	//log.Notice("Sorted: %v", s.Values)
+	//log.Notice("Cums: %v", cumulativeValues)
+
 	std = math.Sqrt(std / float64(s.Count))
 	t_stamp := int32(0) //formatter controlled
 	tick := time.Now().Unix() - s.start_time
@@ -231,28 +239,29 @@ func (s *StatsdTimerStatItem) Out(fmatter FormatterItem, acc AccumulatorItem) []
 		thresholdBoundary := s.Max
 
 		for _, pct := range acc.GetOption("Thresholds", s.PercentThreshold).([]float64) {
-			// handel 0.90 or 90%
+			// handle 0.90 or 90%
 			multi := 1.0 / 100.0
 			per_mul := 1.0
 			if math.Abs(pct) < 1 {
 				multi = 1.0
 				per_mul = 100.0
 			}
-			numInThreshold := int64(math.Abs(pct) * multi * float64(s.Count))
+			numInThreshold := int64(round(math.Abs(pct) * multi * float64(s.Count)))
+			//log.Notice("NumInThreash: %v", numInThreshold)
 
 			if numInThreshold == 0 {
 				continue
 			}
 
 			if pct > 0 {
-				thresholdBoundary = cumulativeValues[numInThreshold-1]
+				thresholdBoundary = s.Values[numInThreshold-1]
 				sum = cumulativeValues[numInThreshold-1]
 			} else {
-				thresholdBoundary = cumulativeValues[s.Count-numInThreshold]
+				thresholdBoundary = s.Values[s.Count-numInThreshold]
 				sum = cumulativeValues[s.Count-1] - cumulativeValues[s.Count-numInThreshold-1]
 			}
 
-			mean = sum / numInThreshold
+			mean = sum / float64(numInThreshold)
 			base = append(base,
 				[]string{
 					fmatter.ToString(fmt.Sprintf("%s.count_%d", f_key, int(pct*per_mul)), float64(numInThreshold), t_stamp, "c", nil),
@@ -335,6 +344,7 @@ func (s *StatsdAccumulate) SetOptions(ops [][]string) error {
 			s.Suffix = op[1]
 		}
 		if op[0] == "percentThreshold" {
+			s.Thresholds = []float64{}
 			vals := strings.Split(op[1], ",")
 
 			for _, v := range vals {
