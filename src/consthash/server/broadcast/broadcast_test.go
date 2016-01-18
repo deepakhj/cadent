@@ -14,7 +14,7 @@ func TestBroadcasterer(t *testing.T) {
 		for {
 			select{
 			case gots := <-list.Ch:
-				t.Logf("Got broadcast %s: %v", list.id, gots)
+				t.Logf("Got broadcast %d: %v", list.id, gots)
 				list.Close()
 				return
 			}
