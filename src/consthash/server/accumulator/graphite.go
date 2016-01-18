@@ -147,6 +147,7 @@ func (s *GraphiteAccumulate) Init(fmatter FormatterItem) error {
 	s.OutFormat = fmatter
 	fmatter.SetAccumulator(s)
 	s.GraphiteStats = make(map[string]StatItem)
+	s.SetOptions([][]string{})
 	return nil
 }
 

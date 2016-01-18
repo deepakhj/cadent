@@ -129,8 +129,8 @@ func (n *Netpool) InitPoolWith(obj NetpoolInterface) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
-	if n.free != nil {
-		close(n.free)
+	if n.free == nil {
+		n.free = make(chan NetpoolConnInterface, n.MaxConnections)
 	}
 
 	n.free = make(chan NetpoolConnInterface, n.MaxConnections)
@@ -211,5 +211,6 @@ func (n *Netpool) DestroyAll() error {
 		con.Conn().Close()
 	}
 	close(n.free)
+	n.free = nil
 	return nil
 }

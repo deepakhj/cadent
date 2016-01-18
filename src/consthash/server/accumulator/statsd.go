@@ -394,6 +394,7 @@ func (a *StatsdAccumulate) Init(fmatter FormatterItem) error {
 	a.OutFormat = fmatter
 	fmatter.SetAccumulator(a)
 	a.StatsdStats = make(map[string]StatItem)
+	a.SetOptions([][]string{})
 	return nil
 }
 

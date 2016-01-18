@@ -72,6 +72,8 @@ func NewAccumlator(inputtype string, outputtype string) (*Accumulator, error) {
 		Name:            fmt.Sprintf("%s -> %s", inputtype, outputtype),
 		FlushTime:       time.Second,
 		Shutdown:        make(chan bool),
+		LineQueue:  make(chan string, 10000),
+		timer: nil,
 	}
 
 	// determine the splitter from the formatter item
@@ -111,8 +113,12 @@ func (acc *Accumulator) ProcessLine(sp string) error {
 // best to call this in a go routine
 func (acc *Accumulator) Start() error {
 	acc.mu.Lock()
-	acc.timer = time.NewTicker(acc.FlushTime)
-	acc.LineQueue = make(chan string, 10000)
+	if acc.timer == nil {
+		acc.timer = time.NewTicker(acc.FlushTime)
+	}
+	if acc.LineQueue == nil {
+		acc.LineQueue = make(chan string, 10000)
+	}
 	acc.mu.Unlock()
 	log.Notice("Starting accumulator loop for `%s`", acc.Name)
 

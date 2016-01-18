@@ -71,6 +71,15 @@ func TestAccumualtorAccumulator(t *testing.T) {
 	input_format = "statsd"
 	output_format = "moo"
 	flush_time = "5s"
+	options = [
+            ["legacyNamespace", "true"],
+            ["prefixGauge", "gauges"],
+            ["prefixTimer", "timers"],
+            ["prefixCounter", "counters"],
+            ["globalPrefix", ""],
+            ["globalSuffix", "stats"],
+            ["percentThreshold", "0.75,0.90,0.95,0.99"]
+    ]
 	`
 	acc_c, err = ParseConfigString(conf_test)
 	Convey("Config toml should parse to a fail on output_format", t, func() {
@@ -135,8 +144,8 @@ func TestAccumualtorAccumulator(t *testing.T) {
 			grph_acc.LogConfig()
 		})
 	})
-	statsd_acc, err := NewAccumlator("statsd", "graphite")
-	Convey("Graphite to graphite -> statsd accumulator should be ok", t, func() {
+	statsd_acc, err := NewAccumlator("statsd", "statsd")
+	Convey("Statsd to statsd accumulator should be ok", t, func() {
 
 		Convey("Error should be nil", func() {
 			So(err, ShouldEqual, nil)
@@ -145,8 +154,8 @@ func TestAccumualtorAccumulator(t *testing.T) {
 			So(statsd_acc, ShouldNotEqual, nil)
 		})
 	})
-	statsd_acc, err = NewAccumlator("statsd", "statsd")
-	Convey("Graphite to statsd -> statsd accumulator should be ok", t, func() {
+	statsd_acc, err = NewAccumlator("statsd", "graphite")
+	Convey("Statsd to graphite accumulator should be ok", t, func() {
 
 		Convey("Error should be nil", func() {
 			So(err, ShouldEqual, nil)
@@ -157,11 +166,20 @@ func TestAccumualtorAccumulator(t *testing.T) {
 	})
 
 	tickC := make(chan splitter.SplitItem)
+	statsd_acc.Accumulate.SetOptions([][]string{
+		[]string{"legacyNamespace", "true"},
+		[]string{"prefixGauge", "gauges"},
+		[]string{"prefixTimer", "timers"},
+		[]string{"prefixCounter", "counters"},
+		[]string{"globalPrefix", ""},
+		[]string{"globalSuffix", "stats"},
+		[]string{"percentThreshold", "0.75,0.90,0.95,0.99"},
+	})
 	statsd_acc.FlushTime = time.Duration(time.Second)
 	statsd_acc.OutputQueue = tickC
 	tt := time.NewTimer(time.Duration(2 * time.Second))
 	go statsd_acc.Start()
-	go statsd_acc.Start()
+	//go statsd_acc.Start()
 	Convey("statsd accumluator flush timer", t, func() {
 
 		err = statsd_acc.ProcessLine("moo.goo.poo:12|c")
@@ -171,10 +189,12 @@ func TestAccumualtorAccumulator(t *testing.T) {
 		err = statsd_acc.ProcessLine("moo.goo.loo:36|c")
 		err = statsd_acc.ProcessLine("moo.goo.loo||||36|c")
 		outs := []splitter.SplitItem{}
+		t.Logf("LineQueue %d", len(statsd_acc.LineQueue))
 		t_f := func() {
 			for {
 				select {
 				case <-tt.C:
+					t.Logf("Stopping accumuator after %d", 2 * time.Second)
 					statsd_acc.Stop()
 					return
 
@@ -185,8 +205,8 @@ func TestAccumualtorAccumulator(t *testing.T) {
 			}
 		}
 		t_f()
-		Convey("should have 9 flushed lines", func() {
-			So(len(outs), ShouldEqual, 9)
+		Convey("should have 12 flushed lines", func() {
+			So(len(outs), ShouldEqual, 12)
 		})
 	})
 

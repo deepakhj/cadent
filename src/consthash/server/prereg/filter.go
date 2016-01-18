@@ -157,6 +157,7 @@ func (nop *NoOpFilter) Rejecting() bool {
 func (nop *NoOpFilter) Init() error {
 	return nil
 }
+//always match of true
 func (nop *NoOpFilter) Match(in string) (bool, bool, error) {
 	return true, false, nil
 }

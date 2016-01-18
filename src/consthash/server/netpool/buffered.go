@@ -230,5 +230,6 @@ func (n *BufferedNetpool) DestroyAll() error {
 		con := <-n.pool.free
 		con.Flush()
 	}
+	n.pool.DestroyAll()
 	return nil
 }

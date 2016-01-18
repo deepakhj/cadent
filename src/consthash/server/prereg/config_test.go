@@ -135,6 +135,17 @@ func TestPreRegConfig(t *testing.T) {
 			So(err, ShouldNotEqual, nil)
 		})
 
+		fail_str3 = `[statsd-regex-map]
+			default_backend="statsd-proxy"
+			listen_server="statsd-proxy"
+			[[statsd-regex-map.map]]
+			noop="true"
+		`
+		_, err = ParseConfigString(fail_str3)
+		Convey("should allow no-op filters", func() {
+			So(err, ShouldEqual, nil)
+		})
+
 	})
 
 	// Only pass t into top-level Convey calls

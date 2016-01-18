@@ -49,6 +49,8 @@ func TestGraphiteRunner(t *testing.T) {
 
 		spl.SetPhase(AccumulatedParsed)
 		So(spl.Phase(), ShouldEqual, AccumulatedParsed)
+		spl.SetOrigin(TCP)
+		So(spl.Origin(), ShouldEqual, TCP)
 	})
 
 	conf["key_index"] = 10
@@ -85,6 +87,8 @@ func TestStatsdRunner(t *testing.T) {
 		So(si.Phase(), ShouldEqual, Parsed)
 		si.SetPhase(AccumulatedParsed)
 		So(si.Phase(), ShouldEqual, AccumulatedParsed)
+		si.SetOrigin(UDP)
+		So(si.Origin(), ShouldEqual, UDP)
 	})
 
 	Convey("Statsd Runner should not parser this", t, func() {
@@ -127,10 +131,13 @@ func TestRegexRunner(t *testing.T) {
 		So(ri.Key(), ShouldEqual, "web-7-frontend-lb-prod")
 		So(ri.Line(), ShouldEqual, good_line)
 		So(ri.Phase(), ShouldEqual, Parsed)
+		So(ri.Origin(), ShouldEqual, Other)
 		So(ri.Fields(), ShouldResemble, spl_string)
 		So(ri.IsValid(), ShouldEqual, true)
 		ri.SetPhase(AccumulatedParsed)
 		So(ri.Phase(), ShouldEqual, AccumulatedParsed)
+		ri.SetOrigin(TCP)
+		So(ri.Origin(), ShouldEqual, TCP)
 	})
 
 	Convey("REgex Runner should not parser this", t, func() {
