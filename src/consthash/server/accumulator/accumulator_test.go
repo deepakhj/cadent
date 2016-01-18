@@ -203,7 +203,7 @@ func TestAccumualtorAccumulator(t *testing.T) {
 			for {
 				select {
 				case <-tt.C:
-					t.Logf("Stopping accumuator after %d", 2 * time.Second)
+					t.Logf("Stopping accumuator after %d", 2*time.Second)
 					statsd_acc.Stop()
 					return
 

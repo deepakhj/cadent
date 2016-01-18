@@ -237,6 +237,7 @@ func (s *StatsdTimerStatItem) Out(fmatter FormatterItem, acc AccumulatorItem) []
 		sum := s.Min
 		mean := s.Min
 		thresholdBoundary := s.Max
+		numInThreshold := s.Count
 
 		for _, pct := range acc.GetOption("Thresholds", s.PercentThreshold).([]float64) {
 			// handle 0.90 or 90%
@@ -246,37 +247,39 @@ func (s *StatsdTimerStatItem) Out(fmatter FormatterItem, acc AccumulatorItem) []
 				multi = 1.0
 				per_mul = 100.0
 			}
-			numInThreshold := int64(round(math.Abs(pct) * multi * float64(s.Count)))
 			//log.Notice("NumInThreash: %v", numInThreshold)
+			p_name := strings.Replace(fmt.Sprintf("%d", int(math.Abs(pct)*per_mul)), ".", "", -1)
+			if s.Count > 1 {
+				numInThreshold = int64(round(math.Abs(pct) * multi * float64(s.Count)))
+				if numInThreshold == 0 {
+					continue
+				}
 
-			if numInThreshold == 0 {
-				continue
+				if pct > 0 {
+					thresholdBoundary = s.Values[numInThreshold-1]
+					sum = cumulativeValues[numInThreshold-1]
+				} else {
+					thresholdBoundary = s.Values[s.Count-numInThreshold]
+					sum = cumulativeValues[s.Count-1] - cumulativeValues[s.Count-numInThreshold-1]
+				}
+
+				mean = sum / float64(numInThreshold)
 			}
-
-			if pct > 0 {
-				thresholdBoundary = s.Values[numInThreshold-1]
-				sum = cumulativeValues[numInThreshold-1]
-			} else {
-				thresholdBoundary = s.Values[s.Count-numInThreshold]
-				sum = cumulativeValues[s.Count-1] - cumulativeValues[s.Count-numInThreshold-1]
-			}
-
-			mean = sum / float64(numInThreshold)
 			base = append(base,
 				[]string{
-					fmatter.ToString(fmt.Sprintf("%s.count_%d", f_key, int(pct*per_mul)), float64(numInThreshold), t_stamp, "c", nil),
-					fmatter.ToString(fmt.Sprintf("%s.mean_%d", f_key, int(pct*per_mul)), float64(mean), t_stamp, "g", nil),
+					fmatter.ToString(fmt.Sprintf("%s.count_%s", f_key, p_name), float64(numInThreshold), t_stamp, "c", nil),
+					fmatter.ToString(fmt.Sprintf("%s.mean_%s", f_key, p_name), float64(mean), t_stamp, "g", nil),
 				}...,
 			)
 			if pct > 0 {
 				base = append(
 					base,
-					fmatter.ToString(fmt.Sprintf("%s.upper_%d", f_key, int(pct*per_mul)), float64(thresholdBoundary), t_stamp, "g", nil),
+					fmatter.ToString(fmt.Sprintf("%s.upper_%s", f_key, p_name), float64(thresholdBoundary), t_stamp, "g", nil),
 				)
 			} else {
 				base = append(
 					base,
-					fmatter.ToString(fmt.Sprintf("%s.lower_%d", f_key, int(pct*per_mul)), float64(thresholdBoundary), t_stamp, "g", nil),
+					fmatter.ToString(fmt.Sprintf("%s.lower_%s", f_key, p_name), float64(thresholdBoundary), t_stamp, "g", nil),
 				)
 			}
 		}

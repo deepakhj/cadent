@@ -10,9 +10,9 @@ func TestBroadcasterer(t *testing.T) {
 	bcast := New(1)
 	var listeners []*Listener
 
-	lister := func(list *Listener){
+	lister := func(list *Listener) {
 		for {
-			select{
+			select {
 			case gots := <-list.Ch:
 				t.Logf("Got broadcast %d: %v", list.id, gots)
 				list.Close()
@@ -20,7 +20,7 @@ func TestBroadcasterer(t *testing.T) {
 			}
 		}
 	}
-	for i := 0; i < 10; i++{
+	for i := 0; i < 10; i++ {
 		list := bcast.Listen()
 		listeners = append(listeners, list)
 		go lister(list)
@@ -36,7 +36,7 @@ func TestBroadcasterer(t *testing.T) {
 		})
 		Convey("Should close and send shoud fail", func() {
 			bcast.Close()
-			So(func(){bcast.Send(true)}, ShouldPanic)
+			So(func() { bcast.Send(true) }, ShouldPanic)
 		})
 
 	})
