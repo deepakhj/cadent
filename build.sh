@@ -15,7 +15,7 @@ function progress(){
 export WORKSPACE="${WORKSPACE:-.}"
 export SOURCE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 
-export GOPATH="${WORKSPACE:-.}/git/src"
+export GOPATH="${WORKSPACE:-.}/git"
 mkdir -p ${GOPATH}
 
 
