@@ -13,6 +13,7 @@ import (
 	"net"
 	"reflect"
 	"strings"
+	"fmt"
 )
 
 const TCP_BUFFER_SIZE = 1048576
@@ -148,6 +149,7 @@ func (client *TCPClient) handleRequest(outqueue chan splitter.SplitItem) {
 
 func (client *TCPClient) handleSend(outqueue chan splitter.SplitItem) {
 	//just "bleed" it
+	defer stats.StatsdClient.Incr(fmt.Sprintf("worker.%s.tcp.connection.close", client.server.Name), 1)
 	for {
 		select {
 		case message := <-outqueue:

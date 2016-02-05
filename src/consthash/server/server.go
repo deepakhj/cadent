@@ -80,7 +80,7 @@ func poolWorker(j *SendOut) error {
 		return nil
 	}
 
-	
+
 	make_pool := func() int {
 		j.server.poolmu.Lock()
 		defer j.server.poolmu.Unlock()
@@ -1255,6 +1255,8 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, done chan Client) 
 			client := NewTCPClient(server, hashers, conn, done)
 			client.SetBufferSize((int)(server.ClientReadBufferSize))
 			log.Debug("Accepted con %v", conn.RemoteAddr())
+
+			stats.StatsdClient.Incr(fmt.Sprintf("worker.%s.tcp.connection.open", server.Name), 1)
 
 			go client.handleRequest(tcp_socket_out)
 			go client.handleSend(tcp_socket_out)
