@@ -80,12 +80,11 @@ func poolWorker(j *SendOut) error {
 		return nil
 	}
 
-
-	defer j.server.poolmu.Unlock()
-
+	
 	make_pool := func() int {
 		j.server.poolmu.Lock()
 		defer j.server.poolmu.Unlock()
+
 		if outsrv, ok = j.server.Outpool[j.outserver]; ok {
 			ok = true
 			return 0
