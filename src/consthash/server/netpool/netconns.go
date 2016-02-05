@@ -34,6 +34,10 @@ SetWriteDeadline(t time.Time) error
 
 */
 
+/************************/
+/****** HTTP CONN *******/
+/************************/
+
 // a special http "writter" that acts like a net.Conn for writing
 type WrtiterHttpConn struct {
 	Timeout time.Duration

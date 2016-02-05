@@ -10,13 +10,15 @@ import (
 	//"log"
 	"consthash/server/splitter"
 	"consthash/server/stats"
+	"fmt"
 	"net"
 	"reflect"
 	"strings"
-	"fmt"
+	"time"
 )
 
 const TCP_BUFFER_SIZE = 1048576
+const TCP_READ_TIMEOUT = 5 * time.Second // second
 
 type TCPClient struct {
 	server     *Server
@@ -100,6 +102,7 @@ func (client *TCPClient) InputQueue() chan splitter.SplitItem {
 
 // close the 2 hooks, channel and connection
 func (client *TCPClient) Close() {
+	client.close <- true
 	client.reader = nil
 	if client.Connection != nil {
 		client.Connection.Close()
@@ -113,6 +116,7 @@ func (client *TCPClient) handleRequest(outqueue chan splitter.SplitItem) {
 	//spin up the splitters
 
 	buf := bufio.NewReaderSize(client.Connection, client.BufferSize)
+	client.Connection.SetReadDeadline(time.Now().Add(TCP_READ_TIMEOUT))
 	for {
 		line, err := buf.ReadString('\n')
 
@@ -144,6 +148,7 @@ func (client *TCPClient) handleRequest(outqueue chan splitter.SplitItem) {
 	//close it and end the send routing
 	outqueue <- splitter.BlankSplitterItem()
 	client.done <- client
+	client.close <- true
 	return
 }
 
@@ -154,10 +159,10 @@ func (client *TCPClient) handleSend(outqueue chan splitter.SplitItem) {
 		select {
 		case message := <-outqueue:
 			if message == nil || !message.IsValid() {
-				return
+				break
 			}
 		case <-client.close:
-			return
+			break
 		}
 	}
 	return
