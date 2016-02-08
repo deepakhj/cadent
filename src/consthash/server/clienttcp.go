@@ -102,7 +102,9 @@ func (client *TCPClient) InputQueue() chan splitter.SplitItem {
 
 // close the 2 hooks, channel and connection
 func (client *TCPClient) Close() {
-	client.close <- true
+	defer stats.StatsdClient.Incr(fmt.Sprintf("worker.%s.tcp.connection.close", client.server.Name), 1)
+	defer log.Debug("Closing conn %v", client.Connection.RemoteAddr())
+	//client.close <- true
 	client.reader = nil
 	if client.Connection != nil {
 		client.Connection.Close()
@@ -115,21 +117,22 @@ func (client *TCPClient) Close() {
 func (client *TCPClient) handleRequest(outqueue chan splitter.SplitItem) {
 	//spin up the splitters
 
+	//client.Connection.SetReadDeadline(time.Now().Add(TCP_READ_TIMEOUT))
 	buf := bufio.NewReaderSize(client.Connection, client.BufferSize)
-	client.Connection.SetReadDeadline(time.Now().Add(TCP_READ_TIMEOUT))
 	for {
 		line, err := buf.ReadString('\n')
 
 		if err != nil {
 			break
 		}
+		line = strings.Trim(line, "\n\t ")
 		if len(line) == 0 {
 			continue
 		}
 
 		client.server.BytesReadCount.Up(uint64(len(line)))
 		client.server.AllLinesCount.Up(1)
-		splitem, err := client.server.SplitterProcessor.ProcessLine(strings.Trim(line, "\n\t "))
+		splitem, err := client.server.SplitterProcessor.ProcessLine(line)
 		if err == nil {
 			//this will block once the queue is full
 			splitem.SetOrigin(splitter.TCP)
@@ -141,29 +144,30 @@ func (client *TCPClient) handleRequest(outqueue chan splitter.SplitItem) {
 			stats.StatsdClient.Incr("incoming.tcp.invalidlines", 1)
 			log.Warning("Invalid Line: %s (%s)", err, line)
 		}
-
 	}
 
-	buf = nil
+	//buf = nil
 	//close it and end the send routing
-	outqueue <- splitter.BlankSplitterItem()
+	//outqueue <- splitter.BlankSplitterItem()
 	client.done <- client
-	client.close <- true
+	//client.close <- true
+
 	return
 }
 
 func (client *TCPClient) handleSend(outqueue chan splitter.SplitItem) {
 	//just "bleed" it
-	defer stats.StatsdClient.Incr(fmt.Sprintf("worker.%s.tcp.connection.close", client.server.Name), 1)
+
 	for {
 		select {
 		case message := <-outqueue:
 			if message == nil || !message.IsValid() {
-				break
+				return
 			}
 		case <-client.close:
-			break
+			return
 		}
 	}
+
 	return
 }

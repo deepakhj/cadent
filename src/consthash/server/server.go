@@ -1241,7 +1241,6 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, done chan Client) 
 	}
 
 	// this queue is just for "real" TCP sockets
-	tcp_socket_out := make(chan splitter.SplitItem)
 	shuts_client := server.ShutDown.Listen()
 	//defer shuts_client.Close()
 	for {
@@ -1250,6 +1249,7 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, done chan Client) 
 			if !ok {
 				return
 			}
+			//tcp_socket_out := make(chan splitter.SplitItem)
 
 			client := NewTCPClient(server, hashers, conn, done)
 			client.SetBufferSize((int)(server.ClientReadBufferSize))
@@ -1257,8 +1257,8 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, done chan Client) 
 
 			stats.StatsdClient.Incr(fmt.Sprintf("worker.%s.tcp.connection.open", server.Name), 1)
 
-			go client.handleRequest(tcp_socket_out)
-			go client.handleSend(tcp_socket_out)
+			go client.handleRequest(nil)
+			//go client.handleSend(tcp_socket_out)
 		case <-shuts_client.Ch:
 			return
 
@@ -1400,7 +1400,7 @@ func (server *Server) ConsumeProcessedQueue(qu chan splitter.SplitItem) {
 		select {
 		case l := <-qu:
 			if l == nil || !l.IsValid() {
-				return
+				break
 			}
 		case workerUpDown := <-server.WorkerHold:
 			server.InWorkQueue.Add(workerUpDown)
@@ -1414,6 +1414,7 @@ func (server *Server) ConsumeProcessedQueue(qu chan splitter.SplitItem) {
 			stats.StatsdClient.GaugeAvg(fmt.Sprintf("worker.%s.queue.length", server.Name), ct)
 		}
 	}
+	return
 }
 
 func CreateServer(cfg *Config, hashers []*ConstHasher) (*Server, error) {
