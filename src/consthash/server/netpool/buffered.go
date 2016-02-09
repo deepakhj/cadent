@@ -67,8 +67,8 @@ func (n *BufferedNetpoolConn) PeriodicFlush() {
 }
 
 func (n *BufferedNetpoolConn) Conn() net.Conn {
-	n.connLock.Lock()
-	defer n.connLock.Unlock()
+	//n.connLock.Lock()
+	//defer n.connLock.Unlock()
 	return n.conn
 }
 func (n *BufferedNetpoolConn) SetConn(conn net.Conn) {
@@ -92,7 +92,7 @@ func (n *BufferedNetpoolConn) Write(b []byte) (wrote int, err error) {
 	n.writeLock.Lock()
 	defer n.writeLock.Unlock()
 	c := n.Conn()
-	if len(n.writebuffer) > n.buffersize && c != nil {
+	if (len(n.writebuffer)+len(b)) > n.buffersize && c != nil {
 		wrote, err = c.Write(n.writebuffer)
 		if err != nil {
 			c.Close() // Open will re-open it
@@ -100,9 +100,9 @@ func (n *BufferedNetpoolConn) Write(b []byte) (wrote int, err error) {
 			log.Warning("Error writing buffer: %s", err)
 			return 0, err
 		}
+		//log.Debug("BUF WRITE %d/%d wrote: %d", len(n.writebuffer), n.buffersize, wrote)
 		n.writebuffer = []byte("")
 	}
-	//log.Debug("BUF WRITE %d/%d wrote: %d", len(n.writebuffer), n.buffersize, wrote)
 	n.writebuffer = append(n.writebuffer, b...)
 
 	return wrote, err
@@ -113,10 +113,10 @@ func (n *BufferedNetpoolConn) Flush() (wrote int, err error) {
 	defer n.writeLock.Unlock()
 	//StatsdClient.Incr("success.packets.flushes", 1)
 	c := n.Conn()
-
+	//log.Debug("FLUSH BUF WRITE %d/%d wrote: %d", len(n.writebuffer), n.buffersize, wrote)
 	if len(n.writebuffer) > 0 && c != nil {
 		wrote, err = c.Write(n.writebuffer)
-		//log.Printf("WROTE: %s -- %s", err, n.writebuffer)
+		//log.Debug("BUF WRITE %d/%d wrote: %d", len(n.writebuffer), n.buffersize, wrote)
 		if err != nil {
 			c.Close() // Open will re-open it
 			n.SetConn(nil)
