@@ -23,11 +23,12 @@ func (s jsonFloat64) MarshalJSON() ([]byte, error) {
 type StatRepr struct {
 	Key     string      `json:"key"`
 	StatKey string      `json:"stat_key"`
-	Min     jsonFloat64 `json:"min`
-	Max     jsonFloat64 `json:"max`
-	Sum     jsonFloat64 `json:"sum`
-	Mean    jsonFloat64 `json:"mean`
-	Count   int64       `json:"count`
+	Min     jsonFloat64 `json:"min"`
+	Max     jsonFloat64 `json:"max"`
+	Sum     jsonFloat64 `json:"sum"`
+	Mean    jsonFloat64 `json:"mean"`
+	Count   int64       `json:"count"`
+	Time    int64       `json:"time_ns"`
 }
 
 type StatItem interface {

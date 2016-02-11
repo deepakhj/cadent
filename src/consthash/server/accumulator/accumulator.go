@@ -218,9 +218,11 @@ func (acc *Accumulator) LogConfig() {
 func (acc *Accumulator) CurrentStats() []StatRepr {
 	var s_rep []StatRepr
 	stats := acc.Accumulate.Stats()
+	t := time.Now().UnixNano()
 	for idx, stat := range stats {
 		rr := stat.Repr()
 		rr.StatKey = idx
+		rr.Time = t
 		s_rep = append(s_rep, rr)
 	}
 	return s_rep
