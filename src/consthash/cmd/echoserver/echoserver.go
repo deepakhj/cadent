@@ -245,20 +245,20 @@ func (echo EchoServerTCP) ReadMessages() (err error) {
 		}
 
 		log.Printf("[%s] Accepted connection from %s", echo.String(), conn.RemoteAddr())
-		buf := bufio.NewReader(conn)
-		for {
-			line, err := buf.ReadString('\n')
-
-			if err != nil || len(line) == 0 {
-				break
+		buf := bufio.NewScanner(conn)
+		for buf.Scan() {
+			line := buf.Text()
+			line = strings.Trim(line, " \t\n")
+			if len(line) == 0 {
+				continue
 			}
 			atomic.AddUint64(&TotalLines, 1)
 			atomic.AddUint64(&echo.StatCt.NumLines, 1)
 			atomic.AddUint64(&echo.StatCt.NumCurLines, 1)
 
-			echoMe("[ECHO from " + echo.String() + "] " + strings.Trim(line, " \t\n"))
-
+			echoMe("[ECHO from " + echo.String() + "] " + line)
 		}
+
 		if conn != nil {
 			conn.Close()
 		}

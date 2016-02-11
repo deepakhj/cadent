@@ -5,10 +5,16 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"testing"
 	"time"
+	//_ "net/http/pprof"
+	//"net/http"
+	"encoding/json"
 )
 
 func TestAccumualtorAccumulator(t *testing.T) {
 	// Only pass t into top-level Convey calls
+
+	//profiler
+	//go http.ListenAndServe(":6065", nil)
 
 	conf_test := `
 	backend = "graphite-out"
@@ -58,7 +64,7 @@ func TestAccumualtorAccumulator(t *testing.T) {
 	backend = "graphite-out"
 	input_format = "moo"
 	output_format = "graphite"
-	flush_time = "5s"
+	keep_keys = true
 	`
 	acc_c, err = ParseConfigString(conf_test)
 	Convey("Config toml should parse to a fail on input_format", t, func() {
@@ -88,7 +94,7 @@ func TestAccumualtorAccumulator(t *testing.T) {
 		})
 	})
 
-	fail_acc, err := NewAccumlator("monkey", "graphite")
+	fail_acc, err := NewAccumlator("monkey", "graphite", false)
 	Convey("Bad formatter name `monkey` should faile ", t, func() {
 		Convey("Error should not be nil", func() {
 			So(err, ShouldNotEqual, nil)
@@ -98,7 +104,7 @@ func TestAccumualtorAccumulator(t *testing.T) {
 		})
 	})
 
-	fail_acc, err = NewAccumlator("graphite", "monkey")
+	fail_acc, err = NewAccumlator("graphite", "monkey", false)
 	Convey("Bad accumulator name `monkey` should faile ", t, func() {
 		Convey("Error should not be nil", func() {
 			So(err, ShouldNotEqual, nil)
@@ -108,7 +114,7 @@ func TestAccumualtorAccumulator(t *testing.T) {
 		})
 	})
 
-	grph_acc, err := NewAccumlator("graphite", "graphite")
+	grph_acc, err := NewAccumlator("graphite", "graphite", false)
 
 	Convey("Graphite to graphite -> graphite accumulator should be ok", t, func() {
 
@@ -144,7 +150,7 @@ func TestAccumualtorAccumulator(t *testing.T) {
 			grph_acc.LogConfig()
 		})
 	})
-	statsd_acc, err := NewAccumlator("statsd", "statsd")
+	statsd_acc, err := NewAccumlator("statsd", "statsd", true)
 	Convey("Statsd to statsd accumulator should be ok", t, func() {
 
 		Convey("Error should be nil", func() {
@@ -154,7 +160,7 @@ func TestAccumualtorAccumulator(t *testing.T) {
 			So(statsd_acc, ShouldNotEqual, nil)
 		})
 	})
-	statsd_acc, err = NewAccumlator("statsd", "graphite")
+	statsd_acc, err = NewAccumlator("statsd", "graphite", false)
 	Convey("Statsd to graphite accumulator should be ok", t, func() {
 
 		Convey("Error should be nil", func() {
@@ -176,12 +182,11 @@ func TestAccumualtorAccumulator(t *testing.T) {
 		[]string{"percentThreshold", "0.75,0.90,0.95,0.99"},
 	})
 	statsd_acc.FlushTime = time.Duration(time.Second)
-	statsd_acc.OutputQueue = tickC
-	tt := time.NewTimer(time.Duration(2 * time.Second))
-	go statsd_acc.Start()
-	//go statsd_acc.Start()
-	Convey("statsd accumluator flush timer", t, func() {
+	statsd_acc.SetOutputQueue(tickC)
 
+	Convey("statsd accumluator flush timer", t, func() {
+		go statsd_acc.Start()
+		tt := time.NewTimer(time.Duration(2 * time.Second))
 		err = statsd_acc.ProcessLine("moo.goo.poo:12|c")
 		err = statsd_acc.ProcessLine("moo.goo.poo:0.1|ms|@0.2")
 		err = statsd_acc.ProcessLine("moo.goo.poo:0.1|ms|@0.2")
@@ -212,11 +217,122 @@ func TestAccumualtorAccumulator(t *testing.T) {
 					t.Logf("FlushLine %s", l.Line())
 				}
 			}
+			return
 		}
 		t_f()
-		Convey("should have 24 flushed lines", func() {
-			So(len(outs), ShouldEqual, 24)
+		Convey("should have 30 flushed lines", func() {
+			So(len(outs), ShouldEqual, 30)
 		})
+	})
+
+	// test the keep keys
+	statsd_acc, err = NewAccumlator("statsd", "graphite", true)
+	statsd_acc.Accumulate.SetOptions([][]string{
+		[]string{"legacyNamespace", "true"},
+		[]string{"prefixGauge", "gauges"},
+		[]string{"prefixTimer", "timers"},
+		[]string{"prefixCounter", "counters"},
+		[]string{"globalPrefix", ""},
+		[]string{"globalSuffix", "stats"},
+		[]string{"percentThreshold", "0.75,0.90,0.95,0.99"},
+	})
+	statsd_acc.FlushTime = time.Duration(time.Second)
+	statsd_acc.SetOutputQueue(tickC)
+
+	Convey("statsd accumluator flush timer", t, func() {
+		//time.Sleep(2 * time.Second) // wait for things to kick off
+
+		// should "flush" 4 times, the first w/30 lines
+		// the next 3 with only 12
+
+		err = statsd_acc.ProcessLine("moo.goo.poo:12|c")
+		err = statsd_acc.ProcessLine("moo.goo.poo:0.1|ms|@0.2")
+		err = statsd_acc.ProcessLine("moo.goo.poo:0.1|ms|@0.2")
+		err = statsd_acc.ProcessLine("moo.goo.poo:0.1|ms|@0.2")
+		err = statsd_acc.ProcessLine("moo.goo.poo:0.5|ms|@0.2")
+		err = statsd_acc.ProcessLine("moo.goo.poo:0.3|ms|@0.2")
+		err = statsd_acc.ProcessLine("moo.goo.poo:0.5|ms|@0.2")
+		err = statsd_acc.ProcessLine("moo.goo.poo:0.7|ms|@0.2")
+		err = statsd_acc.ProcessLine("moo.goo.poo:0.7|ms|@0.2")
+		err = statsd_acc.ProcessLine("moo.goo.poo:0.7|ms|@0.2")
+		err = statsd_acc.ProcessLine("moo.goo.poo:0.2|ms|@0.2")
+		err = statsd_acc.ProcessLine("moo.goo.goo:24|c")
+		err = statsd_acc.ProcessLine("moo.goo.goo:24|c")
+		err = statsd_acc.ProcessLine("moo.goo.loo:36|c")
+		err = statsd_acc.ProcessLine("moo.goo.loo||||36|c")
+		outs := []splitter.SplitItem{}
+		t.Logf("Stats -> Graphite :: LineQueue %d", len(statsd_acc.LineQueue))
+		go statsd_acc.Start()
+		t_f := func() {
+			tt := time.NewTimer(time.Duration(5 * time.Second))
+			for {
+				select {
+				case <-tt.C:
+					t.Logf("Stopping accumuator after %d", 2*time.Second)
+					statsd_acc.Stop()
+					stats, _ := json.Marshal(statsd_acc.CurrentStats())
+					t.Logf("Current Stats: %s", stats)
+					return
+
+				case l := <-tickC:
+					outs = append(outs, l)
+					t.Logf("FlushLine %s", l.Line())
+				}
+			}
+			return
+		}
+		t_f()
+		Convey("should have 72 flushed lines", func() {
+			So(len(outs), ShouldEqual, 72)
+		})
+	})
+
+	// test the keep keys
+	tickG := make(chan splitter.SplitItem, 1000)
+
+	graphite_acc, err := NewAccumlator("graphite", "graphite", true)
+	graphite_acc.FlushTime = time.Duration(time.Second)
+	graphite_acc.SetOutputQueue(tickG)
+
+	Convey("graphite accumluator flush timer", t, func() {
+		go graphite_acc.Start()
+		//time.Sleep(2 * time.Second) // wait for things to kick off
+		// should "flush" 4 times, the first w/2 lines
+		// the next 3 with only 2
+		err = graphite_acc.ProcessLine("moo.goo.poo 12 123123")
+		err = graphite_acc.ProcessLine("moo.goo.poo 35 123124")
+		err = graphite_acc.ProcessLine("moo.goo.poo 66 123125")
+		err = graphite_acc.ProcessLine("moo.goo.loo 100 123123")
+		err = graphite_acc.ProcessLine("moo.goo.loo 100 123123")
+		err = graphite_acc.ProcessLine("moo.goo.loo 100 123123")
+
+		outs := []splitter.SplitItem{}
+		t.Logf("Graphite -> Graphite:: LineQueue %d", len(graphite_acc.LineQueue))
+
+		t_f := func() {
+			tt := time.NewTimer(time.Duration(5 * time.Second))
+			for {
+				select {
+				case <-tt.C:
+					t.Logf("Stopping accumuator after %d", 2*time.Second)
+					graphite_acc.Stop()
+					stats, _ := json.Marshal(graphite_acc.CurrentStats())
+					t.Logf("Current Stats: %s", stats)
+					return
+
+				case l := <-tickG:
+					outs = append(outs, l)
+					t.Logf("FlushLine %s", l.Line())
+				}
+			}
+			return
+		}
+
+		t_f()
+		Convey("should have 8 flushed lines", func() {
+			So(len(outs), ShouldEqual, 8)
+		})
+
 	})
 
 }

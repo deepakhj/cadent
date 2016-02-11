@@ -53,13 +53,14 @@ type ConfigAccumulator struct {
 	InputFormat  string            `toml:"input_format"`
 	OutoutFormat string            `toml:"output_format"`
 	FlushTime    string            `toml:"flush_time"`
-	Option       [][]string        `toml:"options"` // option=[ [key, value], [key, value] ...]
+	KeepKeys     bool              `toml:"keep_keys"` // keeps the keys on flush  "0's" them rather then removal
+	Option       [][]string        `toml:"options"`   // option=[ [key, value], [key, value] ...]
 	Tags         []AccumulatorTags `toml:"tags"`
 }
 
 func (cf ConfigAccumulator) GetAccumulator() (*Accumulator, error) {
 
-	ac, err := NewAccumlator(cf.InputFormat, cf.OutoutFormat)
+	ac, err := NewAccumlator(cf.InputFormat, cf.OutoutFormat, cf.KeepKeys)
 	if err != nil {
 		log.Critical("%s", err)
 		return nil, err

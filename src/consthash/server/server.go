@@ -1065,9 +1065,33 @@ func (server *Server) AddStatusHandlers() {
 		fmt.Fprintf(w, "Server "+server_str+" Purged")
 	}
 
+	// accumulator pokers
+	if server.PreRegFilter == nil || server.PreRegFilter.Accumulator == nil {
+		// "nothing to see here"
+		nullacc := func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Cache-Control", "private, max-age=0, no-cache")
+			http.Error(w, "No accumulators defined", http.StatusNotImplemented)
+			return
+		}
+		http.HandleFunc(fmt.Sprintf("/%s/accumulator", server.Name), nullacc)
+	} else {
+		stats := func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Cache-Control", "private, max-age=0, no-cache")
+			stats, err := json.Marshal(server.PreRegFilter.Accumulator.CurrentStats())
+			if err != nil {
+				http.Error(w, fmt.Sprintf("%v", err), http.StatusInternalServerError)
+				return
+			}
+			fmt.Fprintf(w, string(stats))
+			return
+		}
+		http.HandleFunc(fmt.Sprintf("/%s/accumulator", server.Name), stats)
+	}
+
 	//stats and status
 	http.HandleFunc(fmt.Sprintf("/%s", server.Name), stats)
 	http.HandleFunc(fmt.Sprintf("/%s/ops/status", server.Name), status)
+	http.HandleFunc(fmt.Sprintf("/%s/ping", server.Name), status)
 	http.HandleFunc(fmt.Sprintf("/%s/ops/status/", server.Name), status)
 	http.HandleFunc(fmt.Sprintf("/%s/status", server.Name), status)
 	http.HandleFunc(fmt.Sprintf("/%s/stats/", server.Name), stats)

@@ -157,6 +157,8 @@ func (client *TCPClient) handleRequest(outqueue chan splitter.SplitItem) {
 
 func (client *TCPClient) handleSend(outqueue chan splitter.SplitItem) {
 	//just "bleed" it
+	// NOT NEED for this really.  the client.done <- will take care of the
+	// close and we don't use the outqueue for anything, so we waist channel locking cycles for no reason
 
 	for {
 		select {

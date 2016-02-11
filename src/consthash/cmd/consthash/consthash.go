@@ -122,14 +122,37 @@ func startStatsServer(defaults *consthash.Config, servers []*consthash.Server) {
 		w.Header().Set("Content-Type", "application/json")
 		resbytes, _ := json.Marshal(hasher_map)
 		fmt.Fprintf(w, string(resbytes))
+	}
 
+	listservers := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "private, max-age=0, no-cache")
+
+		s_list := make(map[string][]string)
+
+		for _, serv := range servers {
+
+			s_list[serv.Name] = []string{
+				fmt.Sprintf("/%s", serv.Name),
+				fmt.Sprintf("/%s/ping", serv.Name),
+				fmt.Sprintf("/%s/ops/status", serv.Name),
+				fmt.Sprintf("/%s/stats", serv.Name),
+				fmt.Sprintf("/%s/addserver", serv.Name),
+				fmt.Sprintf("/%s/purgeserver", serv.Name),
+				fmt.Sprintf("/%s/accumulator", serv.Name),
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		resbytes, _ := json.Marshal(s_list)
+		fmt.Fprintf(w, string(resbytes))
 	}
 
 	http.HandleFunc("/", fileserve)
 	http.HandleFunc("/ops/status", status)
+	http.HandleFunc("/ping", status)
 	http.HandleFunc("/status", status)
 	http.HandleFunc("/stats", stats)
 	http.HandleFunc("/hashcheck", hashcheck)
+	http.HandleFunc("/servers", listservers)
 
 	err := http.ListenAndServe(defaults.HealthServerBind, nil)
 	if err != nil {

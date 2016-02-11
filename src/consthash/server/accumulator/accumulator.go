@@ -35,6 +35,7 @@ type Accumulator struct {
 	FormatterName   string        `json:"formatter"`
 	AccumulatorName string        `json:"accumulator"`
 	Name            string        `json:"name"`
+	KeepKeys        bool          `json:"keep_keys"` // if true, will not "remove" the keys post flush, just set them to 0
 	FlushTime       time.Duration `json:"flush_time"`
 
 	Accumulate AccumulatorItem
@@ -50,7 +51,7 @@ type Accumulator struct {
 	Shutdown    chan bool
 }
 
-func NewAccumlator(inputtype string, outputtype string) (*Accumulator, error) {
+func NewAccumlator(inputtype string, outputtype string, keepkeys bool) (*Accumulator, error) {
 
 	fmter, err := NewFormatterItem(outputtype)
 	if err != nil {
@@ -63,15 +64,17 @@ func NewAccumlator(inputtype string, outputtype string) (*Accumulator, error) {
 		return nil, err
 	}
 	acc.Init(fmter)
+	acc.SetKeepKeys(keepkeys)
 
 	ac := &Accumulator{
 		Accumulate:      acc,
 		Formatter:       fmter,
 		AccumulatorName: inputtype,
 		FormatterName:   outputtype,
+		KeepKeys:        keepkeys,
 		Name:            fmt.Sprintf("%s -> %s", inputtype, outputtype),
 		FlushTime:       time.Second,
-		Shutdown:        make(chan bool),
+		Shutdown:        make(chan bool, 1),
 		LineQueue:       make(chan string, 10000),
 		timer:           nil,
 	}
@@ -102,11 +105,8 @@ func (acc *Accumulator) ProcessSplitItem(sp splitter.SplitItem) error {
 }
 
 func (acc *Accumulator) ProcessLine(sp string) error {
-	if acc.LineQueue != nil {
-		acc.LineQueue <- sp
-	}
+	acc.LineQueue <- sp
 	return nil
-	//return acc.Accumulate.ProcessLine(sp)
 }
 
 // start the flusher at the time interval
@@ -129,6 +129,7 @@ func (acc *Accumulator) Start() error {
 			acc.FlushAndPost()
 		case line := <-acc.LineQueue:
 			acc.Accumulate.ProcessLine(line)
+
 		case <-acc.Shutdown:
 			acc.timer.Stop()
 			log.Notice("Shutting down final flush of accumulator `%s`", acc.Name)
@@ -136,6 +137,7 @@ func (acc *Accumulator) Start() error {
 			break
 		}
 	}
+
 	//bleed
 	for {
 		for i := 0; i < len(acc.LineQueue); i++ {
@@ -145,6 +147,8 @@ func (acc *Accumulator) Start() error {
 			break
 		}
 	}
+	close(acc.LineQueue)
+	acc.LineQueue = nil
 	return nil
 }
 
@@ -204,4 +208,20 @@ func (acc *Accumulator) LogConfig() {
 	log.Debug("   - Accumulator Output format:: `%s`", acc.Formatter.Type())
 	log.Debug("   - Accumulator Type:: `%s`", acc.Accumulate.Name())
 	log.Debug("   - Accumulator FlushTime:: `%v`", acc.FlushTime)
+	log.Debug("   - Accumulator KeepKeys:: `%v`", acc.KeepKeys)
+}
+
+// just grab whats currently in the queue to be flushed
+// this is so we can simply "look" into the accumulator from another sorce
+// (i.e. our monitor)
+
+func (acc *Accumulator) CurrentStats() []StatRepr {
+	var s_rep []StatRepr
+	stats := acc.Accumulate.Stats()
+	for idx, stat := range stats {
+		rr := stat.Repr()
+		rr.StatKey = idx
+		s_rep = append(s_rep, rr)
+	}
+	return s_rep
 }

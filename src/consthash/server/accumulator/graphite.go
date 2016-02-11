@@ -82,11 +82,41 @@ type GraphiteBaseStatItem struct {
 	InType     string
 	ReduceFunc string
 
+	Min   float64
+	Max   float64
+	Mean  float64
+	Sum   float64
+	Count int64
+
 	mu sync.Mutex
+}
+
+func (s *GraphiteBaseStatItem) Repr() StatRepr {
+	return StatRepr{
+		Key:   s.InKey,
+		Min:   jsonFloat64(s.Min),
+		Max:   jsonFloat64(s.Max),
+		Count: s.Count,
+		Mean:  jsonFloat64(s.Mean),
+		Sum:   jsonFloat64(s.Sum),
+	}
 }
 
 func (s *GraphiteBaseStatItem) Type() string { return s.InType }
 func (s *GraphiteBaseStatItem) Key() string  { return s.InKey }
+
+func (s *GraphiteBaseStatItem) ZeroOut() error {
+	// reset the values
+	s.Values = graphiteFloat64{}
+	s.Min = 0.0
+	s.Mean = 0.0
+	s.Max = 0.0
+	s.Sum = 0.0
+	s.Count = 0
+
+	return nil
+}
+
 func (s *GraphiteBaseStatItem) Out(fmatter FormatterItem, acc AccumulatorItem) []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -108,6 +138,15 @@ func (s *GraphiteBaseStatItem) Accumulate(val float64) error {
 	defer s.mu.Unlock()
 
 	s.Values = append(s.Values, val)
+	if s.Min > val {
+		s.Min = val
+	}
+	if s.Max < val {
+		s.Max = val
+	}
+	s.Count += 1
+	s.Sum += val
+	s.Mean = s.Sum / float64(s.Count)
 
 	return nil
 }
@@ -120,6 +159,7 @@ type GraphiteAccumulate struct {
 	GraphiteStats map[string]StatItem
 	OutFormat     FormatterItem
 	InTags        []AccumulatorTags
+	InKeepKeys    bool
 
 	mu sync.Mutex
 }
@@ -143,6 +183,11 @@ func (s *GraphiteAccumulate) SetTags(tags []AccumulatorTags) {
 	s.InTags = tags
 }
 
+func (s *GraphiteAccumulate) SetKeepKeys(k bool) error {
+	s.InKeepKeys = k
+	return nil
+}
+
 func (s *GraphiteAccumulate) Init(fmatter FormatterItem) error {
 	s.OutFormat = fmatter
 	fmatter.SetAccumulator(s)
@@ -160,9 +205,16 @@ func (a *GraphiteAccumulate) Name() (name string) { return GRAPHITE_ACC_NAME }
 func (a *GraphiteAccumulate) Reset() error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	// keep or reset
+	if a.InKeepKeys {
+		for idx, _ := range a.GraphiteStats {
+			a.GraphiteStats[idx].ZeroOut()
+		}
+	} else {
+		a.GraphiteStats = nil
+		a.GraphiteStats = make(map[string]StatItem)
+	}
 
-	a.GraphiteStats = nil
-	a.GraphiteStats = make(map[string]StatItem)
 	return nil
 }
 

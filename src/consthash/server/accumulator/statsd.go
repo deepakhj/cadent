@@ -38,14 +38,43 @@ func round(a float64) float64 {
 type StatsdBaseStatItem struct {
 	InKey      string
 	Value      float64
+	Count      int64
+	Min        float64
+	Max        float64
+	Sum        float64
+	Mean       float64
 	InType     string
 	start_time int64
 
 	mu sync.Mutex
 }
 
+func (s *StatsdBaseStatItem) Repr() StatRepr {
+	return StatRepr{
+		Key:   s.InKey,
+		Min:   jsonFloat64(s.Min),
+		Max:   jsonFloat64(s.Max),
+		Count: s.Count,
+		Mean:  jsonFloat64(s.Mean),
+		Sum:   jsonFloat64(s.Sum),
+	}
+}
+
 func (s *StatsdBaseStatItem) Type() string { return s.InType }
 func (s *StatsdBaseStatItem) Key() string  { return s.InKey }
+
+func (s *StatsdBaseStatItem) ZeroOut() error {
+	// reset the values
+	s.Value = 0.0
+	s.Min = STATSD_ACC_MIN_FLAG
+	s.Mean = 0.0
+	s.Max = STATSD_ACC_MIN_FLAG
+	s.Sum = 0.0
+	s.Count = 0
+
+	return nil
+}
+
 func (s *StatsdBaseStatItem) Out(fmatter FormatterItem, acc AccumulatorItem) []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -147,6 +176,15 @@ func (s *StatsdBaseStatItem) Accumulate(val float64) error {
 	case s.InType == "+g": //gauage add
 		s.Value += val
 	}
+	if s.Min == STATSD_ACC_MIN_FLAG || s.Min > val {
+		s.Min = val
+	}
+	if s.Max == STATSD_ACC_MIN_FLAG || s.Max < val {
+		s.Max = val
+	}
+	s.Count += 1
+	s.Sum += val
+	s.Mean = s.Sum / float64(s.Count)
 	return nil
 }
 
@@ -159,6 +197,8 @@ type StatsdTimerStatItem struct {
 	Count  int64
 	Min    float64
 	Max    float64
+	Sum    float64
+	Mean   float64
 	Values statdFloat64arr
 
 	PercentThreshold []float64
@@ -166,6 +206,17 @@ type StatsdTimerStatItem struct {
 	start_time int64
 
 	mu sync.Mutex
+}
+
+func (s *StatsdTimerStatItem) Repr() StatRepr {
+	return StatRepr{
+		Key:   s.InKey,
+		Min:   jsonFloat64(s.Min),
+		Max:   jsonFloat64(s.Max),
+		Count: s.Count,
+		Mean:  jsonFloat64(s.Mean),
+		Sum:   jsonFloat64(s.Sum),
+	}
 }
 
 func (s *StatsdTimerStatItem) Key() string  { return s.InKey }
@@ -186,7 +237,21 @@ func (s *StatsdTimerStatItem) Accumulate(val float64) error {
 	if s.Max < val {
 		s.Max = val
 	}
+	s.Sum += val
+	s.Mean = s.Sum / float64(s.Count)
 	s.Values = append(s.Values, val)
+	return nil
+}
+
+func (s *StatsdTimerStatItem) ZeroOut() error {
+	// reset the values
+	s.Values = statdFloat64arr{}
+	s.Min = STATSD_ACC_MIN_FLAG
+	s.Mean = 0.0
+	s.Max = STATSD_ACC_MIN_FLAG
+	s.Sum = 0.0
+	s.Count = 0
+
 	return nil
 }
 
@@ -227,13 +292,38 @@ func (s *StatsdTimerStatItem) Out(fmatter FormatterItem, acc AccumulatorItem) []
 	base := []string{
 		fmatter.ToString(f_key+".count", float64(s.Count), t_stamp, "c", nil),
 		fmatter.ToString(f_key+".count_ps", float64(s.Count)/float64(tick), t_stamp, "c", nil),
-		fmatter.ToString(f_key+".mean", float64(avg), t_stamp, "g", nil),
-		fmatter.ToString(f_key+".lower", float64(s.Min), t_stamp, "g", nil),
-		fmatter.ToString(f_key+".upper", float64(s.Max), t_stamp, "g", nil),
-		fmatter.ToString(f_key+".std", float64(std), t_stamp, "g", nil),
+		fmatter.ToString(f_key+".lower", s.Min, t_stamp, "g", nil),
+		fmatter.ToString(f_key+".upper", s.Max, t_stamp, "g", nil),
+		fmatter.ToString(f_key+".sum", s.Value, t_stamp, "g", nil),
 	}
-
+	if s.Count == 0 {
+		base = append(
+			base,
+			[]string{
+				fmatter.ToString(f_key+".mean", float64(0.0), t_stamp, "g", nil),
+				fmatter.ToString(f_key+".std", float64(0.0), t_stamp, "g", nil),
+				fmatter.ToString(f_key+".median", float64(0.0), t_stamp, "g", nil),
+			}...,
+		)
+	}
 	if s.Count > 0 {
+		mid := int64(math.Floor(float64(s.Count) / 2.0))
+		median := float64(0.0)
+		if math.Mod(float64(mid), 2.0) == 0 {
+			median = s.Values[mid]
+		} else if s.Count > 1 {
+			median = (s.Values[mid-1] + s.Values[mid]) / 2.0
+		}
+
+		base = append(
+			base,
+			[]string{
+				fmatter.ToString(f_key+".mean", float64(avg), t_stamp, "g", nil),
+				fmatter.ToString(f_key+".std", float64(std), t_stamp, "g", nil),
+				fmatter.ToString(f_key+".median", float64(median), t_stamp, "g", nil),
+			}...,
+		)
+
 		sum := s.Min
 		mean := s.Min
 		thresholdBoundary := s.Max
@@ -269,6 +359,7 @@ func (s *StatsdTimerStatItem) Out(fmatter FormatterItem, acc AccumulatorItem) []
 				[]string{
 					fmatter.ToString(fmt.Sprintf("%s.count_%s", f_key, p_name), float64(numInThreshold), t_stamp, "c", nil),
 					fmatter.ToString(fmt.Sprintf("%s.mean_%s", f_key, p_name), float64(mean), t_stamp, "g", nil),
+					fmatter.ToString(fmt.Sprintf("%s.sum_%s", f_key, p_name), float64(sum), t_stamp, "g", nil),
 				}...,
 			)
 			if pct > 0 {
@@ -297,6 +388,7 @@ type StatsdAccumulate struct {
 	StatsdStats map[string]StatItem
 	OutFormat   FormatterItem
 	InTags      []AccumulatorTags
+	InKeepKeys  bool
 
 	// statsd like options
 	LegacyStatsd  bool
@@ -395,6 +487,11 @@ func (s *StatsdAccumulate) SetTags(tags []AccumulatorTags) {
 	s.InTags = tags
 }
 
+func (s *StatsdAccumulate) SetKeepKeys(k bool) error {
+	s.InKeepKeys = k
+	return nil
+}
+
 func (s *StatsdAccumulate) Stats() map[string]StatItem {
 	return s.StatsdStats
 }
@@ -417,8 +514,14 @@ func (a *StatsdAccumulate) Reset() error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	a.StatsdStats = nil
-	a.StatsdStats = make(map[string]StatItem)
+	if a.InKeepKeys {
+		for idx, _ := range a.StatsdStats {
+			a.StatsdStats[idx].ZeroOut()
+		}
+	} else {
+		a.StatsdStats = nil
+		a.StatsdStats = make(map[string]StatItem)
+	}
 	return nil
 }
 
@@ -499,7 +602,7 @@ func (a *StatsdAccumulate) ProcessLine(line string) (err error) {
 				InType:           "ms",
 				Value:            0,
 				Min:              STATSD_ACC_MIN_FLAG,
-				Max:              0,
+				Max:              STATSD_ACC_MIN_FLAG,
 				Count:            0,
 				InKey:            key,
 				PercentThreshold: thres,
@@ -508,6 +611,8 @@ func (a *StatsdAccumulate) ProcessLine(line string) (err error) {
 			gots = &StatsdBaseStatItem{
 				InType: c_type,
 				Value:  0.0,
+				Min:    STATSD_ACC_MIN_FLAG,
+				Max:    STATSD_ACC_MIN_FLAG,
 				InKey:  key,
 			}
 		}
