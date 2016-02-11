@@ -65,7 +65,6 @@ func (s *StatsdBaseStatItem) Key() string  { return s.InKey }
 
 func (s *StatsdBaseStatItem) ZeroOut() error {
 	// reset the values
-	s.Value = 0.0
 	s.Min = STATSD_ACC_MIN_FLAG
 	s.Mean = 0.0
 	s.Max = STATSD_ACC_MIN_FLAG
@@ -87,7 +86,7 @@ func (s *StatsdBaseStatItem) Out(fmatter FormatterItem, acc AccumulatorItem) []s
 	}
 
 	c_type := "c"
-	val := s.Value
+	val := s.Sum
 
 	tick := time.Now().Unix() - s.start_time
 	if tick == 0 {
@@ -168,13 +167,13 @@ func (s *StatsdBaseStatItem) Accumulate(val float64) error {
 
 	switch {
 	case s.InType == "c": //counter
-		s.Value += val
+		s.Sum += val
 	case s.InType == "g": //gauage
-		s.Value = val
+		s.Sum = val
 	case s.InType == "-g": //gauage negate
-		s.Value -= val
+		s.Sum -= val
 	case s.InType == "+g": //gauage add
-		s.Value += val
+		s.Sum += val
 	}
 	if s.Min == STATSD_ACC_MIN_FLAG || s.Min > val {
 		s.Min = val
@@ -183,7 +182,6 @@ func (s *StatsdBaseStatItem) Accumulate(val float64) error {
 		s.Max = val
 	}
 	s.Count += 1
-	s.Sum += val
 	s.Mean = s.Sum / float64(s.Count)
 	return nil
 }
@@ -230,14 +228,13 @@ func (s *StatsdTimerStatItem) Accumulate(val float64) error {
 		s.start_time = time.Now().Unix()
 	}
 	s.Count += 1
-	s.Value += val
+	s.Sum += val
 	if s.Min == STATSD_ACC_MIN_FLAG || s.Min > val {
 		s.Min = val
 	}
-	if s.Max < val {
+	if s.Max == STATSD_ACC_MIN_FLAG || s.Max < val {
 		s.Max = val
 	}
-	s.Sum += val
 	s.Mean = s.Sum / float64(s.Count)
 	s.Values = append(s.Values, val)
 	return nil
@@ -269,7 +266,7 @@ func (s *StatsdTimerStatItem) Out(fmatter FormatterItem, acc AccumulatorItem) []
 	f_key = f_key + s.InKey
 
 	std := float64(0)
-	avg := s.Value / float64(s.Count)
+	avg := s.Sum / float64(s.Count)
 	cumulativeValues := []float64{s.Min}
 
 	sort.Sort(s.Values)
@@ -289,12 +286,21 @@ func (s *StatsdTimerStatItem) Out(fmatter FormatterItem, acc AccumulatorItem) []
 	if tick == 0 {
 		tick = 1.0
 	}
+	min := s.Min
+	if min == STATSD_ACC_MIN_FLAG {
+		min = 0.0
+	}
+	max := s.Max
+	if max == STATSD_ACC_MIN_FLAG {
+		max = 0.0
+	}
+
 	base := []string{
 		fmatter.ToString(f_key+".count", float64(s.Count), t_stamp, "c", nil),
 		fmatter.ToString(f_key+".count_ps", float64(s.Count)/float64(tick), t_stamp, "c", nil),
-		fmatter.ToString(f_key+".lower", s.Min, t_stamp, "g", nil),
-		fmatter.ToString(f_key+".upper", s.Max, t_stamp, "g", nil),
-		fmatter.ToString(f_key+".sum", s.Value, t_stamp, "g", nil),
+		fmatter.ToString(f_key+".lower", min, t_stamp, "g", nil),
+		fmatter.ToString(f_key+".upper", max, t_stamp, "g", nil),
+		fmatter.ToString(f_key+".sum", s.Sum, t_stamp, "g", nil),
 	}
 	if s.Count == 0 {
 		base = append(

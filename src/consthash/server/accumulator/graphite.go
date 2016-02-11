@@ -7,6 +7,7 @@ package accumulator
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -16,6 +17,7 @@ import (
 /****************** RUNNERS *********************/
 const GRAPHITE_ACC_NAME = "graphite_accumlator"
 const GRAHPITE_ACC_MIN_LEN = 3
+const GRAPHITE_ACC_MIN_FLAG = math.MinInt64
 
 /** counter/gauge type **/
 // for sorting
@@ -108,9 +110,9 @@ func (s *GraphiteBaseStatItem) Key() string  { return s.InKey }
 func (s *GraphiteBaseStatItem) ZeroOut() error {
 	// reset the values
 	s.Values = graphiteFloat64{}
-	s.Min = 0.0
+	s.Min = GRAPHITE_ACC_MIN_FLAG
 	s.Mean = 0.0
-	s.Max = 0.0
+	s.Max = GRAPHITE_ACC_MIN_FLAG
 	s.Sum = 0.0
 	s.Count = 0
 
@@ -138,10 +140,10 @@ func (s *GraphiteBaseStatItem) Accumulate(val float64) error {
 	defer s.mu.Unlock()
 
 	s.Values = append(s.Values, val)
-	if s.Min > val {
+	if s.Min == GRAPHITE_ACC_MIN_FLAG || s.Min > val {
 		s.Min = val
 	}
-	if s.Max < val {
+	if s.Max == GRAPHITE_ACC_MIN_FLAG || s.Max < val {
 		s.Max = val
 	}
 	s.Count += 1
