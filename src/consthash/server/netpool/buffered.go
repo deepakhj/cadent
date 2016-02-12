@@ -94,6 +94,7 @@ func (n *BufferedNetpoolConn) Write(b []byte) (wrote int, err error) {
 	c := n.Conn()
 	if (len(n.writebuffer)+len(b)) > n.buffersize && c != nil {
 		wrote, err = c.Write(n.writebuffer)
+		//log.Debug("BUF WRITE %v", string(n.writebuffer))
 		if err != nil {
 			c.Close() // Open will re-open it
 			n.SetConn(nil)
@@ -116,11 +117,12 @@ func (n *BufferedNetpoolConn) Flush() (wrote int, err error) {
 	//log.Debug("FLUSH BUF WRITE %d/%d wrote: %d", len(n.writebuffer), n.buffersize, wrote)
 	if len(n.writebuffer) > 0 && c != nil {
 		wrote, err = c.Write(n.writebuffer)
+		//log.Debug("FLUSH BUF WRITE %v", string(n.writebuffer))
 		//log.Debug("BUF WRITE %d/%d wrote: %d", len(n.writebuffer), n.buffersize, wrote)
 		if err != nil {
 			c.Close() // Open will re-open it
 			n.SetConn(nil)
-			log.Warning("Error writing flush: %s", err)
+			//log.Warning("Error writing flush: %s", err)
 			return 0, err
 		}
 		n.writebuffer = []byte("")

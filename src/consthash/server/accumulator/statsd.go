@@ -37,7 +37,6 @@ func round(a float64) float64 {
 
 type StatsdBaseStatItem struct {
 	InKey      string
-	Value      float64
 	Count      int64
 	Min        float64
 	Max        float64
@@ -70,7 +69,7 @@ func (s *StatsdBaseStatItem) ZeroOut() error {
 	s.Max = STATSD_ACC_MIN_FLAG
 	s.Sum = 0.0
 	s.Count = 0
-
+	s.start_time = 0
 	return nil
 }
 
@@ -158,6 +157,9 @@ func (s *StatsdBaseStatItem) Out(fmatter FormatterItem, acc AccumulatorItem) []s
 }
 
 func (s *StatsdBaseStatItem) Accumulate(val float64) error {
+	if math.IsInf(val, 0) || math.IsNaN(val) {
+		return nil
+	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -191,7 +193,6 @@ func (s *StatsdBaseStatItem) Accumulate(val float64) error {
 type StatsdTimerStatItem struct {
 	InKey  string
 	InType string
-	Value  float64
 	Count  int64
 	Min    float64
 	Max    float64
@@ -221,6 +222,9 @@ func (s *StatsdTimerStatItem) Key() string  { return s.InKey }
 func (s *StatsdTimerStatItem) Type() string { return s.InType }
 
 func (s *StatsdTimerStatItem) Accumulate(val float64) error {
+	if math.IsInf(val, 0) || math.IsNaN(val) {
+		return nil
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -235,6 +239,8 @@ func (s *StatsdTimerStatItem) Accumulate(val float64) error {
 	if s.Max == STATSD_ACC_MIN_FLAG || s.Max < val {
 		s.Max = val
 	}
+	//log.Debug("SUM: %v VAL: %v COUNT %v", s.Sum, val, s.Count)
+
 	s.Mean = s.Sum / float64(s.Count)
 	s.Values = append(s.Values, val)
 	return nil
@@ -248,7 +254,7 @@ func (s *StatsdTimerStatItem) ZeroOut() error {
 	s.Max = STATSD_ACC_MIN_FLAG
 	s.Sum = 0.0
 	s.Count = 0
-
+	s.start_time = 0
 	return nil
 }
 
@@ -361,6 +367,7 @@ func (s *StatsdTimerStatItem) Out(fmatter FormatterItem, acc AccumulatorItem) []
 
 				mean = sum / float64(numInThreshold)
 			}
+
 			base = append(base,
 				[]string{
 					fmatter.ToString(fmt.Sprintf("%s.count_%s", f_key, p_name), float64(numInThreshold), t_stamp, "c", nil),
@@ -606,7 +613,7 @@ func (a *StatsdAccumulate) ProcessLine(line string) (err error) {
 			//thres =
 			gots = &StatsdTimerStatItem{
 				InType:           "ms",
-				Value:            0,
+				Sum:              0,
 				Min:              STATSD_ACC_MIN_FLAG,
 				Max:              STATSD_ACC_MIN_FLAG,
 				Count:            0,
@@ -616,7 +623,7 @@ func (a *StatsdAccumulate) ProcessLine(line string) (err error) {
 		} else {
 			gots = &StatsdBaseStatItem{
 				InType: c_type,
-				Value:  0.0,
+				Sum:    0.0,
 				Min:    STATSD_ACC_MIN_FLAG,
 				Max:    STATSD_ACC_MIN_FLAG,
 				InKey:  key,

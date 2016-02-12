@@ -135,7 +135,9 @@ func (s *GraphiteBaseStatItem) Out(fmatter FormatterItem, acc AccumulatorItem) [
 }
 
 func (s *GraphiteBaseStatItem) Accumulate(val float64) error {
-
+	if math.IsInf(val, 0) || math.IsNaN(val) {
+		return nil
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
