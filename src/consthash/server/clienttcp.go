@@ -37,7 +37,7 @@ type TCPClient struct {
 	out_queue    chan splitter.SplitItem
 	input_queue  chan splitter.SplitItem
 	done         chan Client
-	worker_queue chan *SendOut
+	worker_queue chan *OutputMessage
 	close        chan bool
 }
 
@@ -93,7 +93,7 @@ func (client *TCPClient) Server() (server *Server) {
 func (client *TCPClient) Hashers() (server *[]*ConstHasher) {
 	return client.hashers
 }
-func (client *TCPClient) WorkerQueue() chan *SendOut {
+func (client *TCPClient) WorkerQueue() chan *OutputMessage {
 	return client.worker_queue
 }
 func (client *TCPClient) InputQueue() chan splitter.SplitItem {

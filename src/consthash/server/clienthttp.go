@@ -33,7 +33,7 @@ type HTTPClient struct {
 	out_queue    chan splitter.SplitItem
 	done         chan Client
 	input_queue  chan splitter.SplitItem
-	worker_queue chan *SendOut
+	worker_queue chan *OutputMessage
 	close        chan bool
 
 	log *logging.Logger
@@ -90,7 +90,7 @@ func (client HTTPClient) Hashers() (hasher *[]*ConstHasher) {
 func (client HTTPClient) InputQueue() chan splitter.SplitItem {
 	return client.input_queue
 }
-func (client HTTPClient) WorkerQueue() chan *SendOut {
+func (client HTTPClient) WorkerQueue() chan *OutputMessage {
 	return client.worker_queue
 }
 func (client HTTPClient) Close() {

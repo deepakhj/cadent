@@ -6,6 +6,7 @@
 package accumulator
 
 import (
+	"consthash/server/repr"
 	"fmt"
 	"math"
 	"sort"
@@ -93,14 +94,14 @@ type GraphiteBaseStatItem struct {
 	mu sync.Mutex
 }
 
-func (s *GraphiteBaseStatItem) Repr() StatRepr {
-	return StatRepr{
+func (s *GraphiteBaseStatItem) Repr() repr.StatRepr {
+	return repr.StatRepr{
 		Key:   s.InKey,
-		Min:   jsonFloat64(s.Min),
-		Max:   jsonFloat64(s.Max),
+		Min:   repr.CheckFloat(repr.JsonFloat64(s.Min)),
+		Max:   repr.CheckFloat(repr.JsonFloat64(s.Max)),
 		Count: s.Count,
-		Mean:  jsonFloat64(s.Mean),
-		Sum:   jsonFloat64(s.Sum),
+		Mean:  repr.CheckFloat(repr.JsonFloat64(s.Mean)),
+		Sum:   repr.CheckFloat(repr.JsonFloat64(s.Sum)),
 	}
 }
 
@@ -222,15 +223,16 @@ func (a *GraphiteAccumulate) Reset() error {
 	return nil
 }
 
-func (a *GraphiteAccumulate) Flush() []string {
-	base := []string{}
+func (a *GraphiteAccumulate) Flush() *flushedList {
+	fl := new(flushedList)
+
 	a.mu.Lock()
 	for _, stats := range a.GraphiteStats {
-		base = append(base, stats.Out(a.OutFormat, a)...)
+		fl.Add(stats.Out(a.OutFormat, a), stats.Repr())
 	}
 	a.mu.Unlock()
 	a.Reset()
-	return base
+	return fl
 }
 
 func (a *GraphiteAccumulate) ProcessLine(line string) (err error) {

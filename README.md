@@ -28,6 +28,7 @@ Installation
     go get github.com/reusee/mmh3
     go get github.com/op/go-logging
     go get github.com/smartystreets/goconvey/convey
+    go get github.com/go-sql-driver/mysql
     
     
     cd ../
@@ -79,7 +80,35 @@ The Flow of a given line looks like so
                                                                 [-> Replicator -> Hasher -> OutPool -> Buffer -> outLine(s)]
 Things in `[]` are optional
 
-### Server Types
+### Accumualtors 
+
+Accumulators almost always need to have the same "key" incoming.  Since you don't want the same stat key accumulated
+in different places, which would lead to bad sums, means, etc.  Thus to use accumulators effectively in a multi server
+endpoint senerio, you'd want to consistently hash from the incoming line stream to ANOTHER set of listeners that are the 
+backend accumulators (in the same fashion that Statsd Proxy -> Statsd and Carbon Relay -> Carbon Aggregator).  
+
+It's easy to do this in one "instance" of this item where one creates a "loop back" to itself, but on a different
+listener port.
+
+     InLine(s port 8125) -> Listener -> Splitter -> [PreReg] -> Backend -> Hasher -> OutPool (port 8126) -> Buffer -> outLine(s)
+        
+        --> InLine(s port 8126) -> Splitter -> [Accumulator] -> [PreReg] -> Backend -> OutPool (port Writer) -> Buffer -> outLine(s)
+
+This way any farm of hashing servers will properly send the same stat to the same place for proper accumulation.
+
+#### Writers
+
+Accumulators can "write" to something other then a tcp/udp/http/socket, to say things like a FILE, MySQL DB or cassandra.
+(since this is Golang all writer types need to have their own driver embded in).  If you only want accumulators to write out to 
+these things, you can specify the `backend` to `BLACKHOLE` which will NOT try to reinsert the line back into the pipeline
+and the line "ends" with the Accumulator stage.
+
+
+    InLine(s port 8126) -> Splitter -> [Accumulator] -> WriterBackend
+
+
+
+### Listen Server Types
 
 All inputs and out puts can be tcp, udp, unix socket, or http
 
@@ -87,6 +116,7 @@ All inputs and out puts can be tcp, udp, unix socket, or http
     udp -> udp://127.0.0.1:8125
     unix -> unix:///my/socket.sock
     http -> http://moo.org/stats
+    
 
 http expects the BODY of the request to basically be the lines
 
@@ -96,6 +126,9 @@ http expects the BODY of the request to basically be the lines
     
     key value thing
     key value thing2
+
+There is also a special `listen` called `backend_only` which is simply a place where things can routed to internally
+(from say a `PreReg` filter or `Accumulator`) that then out puts to it's consthash server outgoing list
     
 ### Input line types for no accumulator
  

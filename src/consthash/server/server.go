@@ -33,6 +33,7 @@ import (
 	"consthash/server/stats"
 	"encoding/json"
 	"fmt"
+	//breaker "github.com/eapache/go-resiliency/breaker"
 	logging "github.com/op/go-logging"
 	"net"
 	"net/http"
@@ -44,6 +45,7 @@ import (
 	"strings"
 	"sync"
 	//"syscall"
+	"consthash/server/accumulator"
 	"time"
 )
 
@@ -57,149 +59,19 @@ const (
 	DEFAULT_READ_BUFFER_SIZE           = 4096
 )
 
-// the push method function type
-type pushFunction func(*SendOut) error
+type outMessageType int8
 
-type SendOut struct {
+const (
+	normal_message outMessageType = 1 << iota // notmal message
+	shutdown                                  // trap shutdown
+)
+
+type OutputMessage struct {
+	m_type    outMessageType
 	outserver string
 	param     string
 	client    Client
 	server    *Server
-}
-
-// to send stat lines via a pool of connections
-// rather then one socket per stat
-func poolWorker(j *SendOut) error {
-	defer stats.StatsdNanoTimeFunc("worker.process-time-ns", time.Now())
-
-	var outsrv netpool.NetpoolInterface
-	var ok bool
-
-	// lock out Outpool map
-	if j == nil {
-		return nil
-	}
-
-	make_pool := func() int {
-		j.server.poolmu.Lock()
-		defer j.server.poolmu.Unlock()
-
-		if outsrv, ok = j.server.Outpool[j.outserver]; ok {
-			ok = true
-			return 0
-		} else {
-			m_url, err := url.Parse(j.outserver)
-			if err != nil {
-				stats.StatsdClient.Incr("failed.bad-url", 1)
-				j.server.FailSendCount.Up(1)
-				log.Error("Error sending to backend Invalid URL `%s` %s", j.outserver, err)
-				return 2 //cannot retry this
-			}
-			if len(j.server.Outpool) == 0 {
-				j.server.Outpool = make(map[string]netpool.NetpoolInterface)
-
-			}
-			if j.server.SendingConnectionMethod == "bufferedpool" {
-				outsrv = netpool.NewBufferedNetpool(m_url.Scheme, m_url.Host+m_url.Path, j.server.WriteBufferPoolSize)
-			} else {
-				outsrv = netpool.NewNetpool(m_url.Scheme, m_url.Host+m_url.Path)
-			}
-			if j.server.NetPoolConnections > 0 {
-				outsrv.SetMaxConnections(j.server.NetPoolConnections)
-			}
-			// populate it
-			err = outsrv.InitPool()
-			if err != nil {
-				log.Warning("Poll init error %s", err)
-				return 1
-			}
-			j.server.Outpool[j.outserver] = outsrv
-			return 0
-		}
-	}
-	// keep retrying
-	retcode := make_pool()
-	if retcode == 1 {
-		time.Sleep(time.Second)
-		return fmt.Errorf("Pool %s failed to intialize,, check the outgoing servers for 'aliveness'", j.outserver)
-	} else if retcode == 2 {
-		return fmt.Errorf("Pool %s failed to intialize, Hard failure", j.outserver)
-	}
-
-	netconn, err := outsrv.Open()
-	defer outsrv.Close(netconn)
-
-	if err != nil {
-		stats.StatsdClient.Incr("failed.bad-connection", 1)
-		j.server.FailSendCount.Up(1)
-		return fmt.Errorf("Error sending to backend %s", err)
-	}
-	if netconn.Conn() != nil {
-		// Conn.Write will raise a timeout error after 1 seconds
-		netconn.SetWriteDeadline(time.Now().Add(j.server.WriteTimeout))
-		//var wrote int
-		to_send := []byte(j.param + "\n")
-
-		by, err := netconn.Write(to_send)
-
-		//log.Printf("SEND %s %s", wrote, err)
-		if err != nil {
-			stats.StatsdClient.Incr("failed.connection-timeout", 1)
-			j.server.FailSendCount.Up(1)
-			outsrv.ResetConn(netconn)
-			return fmt.Errorf("Error sending (writing) to backend: %s", err)
-		} else {
-			j.server.BytesWrittenCount.Up(uint64(by))
-			j.server.SuccessSendCount.Up(1)
-			stats.StatsdClient.Incr("success.send", 1)
-			stats.StatsdClient.Incr("success.sent-bytes", int64(len(to_send)))
-		}
-
-	} else {
-		stats.StatsdClient.Incr("failed.aborted-connection", 1)
-		j.server.FailSendCount.Up(1)
-		return fmt.Errorf("Error sending (writing connection gone) to backend: %s", j.outserver)
-	}
-	return nil
-}
-
-//this is for using a simple tcp connection per stat we send out
-//one can quickly run out of sockets if this is used under high load
-func singleWorker(j *SendOut) error {
-	if j == nil {
-		return nil
-	}
-
-	defer stats.StatsdNanoTimeFunc("worker.process-time-ns", time.Now())
-
-	m_url, err := url.Parse(j.outserver)
-	if err != nil {
-		stats.StatsdClient.Incr("failed.bad-url", 1)
-		j.server.FailSendCount.Up(1)
-		return fmt.Errorf("Error sending to backend Invalid URL %s", err)
-	}
-	conn, err := net.DialTimeout(m_url.Scheme, m_url.Host+m_url.Path, 5*time.Second)
-	if conn != nil {
-
-		conn.SetWriteDeadline(time.Now().Add(j.server.WriteTimeout))
-		//send it and close it
-		to_send := []byte(j.param + "\n")
-		_, err = conn.Write(to_send)
-		conn.Close()
-		conn = nil
-		if err != nil {
-			stats.StatsdClient.Incr("failed.bad-connection", 1)
-			j.server.FailSendCount.Up(1)
-			return fmt.Errorf("Error sending (writing) to backend: %s", err)
-		}
-		stats.StatsdClient.Incr("success.sent", 1)
-		stats.StatsdClient.Incr("success.sent-bytes", int64(len(to_send)))
-		j.server.SuccessSendCount.Up(1)
-	} else {
-		j.server.FailSendCount.Up(1)
-		return fmt.Errorf("Error sending (connection) to backend: %s", err)
-	}
-	return nil
 }
 
 /****************** SERVERS *********************/
@@ -341,10 +213,13 @@ type Server struct {
 	ProcessedQueue chan splitter.SplitItem
 
 	//workers and ques sizes
-	WorkQueue   chan *SendOut
+	WorkQueue   chan *OutputMessage
 	WorkerHold  chan int64
 	InWorkQueue stats.AtomicInt
 	Workers     int64
+
+	//Worker Breaker
+	// work_breaker *breaker.Breaker
 
 	//the Splitter type to determine the keys to hash on
 	SplitterTypeString string
@@ -365,7 +240,7 @@ type Server struct {
 	ShutDown   *broadcast.Broadcaster
 
 	//the push function (polling, direct, etc)
-	PushFunction pushFunction
+	Writer OutMessageWriter
 
 	//uptime
 	StartTime time.Time
@@ -501,14 +376,14 @@ func (server *Server) StopServer() {
 }
 
 // set the "push" function we are using "pool" or "single"
-func (server *Server) SetPushMethod() pushFunction {
+func (server *Server) SetWriter() OutMessageWriter {
 	switch server.SendingConnectionMethod {
 	case "single":
-		server.PushFunction = singleWorker
+		server.Writer = new(SingleWriter)
 	default:
-		server.PushFunction = poolWorker
+		server.Writer = new(PoolWriter)
 	}
-	return server.PushFunction
+	return server.Writer
 }
 
 func (server *Server) SetSplitterProcessor() (splitter.Splitter, error) {
@@ -531,17 +406,39 @@ func (server *Server) NeedBackPressure() bool {
 }
 
 //spins up the queue of go routines to handle outgoing
+// each one is wrapped in a breaker
 func (server *Server) WorkerOutput() {
 	shuts := server.ShutDown.Listen()
+
+	// after 5 errors, break, if happy after 1, continue
+
 	for {
 		select {
 		case j := <-server.WorkQueue:
-			err := server.PushFunction(j)
+
+			if j.m_type&shutdown != 0 {
+				server.log.Critical("Got Shutdown notice .. stoping")
+				return
+			}
+			err := server.Writer.Write(j)
+
 			if err != nil {
 				server.log.Error("%s", err)
-				// add it back to the queue
-				//server.WorkQueue <- j
 			}
+
+			/** Does not seem to really work w/o
+			res := server.work_breaker.Run(func() error {
+				err := server.Writer.Write(j)
+
+				if err != nil {
+					server.log.Error("%s", err)
+				}
+				return err
+			})
+			if res == breaker.ErrBreakerOpen {
+				server.log.Warning("Circuit Breaker is ON")
+			}
+			*/
 		case <-shuts.Ch:
 			return
 		}
@@ -616,7 +513,8 @@ func (server *Server) PushLineToBackend(spl splitter.SplitItem) splitter.SplitIt
 				stats.StatsdClient.Incr("success.valid-lines-sent-to-workers", 1)
 				server.WorkerValidLineCount.Up(1)
 
-				sendOut := &SendOut{
+				sendOut := &OutputMessage{
+					m_type:    normal_message,
 					outserver: useme,
 					server:    server,
 					param:     spl.Line(),
@@ -676,6 +574,8 @@ func NewServer(cfg *Config) (server *Server, err error) {
 	serv.Replicas = cfg.Replicas
 
 	serv.ShutDown = broadcast.New(1)
+
+	// serv.work_breaker = breaker.New(3, 1, 2*time.Second)
 
 	serv.poolmu = new(sync.Mutex)
 
@@ -754,7 +654,7 @@ func NewServer(cfg *Config) (server *Server, err error) {
 	}
 
 	//the queue is only as big as the workers
-	serv.WorkQueue = make(chan *SendOut, serv.Workers)
+	serv.WorkQueue = make(chan *OutputMessage, serv.Workers)
 
 	//input queue
 	serv.InputQueue = make(chan splitter.SplitItem, serv.Workers)
@@ -1476,7 +1376,7 @@ func (server *Server) StartServer() {
 	defer close(done)
 
 	//set the push method (the WorkerOutput depends on it)
-	server.SetPushMethod()
+	server.SetWriter()
 
 	for w := int64(1); w <= server.Workers; w++ {
 		go server.WorkerOutput()
@@ -1495,10 +1395,16 @@ func (server *Server) StartServer() {
 
 	//set the accumulator to this servers input queue
 	if server.PreRegFilter != nil && server.PreRegFilter.Accumulator != nil {
-		to_srv := SERVER_BACKENDS[server.PreRegFilter.Accumulator.ToBackend]
-		log.Notice("Assiging OutQueue for `%s` to backend `%s` ", server.PreRegFilter.Accumulator.Name, to_srv.Name)
-		server.PreRegFilter.Accumulator.SetOutputQueue(to_srv.Queue.InputQueue)
-		// fire it up
+		// There is the special "black_hole" Backend that will let us use Writers exclusively
+		if server.PreRegFilter.Accumulator.ToBackend == accumulator.BLACK_HOLE_BACKEND {
+			log.Notice("NOTE: BlackHole for `%s`", server.PreRegFilter.Accumulator.Name)
+		} else {
+			to_srv := SERVER_BACKENDS[server.PreRegFilter.Accumulator.ToBackend]
+			log.Notice("Assiging OutQueue for `%s` to backend `%s` ", server.PreRegFilter.Accumulator.Name, to_srv.Name)
+			server.PreRegFilter.Accumulator.SetOutputQueue(to_srv.Queue.InputQueue)
+			// fire it up
+		}
+
 		go server.PreRegFilter.Accumulator.Start()
 	}
 

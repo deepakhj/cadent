@@ -14,29 +14,36 @@
     		-> Out
 
     There must be a "splitter.Splitter" for each FormatterItem otherwise there's no way
-    To
+
+    If there is an "external writer" you can set the Backend to 'black_hole' and the line "ends"
+    there on Flush and the line should hopefully get "written" somewhere like your
+    Favorite DB
 */
 
 package accumulator
 
 import (
+	repr "consthash/server/repr"
 	splitter "consthash/server/splitter"
 	"fmt"
+	logging "github.com/op/go-logging"
 	"sync"
 	"time"
 )
+
+const BLACK_HOLE_BACKEND = "BLACKHOLE"
 
 /**** main accumulator object */
 
 type Accumulator struct {
 
 	// these are assigned from the config file in the PreReg config file
-	ToBackend       string        `json:"backend"`
-	FormatterName   string        `json:"formatter"`
-	AccumulatorName string        `json:"accumulator"`
-	Name            string        `json:"name"`
-	KeepKeys        bool          `json:"keep_keys"` // if true, will not "remove" the keys post flush, just set them to 0
-	FlushTime       time.Duration `json:"flush_time"`
+	ToBackend       string          `json:"backend"`
+	FormatterName   string          `json:"formatter"`
+	AccumulatorName string          `json:"accumulator"`
+	Name            string          `json:"name"`
+	KeepKeys        bool            `json:"keep_keys"` // if true, will not "remove" the keys post flush, just set them to 0
+	FlushTimes      []time.Duration `json:"flush_time"`
 
 	Accumulate AccumulatorItem
 	Formatter  FormatterItem
@@ -49,6 +56,10 @@ type Accumulator struct {
 	LineQueue   chan string
 	OutputQueue chan splitter.SplitItem
 	Shutdown    chan bool
+
+	Aggregators *AggregateLoop // writers hook into the main agg flushing loops
+
+	log *logging.Logger
 }
 
 func NewAccumlator(inputtype string, outputtype string, keepkeys bool) (*Accumulator, error) {
@@ -73,11 +84,13 @@ func NewAccumlator(inputtype string, outputtype string, keepkeys bool) (*Accumul
 		FormatterName:   outputtype,
 		KeepKeys:        keepkeys,
 		Name:            fmt.Sprintf("%s -> %s", inputtype, outputtype),
-		FlushTime:       time.Second,
+		FlushTimes:      []time.Duration{time.Second},
 		Shutdown:        make(chan bool, 1),
 		LineQueue:       make(chan string, 10000),
 		timer:           nil,
 	}
+
+	ac.log = logging.MustGetLogger(fmt.Sprintf("accumulator.%s", ac.Name))
 
 	// determine the splitter from the formatter item
 	nul_conf := make(map[string]interface{})
@@ -94,6 +107,20 @@ func NewAccumlator(inputtype string, outputtype string, keepkeys bool) (*Accumul
 	ac.OutSplitter = ospl
 
 	return ac, nil
+}
+
+// create the overlord aggregator
+func (acc *Accumulator) SetAggregateLoop(conf AccumulatorWriter) (agg *AggregateLoop, err error) {
+	acc.Aggregators, err = NewAggregateLoop(acc.FlushTimes, acc)
+	if err != nil {
+		return nil, err
+	}
+	err = acc.Aggregators.SetWriter(conf)
+	if err != nil {
+		return nil, err
+	}
+	return acc.Aggregators, nil
+
 }
 
 func (acc *Accumulator) SetOutputQueue(qu chan splitter.SplitItem) {
@@ -114,25 +141,30 @@ func (acc *Accumulator) ProcessLine(sp string) error {
 func (acc *Accumulator) Start() error {
 	acc.mu.Lock()
 	if acc.timer == nil {
-		acc.timer = time.NewTicker(acc.FlushTime)
+		acc.timer = time.NewTicker(acc.FlushTimes[0])
 	}
 	if acc.LineQueue == nil {
 		acc.LineQueue = make(chan string, 10000)
 	}
 	acc.mu.Unlock()
-	log.Notice("Starting accumulator loop for `%s`", acc.Name)
+	acc.log.Notice("Starting accumulator loop for `%s`", acc.Name)
+
+	// fire up Aggs
+	if acc.Aggregators != nil {
+		go acc.Aggregators.Start()
+	}
 
 	for {
 		select {
 		case <-acc.timer.C:
-			log.Debug("Flushing accumulator %s", acc.Name)
+			acc.log.Debug("Flushing accumulator %s", acc.Name)
 			acc.FlushAndPost()
 		case line := <-acc.LineQueue:
 			acc.Accumulate.ProcessLine(line)
 
 		case <-acc.Shutdown:
 			acc.timer.Stop()
-			log.Notice("Shutting down final flush of accumulator `%s`", acc.Name)
+			acc.log.Notice("Shutting down final flush of accumulator `%s`", acc.Name)
 			acc.FlushAndPost()
 			break
 		}
@@ -153,9 +185,23 @@ func (acc *Accumulator) Start() error {
 }
 
 func (acc *Accumulator) Stop() {
-	log.Notice("Initiating shutdown of accumulator `%s`", acc.Name)
+	acc.log.Notice("Initiating shutdown of accumulator `%s`", acc.Name)
 	acc.Shutdown <- true
 	return
+}
+
+// move back into Main Server loop
+func (acc *Accumulator) PushLine(spl splitter.SplitItem) {
+	if acc.OutputQueue != nil && acc.ToBackend != BLACK_HOLE_BACKEND {
+		acc.OutputQueue <- spl
+	}
+}
+
+// move into Aggregator land
+func (acc *Accumulator) PushStat(spl repr.StatRepr) {
+	if acc.Aggregators != nil {
+		acc.Aggregators.InputChan <- spl
+	}
 }
 
 func (acc *Accumulator) FlushAndPost() ([]splitter.SplitItem, error) {
@@ -163,10 +209,10 @@ func (acc *Accumulator) FlushAndPost() ([]splitter.SplitItem, error) {
 	//log.Notice("Flush: %s", items)
 	//return []splitter.SplitItem{}, nil
 	var out_spl []splitter.SplitItem
-	for _, item := range items {
+	for _, item := range items.Lines {
 		spl, err := acc.OutSplitter.ProcessLine(item)
 		if err != nil {
-			log.Error("Invalid Line post flush accumulate `%s` Err:%s", item, err)
+			acc.log.Error("Invalid Line post flush accumulate `%s` Err:%s", item, err)
 			continue
 		}
 		// this tells the server backends to NOT send to the accumulator anymore
@@ -176,10 +222,17 @@ func (acc *Accumulator) FlushAndPost() ([]splitter.SplitItem, error) {
 		spl.SetOrigin(splitter.Other)
 		out_spl = append(out_spl, spl)
 		//log.Notice("sending: %s Len:%d", spl.Line(), len(acc.OutputQueue))
-		acc.OutputQueue <- spl
+		acc.PushLine(spl)
 	}
-	log.Debug("Flushed accumulator %s Lines: %d", acc.Name, len(out_spl))
 
+	t := time.Now()
+	for _, stat := range items.Stats {
+		stat.Time = t // need to set this as this is the flush time
+		acc.PushStat(stat)
+	}
+
+	acc.log.Debug("Flushed accumulator %s Lines: %d", acc.Name, len(out_spl))
+	items = nil // GC me
 	return out_spl, nil
 }
 
@@ -187,10 +240,10 @@ func (acc *Accumulator) FlushAndPost() ([]splitter.SplitItem, error) {
 func (acc *Accumulator) Flush() ([]splitter.SplitItem, error) {
 	items := acc.Accumulate.Flush()
 	var out_spl []splitter.SplitItem
-	for _, item := range items {
+	for _, item := range items.Lines {
 		spl, err := acc.OutSplitter.ProcessLine(item)
 		if err != nil {
-			log.Error("Invalid Line post flush accumulate `%s` Err:%s", item, err)
+			acc.log.Error("Invalid Line post flush accumulate `%s` Err:%s", item, err)
 			continue
 		}
 		// this tells the server backends to NOT send to the accumulator anymore
@@ -199,31 +252,34 @@ func (acc *Accumulator) Flush() ([]splitter.SplitItem, error) {
 		spl.SetOrigin(splitter.Other)
 		out_spl = append(out_spl, spl)
 	}
+	items = nil // GC me
 	return out_spl, nil
 }
 
 func (acc *Accumulator) LogConfig() {
-	log.Debug(" - Accumulator Group: `%s`", acc.Name)
-	log.Debug("   - Delgateing to Backend: `%s`", acc.ToBackend)
-	log.Debug("   - Accumulator Output format:: `%s`", acc.Formatter.Type())
-	log.Debug("   - Accumulator Type:: `%s`", acc.Accumulate.Name())
-	log.Debug("   - Accumulator FlushTime:: `%v`", acc.FlushTime)
-	log.Debug("   - Accumulator KeepKeys:: `%v`", acc.KeepKeys)
+	acc.log.Debug(" - Accumulator Group: `%s`", acc.Name)
+	acc.log.Debug("   - Delgateing to Backend: `%s`", acc.ToBackend)
+	acc.log.Debug("   - Accumulator Output format:: `%s`", acc.Formatter.Type())
+	acc.log.Debug("   - Accumulator Type:: `%s`", acc.Accumulate.Name())
+	acc.log.Debug("   - Accumulator FlushTime:: `%v`", acc.FlushTimes)
+	acc.log.Debug("   - Accumulator KeepKeys:: `%v`", acc.KeepKeys)
 }
 
 // just grab whats currently in the queue to be flushed
-// this is so we can simply "look" into the accumulator from another sorce
+// this is so we can simply "look" into the accumulator from another source
 // (i.e. our monitor)
 
-func (acc *Accumulator) CurrentStats() []StatRepr {
-	var s_rep []StatRepr
+func (acc *Accumulator) CurrentStats() *repr.ReprList {
+	s_rep := new(repr.ReprList)
 	stats := acc.Accumulate.Stats()
-	t := time.Now().UnixNano()
+	t := time.Now()
+
 	for idx, stat := range stats {
 		rr := stat.Repr()
 		rr.StatKey = idx
 		rr.Time = t
-		s_rep = append(s_rep, rr)
+		rr.Resolution = acc.FlushTimes[0].Seconds()
+		s_rep.Add(rr)
 	}
 	return s_rep
 }

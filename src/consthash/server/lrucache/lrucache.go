@@ -72,14 +72,14 @@ func (lru *LRUCache) Get(key string) (v Value, ok bool) {
 	return element.Value.(*entry).value, true
 }
 
-func (lru *LRUCache) Set(key string, value Value) {
+func (lru *LRUCache) Set(key string, value Value) (rmkey string, rmelement Value) {
 	lru.mu.Lock()
 	defer lru.mu.Unlock()
 
 	if element := lru.table[key]; element != nil {
-		lru.updateInplace(element, value)
+		return lru.updateInplace(element, value)
 	} else {
-		lru.addNew(key, value)
+		return lru.addNew(key, value)
 	}
 }
 
@@ -94,19 +94,19 @@ func (lru *LRUCache) SetIfAbsent(key string, value Value) {
 	}
 }
 
-func (lru *LRUCache) Delete(key string) bool {
+func (lru *LRUCache) Delete(key string) (rmkey string, rmelement Value) {
 	lru.mu.Lock()
 	defer lru.mu.Unlock()
 
 	element := lru.table[key]
 	if element == nil {
-		return false
+		return "", nil
 	}
 
 	lru.list.Remove(element)
 	delete(lru.table, key)
 	lru.size -= uint64(element.Value.(*entry).size)
-	return true
+	return key, element.Value.(*entry).value
 }
 
 func (lru *LRUCache) Clear() {
@@ -167,14 +167,14 @@ func (lru *LRUCache) Items() []Item {
 	return items
 }
 
-func (lru *LRUCache) updateInplace(element *list.Element, value Value) {
+func (lru *LRUCache) updateInplace(element *list.Element, value Value) (key string, rmelement Value) {
 	valueSize := value.Size()
 	sizeDiff := valueSize - element.Value.(*entry).size
 	element.Value.(*entry).value = value
 	element.Value.(*entry).size = valueSize
 	lru.size += uint64(sizeDiff)
 	lru.moveToFront(element)
-	lru.checkCapacity()
+	return lru.checkCapacity()
 }
 
 func (lru *LRUCache) moveToFront(element *list.Element) {
@@ -182,15 +182,15 @@ func (lru *LRUCache) moveToFront(element *list.Element) {
 	element.Value.(*entry).time_accessed = time.Now()
 }
 
-func (lru *LRUCache) addNew(key string, value Value) {
+func (lru *LRUCache) addNew(key string, value Value) (rmkey string, rmelement Value) {
 	newEntry := &entry{key, value, value.Size(), time.Now()}
 	element := lru.list.PushFront(newEntry)
 	lru.table[key] = element
 	lru.size += uint64(newEntry.size)
-	lru.checkCapacity()
+	return lru.checkCapacity()
 }
 
-func (lru *LRUCache) checkCapacity() {
+func (lru *LRUCache) checkCapacity() (rmkey string, rmelement Value) {
 	// Partially duplicated from Delete
 	for lru.size > lru.capacity {
 		delElem := lru.list.Back()
@@ -198,5 +198,7 @@ func (lru *LRUCache) checkCapacity() {
 		lru.list.Remove(delElem)
 		delete(lru.table, delValue.key)
 		lru.size -= uint64(delValue.size)
+		return delValue.key, delValue.value
 	}
+	return "", nil
 }

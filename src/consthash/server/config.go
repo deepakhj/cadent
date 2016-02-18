@@ -1,6 +1,7 @@
 package consthash
 
 import (
+	"consthash/server/accumulator"
 	"consthash/server/prereg"
 	"consthash/server/stats"
 	"fmt"
@@ -501,6 +502,7 @@ func (self ConfigServers) VerifyAndAssignPreReg(prm prereg.PreRegMap) (err error
 		// (we can do this as listen_s is a ptr .. said here in case i forget)
 		listen_s.PreRegFilter = pr
 		for _, filter := range pr.FilterList {
+
 			if _, ok := self[filter.Backend()]; !ok {
 				return fmt.Errorf("Backend `%s` is not in the Config servers", filter.Backend())
 			}
@@ -508,15 +510,16 @@ func (self ConfigServers) VerifyAndAssignPreReg(prm prereg.PreRegMap) (err error
 
 		//verify that if there is an Accumulator that the backend for it does in fact live
 		if pr.Accumulator != nil {
-			_, ok := self[pr.Accumulator.ToBackend]
-			if !ok {
-				return fmt.Errorf("Backend `%s` for accumulator is not in the Config servers", pr.Accumulator.ToBackend)
+			// special BLACKHOLE backend
+			if pr.Accumulator.ToBackend == accumulator.BLACK_HOLE_BACKEND {
+				log.Notice("NOTE: using BlackHole for Accumulator `%s`", pr.Accumulator.Name)
+				continue
+			} else {
+				_, ok := self[pr.Accumulator.ToBackend]
+				if !ok {
+					return fmt.Errorf("Backend `%s` for accumulator is not in the Config servers", pr.Accumulator.ToBackend)
+				}
 			}
-			// we can only ship accumlated stats to a BACKEND type otherwise the socket based
-			// queues have no way to deplete the output queues (or respond properly to a 'non' socket input)
-			//if bck.ListenStr != "backend_only" {
-			//	return fmt.Errorf("Backend `%s`, for accumulators must be a `backend_only` type", pr.Accumulator.ToBackend)
-			//}
 		}
 	}
 	return nil

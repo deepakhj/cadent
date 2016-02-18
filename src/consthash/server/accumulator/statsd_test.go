@@ -62,12 +62,12 @@ func TestStatsdAccumulator(t *testing.T) {
 
 		b_arr := statter.Flush()
 		Convey("Flush should give an array bigger then 2 ", func() {
-			So(len(b_arr), ShouldBeGreaterThanOrEqualTo, 2)
+			So(len(b_arr.Lines), ShouldBeGreaterThanOrEqualTo, 2)
 		})
 		got_gauge := ""
 		got_counter := ""
 		got_timer := ""
-		for _, item := range b_arr {
+		for _, item := range b_arr.Lines {
 			t.Logf("Graphite Line: %s", item)
 			if strings.Contains(item, ".gauges") {
 				got_gauge = item
@@ -120,11 +120,11 @@ func TestStatsdAccumulator(t *testing.T) {
 
 		b_arr := statter.Flush()
 		Convey("statsd out: Flush should give us data", func() {
-			So(len(b_arr), ShouldBeGreaterThan, 3)
+			So(len(b_arr.Lines), ShouldBeGreaterThan, 3)
 		})
 		got_timer := ""
 		have_upper := ""
-		for _, item := range b_arr {
+		for _, item := range b_arr.Lines {
 			t.Logf("Statsd Line: %s", item)
 			if strings.Contains(item, "stats.timers") {
 				got_timer = item
@@ -132,12 +132,26 @@ func TestStatsdAccumulator(t *testing.T) {
 			if strings.Contains(item, "moo.goo.org.upper_95:20.000000|g") {
 				have_upper = item
 			}
-
 		}
 		Convey("Statsd should not have stats.timers ", func() {
 			So(len(got_timer), ShouldEqual, 0)
 		})
 		Convey("Statsd should have proper upper_95 ", func() {
+			So(len(have_upper), ShouldNotEqual, 0)
+		})
+		for _, item := range b_arr.Stats {
+			t.Logf("Statsd Line: %v", item)
+			if strings.Contains(item.Key, "stats.timers") {
+				got_timer = item.Key
+			}
+			if strings.Contains(item.StatKey, "moo.goo.org.upper_95:20.000000|g") {
+				have_upper = item.StatKey
+			}
+		}
+		Convey("Statsd statitem should not have stats.timers ", func() {
+			So(len(got_timer), ShouldEqual, 0)
+		})
+		Convey("Statsd statitem should have proper upper_95 ", func() {
 			So(len(have_upper), ShouldNotEqual, 0)
 		})
 	})

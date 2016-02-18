@@ -6,6 +6,7 @@
 package accumulator
 
 import (
+	"consthash/server/repr"
 	"fmt"
 	"math"
 	"sort"
@@ -48,14 +49,14 @@ type StatsdBaseStatItem struct {
 	mu sync.Mutex
 }
 
-func (s *StatsdBaseStatItem) Repr() StatRepr {
-	return StatRepr{
+func (s *StatsdBaseStatItem) Repr() repr.StatRepr {
+	return repr.StatRepr{
 		Key:   s.InKey,
-		Min:   jsonFloat64(s.Min),
-		Max:   jsonFloat64(s.Max),
+		Min:   repr.CheckFloat(repr.JsonFloat64(s.Min)),
+		Max:   repr.CheckFloat(repr.JsonFloat64(s.Max)),
 		Count: s.Count,
-		Mean:  jsonFloat64(s.Mean),
-		Sum:   jsonFloat64(s.Sum),
+		Mean:  repr.CheckFloat(repr.JsonFloat64(s.Mean)),
+		Sum:   repr.CheckFloat(repr.JsonFloat64(s.Sum)),
 	}
 }
 
@@ -207,14 +208,14 @@ type StatsdTimerStatItem struct {
 	mu sync.Mutex
 }
 
-func (s *StatsdTimerStatItem) Repr() StatRepr {
-	return StatRepr{
+func (s *StatsdTimerStatItem) Repr() repr.StatRepr {
+	return repr.StatRepr{
 		Key:   s.InKey,
-		Min:   jsonFloat64(s.Min),
-		Max:   jsonFloat64(s.Max),
+		Min:   repr.CheckFloat(repr.JsonFloat64(s.Min)),
+		Max:   repr.CheckFloat(repr.JsonFloat64(s.Max)),
 		Count: s.Count,
-		Mean:  jsonFloat64(s.Mean),
-		Sum:   jsonFloat64(s.Sum),
+		Mean:  repr.CheckFloat(repr.JsonFloat64(s.Mean)),
+		Sum:   repr.CheckFloat(repr.JsonFloat64(s.Sum)),
 	}
 }
 
@@ -538,15 +539,15 @@ func (a *StatsdAccumulate) Reset() error {
 	return nil
 }
 
-func (a *StatsdAccumulate) Flush() []string {
-	base := []string{}
+func (a *StatsdAccumulate) Flush() *flushedList {
+	fl := new(flushedList)
 	a.mu.Lock()
 	for _, stats := range a.StatsdStats {
-		base = append(base, stats.Out(a.OutFormat, a)...)
+		fl.Add(stats.Out(a.OutFormat, a), stats.Repr())
 	}
 	a.mu.Unlock()
 	a.Reset()
-	return base
+	return fl
 }
 
 func (a *StatsdAccumulate) ProcessLine(line string) (err error) {

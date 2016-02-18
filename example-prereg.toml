@@ -29,7 +29,12 @@ default_backend="statsd-proxy"  # failing a match go here
     backend = "graphite-proxy"
     input_format = "statsd"
     output_format = "graphite"
-    flush_time = "2s"
+
+    # do this only if there are not that many metrics otherise RAM will become an issue
+    # this will "emit 0s" for a given metric if it has not been seen in the flush time window
+    # this can take ALOT of ram if you have alot of distinct keys if true
+    keep_keys = false
+
     # options for statsd input formats (for outputs)
     options = [
             ["legacyNamespace", "true"],
@@ -40,6 +45,21 @@ default_backend="statsd-proxy"  # failing a match go here
             ["globalSuffix", "stats"],
             ["percentThreshold", "0.75,0.90,0.95,0.99"]
     ]
+
+        # aggregate bin counts ...
+        #  every 5s and 10s aggrigates for (5 and 10) will be dumped to files
+        # (See the writer)
+        # the first entry in Keepers is Accumulators "re-insert" into the general server
+        # line processor.  if you name the
+        # backend = "BLACKHOLE"
+        # the stats are NOT re-fed in, and only the writers will be used
+        # NOTE: this can be VERY RAM intensive as each metric must be stored in RAM for this
+        # Aggrigation to be accomplished properly
+        [statsd-regex-map.accumulator.keeper]
+        times = ["5s", "10s"]
+        [statsd-regex-map.accumulator.writer]
+        driver = "file"
+        dsn = "/tmp/moo"  #  filenames will be /tmp/moo_5s and /tmp/moo_10s for each aggregate set
 
 
     [[statsd-regex-map.map]]

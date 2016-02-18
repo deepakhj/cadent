@@ -122,7 +122,7 @@ func (n *BufferedNetpoolConn) Flush() (wrote int, err error) {
 		if err != nil {
 			c.Close() // Open will re-open it
 			n.SetConn(nil)
-			//log.Warning("Error writing flush: %s", err)
+			log.Warning("Error writing flush: %s", err)
 			return 0, err
 		}
 		n.writebuffer = []byte("")

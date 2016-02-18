@@ -274,8 +274,6 @@ hasher_algo="md5"
 hasher_elter="graphite"
 hasher_vnodes=100
 
-# the read buffers here are not relevent
-max_read_buffer_size=819200
 
 [[graphite-aux.servers]]
 servers=["tcp://192.168.12.200:2003","tcp://192.168.12.201:2003","tcp://192.168.12.202:2003"]

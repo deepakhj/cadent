@@ -26,7 +26,7 @@ type UDPClient struct {
 	out_queue    chan splitter.SplitItem
 	done         chan Client
 	input_queue  chan splitter.SplitItem
-	worker_queue chan *SendOut
+	worker_queue chan *OutputMessage
 	close        chan bool
 
 	line_queue chan string
@@ -74,7 +74,7 @@ func (client UDPClient) Hashers() (hasher *[]*ConstHasher) {
 func (client UDPClient) InputQueue() chan splitter.SplitItem {
 	return client.input_queue
 }
-func (client UDPClient) WorkerQueue() chan *SendOut {
+func (client UDPClient) WorkerQueue() chan *OutputMessage {
 	return client.worker_queue
 }
 func (client UDPClient) Close() {

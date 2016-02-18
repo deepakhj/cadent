@@ -48,11 +48,11 @@ func TestGraphiteAccumulator(t *testing.T) {
 		err = statter.ProcessLine("stats.gauges.goo 10 123123")
 
 		b_arr := statter.Flush()
-		for _, item := range b_arr {
+		for _, item := range b_arr.Lines {
 			t.Logf("Graphite Line: %s", item)
 		}
 		Convey("Flush should give an array of 4 ", func() {
-			So(len(b_arr), ShouldEqual, 4)
+			So(len(b_arr.Lines), ShouldEqual, 4)
 		})
 
 	})
@@ -78,9 +78,9 @@ func TestGraphiteAccumulator(t *testing.T) {
 
 		b_arr := statter.Flush()
 		Convey("statsd out: Flush should give us data", func() {
-			So(len(b_arr), ShouldEqual, 4)
+			So(len(b_arr.Lines), ShouldEqual, 4)
 		})
-		for _, item := range b_arr {
+		for _, item := range b_arr.Lines {
 			t.Logf("Statsd Line: %s", item)
 
 		}

@@ -13,6 +13,6 @@ type Client interface {
 	SetBufferSize(int)
 	Server() *Server
 	Hashers() *[]*ConstHasher
-	WorkerQueue() chan *SendOut
+	WorkerQueue() chan *OutputMessage
 	ShutDown()
 }
