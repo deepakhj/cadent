@@ -29,7 +29,8 @@ Installation
     go get github.com/op/go-logging
     go get github.com/smartystreets/goconvey/convey
     go get github.com/go-sql-driver/mysql
-    
+    go get github.com/gocql/gocql
+
     
     cd ../
     make
@@ -80,7 +81,9 @@ The Flow of a given line looks like so
                                                                 [-> Replicator -> Hasher -> OutPool -> Buffer -> outLine(s)]
 Things in `[]` are optional
 
-### Accumualtors 
+NOTE :: if in a cluster of hashers and accumulators .. NTP is your friend .. make sure your clocks are in-sync
+
+## Accumualtors 
 
 Accumulators almost always need to have the same "key" incoming.  Since you don't want the same stat key accumulated
 in different places, which would lead to bad sums, means, etc.  Thus to use accumulators effectively in a multi server
@@ -90,13 +93,13 @@ backend accumulators (in the same fashion that Statsd Proxy -> Statsd and Carbon
 It's easy to do this in one "instance" of this item where one creates a "loop back" to itself, but on a different
 listener port.
 
-     InLine(s port 8125) -> Listener -> Splitter -> [PreReg] -> Backend -> Hasher -> OutPool (port 8126) -> Buffer -> outLine(s)
+     InLine(s port 8125) -> Listener -> Splitter -> [PreReg] -> Backend -> Hasher -> OutPool (port 8126)
         
-        --> InLine(s port 8126) -> Splitter -> [Accumulator] -> [PreReg] -> Backend -> OutPool (port Writer) -> Buffer -> outLine(s)
+        --> InLine(s port 8126) -> Splitter -> [Accumulator] -> [PreReg] -> Backend -> OutPool (port Other)
 
 This way any farm of hashing servers will properly send the same stat to the same place for proper accumulation.
 
-#### Writers
+### Writers
 
 Accumulators can "write" to something other then a tcp/udp/http/socket, to say things like a FILE, MySQL DB or cassandra.
 (since this is Golang all writer types need to have their own driver embded in).  If you only want accumulators to write out to 
@@ -105,6 +108,188 @@ and the line "ends" with the Accumulator stage.
 
 
     InLine(s port 8126) -> Splitter -> [Accumulator] -> WriterBackend
+    
+Writers should hold more then just the "aggregated data point" but a few usefull things like 
+
+    Min, Max, Sum, Mean, and Count
+    
+because who's to say what you really want from aggregated values.
+`Count` is just actually how many data points arrived in the aggregation
+   
+Some example Configs for the current "3" writer backends
+
+#### MYSQL
+
+Slap stuff in a MySQL DB .. not recommended for huge throughput, but maybe useful for some stuff ..
+You should make Schemas like so
+    
+    CREATE TABLE `{table}_{keeperprefix}` (
+      `id` int(11) unsigned NOT NULL AUTO_INCREMENT,
+      `stat` varchar(255) NOT NULL DEFAULT '',
+      `sum` float NOT NULL,
+      `mean` float NOT NULL,
+      `min` float NOT NULL,
+      `max` float NOT NULL,
+      `count` float NOT NULL,
+      `resolution` int(11) NOT NULL,
+      `time` datetime(3) NOT NULL,
+      PRIMARY KEY (`id`),
+      KEY `stat` (`stat`),
+      KEY `time` (`time`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+If your for keeper is `times = ["10s", "1m", "10m"]` you should make 3 tables named
+
+    {tablebase}_10s
+    {tablebase}_60s
+    {tablebase}_600s
+
+Config Options
+
+    # Mysql
+    #  NOTE: this expects {table}_{keepertimesinseconds} tables existing
+    #  if [keepers] timers = ["5s", "10s", "1m"]
+    #  tables "{table}_5s", "{table}_10s" and "{table}_60s"
+    #  must exist
+    [mypregename.accumulator.writer]
+    driver = "mysql"
+    dsn = "root:password@tcp(localhost:3306)/test"
+        [mypregename.accumulator.writer.options]
+        table = "metrics"
+        batch_count = 1000  # batch up this amount for inserts (faster then single line by line) (default 1000)
+        periodic_flush= "1s" # regardless of if batch_count met always flush things at this interval (default 1s)
+
+
+#### File
+
+Good for just testing stuff or, well, other random inputs not yet supported
+This will dump a TAB delimited file per `keeper` item of
+
+    statname sum mean min max count resolution nano_timestamp
+    
+If your for keeper is `times = ["10s", "1m", "10m"]` you will get 3 files of the names
+
+    {filebase}_10s
+    {filebase}_60s
+    {filebase}_600s
+    
+    
+Config Options
+
+    # File
+    #  if [keepers] timers = ["5s", "10s", "1m"]
+    #  files "{filename}_5s", "{filename}_10s" and "{filename}_60s"
+    #  will be created
+    # 
+    # this will also AutoRotate files after a certain size is reached
+    [mypregename.accumulator.writer]
+    driver = "file"
+    dsn = "/path/to/my/filename"
+        [mypregename.accumulator.writer.options]
+        max_file_size = "104857600"  # max size in bytes of the before rotated (default 100Mb = 104857600)
+
+#### Cassandra
+
+This is probably the best one for massive stat volume. It expects the schema like the MySQL version, 
+and you should certainly use 2.1 or 2.2 versions of cassandra.  Unlike the others, due to Cassandra's type goodness
+there is no need to make "schemas per keeper".  Expiration of data is up to you to define in your global TTLs for the schemas.
+This is modeled after the `Cyanite` (http://cyanite.io/) schema as the rest of the graphite API can probably be 
+used using the helper tools that ecosystem provides.  (https://github.com/pyr/cyanite/blob/master/doc/schema.cql)
+
+You should wield some Cassandra knowledge to change the on the `metric.metric` table
+
+    compaction = {'class': 'DateTieredCompactionStrategy',  'min_threshold': '12', 'max_threshold': '32', 'max_sstable_age_days': '0.083', 'base_time_seconds': '50' }
+
+XXX TODO
+
+to deal with 
+
+General Schema
+
+    CREATE KEYSPACE metric WITH replication = {'class': 'SimpleStrategy', 'replication_factor': '3'}  AND durable_writes = true;
+
+    USE metric;
+
+    CREATE TYPE metric_point (
+        max double,
+        mean double,
+        min double,
+        sum double,
+        count int
+    );
+
+    CREATE TYPE metric_resolution (
+        precision int,
+        period int
+    );
+
+    CREATE TYPE metric_id (
+        path text,
+        resolution frozen<metric_resolution>
+    );
+
+    CREATE TABLE metric.metric (
+        id frozen<metric_id>,
+        time bigint,
+        point frozen<metric_point>,
+        PRIMARY KEY (id, time)
+    ) WITH COMPACT STORAGE
+        AND CLUSTERING ORDER BY (time ASC)
+        AND compaction = {'class': 'DateTieredCompactionStrategy',  'min_threshold': '12', 'max_threshold': '32', 'max_sstable_age_days': '0.083', 'base_time_seconds': '50' }
+        AND compression = {'sstable_compression': 'org.apache.cassandra.io.compress.LZ4Compressor'}
+        AND dclocal_read_repair_chance = 0.1
+        AND default_time_to_live = 0
+        AND gc_grace_seconds = 864000
+        AND max_index_interval = 2048
+        AND memtable_flush_period_in_ms = 0
+        AND min_index_interval = 128
+        AND read_repair_chance = 0.0
+        AND speculative_retry = '99.0PERCENTILE';
+                                                                        
+    CREATE TYPE metric.segment_pos (
+        pos int,
+        segment text
+    );
+
+    CREATE TABLE metric.path (
+        segment frozen<segment_pos>,
+        path text,
+        length int,
+        PRIMARY KEY (segment, path)
+    ) WITH CLUSTERING ORDER BY (path ASC)
+        AND bloom_filter_fp_chance = 0.01
+        AND caching = '{"keys":"ALL", "rows_per_partition":"NONE"}'
+        AND comment = ''
+        AND compaction = {'class': 'org.apache.cassandra.db.compaction.SizeTieredCompactionStrategy'}
+        AND compression = {'sstable_compression': 'org.apache.cassandra.io.compress.LZ4Compressor'}
+        AND dclocal_read_repair_chance = 0.1
+        AND default_time_to_live = 0
+        AND gc_grace_seconds = 864000
+        AND max_index_interval = 2048
+        AND memtable_flush_period_in_ms = 0
+        AND min_index_interval = 128
+        AND read_repair_chance = 0.0
+        AND speculative_retry = '99.0PERCENTILE';
+
+    CREATE TABLE metric.segment (
+        pos int,
+        segment text,
+        PRIMARY KEY (pos, segment)
+    ) WITH COMPACT STORAGE
+        AND CLUSTERING ORDER BY (segment ASC)
+        AND bloom_filter_fp_chance = 0.01
+        AND caching = '{"keys":"ALL", "rows_per_partition":"NONE"}'
+        AND comment = ''
+        AND compaction = {'class': 'org.apache.cassandra.db.compaction.SizeTieredCompactionStrategy'}
+        AND compression = {'sstable_compression': 'org.apache.cassandra.io.compress.LZ4Compressor'}
+        AND dclocal_read_repair_chance = 0.1
+        AND default_time_to_live = 0
+        AND gc_grace_seconds = 864000
+        AND max_index_interval = 2048
+        AND memtable_flush_period_in_ms = 0
+        AND min_index_interval = 128
+        AND read_repair_chance = 0.0
+        AND speculative_retry = '99.0PERCENTILE';
 
 
 

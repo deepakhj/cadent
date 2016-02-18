@@ -7,8 +7,8 @@
 
 	OPTIONS: For `Config`
 
-		prefix: filename prefix if any (_1s, _5m)
-		max_file_size: Rotate the file if this size is met (default 10 * 1024 * 1024 * 1024)
+		prefix: filename prefix if any (_1s, _10s)
+		max_file_size: Rotate the file if this size is met (default 100MB)
 		rotate_every: Check to rotate the file every interval (default 10s)
 */
 
@@ -53,7 +53,7 @@ func (fi *FileWriter) Config(conf map[string]interface{}) error {
 
 	_wr_buffer := conf["max_file_size"]
 	if _wr_buffer == nil {
-		fi.max_file_size = 10 * 1024 * 1024
+		fi.max_file_size = 100 * 1024 * 1024
 	} else {
 		// toml things generic ints are int64
 		fi.max_file_size = _wr_buffer.(int64)
