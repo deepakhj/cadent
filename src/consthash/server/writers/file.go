@@ -149,8 +149,8 @@ func (fi *FileWriter) Write(stat repr.StatRepr) error {
 	//	stat\tsum\tmean\tmin\tmax\tcount\tresoltion\ttime
 
 	line := fmt.Sprintf(
-		"%s\t%0.6f\t%0.6f\t%0.6f\t%0.6f\t%d\t%0.2f\t%d\n",
-		stat.Key, stat.Sum, stat.Mean, stat.Min, stat.Max, stat.Count, stat.Resolution, stat.Time.UnixNano(),
+		"%s\t%0.6f\t%0.6f\t%0.6f\t%0.6f\t%d\t%0.2f\t%d\t%d\n",
+		stat.Key, stat.Sum, stat.Mean, stat.Min, stat.Max, stat.Count, stat.Resolution, stat.Time.UnixNano(), stat.TTL,
 	)
 
 	_, err := fi.WriteLine(line)

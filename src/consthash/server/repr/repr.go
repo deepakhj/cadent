@@ -37,6 +37,7 @@ type StatRepr struct {
 	Count      int64       `json:"count"`
 	Time       time.Time   `json:"time_ns"`
 	Resolution float64     `json:"resolution"`
+	TTL        int64       `json:"ttl"`
 }
 
 // These two structure is to allow a list of stats in a large queue

@@ -16,6 +16,8 @@ func TestConfigAccumualtorAccumulator(t *testing.T) {
 	backend = "graphite-out"
 	input_format = "statsd"
 	output_format = "graphite"
+	accumulate_flush = "1s"
+	times = ["5s", "1m", "10m"]
 	[[tags]]
 	key="foo"
 	value="bar"
@@ -27,8 +29,6 @@ func TestConfigAccumualtorAccumulator(t *testing.T) {
 	driver="file"
 	dsn="/tmp/none"
 
-	[keeper]
-	times = ["5s", "1m", "10m"]
 	`
 
 	acc_c, err := ParseConfigString(conf_test)
@@ -39,7 +39,13 @@ func TestConfigAccumualtorAccumulator(t *testing.T) {
 		Convey("Error acc should not be nil", func() {
 			So(acc_c, ShouldNotEqual, nil)
 		})
+
 		t.Logf("%v", acc_c)
+
+		Convey("Should have 3 timers", func() {
+			So(len(acc_c.FlushTimes), ShouldEqual, 3)
+		})
+
 		Convey("First Flush time should be 5 seconds", func() {
 			So(acc_c.FlushTimes[0], ShouldEqual, time.Duration(5*time.Second))
 		})
@@ -47,16 +53,12 @@ func TestConfigAccumualtorAccumulator(t *testing.T) {
 			So(len(acc_c.Accumulate.Tags()), ShouldEqual, 2)
 		})
 
-		Convey("Should have 3 timers", func() {
-			So(len(acc_c.FlushTimes), ShouldEqual, 3)
-		})
 	})
 
 	conf_test = `
 	backend = "graphite-out"
 	input_format = "statsd"
 	output_format = "graphite"
-	[keeper]
 	times = ["5s", "31s", "10m"]
 	`
 	acc_c, err = ParseConfigString(conf_test)
@@ -70,13 +72,38 @@ func TestConfigAccumualtorAccumulator(t *testing.T) {
 	backend = "graphite-out"
 	input_format = "statsd"
 	output_format = "graphite"
-	[keeper]
 	times = ["1m", "5s", "10m"]
 	`
 	acc_c, err = ParseConfigString(conf_test)
 	Convey("Config toml keeper should not have proper order", t, func() {
 		Convey("Error should NOT be nil", func() {
 			So(err, ShouldNotEqual, nil)
+		})
+	})
+
+	conf_test = `
+	backend = "graphite-out"
+	input_format = "statsd"
+	output_format = "graphite"
+	times = ["1m:7asd", "5s:30d", "10m:1y"]
+	`
+	acc_c, err = ParseConfigString(conf_test)
+	Convey("Config toml keeper should fail on TTL", t, func() {
+		Convey("Error should NOT be nil", func() {
+			So(err, ShouldNotEqual, nil)
+		})
+	})
+
+	conf_test = `
+	backend = "graphite-out"
+	input_format = "statsd"
+	output_format = "graphite"
+	times = ["5s:168h", "1m:720h", "10m:17520h"]
+	`
+	acc_c, err = ParseConfigString(conf_test)
+	Convey("Config toml keeper should parse correctly", t, func() {
+		Convey("Error should NOT be nil", func() {
+			So(err, ShouldEqual, nil)
 		})
 	})
 
@@ -121,8 +148,6 @@ func TestConfigAccumualtorAccumulator(t *testing.T) {
 	input_format = "statsd"
 	output_format = "graphite"
 	keep_keys = true
-
-	[keeper]
 	times = ["5ii"]
 	`
 	acc_c, err = ParseConfigString(conf_test)

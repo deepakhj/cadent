@@ -18,3 +18,10 @@ func StatsdNanoTimeFunc(statname string, start time.Time) {
 	elapsed := time.Since(start)
 	StatsdClient.Timing(statname, int64(elapsed))
 }
+
+// set to noop statds client initially
+func init() {
+	if StatsdClient == nil {
+		StatsdClient = new(statsd.StatsdNoop)
+	}
+}

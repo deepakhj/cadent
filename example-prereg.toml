@@ -55,8 +55,8 @@ default_backend="statsd-proxy"  # failing a match go here
         # the stats are NOT re-fed in, and only the writers will be used
         # NOTE: this can be VERY RAM intensive as each metric must be stored in RAM for this
         # Aggrigation to be accomplished properly
-        [statsd-regex-map.accumulator.keeper]
         times = ["5s", "10s"]
+
         [statsd-regex-map.accumulator.writer]
         driver = "file"
         dsn = "/tmp/moo"  #  filenames will be /tmp/moo_5s and /tmp/moo_10s for each aggregate set

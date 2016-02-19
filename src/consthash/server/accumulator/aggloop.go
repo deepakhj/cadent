@@ -19,6 +19,7 @@ package accumulator
 import (
 	broadcast "consthash/server/broadcast"
 	repr "consthash/server/repr"
+	stats "consthash/server/stats"
 	writers "consthash/server/writers"
 	"fmt"
 	logging "github.com/op/go-logging"
@@ -31,9 +32,10 @@ type AggregateLoop struct {
 
 	// these are assigned from the config file in the PreReg config file
 	FlushTimes []time.Duration `json:"flush_time"`
+	TTLTimes   []time.Duration `json:"ttl_times"`
 
-	Accumulator *Accumulator
 	Aggregators *repr.MultiAggregator
+	Name        string
 
 	Shutdown  *broadcast.Broadcaster
 	InputChan chan repr.StatRepr
@@ -43,18 +45,19 @@ type AggregateLoop struct {
 	log *logging.Logger
 }
 
-func NewAggregateLoop(flushtimes []time.Duration, accumulator *Accumulator) (*AggregateLoop, error) {
+func NewAggregateLoop(flushtimes []time.Duration, ttls []time.Duration, name string) (*AggregateLoop, error) {
 
 	agg := &AggregateLoop{
-		Accumulator: accumulator,
+		Name:        name,
 		FlushTimes:  flushtimes,
+		TTLTimes:    ttls,
 		mus:         make([]sync.Mutex, len(flushtimes)),
 		Shutdown:    broadcast.New(1),
 		Aggregators: repr.NewMulti(flushtimes),
 		InputChan:   make(chan repr.StatRepr, 10000),
 	}
 
-	agg.log = logging.MustGetLogger(fmt.Sprintf("aggregatorloop.%s", accumulator.Name))
+	agg.log = logging.MustGetLogger("aggregatorloop")
 
 	return agg, nil
 }
@@ -80,6 +83,7 @@ func (agg *AggregateLoop) SetWriter(conf AccumulatorWriter) error {
 		}
 		agg.OutWriters = append(agg.OutWriters, wr)
 	}
+	log.Critical("WRITERS: %v .. %v", agg.FlushTimes, agg.OutWriters)
 	return nil
 }
 
@@ -98,24 +102,34 @@ func (agg *AggregateLoop) startInputLooper() {
 }
 
 // start the looper for each flush time as well as the writers
-func (agg *AggregateLoop) startWriteLooper(duration time.Duration, writer *writers.WriterLoop, mu sync.Mutex) {
+func (agg *AggregateLoop) startWriteLooper(duration time.Duration, ttl time.Duration, writer *writers.WriterLoop, mu sync.Mutex) {
 	shut := agg.Shutdown.Listen()
 
+	_dur := duration
+	_ttl := ttl
+	_mu := mu
 	// start up the writers listeners
 	go writer.Start()
 
-	ticker := time.NewTicker(duration)
+	post := func() {
+		defer stats.StatsdNanoTimeFunc(fmt.Sprintf("aggregator.postwrite-time-ns"), time.Now())
+		for _, stat := range agg.Aggregators.Get(duration).Items {
+			stat.Resolution = _dur.Seconds()
+			stat.TTL = int64(_ttl.Seconds()) // need to add in the TTL
+			writer.WriteChan() <- stat
+		}
+		// need to clear out the Agg
+		agg.Aggregators.Clear(duration)
+		stats.StatsdClient.Incr(fmt.Sprintf("aggregator.%s.writesloops", duration.String()), 1)
+	}
+
+	ticker := time.NewTicker(_dur)
 	for {
 		select {
 		case <-ticker.C:
-
-			mu.Lock()
-			for _, stat := range agg.Aggregators.Get(duration).Items {
-				writer.WriteChan() <- stat
-			}
-			// need to clear out the Agg
-			agg.Aggregators.Clear(duration)
-			mu.Unlock()
+			_mu.Lock()
+			post() // for stats
+			_mu.Unlock()
 		case <-shut.Ch:
 			ticker.Stop()
 			shut.Close()
@@ -127,17 +141,17 @@ func (agg *AggregateLoop) startWriteLooper(duration time.Duration, writer *write
 
 // For every flus time, start a new timer loop to perform writes
 func (agg *AggregateLoop) Start() error {
+	agg.log.Notice("Starting Aggregator Loop for `%s`", agg.Name)
 	//start the input loop acceptor
 	go agg.startInputLooper()
-
 	for idx, dur := range agg.FlushTimes {
-		go agg.startWriteLooper(dur, agg.OutWriters[idx], agg.mus[idx])
+		go agg.startWriteLooper(dur, agg.TTLTimes[idx], agg.OutWriters[idx], agg.mus[idx])
 	}
 	return nil
 }
 
 func (agg *AggregateLoop) Stop() {
-	agg.log.Notice("Initiating shutdown of aggregator for `%s`", agg.Accumulator.Name)
+	agg.log.Notice("Initiating shutdown of aggregator for `%s`", agg.Name)
 	agg.Shutdown.Send(true)
 	for idx, _ := range agg.FlushTimes {
 		agg.OutWriters[idx].Stop()

@@ -3,6 +3,14 @@
 
 	The table should have this schema to match the repr item
 
+// this is for easy index searches on paths
+
+CREATE TABLE `{path_table}` (
+  `path` varchar(255) NOT NULL DEFAULT '',
+  `length` int NOT NULL,
+  PRIMARY KEY (`path`),
+  KEY `length` (`length`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 CREATE TABLE `{table}{table_prefix}` (
   `id` int(11) unsigned NOT NULL AUTO_INCREMENT,
@@ -22,6 +30,7 @@ CREATE TABLE `{table}{table_prefix}` (
 	OPTIONS: For `Config`
 
 		table: base table name (default: metrics)
+		path_table: base table name (default: metric_path)
 		prefix: table prefix if any (_1s, _5m)
 		batch_count: batch this many inserts for much faster insert performance (default 1000)
 		periodic_flush: regardless of if batch_count met always flush things at this interval (default 1s)
@@ -36,15 +45,21 @@ import (
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
 	logging "github.com/op/go-logging"
-
+	"strings"
 	"sync"
 	"time"
 )
+
+type MyPath struct {
+	Path   string
+	Length int
+}
 
 /****************** Interfaces *********************/
 type MySQLWriter struct {
 	conn         *sql.DB
 	table        string
+	path_table   string
 	table_prefix string
 
 	write_list     []repr.StatRepr // buffer the writes so as to do "multi" inserts per query
@@ -77,6 +92,13 @@ func (my *MySQLWriter) Config(conf map[string]interface{}) error {
 		my.table = "metrics"
 	} else {
 		my.table = _table.(string)
+	}
+
+	_ptable := conf["path_table"]
+	if _ptable == nil {
+		my.path_table = "metric_path"
+	} else {
+		my.path_table = _ptable.(string)
 	}
 
 	_wr_buffer := conf["batch_count"]
@@ -137,6 +159,12 @@ func (my *MySQLWriter) Flush() (int, error) {
 		my.Tablename(),
 	)
 
+	pthQ := fmt.Sprintf(
+		"INSERT IGNORE INTO %s (path, length) VALUES ",
+		my.path_table,
+	)
+
+	pvals := []interface{}{}
 	vals := []interface{}{}
 
 	for _, stat := range my.write_list {
@@ -144,25 +172,46 @@ func (my *MySQLWriter) Flush() (int, error) {
 		vals = append(
 			vals, stat.Key, stat.Sum, stat.Mean, stat.Min, stat.Max, stat.Count, stat.Resolution, stat.Time,
 		)
+
+		pthQ += "(?, ?), "
+		pvals = append(pvals, stat.Key, len(strings.Split(stat.Key, ".")))
+
 	}
 
 	//trim the last ", "
 	Q = Q[0 : len(Q)-2]
+	pthQ = pthQ[0 : len(pthQ)-2]
 
 	//prepare the statement
 	stmt, err := my.conn.Prepare(Q)
-	defer stmt.Close()
-
 	if err != nil {
-		my.log.Error("Mysql Driver: prepare failed, %v", err)
+		my.log.Error("Mysql Driver: Metric prepare failed, %v", err)
 		return 0, err
 	}
+	defer stmt.Close()
+
+	//prepare the statement
+	pstmt, err := my.conn.Prepare(pthQ)
+	if err != nil {
+		my.log.Error("Mysql Driver: Path prepare failed, %v", err)
+		return 0, err
+	}
+	defer pstmt.Close()
+
 	//format all vals at once
 	_, err = stmt.Exec(vals...)
 	if err != nil {
-		my.log.Error("Mysql Driver: insert failed, %v", err)
+		my.log.Error("Mysql Driver: Metric insert failed, %v", err)
 		return 0, err
 	}
+
+	//format all vals at once
+	_, err = pstmt.Exec(pvals...)
+	if err != nil {
+		my.log.Error("Mysql Driver: Path insert failed, %v", err)
+		return 0, err
+	}
+
 	my.write_list = nil
 	my.write_list = []repr.StatRepr{}
 	return l, nil

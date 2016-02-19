@@ -14,6 +14,8 @@ func NewWriter(name string) (Writer, error) {
 		return NewMySQLWriter(), nil
 	case name == "file":
 		return NewFileWriter(), nil
+	case name == "cassandra":
+		return NewCassandraWriter(), nil
 	default:
 		return nil, fmt.Errorf("Invalid writer `%s`", name)
 	}

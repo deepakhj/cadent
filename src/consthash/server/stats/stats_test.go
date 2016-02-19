@@ -64,8 +64,8 @@ func TestStatsCounter(t *testing.T) {
 func TestStatsStatsd(t *testing.T) {
 	// Only pass t into top-level Convey calls
 	Convey("Given statsd", t, func() {
-		Convey("initial should be nil", func() {
-			So(StatsdClient, ShouldEqual, nil)
+		Convey("initial should be StatsdNoop", func() {
+			So(StatsdClient, ShouldNotEqual, nil)
 		})
 	})
 }

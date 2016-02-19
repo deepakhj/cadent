@@ -23,3 +23,4 @@ src/github.com
 !src/consthash
 !src/consthash/cmd/*
 src/consthash/cmd/.DS_Store
+gopkg.in

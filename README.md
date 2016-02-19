@@ -83,46 +83,84 @@ Things in `[]` are optional
 
 NOTE :: if in a cluster of hashers and accumulators .. NTP is your friend .. make sure your clocks are in-sync
 
-## Accumualtors 
+## Accumulators 
 
 Accumulators almost always need to have the same "key" incoming.  Since you don't want the same stat key accumulated
 in different places, which would lead to bad sums, means, etc.  Thus to use accumulators effectively in a multi server
-endpoint senerio, you'd want to consistently hash from the incoming line stream to ANOTHER set of listeners that are the 
+endpoint scenario, you'd want to consistently hash from the incoming line stream to ANOTHER set of listeners that are the 
 backend accumulators (in the same fashion that Statsd Proxy -> Statsd and Carbon Relay -> Carbon Aggregator).  
+
 
 It's easy to do this in one "instance" of this item where one creates a "loop back" to itself, but on a different
 listener port.
 
-     InLine(s port 8125) -> Listener -> Splitter -> [PreReg] -> Backend -> Hasher -> OutPool (port 8126)
+     InLine(port 8125) -> Splitter -> [PreReg] -> Backend -> Hasher -> OutPool (port 8126)
         
-        --> InLine(s port 8126) -> Splitter -> [Accumulator] -> [PreReg] -> Backend -> OutPool (port Other)
+        --> InLine(port 8126) -> Splitter -> [Accumulator] -> [PreReg] -> Backend -> OutPool (port Other)
 
 This way any farm of hashing servers will properly send the same stat to the same place for proper accumulation.
+
+Times here are always assumed to be "NOW" on the incoming items.  Items are given the "NOW" time when flushed. There 
+is no "going backwards" in time. If that's something you require, alternate methods for getting your data to writers
+should be used.  This only matters for accumulators. If no Accumulators are used in the pipline, time is maintained
+in the original incoming line (if it has one, graphite does, statsd style does not).
+
+Unlike the generic `graphite` data format, which can have different time retentions and bin sizes for different metrics
+I have taken the approach that all metrics will have the same bin size(s).  Meaning that all metrics will get 
+binned into `keeper` buckets that are the same (you can have as many as you wish) and to keep the math simple and fast
+the timer buckets should be multiples of each other, for instance.
+
+    [prname.accumulator.keeper]
+    times = ["5s", "1m", "10m"] 
+    
+OR w/ TTLs
+
+    [prname.accumulator.keeper]
+    times = ["5s:168h", "1m:720h", "10m:17520h"] 
+    
+This also means the "writers" below will need to follow suit with their data stores and TTLs,  Things like MySQL and files
+have no inherent TTLs so the TTLs are not relevant and are ignored, Cassandra, on the other hand, can have these TTLs per item. Also
+TTLs are outed as "time from now when i should be removed", not a flat number.  
+
+THe "base" accumulator item will constantly Flush stats based on the first time given (above every `5s`). It is then Aggregators
+caches to maintain the other bins (from the base flush time) and flush to writers at the appropriate times. 
+
+_MULTIPLE KEEPERS ONLY MATTER IF THERE ARE WRITERS._
+
 
 ### Writers
 
 Accumulators can "write" to something other then a tcp/udp/http/socket, to say things like a FILE, MySQL DB or cassandra.
-(since this is Golang all writer types need to have their own driver embded in).  If you only want accumulators to write out to 
+(since this is Golang all writer types need to have their own driver embed in).  If you only want accumulators to write out to 
 these things, you can specify the `backend` to `BLACKHOLE` which will NOT try to reinsert the line back into the pipeline
 and the line "ends" with the Accumulator stage.
 
 
-    InLine(s port 8126) -> Splitter -> [Accumulator] -> WriterBackend
+    InLine(port 8126) -> Splitter -> [Accumulator] -> WriterBackend
     
-Writers should hold more then just the "aggregated data point" but a few usefull things like 
+Writers should hold more then just the "aggregated data point" but a few useful things like 
 
     Min, Max, Sum, Mean, and Count
     
 because who's to say what you really want from aggregated values.
-`Count` is just actually how many data points arrived in the aggregation
+`Count` is just actually how many data points arrived in the aggregation window
    
 Some example Configs for the current "3" writer backends
 
 #### MYSQL
 
 Slap stuff in a MySQL DB .. not recommended for huge throughput, but maybe useful for some stuff ..
-You should make Schemas like so
+You should make Schemas like so (`datetime(6)` is microsecond resolution, if you only have second resolution on the 
+`times` probably best to keep that as "normal" `datetime`).  The TTLs are not relevant here.  The `path_table` is 
+useful for key space lookups
     
+    CREATE TABLE `{path_table}` (
+        `path` varchar(255) NOT NULL DEFAULT '',
+        `length` int NOT NULL
+        PRIMARY KEY `stat` (`stat`),
+         KEY `length` (`length`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
     CREATE TABLE `{table}_{keeperprefix}` (
       `id` int(11) unsigned NOT NULL AUTO_INCREMENT,
       `stat` varchar(255) NOT NULL DEFAULT '',
@@ -132,17 +170,21 @@ You should make Schemas like so
       `max` float NOT NULL,
       `count` float NOT NULL,
       `resolution` int(11) NOT NULL,
-      `time` datetime(3) NOT NULL,
+      `time` datetime(6) NOT NULL,
       PRIMARY KEY (`id`),
       KEY `stat` (`stat`),
       KEY `time` (`time`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-If your for keeper is `times = ["10s", "1m", "10m"]` you should make 3 tables named
+If your for times are `times = ["10s", "1m", "10m"]` you should make 3 tables named
 
     {tablebase}_10s
     {tablebase}_60s
     {tablebase}_600s
+    
+And only ONE path table
+
+    {path_table}
 
 Config Options
 
@@ -156,8 +198,9 @@ Config Options
     dsn = "root:password@tcp(localhost:3306)/test"
         [mypregename.accumulator.writer.options]
         table = "metrics"
+        path_table = "metrics_path"
         batch_count = 1000  # batch up this amount for inserts (faster then single line by line) (default 1000)
-        periodic_flush= "1s" # regardless of if batch_count met always flush things at this interval (default 1s)
+        periodic_flush= "1s" # regardless if batch_count met, always flush things at this interval (default 1s)
 
 
 #### File
@@ -165,9 +208,9 @@ Config Options
 Good for just testing stuff or, well, other random inputs not yet supported
 This will dump a TAB delimited file per `keeper` item of
 
-    statname sum mean min max count resolution nano_timestamp
+    statname sum mean min max count resolution nano_timestamp nano_ttl
     
-If your for keeper is `times = ["10s", "1m", "10m"]` you will get 3 files of the names
+If your for keeper is `times = ["10s", "1m", "10m"]` you will get 3 files of the names. 
 
     {filebase}_10s
     {filebase}_60s
@@ -194,15 +237,29 @@ This is probably the best one for massive stat volume. It expects the schema lik
 and you should certainly use 2.1 or 2.2 versions of cassandra.  Unlike the others, due to Cassandra's type goodness
 there is no need to make "schemas per keeper".  Expiration of data is up to you to define in your global TTLs for the schemas.
 This is modeled after the `Cyanite` (http://cyanite.io/) schema as the rest of the graphite API can probably be 
-used using the helper tools that ecosystem provides.  (https://github.com/pyr/cyanite/blob/master/doc/schema.cql)
+used using the helper tools that ecosystem provides.  (https://github.com/pyr/cyanite/blob/master/doc/schema.cql).  
+There is one large difference between this and Cyanite, the metrics point contains the "count" which is different
+then Cyanite as they group their metrics by "path + resolution + precision", i think this is due to the fact they
+dont' assume a consistent hashing frontend (and so multiple servers can insert the same metric for the same time frame
+but the one with the "most" counts wins in aggrigation). For consistent hashing of keys, this should not happen.
 
-You should wield some Cassandra knowledge to change the on the `metric.metric` table
+Please note for now the system assumes there is a `.` naming for metrics names
 
-    compaction = {'class': 'DateTieredCompactionStrategy',  'min_threshold': '12', 'max_threshold': '32', 'max_sstable_age_days': '0.083', 'base_time_seconds': '50' }
+    my.metric.is.fun
+    
 
-XXX TODO
+You should wield some Cassandra knowledge to change the on the `metric.metric` table based on your needs
+The below causes most compaction activity to occur at 10m (min_threshold * base_time_seconds) 
+and 2h (max_sstable_age_days * SecondsPerDay) windows.
+If you want to allow 24h windows, simply raise `max_sstable_age_days` to ‘1.0’. 
 
-to deal with 
+    compaction = {
+        'class': 'DateTieredCompactionStrategy',  
+        'min_threshold': '12', 
+        'max_threshold': '32', 
+        'max_sstable_age_days': '0.083', 
+        'base_time_seconds': '50' 
+    }
 
 General Schema
 
@@ -218,14 +275,10 @@ General Schema
         count int
     );
 
-    CREATE TYPE metric_resolution (
-        precision int,
-        period int
-    );
 
     CREATE TYPE metric_id (
         path text,
-        resolution frozen<metric_resolution>
+        resolution int
     );
 
     CREATE TABLE metric.metric (
@@ -235,7 +288,13 @@ General Schema
         PRIMARY KEY (id, time)
     ) WITH COMPACT STORAGE
         AND CLUSTERING ORDER BY (time ASC)
-        AND compaction = {'class': 'DateTieredCompactionStrategy',  'min_threshold': '12', 'max_threshold': '32', 'max_sstable_age_days': '0.083', 'base_time_seconds': '50' }
+        AND compaction = {
+            'class': 'DateTieredCompactionStrategy',  
+            'min_threshold': '12', 
+            'max_threshold': '32', 
+            'max_sstable_age_days': '0.083', 
+            'base_time_seconds': '50' 
+        }
         AND compression = {'sstable_compression': 'org.apache.cassandra.io.compress.LZ4Compressor'}
         AND dclocal_read_repair_chance = 0.1
         AND default_time_to_live = 0

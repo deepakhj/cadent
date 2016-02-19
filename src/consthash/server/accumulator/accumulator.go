@@ -25,6 +25,7 @@ package accumulator
 import (
 	repr "consthash/server/repr"
 	splitter "consthash/server/splitter"
+	stats "consthash/server/stats"
 	"fmt"
 	logging "github.com/op/go-logging"
 	"sync"
@@ -43,7 +44,9 @@ type Accumulator struct {
 	AccumulatorName string          `json:"accumulator"`
 	Name            string          `json:"name"`
 	KeepKeys        bool            `json:"keep_keys"` // if true, will not "remove" the keys post flush, just set them to 0
+	AccumulateTime  time.Duration   `json:"accumulate_timer"`
 	FlushTimes      []time.Duration `json:"flush_time"`
+	TTLTimes        []time.Duration `json:"ttl_times"`
 
 	Accumulate AccumulatorItem
 	Formatter  FormatterItem
@@ -84,13 +87,14 @@ func NewAccumlator(inputtype string, outputtype string, keepkeys bool) (*Accumul
 		FormatterName:   outputtype,
 		KeepKeys:        keepkeys,
 		Name:            fmt.Sprintf("%s -> %s", inputtype, outputtype),
-		FlushTimes:      []time.Duration{time.Second},
+		FlushTimes:      []time.Duration{time.Duration(time.Second)},
+		AccumulateTime:  time.Duration(time.Second),
 		Shutdown:        make(chan bool, 1),
 		LineQueue:       make(chan string, 10000),
 		timer:           nil,
 	}
 
-	ac.log = logging.MustGetLogger(fmt.Sprintf("accumulator.%s", ac.Name))
+	ac.log = logging.MustGetLogger("accumulator")
 
 	// determine the splitter from the formatter item
 	nul_conf := make(map[string]interface{})
@@ -111,7 +115,7 @@ func NewAccumlator(inputtype string, outputtype string, keepkeys bool) (*Accumul
 
 // create the overlord aggregator
 func (acc *Accumulator) SetAggregateLoop(conf AccumulatorWriter) (agg *AggregateLoop, err error) {
-	acc.Aggregators, err = NewAggregateLoop(acc.FlushTimes, acc)
+	acc.Aggregators, err = NewAggregateLoop(acc.FlushTimes, acc.TTLTimes, acc.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -132,6 +136,7 @@ func (acc *Accumulator) ProcessSplitItem(sp splitter.SplitItem) error {
 }
 
 func (acc *Accumulator) ProcessLine(sp string) error {
+	stats.StatsdClient.Incr("accumulator.lines.incoming", 1)
 	acc.LineQueue <- sp
 	return nil
 }
@@ -141,7 +146,7 @@ func (acc *Accumulator) ProcessLine(sp string) error {
 func (acc *Accumulator) Start() error {
 	acc.mu.Lock()
 	if acc.timer == nil {
-		acc.timer = time.NewTicker(acc.FlushTimes[0])
+		acc.timer = time.NewTicker(acc.AccumulateTime)
 	}
 	if acc.LineQueue == nil {
 		acc.LineQueue = make(chan string, 10000)
@@ -151,6 +156,7 @@ func (acc *Accumulator) Start() error {
 
 	// fire up Aggs
 	if acc.Aggregators != nil {
+		acc.log.Notice("Starting aggregator loop for `%s`", acc.Name)
 		go acc.Aggregators.Start()
 	}
 
@@ -161,24 +167,18 @@ func (acc *Accumulator) Start() error {
 			acc.FlushAndPost()
 		case line := <-acc.LineQueue:
 			acc.Accumulate.ProcessLine(line)
-
+			stats.StatsdClient.Incr("accumulator.lines.processed", 1)
 		case <-acc.Shutdown:
 			acc.timer.Stop()
 			acc.log.Notice("Shutting down final flush of accumulator `%s`", acc.Name)
 			acc.FlushAndPost()
+			if acc.Aggregators != nil {
+				acc.Aggregators.Stop()
+			}
 			break
 		}
 	}
 
-	//bleed
-	for {
-		for i := 0; i < len(acc.LineQueue); i++ {
-			_ = <-acc.LineQueue
-		}
-		if len(acc.LineQueue) == 0 {
-			break
-		}
-	}
 	close(acc.LineQueue)
 	acc.LineQueue = nil
 	return nil
@@ -199,12 +199,12 @@ func (acc *Accumulator) PushLine(spl splitter.SplitItem) {
 
 // move into Aggregator land
 func (acc *Accumulator) PushStat(spl repr.StatRepr) {
-	if acc.Aggregators != nil {
-		acc.Aggregators.InputChan <- spl
-	}
+	stats.StatsdClient.Incr("accumulator.stats.outgoing", 1)
+	acc.Aggregators.InputChan <- spl
 }
 
 func (acc *Accumulator) FlushAndPost() ([]splitter.SplitItem, error) {
+	defer stats.StatsdNanoTimeFunc(fmt.Sprintf("accumulator.flushpost-time-ns"), time.Now())
 	items := acc.Accumulate.Flush()
 	//log.Notice("Flush: %s", items)
 	//return []splitter.SplitItem{}, nil
@@ -225,11 +225,15 @@ func (acc *Accumulator) FlushAndPost() ([]splitter.SplitItem, error) {
 		acc.PushLine(spl)
 	}
 
-	t := time.Now()
-	for _, stat := range items.Stats {
-		stat.Time = t // need to set this as this is the flush time
-		acc.PushStat(stat)
+	// background this guy
+	if acc.Aggregators != nil {
+		t := time.Now()
+		for _, stat := range items.Stats {
+			stat.Time = t // need to set this as this is the flush time
+			acc.PushStat(stat)
+		}
 	}
+	stats.StatsdClient.Incr("accumulator.flushesposts", 1)
 
 	acc.log.Debug("Flushed accumulator %s Lines: %d", acc.Name, len(out_spl))
 	items = nil // GC me
@@ -238,6 +242,8 @@ func (acc *Accumulator) FlushAndPost() ([]splitter.SplitItem, error) {
 
 // flush out the accumulator, and "reparse" the lines
 func (acc *Accumulator) Flush() ([]splitter.SplitItem, error) {
+	defer stats.StatsdNanoTimeFunc(fmt.Sprintf("accumulator.flush-time-ns"), time.Now())
+
 	items := acc.Accumulate.Flush()
 	var out_spl []splitter.SplitItem
 	for _, item := range items.Lines {
@@ -253,6 +259,7 @@ func (acc *Accumulator) Flush() ([]splitter.SplitItem, error) {
 		out_spl = append(out_spl, spl)
 	}
 	items = nil // GC me
+	stats.StatsdClient.Incr("accumulator.flushes", 1)
 	return out_spl, nil
 }
 
@@ -263,6 +270,9 @@ func (acc *Accumulator) LogConfig() {
 	acc.log.Debug("   - Accumulator Type:: `%s`", acc.Accumulate.Name())
 	acc.log.Debug("   - Accumulator FlushTime:: `%v`", acc.FlushTimes)
 	acc.log.Debug("   - Accumulator KeepKeys:: `%v`", acc.KeepKeys)
+	if acc.Aggregators != nil {
+		acc.log.Debug("   - Accumulator Aggregator:: `%v`", acc.Aggregators.Name)
+	}
 }
 
 // just grab whats currently in the queue to be flushed
