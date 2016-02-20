@@ -6,7 +6,7 @@ import (
 	"consthash/server/stats"
 	"fmt"
 	"github.com/BurntSushi/toml"
-	logging "github.com/op/go-logging"
+	logging "gopkg.in/op/go-logging.v1"
 	"math"
 	"net/url"
 	"regexp"

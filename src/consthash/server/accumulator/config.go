@@ -44,7 +44,7 @@ times = ["5s", "1m", "1h"]
 import (
 	"fmt"
 	"github.com/BurntSushi/toml"
-	logging "github.com/op/go-logging"
+	logging "gopkg.in/op/go-logging.v1"
 	"math"
 	"strings"
 	"time"

@@ -34,7 +34,7 @@ import (
 	"encoding/json"
 	"fmt"
 	//breaker "github.com/eapache/go-resiliency/breaker"
-	logging "github.com/op/go-logging"
+	logging "gopkg.in/op/go-logging.v1"
 	"net"
 	"net/http"
 	"net/url"

@@ -7,7 +7,7 @@ package consthash
 import (
 	"consthash/server/splitter"
 	"consthash/server/stats"
-	logging "github.com/op/go-logging"
+	logging "gopkg.in/op/go-logging.v1"
 	"net"
 	"strings"
 )

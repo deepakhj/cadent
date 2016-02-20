@@ -44,7 +44,7 @@ import (
 	"database/sql"
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
-	logging "github.com/op/go-logging"
+	logging "gopkg.in/op/go-logging.v1"
 	"strings"
 	"sync"
 	"time"

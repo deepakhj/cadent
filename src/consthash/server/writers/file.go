@@ -17,7 +17,7 @@ package writers
 import (
 	"consthash/server/repr"
 	"fmt"
-	logging "github.com/op/go-logging"
+	logging "gopkg.in/op/go-logging.v1"
 	"os"
 	"sync"
 	"time"

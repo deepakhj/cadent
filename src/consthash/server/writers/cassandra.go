@@ -27,7 +27,7 @@ import (
 	stats "consthash/server/stats"
 	"fmt"
 	"github.com/gocql/gocql"
-	logging "github.com/op/go-logging"
+	logging "gopkg.in/op/go-logging.v1"
 
 	"strings"
 	"sync"
@@ -247,12 +247,12 @@ func (cass *CassandraWriter) Config(conf map[string]interface{}) (err error) {
 	// auth
 	user := ""
 	_user := conf["user"]
-	if _numcons != nil {
+	if _user != nil {
 		user = _user.(string)
 	}
 	pass := ""
 	_pass := conf["pass"]
-	if _numcons != nil {
+	if _pass != nil {
 		pass = _pass.(string)
 	}
 

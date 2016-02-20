@@ -74,7 +74,7 @@ listen_server="statsd-servers" # this needs to be an actual SOCKET based server 
 
 import (
 	"github.com/BurntSushi/toml"
-	logging "github.com/op/go-logging"
+	logging "gopkg.in/op/go-logging.v1"
 
 	accumulator "consthash/server/accumulator"
 	"fmt"

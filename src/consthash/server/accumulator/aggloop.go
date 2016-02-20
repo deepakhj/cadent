@@ -22,7 +22,7 @@ import (
 	stats "consthash/server/stats"
 	writers "consthash/server/writers"
 	"fmt"
-	logging "github.com/op/go-logging"
+	logging "gopkg.in/op/go-logging.v1"
 	"sync"
 	"time"
 )

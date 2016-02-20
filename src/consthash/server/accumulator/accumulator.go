@@ -27,7 +27,7 @@ import (
 	splitter "consthash/server/splitter"
 	stats "consthash/server/stats"
 	"fmt"
-	logging "github.com/op/go-logging"
+	logging "gopkg.in/op/go-logging.v1"
 	"sync"
 	"time"
 )
