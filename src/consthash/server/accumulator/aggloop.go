@@ -83,7 +83,6 @@ func (agg *AggregateLoop) SetWriter(conf AccumulatorWriter) error {
 		}
 		agg.OutWriters = append(agg.OutWriters, wr)
 	}
-	log.Critical("WRITERS: %v .. %v", agg.FlushTimes, agg.OutWriters)
 	return nil
 }
 
@@ -128,8 +127,10 @@ func (agg *AggregateLoop) startWriteLooper(duration time.Duration, ttl time.Dura
 		select {
 		case <-ticker.C:
 			_mu.Lock()
+			agg.log.Debug("Flushing %d stats in bin %s to writer", len(agg.Aggregators.Get(duration).Items), _dur.String())
 			post() // for stats
 			_mu.Unlock()
+
 		case <-shut.Ch:
 			ticker.Stop()
 			shut.Close()

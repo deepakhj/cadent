@@ -40,6 +40,7 @@ Examples
 --------
 
 Look to the "example-config.toml" for all the options you can set and their meaning
+and config directory for more examples.
 
 to start
 
@@ -110,12 +111,10 @@ I have taken the approach that all metrics will have the same bin size(s).  Mean
 binned into `keeper` buckets that are the same (you can have as many as you wish) and to keep the math simple and fast
 the timer buckets should be multiples of each other, for instance.
 
-    [prname.accumulator.keeper]
     times = ["5s", "1m", "10m"] 
     
 OR w/ TTLs
 
-    [prname.accumulator.keeper]
     times = ["5s:168h", "1m:720h", "10m:17520h"] 
     
 This also means the "writers" below will need to follow suit with their data stores and TTLs,  Things like MySQL and files
@@ -125,7 +124,7 @@ TTLs are outed as "time from now when i should be removed", not a flat number.
 THe "base" accumulator item will constantly Flush stats based on the first time given (above every `5s`). It is then Aggregators
 caches to maintain the other bins (from the base flush time) and flush to writers at the appropriate times. 
 
-_MULTIPLE KEEPERS ONLY MATTER IF THERE ARE WRITERS._
+_MULTIPLE TIMES ONLY MATTER IF THERE ARE WRITERS._
 
 
 ### Writers
@@ -484,7 +483,6 @@ There is also a "line msg" generator "statblast"
             list of servers to open (tcp://127.0.0.1:6002,tcp://127.0.0.1:6003) (default "tcp://127.0.0.1:8125")
       -type string
             statsd or graphite (default "statsd")
-
 
 
 

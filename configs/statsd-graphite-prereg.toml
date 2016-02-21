@@ -1,0 +1,50 @@
+### pre-regex filters to push things around various backends
+### if there are multiple backends or reject some things
+
+[statsd-regex-map]
+listen_server="statsd-proxy" # which listener to sit in front of  (must be in the main config)
+default_backend="statsd-proxy"  # failing a match go here
+
+    [statsd-regex-map.accumulator]
+    backend = "graphite-proxy"
+    input_format = "statsd"
+    output_format = "graphite"
+    accumulate_flush = "5s"
+    options = [
+            ["legacyNamespace", "true"],
+            ["prefixGauge", "gauges"],
+            ["prefixTimer", "timers"],
+            ["prefixCounter", "counters"],
+            ["globalPrefix", ""],
+            ["globalSuffix", "stats"],
+            ["percentThreshold", "0.90,0.95,0.99"]
+    ]
+
+    # don't filter anything really
+    [[statsd-regex-map.map]]
+    noop="true"
+
+## bind to the graphite input,
+[graphite-cassandra]
+listen_server="graphite-proxy"
+default_backend="graphite-proxy"
+
+    # accumulator and
+    [graphite-cassandra.accumulator]
+    backend = "graphite-relay"
+    input_format = "graphite"
+    output_format = "graphite"
+    accumulate_flush = "5s"  # push out to writer aggregator collector and the backend every 5s
+
+    # aggregate bin counts
+    times = ["10s:168h", "1m:720h"]
+
+        [graphite-cassandra.accumulator.writer]
+        driver = "cassandra"
+        dsn = "metrics-1-cassandra-db-integ.mfpaws.com,metrics-2-cassandra-db-integ.mfpaws.com,metrics-3-cassandra-db-integ.mfpaws.com"
+        [graphite-cassandra.accumulator.writer.options]
+        user="cassandra"
+        pass="cassandra"
+
+    [[graphite-cassandra.map]]
+    noop="true"
