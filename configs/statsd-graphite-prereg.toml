@@ -20,9 +20,10 @@ default_backend="statsd-proxy"  # failing a match go here
             ["percentThreshold", "0.90,0.95,0.99"]
     ]
 
-    # don't filter anything really
+    # Sub string type match
     [[statsd-regex-map.map]]
-    noop="true"
+        substring=".marvel"  # ignore elastic search marvel stuff
+        reject=true
 
 ## bind to the graphite input,
 [graphite-cassandra]

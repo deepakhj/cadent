@@ -40,6 +40,7 @@ CREATE TABLE `{table}{table_prefix}` (
 package writers
 
 import (
+	"consthash/server/dbs"
 	"consthash/server/repr"
 	"database/sql"
 	"fmt"
@@ -57,10 +58,8 @@ type MyPath struct {
 
 /****************** Interfaces *********************/
 type MySQLWriter struct {
-	conn         *sql.DB
-	table        string
-	path_table   string
-	table_prefix string
+	db   *dbs.MySQLDB
+	conn *sql.DB
 
 	write_list     []repr.StatRepr // buffer the writes so as to do "multi" inserts per query
 	max_write_size int             // size of that buffer before a flush
@@ -82,24 +81,13 @@ func (my *MySQLWriter) Config(conf map[string]interface{}) error {
 		return fmt.Errorf("`dsn` (user:pass@tcp(host:port)/db) is needed for mysql config")
 	}
 	dsn := gots.(string)
-	var err error
-	my.conn, err = sql.Open("mysql", dsn)
+	db, err := dbs.NewDB("mysql", dsn, conf)
 	if err != nil {
 		return err
 	}
-	_table := conf["table"]
-	if _table == nil {
-		my.table = "metrics"
-	} else {
-		my.table = _table.(string)
-	}
 
-	_ptable := conf["path_table"]
-	if _ptable == nil {
-		my.path_table = "metric_path"
-	} else {
-		my.path_table = _ptable.(string)
-	}
+	my.db = db.(*dbs.MySQLDB)
+	my.conn = db.Connection().(*sql.DB)
 
 	_wr_buffer := conf["batch_count"]
 	if _wr_buffer == nil {
@@ -107,14 +95,6 @@ func (my *MySQLWriter) Config(conf map[string]interface{}) error {
 	} else {
 		// toml things generic ints are int64
 		my.max_write_size = int(_wr_buffer.(int64))
-	}
-
-	// file prefix
-	_pref := conf["prefix"]
-	if _pref == nil {
-		my.table_prefix = ""
-	} else {
-		my.table_prefix = _pref.(string)
 	}
 
 	_pr_flush := conf["periodic_flush"]
@@ -131,10 +111,6 @@ func (my *MySQLWriter) Config(conf map[string]interface{}) error {
 	go my.PeriodFlush()
 
 	return nil
-}
-
-func (my *MySQLWriter) Tablename() string {
-	return my.table + my.table_prefix
 }
 
 func (my *MySQLWriter) PeriodFlush() {
@@ -156,12 +132,12 @@ func (my *MySQLWriter) Flush() (int, error) {
 
 	Q := fmt.Sprintf(
 		"INSERT INTO %s (stat, sum, mean, min, max, count, resolution, time) VALUES ",
-		my.Tablename(),
+		my.db.Tablename(),
 	)
 
 	pthQ := fmt.Sprintf(
 		"INSERT IGNORE INTO %s (path, length) VALUES ",
-		my.path_table,
+		my.db.PathTable(),
 	)
 
 	pvals := []interface{}{}

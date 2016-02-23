@@ -313,7 +313,8 @@ General Schema
         segment frozen<segment_pos>,
         path text,
         length int,
-        PRIMARY KEY (segment, path)
+        has_data bool,
+        PRIMARY KEY (segment, path, has_data)
     ) WITH CLUSTERING ORDER BY (path ASC)
         AND bloom_filter_fp_chance = 0.01
         AND caching = '{"keys":"ALL", "rows_per_partition":"NONE"}'
