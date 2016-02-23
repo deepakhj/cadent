@@ -37,8 +37,9 @@ import (
 /****************** Writer *********************/
 type CassandraReader struct {
 	// juse the writer connections for this
-	db   *dbs.CassandraDB
-	conn *gocql.Session
+	db          *dbs.CassandraDB
+	conn        *gocql.Session
+	resolutions [][]int
 
 	log *logging.Logger
 }
@@ -48,6 +49,13 @@ func NewCassandraReader() *CassandraReader {
 	cass.log = logging.MustGetLogger("reader.cassandra")
 
 	return cass
+}
+
+// Resoltuions should be of the form
+// [BinTime, TTL]
+// we select the BinTime based on the TTL
+func (cass *CassandraReader) SetResolutions(res [][]int) {
+	cass.resolutions = res
 }
 
 func (cass *CassandraReader) Config(conf map[string]interface{}) (err error) {
@@ -66,6 +74,18 @@ func (cass *CassandraReader) Config(conf map[string]interface{}) (err error) {
 	cass.conn = db.Connection().(*gocql.Session)
 	return nil
 
+}
+
+// based on the from/to in seconds get the best resolution
+// from and to should be SECONDS not nano-seconds
+func (cass *CassandraReader) getResolution(from int, to int) int {
+	diff := to - from
+	for _, res := range cass.resolutions {
+		if diff < res[1] {
+			return res[0]
+		}
+	}
+	return cass.resolutions[len(cass.resolutions)-1][0]
 }
 
 func (cass *CassandraReader) ExpandNonRegex(metric string) (MetricExpandItem, error) {

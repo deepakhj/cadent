@@ -42,6 +42,7 @@ times = ["5s", "1m", "1h"]
 */
 
 import (
+	readers "consthash/server/readers"
 	"fmt"
 	"github.com/BurntSushi/toml"
 	logging "gopkg.in/op/go-logging.v1"
@@ -73,15 +74,16 @@ type AccumulatorTags struct {
 // options for backends
 
 type ConfigAccumulator struct {
-	ToBackend    string            `toml:"backend"` // once "parsed and flushed" re-inject into another pre-reg group for delegation
-	InputFormat  string            `toml:"input_format"`
-	OutoutFormat string            `toml:"output_format"`
-	KeepKeys     bool              `toml:"keep_keys"` // keeps the keys on flush  "0's" them rather then removal
-	Option       [][]string        `toml:"options"`   // option=[ [key, value], [key, value] ...]
-	Tags         []AccumulatorTags `toml:"tags"`
-	Writer       AccumulatorWriter `toml:"writer"`
-	Times        []string          `toml:"times"`            // Aggregate Timers (or the first will be used for Accumulator flushes)
-	AccTimer     string            `toml:"accumulate_flush"` // if specified will be the "main Accumulator" flusher otherwise it will choose the first in the Timers
+	ToBackend    string               `toml:"backend"` // once "parsed and flushed" re-inject into another pre-reg group for delegation
+	InputFormat  string               `toml:"input_format"`
+	OutoutFormat string               `toml:"output_format"`
+	KeepKeys     bool                 `toml:"keep_keys"` // keeps the keys on flush  "0's" them rather then removal
+	Option       [][]string           `toml:"options"`   // option=[ [key, value], [key, value] ...]
+	Tags         []AccumulatorTags    `toml:"tags"`
+	Writer       AccumulatorWriter    `toml:"writer"`
+	Reader       readers.ReaderConfig `toml:"reader"`           // http server for reading
+	Times        []string             `toml:"times"`            // Aggregate Timers (or the first will be used for Accumulator flushes)
+	AccTimer     string               `toml:"accumulate_flush"` // if specified will be the "main Accumulator" flusher otherwise it will choose the first in the Timers
 
 	accumulate_time time.Duration
 	durations       []time.Duration
@@ -180,6 +182,19 @@ func (cf *ConfigAccumulator) GetAccumulator() (*Accumulator, error) {
 		}
 	}
 
+	// set up the reader it needs to be done AFTER the Keeper times are verified
+	if cf.Reader.Listen != "" && ac.Aggregators != nil {
+		if cf.Reader.ReadOptions.Driver == "" {
+			// make it the current writer item if not specified
+			cf.Reader.ReadOptions.Driver = cf.Writer.Driver
+			cf.Reader.ReadOptions.DSN = cf.Writer.DSN
+		}
+		err = ac.Aggregators.SetReader(cf.Reader)
+		if err != nil {
+			return nil, err
+		}
+
+	}
 	return ac, nil
 }
 

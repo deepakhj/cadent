@@ -18,6 +18,7 @@ package accumulator
 
 import (
 	broadcast "consthash/server/broadcast"
+	readers "consthash/server/readers"
 	repr "consthash/server/repr"
 	stats "consthash/server/stats"
 	writers "consthash/server/writers"
@@ -42,6 +43,8 @@ type AggregateLoop struct {
 
 	OutWriters []*writers.WriterLoop // write to a DB of some kind on flush
 
+	OutReader *readers.ReaderLoop
+
 	log *logging.Logger
 }
 
@@ -60,6 +63,25 @@ func NewAggregateLoop(flushtimes []time.Duration, ttls []time.Duration, name str
 	agg.log = logging.MustGetLogger("aggregatorloop")
 
 	return agg, nil
+}
+
+// config the HTTP interface if desired
+func (agg *AggregateLoop) SetReader(conf readers.ReaderConfig) error {
+	rl := new(readers.ReaderLoop)
+	err := rl.Config(conf)
+	if err != nil {
+		return err
+	}
+	// set the resolution bits
+	var res [][]int
+	for idx, dur := range agg.FlushTimes {
+		res = append(res, []int{int(dur.Seconds()), int(agg.TTLTimes[idx].Seconds())})
+	}
+	rl.SetResolutions(res)
+	rl.SetBasePath(conf.BasePath)
+	agg.OutReader = rl
+	return nil
+
 }
 
 func (agg *AggregateLoop) SetWriter(conf AccumulatorWriter) error {
@@ -147,6 +169,11 @@ func (agg *AggregateLoop) Start() error {
 	go agg.startInputLooper()
 	for idx, dur := range agg.FlushTimes {
 		go agg.startWriteLooper(dur, agg.TTLTimes[idx], agg.OutWriters[idx], agg.mus[idx])
+	}
+
+	// fire up the reader if around
+	if agg.OutReader != nil {
+		go agg.OutReader.Start()
 	}
 	return nil
 }
