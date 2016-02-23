@@ -29,6 +29,7 @@ import (
 	"github.com/gocql/gocql"
 	logging "gopkg.in/op/go-logging.v1"
 
+	"math"
 	"regexp"
 	"strings"
 	"time"
@@ -78,8 +79,8 @@ func (cass *CassandraReader) Config(conf map[string]interface{}) (err error) {
 
 // based on the from/to in seconds get the best resolution
 // from and to should be SECONDS not nano-seconds
-func (cass *CassandraReader) getResolution(from int, to int) int {
-	diff := to - from
+func (cass *CassandraReader) getResolution(from int64, to int64) int {
+	diff := int(math.Abs(float64(to - from)))
 	for _, res := range cass.resolutions {
 		if diff < res[1] {
 			return res[0]
@@ -169,18 +170,22 @@ func (cass *CassandraReader) Render(path string, from string, to string) (Render
 	if err != nil {
 		cass.log.Error("Invalid from time `%s` :: %v", from, err)
 	}
+	if end > start {
+		start, end = end, start
+	}
+	//figure out the best res
+	resoltion := cass.getResolution(start, end)
+
 	// time in cassandra is in NanoSeconds so we need to pad the times from seconds -> nanos
 	nans := int64(time.Second)
 	end = end * nans
 	start = start * nans
-	if end > start {
-		start, end = end, start
-	}
 
 	metrics, err := cass.Find(path)
 	if err != nil {
 		return ri, err
 	}
+
 	for _, metric := range metrics {
 		if metric.Leaf == 0 {
 			continue
@@ -193,7 +198,7 @@ func (cass *CassandraReader) Render(path string, from string, to string) (Render
 			cass.db.MetricTable(),
 		)
 		iter := cass.conn.Query(cass_Q,
-			metric.Id, 60, start, end,
+			metric.Id, resoltion, start, end,
 		).Iter()
 
 		//cass.log.Debug("METR: %s Start: %d END: %d", metric.Id, start, end)

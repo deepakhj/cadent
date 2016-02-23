@@ -222,7 +222,7 @@ func (cass *CassandraWriter) InsertStatKey(skey string) error {
 			err = cass.conn.Query(Q,
 				seg.Pos, seg.Segment, seg.Segment+"."+s_parts[idx+1], seg.Pos+1, false,
 			).Exec()
-			cass.log.Debug("Seg INS: %s PATH: %s Len: %d", seg.Segment, seg.Segment+"."+s_parts[idx+1], seg.Pos)
+			//cass.log.Debug("Seg INS: %s PATH: %s Len: %d", seg.Segment, seg.Segment+"."+s_parts[idx+1], seg.Pos)
 		}
 
 		// for each "segment" add in the path to do a segment to path(s) lookup
