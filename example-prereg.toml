@@ -30,6 +30,11 @@ default_backend="statsd-proxy"  # failing a match go here
     input_format = "statsd"
     output_format = "graphite"
 
+    # the timeing to "flush" any accumulated goodness to
+    # both the "aggregator/writers" and whatever backends are assigned
+    # (default 1s)
+    accumulate_flush = "1s"
+
     # do this only if there are not that many metrics otherise RAM will become an issue
     # this will "emit 0s" for a given metric if it has not been seen in the flush time window
     # this can take ALOT of ram if you have alot of distinct keys if true
