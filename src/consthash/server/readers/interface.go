@@ -65,5 +65,5 @@ type Reader interface {
 		],...
 		]}
 	*/
-	Render(path string, from string, to string) (RenderItems, error)
+	Render(path string, from string, to string) (WhisperRenderItem, error)
 }

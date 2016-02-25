@@ -10,6 +10,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"gopkg.in/op/go-logging.v1"
 	"net/http"
+	"os"
 	"strings"
 )
 
@@ -118,11 +119,7 @@ func (re *ReaderLoop) Find(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	var query string
 
-	if r.Method == "GET" {
-		query = strings.TrimSpace(r.Form.Get("query"))
-	} else {
-		query = strings.TrimSpace(r.FormValue("query"))
-	}
+	query = strings.TrimSpace(r.Form.Get("query"))
 
 	if len(query) == 0 {
 		re.OutError(w, "Query is required", http.StatusBadRequest)
@@ -167,16 +164,11 @@ func (re *ReaderLoop) Render(w http.ResponseWriter, r *http.Request) {
 	var from string
 	var to string
 
-	if r.Method == "GET" {
-		target = strings.TrimSpace(r.Form.Get("target"))
-		from = strings.TrimSpace(r.Form.Get("from"))
-		to = strings.TrimSpace(r.Form.Get("to"))
-
-	} else {
-		target = strings.TrimSpace(r.FormValue("target"))
-		from = strings.TrimSpace(r.FormValue("from"))
-		to = strings.TrimSpace(r.FormValue("to"))
+	for _, tar := range r.Form["target"] {
+		target += strings.TrimSpace(tar) + ","
 	}
+	from = strings.TrimSpace(r.Form.Get("from"))
+	to = strings.TrimSpace(r.Form.Get("to"))
 
 	if len(target) == 0 {
 		re.OutError(w, "Target is required", http.StatusBadRequest)
@@ -200,18 +192,29 @@ func (re *ReaderLoop) Render(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
+func (re *ReaderLoop) NoOp(w http.ResponseWriter, r *http.Request) {
+	log.Warning("No handler for this URL %s", r.URL)
+}
+
 func (re *ReaderLoop) Start() {
 	mux := http.NewServeMux()
 	re.log.Notice("Starting reader http server on %s, base path: %s", re.Conf.Listen, re.Conf.BasePath)
 
 	mux.HandleFunc(re.Conf.BasePath+"find/", re.Find)
 	mux.HandleFunc(re.Conf.BasePath+"find", re.Find)
+	mux.HandleFunc(re.Conf.BasePath+"paths/", re.Find)
+	mux.HandleFunc(re.Conf.BasePath+"paths", re.Find)
 
 	mux.HandleFunc(re.Conf.BasePath+"expand/", re.Expand)
 	mux.HandleFunc(re.Conf.BasePath+"expand", re.Expand)
 
 	mux.HandleFunc(re.Conf.BasePath+"render/", re.Render)
 	mux.HandleFunc(re.Conf.BasePath+"render", re.Render)
+	mux.HandleFunc(re.Conf.BasePath+"metrics/", re.Render)
+	mux.HandleFunc(re.Conf.BasePath+"metrics", re.Render)
 
-	http.ListenAndServe(re.Conf.Listen, mux)
+	mux.HandleFunc("/", re.NoOp)
+
+	outlog := os.Stdout
+	http.ListenAndServe(re.Conf.Listen, WriteLog(mux, outlog))
 }

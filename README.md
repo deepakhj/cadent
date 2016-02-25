@@ -108,7 +108,7 @@ in the original incoming line (if it has one, graphite does, statsd style does n
 
 Unlike the generic `graphite` data format, which can have different time retentions and bin sizes for different metrics
 I have taken the approach that all metrics will have the same bin size(s).  Meaning that all metrics will get 
-binned into `keeper` buckets that are the same (you can have as many as you wish) and to keep the math simple and fast
+binned into `times` buckets that are the same (you can have as many as you wish) and to keep the math simple and fast
 the timer buckets should be multiples of each other, for instance.
 
     times = ["5s", "1m", "10m"] 
@@ -189,7 +189,7 @@ Config Options
 
     # Mysql
     #  NOTE: this expects {table}_{keepertimesinseconds} tables existing
-    #  if [keepers] timers = ["5s", "10s", "1m"]
+    #  if timers = ["5s", "10s", "1m"]
     #  tables "{table}_5s", "{table}_10s" and "{table}_60s"
     #  must exist
     [mypregename.accumulator.writer]
@@ -205,11 +205,11 @@ Config Options
 #### File
 
 Good for just testing stuff or, well, other random inputs not yet supported
-This will dump a TAB delimited file per `keeper` item of
+This will dump a TAB delimited file per `times` item of
 
     statname sum mean min max count resolution nano_timestamp nano_ttl
     
-If your for keeper is `times = ["10s", "1m", "10m"]` you will get 3 files of the names. 
+If your for times are `times = ["10s", "1m", "10m"]` you will get 3 files of the names. 
 
     {filebase}_10s
     {filebase}_60s
@@ -234,13 +234,14 @@ Config Options
 
 This is probably the best one for massive stat volume. It expects the schema like the MySQL version, 
 and you should certainly use 2.1 or 2.2 versions of cassandra.  Unlike the others, due to Cassandra's type goodness
-there is no need to make "schemas per keeper".  Expiration of data is up to you to define in your global TTLs for the schemas.
+there is no need to make "tables per timer".  Expiration of data is up to you to define in your global TTLs for the schemas.
 This is modeled after the `Cyanite` (http://cyanite.io/) schema as the rest of the graphite API can probably be 
 used using the helper tools that ecosystem provides.  (https://github.com/pyr/cyanite/blob/master/doc/schema.cql).  
 There is one large difference between this and Cyanite, the metrics point contains the "count" which is different
 then Cyanite as they group their metrics by "path + resolution + precision", i think this is due to the fact they
 dont' assume a consistent hashing frontend (and so multiple servers can insert the same metric for the same time frame
-but the one with the "most" counts wins in aggrigation). For consistent hashing of keys, this should not happen.
+but the one with the "most" counts wins in aggregation) .. but then my Clojure skills = 0. 
+For consistent hashing of keys, this should not happen.
 
 Please note for now the system assumes there is a `.` naming for metrics names
 
@@ -249,7 +250,7 @@ Please note for now the system assumes there is a `.` naming for metrics names
 
 You should wield some Cassandra knowledge to change the on the `metric.metric` table based on your needs
 The below causes most compaction activity to occur at 10m (min_threshold * base_time_seconds) 
-and 2h (max_sstable_age_days * SecondsPerDay) windows.
+and 2h (`max_sstable_age_days` * `SecondsPerDay`) windows.
 If you want to allow 24h windows, simply raise `max_sstable_age_days` to ‘1.0’. 
 
     compaction = {

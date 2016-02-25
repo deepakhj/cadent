@@ -832,7 +832,7 @@ func (server *Server) tickDisplay() {
 			server.ResetTickers()
 			server.stats.mu.Unlock()
 
-			runtime.GC()
+			//runtime.GC()
 
 		case <-server.StopTicker:
 			return
@@ -1356,7 +1356,9 @@ func CreateServer(cfg *Config, hashers []*ConstHasher) (*Server, error) {
 	server.StopTicker = make(chan bool, 1)
 
 	//start tickin'
-	go server.tickDisplay()
+	if cfg.StatsTick {
+		go server.tickDisplay()
+	}
 
 	server.TrapExit() //trappers
 

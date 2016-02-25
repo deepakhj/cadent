@@ -32,6 +32,7 @@ import (
 	"math"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -41,6 +42,9 @@ type CassandraReader struct {
 	db          *dbs.CassandraDB
 	conn        *gocql.Session
 	resolutions [][]int
+
+	render_wg sync.WaitGroup
+	render_mu sync.Mutex
 
 	log *logging.Logger
 }
@@ -157,9 +161,9 @@ func (cass *CassandraReader) Expand(metric string) (MetricExpandItem, error) {
 
 }
 
-func (cass *CassandraReader) Render(path string, from string, to string) (RenderItems, error) {
+func (cass *CassandraReader) RenderOne(path string, from string, to string) (WhisperRenderItem, error) {
 
-	var ri RenderItems
+	var whis WhisperRenderItem
 
 	start, err := ParseTime(from)
 	if err != nil {
@@ -170,73 +174,173 @@ func (cass *CassandraReader) Render(path string, from string, to string) (Render
 	if err != nil {
 		cass.log.Error("Invalid from time `%s` :: %v", from, err)
 	}
-	if end > start {
+	if end < start {
 		start, end = end, start
 	}
 	//figure out the best res
-	resoltion := cass.getResolution(start, end)
+	resolution := cass.getResolution(start, end)
 
 	// time in cassandra is in NanoSeconds so we need to pad the times from seconds -> nanos
-	nans := int64(time.Second)
-	end = end * nans
-	start = start * nans
+	nano := int64(time.Second)
+	nano_end := end * nano
+	nano_start := start * nano
 
 	metrics, err := cass.Find(path)
 	if err != nil {
-		return ri, err
+		return whis, err
 	}
 
+	series := make(map[string][]DataPoint)
+
+	first_t := int(start)
+	last_t := int(end)
 	for _, metric := range metrics {
-		if metric.Leaf == 0 {
+		if metric.Leaf == 0 { //data only
+			continue
+		}
+		b_len := int(end-start) / resolution //just to be safe
+		if b_len <= 0 {
 			continue
 		}
 
-		var ritem RenderItem
 		// grab ze data.
 		cass_Q := fmt.Sprintf(
 			"SELECT point.mean, point.max, point.min, point.sum, time FROM %s WHERE id={path: ?, resolution: ?} AND time <= ? and time >= ?",
 			cass.db.MetricTable(),
 		)
 		iter := cass.conn.Query(cass_Q,
-			metric.Id, resoltion, start, end,
+			metric.Id, resolution, nano_end, nano_start,
 		).Iter()
 
-		//cass.log.Debug("METR: %s Start: %d END: %d", metric.Id, start, end)
 		var t int64
 		var mean, min, max, sum float64
 
+		// yes this is not the best use of "smart-y-pants ness" but it does the job
+		// not sure how to detect the min/max usage .. yet
 		use_mean := strings.HasPrefix(metric.Text, "mean")
-		ritem.Target = metric.Id
+		m_key := metric.Id
 
+		d_points := make([]DataPoint, b_len)
+		//step_map := make(map[int64]DataPoint)
+
+		// sorting order for the table is time ASC (i.e. first_t == first entry)
+
+		// Since graphite does not care about the actual time stamp, but assumes
+		// a "constant step" in time.  We figure out the
+		// "step" -> Point mapping which for this system may not be exactly at
+		// step intervals, so since data may not nessesarily "be there" for a given
+		// interval we need to "insert nils" for steps that don't really exist
+		// as basically (start - end) / resolution needs to match
+		// the vector length, in effect we need to "interpolate" the vector to match sizes
+
+		ct := 0
 		for iter.Scan(&mean, &max, &min, &sum, &t) {
-			use_t := int(t / nans)
-			if use_mean {
-				ritem.Datapoints = append(ritem.Datapoints, DataPoint{
-					Time:  use_t,
-					Value: mean,
-				})
-			} else {
-				ritem.Datapoints = append(ritem.Datapoints, DataPoint{
-					Time:  use_t,
-					Value: sum,
-				})
+			on_t := int(t / nano) // back convert to seconds
+			d_point := NewDataPoint(on_t, mean)
+			if !use_mean {
+				d_point.SetValue(sum)
 			}
+
+			if len(d_points) <= ct {
+				_t_pts := make([]DataPoint, len(d_points)+100)
+				copy(_t_pts, d_points)
+				d_points = _t_pts
+			}
+			d_points[ct] = d_point
+
+			ct++
+			last_t = on_t
 		}
+
 		if err := iter.Close(); err != nil {
 			cass.log.Error("Render: Failure closing iterator: %v", err)
 		}
-		ri = append(ri, ritem)
+
+		if len(d_points) > 0 {
+			first_t = d_points[0].Time
+		}
+		// now for the interpolation bit .. just assume linear as we hope metric points are
+		// luckily things are "sorted" already (or should be)
+		// XXX HOPEFULLY there are usually FEWER or as much "real" data then not
+		//
+		interp_vec := make([]DataPoint, b_len)
+		cur_step_time := int(start)
+
+		j := 0
+		for i := int(0); i < b_len; i++ {
+
+			interp_vec[i] = DataPoint{Time: cur_step_time, Value: nil}
+			cur_step_time += resolution
+
+			for ; j < ct; j++ {
+				//cass.log.Critical("Start:%d, End:%d, d_points: %d interp_vec: %d  IIdx: %d Jidx: %d ", start, end-start, d_points[j].Time-int(start), cur_step_time-int(start), i, j)
+				if d_points[j].Time <= cur_step_time {
+					interp_vec[i].Value = d_points[j].Value
+					j++
+					break
+				} else {
+					break
+				}
+			}
+
+		}
+
+		series[m_key] = interp_vec
+
+		cass.log.Critical("METR: %s Start: %d END: %d LEN: %d", metric.Id, first_t, last_t, len(d_points))
 	}
 
-	return ri, nil
+	whis.Series = series
+	whis.Start = first_t
+	whis.End = last_t
+	whis.Step = resolution
+	return whis, nil
+}
+
+func (cass *CassandraReader) Render(path string, from string, to string) (WhisperRenderItem, error) {
+
+	var whis WhisperRenderItem
+	whis.Series = make(map[string][]DataPoint)
+	paths := strings.Split(path, ",")
+
+	// ye old fan out technique
+	render_one := func(pth string) {
+		_ri, err := cass.RenderOne(pth, from, to)
+		if err != nil {
+			cass.render_wg.Done()
+			return
+		}
+		cass.render_mu.Lock()
+		for k, rr := range _ri.Series {
+			whis.Series[k] = rr
+		}
+		whis.Start = _ri.Start
+		whis.End = _ri.End
+		whis.Step = _ri.Step
+
+		cass.render_mu.Unlock()
+		cass.render_wg.Done()
+		return
+	}
+
+	for _, pth := range paths {
+		if len(pth) == 0 {
+			continue
+		}
+		cass.render_wg.Add(1)
+		go render_one(pth)
+	}
+	cass.render_wg.Wait()
+	return whis, nil
+
 }
 
 // basic find for non-regex items
 func (cass *CassandraReader) FindNonRegex(metric string) (MetricFindItems, error) {
 
 	// since there are and regex like things in the strings, we
-	// need to get the all "items" from where the regex starts then hone
-	// down
+	// need to get the all "items" from where the regex starts then hone down
+
 	paths := strings.Split(metric, ".")
 	m_len := len(paths)
 
@@ -258,14 +362,15 @@ func (cass *CassandraReader) FindNonRegex(metric string) (MetricFindItems, error
 
 	// just grab the "n+1" length ones
 	for iter.Scan(&on_pth, &pth_len, &has_data) {
-		//cass.log.Debug("PATH %s LEN %d m_len: %d", on_pth, pth_len, m_len)
 		if pth_len > m_len {
 			continue
 		}
+		//cass.log.Critical("NON REG:::::PATH %s LEN %d m_len: %d", on_pth, pth_len, m_len)
 		spl := strings.Split(on_pth, ".")
 
 		ms.Text = spl[len(spl)-1]
 		ms.Id = on_pth
+		ms.Path = on_pth
 
 		if has_data {
 			ms.Expandable = 0
@@ -289,11 +394,65 @@ func (cass *CassandraReader) FindNonRegex(metric string) (MetricFindItems, error
 	return mt, nil
 }
 
-func (cass *CassandraReader) Find(metric string) (MetricFindItems, error) {
+// special case for "root" == "*" finder
+func (cass *CassandraReader) FindRoot() (MetricFindItems, error) {
 
+	cass_Q := fmt.Sprintf(
+		"SELECT segment FROM %s WHERE pos=?",
+		cass.db.SegmentTable(),
+	)
+	iter := cass.conn.Query(cass_Q,
+		0,
+	).Iter()
+
+	var mt MetricFindItems
+	var seg string
+
+	for iter.Scan(&seg) {
+		var ms MetricFindItem
+		ms.Text = seg
+		ms.Id = seg
+		ms.Path = seg
+
+		ms.Expandable = 1
+		ms.Leaf = 0
+		ms.AllowChildren = 1
+
+		mt = append(mt, ms)
+	}
+
+	if err := iter.Close(); err != nil {
+		return mt, err
+
+	}
+
+	return mt, nil
+}
+
+// to allow for multiple targets
+func (cass *CassandraReader) Find(metric string) (MetricFindItems, error) {
 	// the regex case is a bit more complicated as we need to grab ALL the segments of a given length.
-	// see if the match the regex, and then add them to the lists since cassandra does not provide rege abilities
-	// on the servier side
+	// see if the match the regex, and then add them to the lists since cassandra does not provide regex abilities
+	// on the server side
+
+	// special case for "root" == "*"
+
+	if metric == "*" {
+		return cass.FindRoot()
+	}
+
+	paths := strings.Split(metric, ".")
+	m_len := len(paths)
+
+	//if the last fragment is "*" then we realy mean just then next level, not another "." level
+	// this is the graphite /find?query=consthash.zipperwork.local which will mean the same as
+	// /find?query=consthash.zipperwork.local.* for us
+	if paths[len(paths)-1] == "*" {
+		metric = strings.Join(paths[:len(paths)-1], ".")
+		paths = strings.Split(metric, ".")
+		m_len = len(paths)
+	}
+
 	has_reg := regexp.MustCompile(`\*|\{|\}|\[|\]`)
 	needs_regex := has_reg.Match([]byte(metric))
 
@@ -302,12 +461,11 @@ func (cass *CassandraReader) Find(metric string) (MetricFindItems, error) {
 		return cass.FindNonRegex(metric)
 	}
 
-	paths := strings.Split(metric, ".")
-	m_len := len(paths)
-
 	// convert the "graphite regex" into something golang understands (just the "."s really)
+
 	regable := strings.Replace(metric, ".", "\\.", 0)
 	the_reg, err := regexp.Compile(regable)
+
 	if err != nil {
 		return nil, err
 	}
@@ -324,7 +482,7 @@ func (cass *CassandraReader) Find(metric string) (MetricFindItems, error) {
 	var seg string
 	// just grab the "n+1" length ones
 	for iter.Scan(&seg) {
-		//cass.log.Debug("SEG: %s", seg)
+		cass.log.Debug("REG:::::PATH %s", seg)
 
 		if !the_reg.Match([]byte(seg)) {
 			continue
@@ -343,5 +501,4 @@ func (cass *CassandraReader) Find(metric string) (MetricFindItems, error) {
 	}
 
 	return mt, nil
-
 }
