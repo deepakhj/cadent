@@ -467,6 +467,21 @@ here `echo-example` is the name of the toml server entry
 Testing and Dev
 ---------------
 
+Some quick refs for performance and other "leaky/ram" usages for tuning your brains
+(we've the profiler stuff hooked)
+
+    
+    go tool pprof  --inuse_space --nodefraction=0.0001 --web  http://localhost:6060/debug/pprof/heap
+    go tool pprof  --inuse_objects --nodefraction=0.0001 --web  http://localhost:6060/debug/pprof/heap
+    go tool pprof  --alloc_space --nodefraction=0.0001 --web  http://localhost:6060/debug/pprof/heap
+    go tool pprof  --alloc_objects --nodefraction=0.0001 --web  http://localhost:6060/debug/pprof/heap
+    go tool pprof --nodefraction=0.0001 --web  http://localhost:6060/debug/pprof/profile
+    
+    
+    # just how many mutex locks are stuck?
+    curl http://127.0.0.1:6061/debug/pprof/goroutine?debug=2
+    
+
 things come with an "echo server" which is simply what it is .. just echos what it gets to stdout
 
 the make will make that as well, to run and listen on 3 UDP ports
