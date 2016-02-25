@@ -166,6 +166,8 @@ func main() {
 	version := flag.Bool("version", false, "Print version and exit")
 	configFile := flag.String("config", "config.toml", "Consitent Hash configuration file")
 	regConfigFile := flag.String("prereg", "", "File that contains the Regex/Filtering by key to various backends")
+	loglevel := flag.String("loglevel", "DEBUG", "Log Level (debug, info, warning, error, critical)")
+
 	flag.Parse()
 
 	if *version {
@@ -179,7 +181,21 @@ func main() {
 
 	if flag.NFlag() == 0 {
 		flag.PrintDefaults()
-		os.Exit(0)
+		os.Exit(1)
+	}
+
+	switch strings.ToUpper(*loglevel) {
+	case "DEBUG":
+		logging.SetLevel(logging.DEBUG, "")
+	case "INFO":
+		logging.SetLevel(logging.INFO, "")
+	case "WARNING":
+		logging.SetLevel(logging.WARNING, "")
+	case "ERROR":
+		logging.SetLevel(logging.ERROR, "")
+	case "CRITICAL":
+		logging.SetLevel(logging.CRITICAL, "")
+
 	}
 
 	var config consthash.ConfigServers

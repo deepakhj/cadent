@@ -37,6 +37,7 @@ type ConfigServerList struct {
 
 type Config struct {
 	Name                    string
+	StatsTick               bool          `toml:"stats_tick"`
 	PIDfile                 string        `toml:"pid_file"`
 	NumProc                 int           `toml:"num_procs"`
 	MaxPoolConnections      int           `toml:"max_pool_connections"`
@@ -245,6 +246,9 @@ func (self ConfigServers) ParseConfig(defaults *Config) (out ConfigServers, err 
 		}
 
 		cfg.Name = chunk
+
+		//stats on or off
+		cfg.StatsTick = defaults.StatsTick
 
 		//set some defaults
 		if len(cfg.ListenStr) == 0 {
