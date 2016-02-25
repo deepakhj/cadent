@@ -6,7 +6,7 @@ conshashsrv
 Generic Consistent hash Server (and well, much more) in Go
 
 Note:: configuration for complex scenarios of loop backs, replicas moving, multiple backends, accumulators, and aggregators 
-can get confusing .. and you can find yourself hitting yourself over the head alot.  You's say "why not keep it simle"
+can get confusing .. and you can find yourself hitting yourself over the head alot.  You's say "why not keep it simple"
 If metrics collection and manipulating was simple, I would not have to write this.
 
 
