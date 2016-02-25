@@ -3,7 +3,12 @@
 conshashsrv
 ===========
 
-Generic Consistent hash Server in Go
+Generic Consistent hash Server (and well, much more) in Go
+
+Note:: configuration for complex scenarios of loop backs, replicas moving, multiple backends, accumulators, and aggregators 
+can get confusing .. and you can find yourself hitting yourself over the head alot.  You's say "why not keep it simle"
+If metrics collection and manipulating was simple, I would not have to write this.
+
 
 Installation
 ------------
@@ -408,7 +413,12 @@ We can make a fancy status page when necessary
 
 It will also emit it's owns stats to statsd as well using a buffered internal statsd client (https://gitlab.mfpaws.com/goutil/statsd).
 
- 
+
+#### Handy "what are the URL" reference (because i always forget myself)
+
+    http://localhost:6060/servers
+
+
 ### Status
 
 If you have some checker (say nagios) and you want to get the helath status of the server itself
