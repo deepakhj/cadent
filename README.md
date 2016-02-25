@@ -516,4 +516,6 @@ There is also a "line msg" generator "statblast"
 Author
 ------
 
+![A Flow of examples](config/example-flow.png)
+
 boblanton@myfitnesspal.com 2015 MyFitnesspal
