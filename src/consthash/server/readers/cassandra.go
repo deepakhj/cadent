@@ -25,6 +25,8 @@ package readers
 
 import (
 	"consthash/server/dbs"
+	"consthash/server/lrucache"
+	"consthash/server/stats"
 	"fmt"
 	"github.com/gocql/gocql"
 	logging "gopkg.in/op/go-logging.v1"
@@ -35,6 +37,9 @@ import (
 	"sync"
 	"time"
 )
+
+const CASSANDRA_RESULT_CACHE_SIZE = 1024 * 1024 * 100
+const CASSANDRA_RESULT_CACHE_TTL = 10 * time.Second
 
 /****************** Writer *********************/
 type CassandraReader struct {
@@ -47,12 +52,16 @@ type CassandraReader struct {
 	render_mu sync.Mutex
 
 	log *logging.Logger
+
+	datacache *lrucache.TTLLRUCache
+	findcache *lrucache.TTLLRUCache
 }
 
 func NewCassandraReader() *CassandraReader {
 	cass := new(CassandraReader)
 	cass.log = logging.MustGetLogger("reader.cassandra")
-
+	cass.datacache = lrucache.NewTTLLRUCache(CASSANDRA_RESULT_CACHE_SIZE, CASSANDRA_RESULT_CACHE_TTL)
+	cass.findcache = lrucache.NewTTLLRUCache(CASSANDRA_RESULT_CACHE_SIZE, CASSANDRA_RESULT_CACHE_TTL)
 	return cass
 }
 
@@ -75,6 +84,7 @@ func (cass *CassandraReader) Config(conf map[string]interface{}) (err error) {
 	if err != nil {
 		return err
 	}
+	// need to cast for real usage
 	cass.db = db.(*dbs.CassandraDB)
 	cass.conn = db.Connection().(*gocql.Session)
 	return nil
@@ -83,10 +93,14 @@ func (cass *CassandraReader) Config(conf map[string]interface{}) (err error) {
 
 // based on the from/to in seconds get the best resolution
 // from and to should be SECONDS not nano-seconds
+// from and to needs to be > then the TTL as well
 func (cass *CassandraReader) getResolution(from int64, to int64) int {
 	diff := int(math.Abs(float64(to - from)))
+	n := int(time.Now().Unix())
+	back_f := n - int(from)
+	back_t := n - int(to)
 	for _, res := range cass.resolutions {
-		if diff < res[1] {
+		if diff < res[1] && back_f < res[1] && back_t < res[1] {
 			return res[0]
 		}
 	}
@@ -119,6 +133,8 @@ func (cass *CassandraReader) ExpandNonRegex(metric string) (MetricExpandItem, er
 
 // Expand simply pulls out any regexes into full form
 func (cass *CassandraReader) Expand(metric string) (MetricExpandItem, error) {
+
+	defer stats.StatsdNanoTimeFunc("reader.cassandra.expand.get-time-ns", time.Now())
 
 	has_reg := regexp.MustCompile(`\*|\{|\}|\[|\]`)
 	needs_regex := has_reg.Match([]byte(metric))
@@ -163,16 +179,20 @@ func (cass *CassandraReader) Expand(metric string) (MetricExpandItem, error) {
 
 func (cass *CassandraReader) RenderOne(path string, from string, to string) (WhisperRenderItem, error) {
 
+	defer stats.StatsdNanoTimeFunc("reader.cassandra.renderone.get-time-ns", time.Now())
+
 	var whis WhisperRenderItem
 
 	start, err := ParseTime(from)
 	if err != nil {
 		cass.log.Error("Invalid from time `%s` :: %v", from, err)
+		return whis, err
 	}
 
 	end, err := ParseTime(to)
 	if err != nil {
-		cass.log.Error("Invalid from time `%s` :: %v", from, err)
+		cass.log.Error("Invalid from time `%s` :: %v", to, err)
+		return whis, err
 	}
 	if end < start {
 		start, end = end, start
@@ -194,12 +214,27 @@ func (cass *CassandraReader) RenderOne(path string, from string, to string) (Whi
 
 	first_t := int(start)
 	last_t := int(end)
+
 	for _, metric := range metrics {
 		if metric.Leaf == 0 { //data only
 			continue
 		}
 		b_len := int(end-start) / resolution //just to be safe
 		if b_len <= 0 {
+			continue
+		}
+
+		// check our cache
+		cache_id := fmt.Sprintf("%s-%s-%s", metric.Id, from, to)
+		//cass.log.Critical("Cache  Key %s", cache_id)
+		gots, ok := cass.datacache.Get(cache_id)
+		if ok {
+			// cast the punk
+			data := gots.(WhisperRenderCacher).Data
+			series[metric.Id] = data
+			first_t = data[0].Time
+			last_t = data[len(data)-1].Time
+			cass.log.Critical("Got Cache %s", cache_id)
 			continue
 		}
 
@@ -221,19 +256,16 @@ func (cass *CassandraReader) RenderOne(path string, from string, to string) (Whi
 		m_key := metric.Id
 
 		d_points := make([]DataPoint, b_len)
-		//step_map := make(map[int64]DataPoint)
-
-		// sorting order for the table is time ASC (i.e. first_t == first entry)
 
 		// Since graphite does not care about the actual time stamp, but assumes
-		// a "constant step" in time.  We figure out the
-		// "step" -> Point mapping which for this system may not be exactly at
-		// step intervals, so since data may not nessesarily "be there" for a given
+		// a "constant step" in time. Since data may not nessesarily "be there" for a given
 		// interval we need to "insert nils" for steps that don't really exist
 		// as basically (start - end) / resolution needs to match
 		// the vector length, in effect we need to "interpolate" the vector to match sizes
 
 		ct := 0
+		// sorting order for the table is time ASC (i.e. first_t == first entry)
+
 		for iter.Scan(&mean, &max, &min, &sum, &t) {
 			on_t := int(t / nano) // back convert to seconds
 			d_point := NewDataPoint(on_t, mean)
@@ -247,7 +279,7 @@ func (cass *CassandraReader) RenderOne(path string, from string, to string) (Whi
 				d_points = _t_pts
 			}
 			d_points[ct] = d_point
-
+			//cass.log.Critical("POINT %s time:%d data:%f", metric.Id, on_t, mean)
 			ct++
 			last_t = on_t
 		}
@@ -256,13 +288,13 @@ func (cass *CassandraReader) RenderOne(path string, from string, to string) (Whi
 			cass.log.Error("Render: Failure closing iterator: %v", err)
 		}
 
-		if len(d_points) > 0 {
+		if len(d_points) > 0 && d_points[0].Time > 0 {
 			first_t = d_points[0].Time
 		}
-		// now for the interpolation bit .. just assume linear as we hope metric points are
-		// luckily things are "sorted" already (or should be)
-		// XXX HOPEFULLY there are usually FEWER or as much "real" data then not
-		//
+
+		// now for the interpolation bit .. basically leaving "times that have no data as nulls"
+		// XXX HOPEFULLY there are usually FEWER or as much "real" data then "wanted" by the resolution
+		// if there's not :boom: and you should really keep tabs on who is messing with your data in the DB
 		interp_vec := make([]DataPoint, b_len)
 		cur_step_time := int(start)
 
@@ -273,21 +305,19 @@ func (cass *CassandraReader) RenderOne(path string, from string, to string) (Whi
 			cur_step_time += resolution
 
 			for ; j < ct; j++ {
-				//cass.log.Critical("Start:%d, End:%d, d_points: %d interp_vec: %d  IIdx: %d Jidx: %d ", start, end-start, d_points[j].Time-int(start), cur_step_time-int(start), i, j)
 				if d_points[j].Time <= cur_step_time {
 					interp_vec[i].Value = d_points[j].Value
+					interp_vec[i].Time = d_points[j].Time //this is the "real" time, graphite does not care, but something might
 					j++
-					break
-				} else {
-					break
 				}
+				break
 			}
 
 		}
 
 		series[m_key] = interp_vec
 
-		cass.log.Critical("METR: %s Start: %d END: %d LEN: %d", metric.Id, first_t, last_t, len(d_points))
+		//cass.log.Critical("METR: %s Start: %d END: %d LEN: %d GotLen: %d", metric.Id, first_t, last_t, len(d_points), ct)
 	}
 
 	whis.Series = series
@@ -298,6 +328,8 @@ func (cass *CassandraReader) RenderOne(path string, from string, to string) (Whi
 }
 
 func (cass *CassandraReader) Render(path string, from string, to string) (WhisperRenderItem, error) {
+
+	defer stats.StatsdNanoTimeFunc("reader.cassandra.render.get-time-ns", time.Now())
 
 	var whis WhisperRenderItem
 	whis.Series = make(map[string][]DataPoint)
@@ -337,6 +369,8 @@ func (cass *CassandraReader) Render(path string, from string, to string) (Whispe
 
 // basic find for non-regex items
 func (cass *CassandraReader) FindNonRegex(metric string) (MetricFindItems, error) {
+
+	defer stats.StatsdNanoTimeFunc("reader.cassandra.findnoregex.get-time-ns", time.Now())
 
 	// since there are and regex like things in the strings, we
 	// need to get the all "items" from where the regex starts then hone down
@@ -396,6 +430,7 @@ func (cass *CassandraReader) FindNonRegex(metric string) (MetricFindItems, error
 
 // special case for "root" == "*" finder
 func (cass *CassandraReader) FindRoot() (MetricFindItems, error) {
+	defer stats.StatsdNanoTimeFunc("reader.cassandra.findroot.get-time-ns", time.Now())
 
 	cass_Q := fmt.Sprintf(
 		"SELECT segment FROM %s WHERE pos=?",
@@ -434,6 +469,7 @@ func (cass *CassandraReader) Find(metric string) (MetricFindItems, error) {
 	// the regex case is a bit more complicated as we need to grab ALL the segments of a given length.
 	// see if the match the regex, and then add them to the lists since cassandra does not provide regex abilities
 	// on the server side
+	defer stats.StatsdNanoTimeFunc("reader.cassandra.find.get-time-ns", time.Now())
 
 	// special case for "root" == "*"
 
@@ -482,7 +518,7 @@ func (cass *CassandraReader) Find(metric string) (MetricFindItems, error) {
 	var seg string
 	// just grab the "n+1" length ones
 	for iter.Scan(&seg) {
-		cass.log.Debug("REG:::::PATH %s", seg)
+		//cass.log.Debug("REG:::::PATH %s", seg)
 
 		if !the_reg.Match([]byte(seg)) {
 			continue

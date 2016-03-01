@@ -5,6 +5,7 @@
 package readers
 
 import (
+	"consthash/server/stats"
 	"encoding/json"
 	"fmt"
 	"github.com/BurntSushi/toml"
@@ -12,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 )
 
 type ReaderConfigOptions struct {
@@ -22,6 +24,7 @@ type ReaderConfigOptions struct {
 
 type ReaderConfig struct {
 	Listen      string              `toml:"listen"`
+	Logfile     string              `toml:"log_file"`
 	BasePath    string              `toml:"base_path"`
 	ReadOptions ReaderConfigOptions `toml:"reader"`
 }
@@ -68,7 +71,11 @@ func ParseConfigString(inconf string) (rl *ReaderLoop, err error) {
 }
 
 func (re *ReaderLoop) Config(conf ReaderConfig) (err error) {
+	if conf.Logfile == "" {
+		conf.Logfile = "stdout"
+	}
 	re.Conf = conf
+
 	re.Reader, err = conf.GetReader()
 	if err != nil {
 		return err
@@ -98,6 +105,8 @@ func (re *ReaderLoop) SetResolutions(res [][]int) {
 }
 
 func (re *ReaderLoop) OutError(w http.ResponseWriter, msg string, code int) {
+
+	defer stats.StatsdClient.Incr("reader.http.errors", 1)
 	w.Header().Set("Cache-Control", "private, max-age=0, no-cache")
 	http.Error(w, msg, code)
 	re.log.Error(msg)
@@ -105,6 +114,7 @@ func (re *ReaderLoop) OutError(w http.ResponseWriter, msg string, code int) {
 
 func (re *ReaderLoop) OutJson(w http.ResponseWriter, data interface{}) {
 	// cache theses things for 60 secs
+	defer stats.StatsdClient.Incr("reader.http.ok", 1)
 	w.Header().Set("Cache-Control", "public, max-age=60, cache")
 
 	stats, err := json.Marshal(data)
@@ -116,6 +126,7 @@ func (re *ReaderLoop) OutJson(w http.ResponseWriter, data interface{}) {
 }
 
 func (re *ReaderLoop) Find(w http.ResponseWriter, r *http.Request) {
+	defer stats.StatsdNanoTimeFunc("reader.http.find.get-time-ns", time.Now())
 	r.ParseForm()
 	var query string
 
@@ -136,6 +147,7 @@ func (re *ReaderLoop) Find(w http.ResponseWriter, r *http.Request) {
 }
 
 func (re *ReaderLoop) Expand(w http.ResponseWriter, r *http.Request) {
+	defer stats.StatsdNanoTimeFunc("reader.http.expand.get-time-ns", time.Now())
 	r.ParseForm()
 	var query string
 
@@ -159,6 +171,9 @@ func (re *ReaderLoop) Expand(w http.ResponseWriter, r *http.Request) {
 }
 
 func (re *ReaderLoop) Render(w http.ResponseWriter, r *http.Request) {
+
+	defer stats.StatsdNanoTimeFunc("reader.http.render.get-time-ns", time.Now())
+
 	r.ParseForm()
 	var target string
 	var from string
@@ -214,7 +229,19 @@ func (re *ReaderLoop) Start() {
 	mux.HandleFunc(re.Conf.BasePath+"metrics", re.Render)
 
 	mux.HandleFunc("/", re.NoOp)
+	var outlog *os.File
+	var err error
+	if re.Conf.Logfile == "stderr" {
+		outlog = os.Stderr
+	} else if re.Conf.Logfile == "stdout" {
+		outlog = os.Stdout
+	} else if re.Conf.Logfile != "none" {
+		outlog, err = os.OpenFile(re.Conf.Logfile, os.O_APPEND|os.O_WRONLY, 0666)
+		if err != nil {
+			log.Error("Could not open Logfile %s, setting to stdout", re.Conf.Listen)
+			outlog = os.Stdout
 
-	outlog := os.Stdout
+		}
+	}
 	http.ListenAndServe(re.Conf.Listen, WriteLog(mux, outlog))
 }

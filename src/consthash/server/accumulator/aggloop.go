@@ -75,7 +75,10 @@ func (agg *AggregateLoop) SetReader(conf readers.ReaderConfig) error {
 	// set the resolution bits
 	var res [][]int
 	for idx, dur := range agg.FlushTimes {
-		res = append(res, []int{int(dur.Seconds()), int(agg.TTLTimes[idx].Seconds())})
+		res = append(res, []int{
+			int(dur.Seconds()),
+			int(agg.TTLTimes[idx].Seconds()),
+		})
 	}
 	rl.SetResolutions(res)
 	rl.SetBasePath(conf.BasePath)

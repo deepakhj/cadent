@@ -357,6 +357,43 @@ General Schema
         AND speculative_retry = '99.0PERCENTILE';
 
 
+### Readers
+
+Readers are an attempt to imitate the Graphite API bits and include 3 main endpoints
+
+    /{root}/find  -- find paths ( ?query=path.*.to.my.*.metric )
+    /{root}/expand -- expand a tree ( ?query=path.*.to.my.*.metric )
+    /{root}/metrics -- get the actuall metrics ( ?target=path.*.to.my.*.metric&from=time&to=time )
+
+Unlike the Whisper file format which keeps "nils" for no data (i.e. a round robin DB with a fixed step size and known counts),
+the mature of the metrics in our variou backends write points at what ever the flush time is, and if there is nothing to write
+does not write "nils" so the `/metrics` endpoint has to return an interpolated set of data to attempt to match what graphite expects
+(this is more a warning for those that may notice some time shifting in some data)
+
+#### Cassandra
+
+Currently the only reader, configed in the PreReg `Accumulator` section as follows
+
+    [statsd.accumulator.reader]
+    driver = "cassandra"
+    dsn = "192.168.99.100"
+    base_path = "/graphite/"
+    listen = "0.0.0.0:8083"
+    
+This will fire up a http server listening on port 8083 for those 3 endpoints above.  In order to get graphite to "understand" this endpoint you can use
+either "graphite-web" or "graphite-api". And you will need the the forth coming module for it (based on the cyanite one)
+
+For graphite-web you'll need to add these in the settings (based on the settings above)
+
+    STORAGE_FINDERS = (
+       'cyanite.CyaniteFinder',
+    )
+    CYANITE_TIMEZONE="America/Los_Angeles"
+    CYANITE_URLS = (
+        'http://localhost:8083/graphite',
+    )
+
+
 
 ### Listen Server Types
 

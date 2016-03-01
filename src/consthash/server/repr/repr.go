@@ -46,11 +46,20 @@ type StatRepr struct {
 // backend "slows down" or stops responding for a while
 //
 type ReprList struct {
-	Reprs []StatRepr `json:"stats"`
+	MinTime time.Time  `json:"min_time"`
+	MaxTime time.Time  `json:"max_time"`
+	Reprs   []StatRepr `json:"stats"`
 }
 
 func (s *ReprList) Add(stat StatRepr) StatRepr {
 	s.Reprs = append(s.Reprs, stat)
+	if stat.Time.Second() > s.MaxTime.Second() {
+		s.MaxTime = stat.Time
+	}
+	// first one added is the first time
+	if s.MinTime.Second() == 0 {
+		s.MinTime = stat.Time
+	}
 	return stat
 }
 

@@ -108,7 +108,7 @@ func (cass *CassandraDB) Config(conf map[string]interface{}) (err error) {
 		numcons = _numcons.(int)
 	}
 
-	// cassandra does not like batch of large proportions .. so this is rather "not relevent
+	// cassandra does not like batch of large proportions .. so this is rather "not relevant"
 	// and we need to insert things One At A Time
 	/*
 		_wr_buffer := conf["batch_count"]
