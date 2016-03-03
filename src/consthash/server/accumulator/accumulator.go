@@ -26,6 +26,7 @@ import (
 	repr "consthash/server/repr"
 	splitter "consthash/server/splitter"
 	stats "consthash/server/stats"
+	writers "consthash/server/writers"
 	"fmt"
 	logging "gopkg.in/op/go-logging.v1"
 	"sync"
@@ -114,7 +115,7 @@ func NewAccumlator(inputtype string, outputtype string, keepkeys bool) (*Accumul
 }
 
 // create the overlord aggregator
-func (acc *Accumulator) SetAggregateLoop(conf AccumulatorWriter) (agg *AggregateLoop, err error) {
+func (acc *Accumulator) SetAggregateLoop(conf writers.WriterConfig) (agg *AggregateLoop, err error) {
 	acc.Aggregators, err = NewAggregateLoop(acc.FlushTimes, acc.TTLTimes, acc.Name)
 	if err != nil {
 		return nil, err

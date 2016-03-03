@@ -22,7 +22,7 @@ const (
 	DEFAULT_INDEX_STATS_FILE = "index.html"
 )
 
-// compile passing -ldflags "-X main.Build <build sha1>"
+// compile passing -ldflags "-X main.ConstHashBuild <build sha1>"
 var ConstHashBuild string
 
 var log = logging.MustGetLogger("main")

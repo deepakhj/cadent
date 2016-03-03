@@ -171,6 +171,7 @@ type Server struct {
 	BytesWrittenCount    stats.StatCount
 	BytesReadCount       stats.StatCount
 	NumStats             uint
+	ShowStats            bool
 
 	// our bound connection if TCP or UnixSocket
 	Connection net.Listener
@@ -795,40 +796,40 @@ func (server *Server) tickDisplay() {
 		case <-ticker.C:
 			server.stats.mu.Lock()
 			server.StatsTick()
-
-			server.log.Info("Server: ValidLineCount: %d", server.ValidLineCount.TotalCount.Get())
-			server.log.Info("Server: WorkerValidLineCount: %d", server.WorkerValidLineCount.TotalCount.Get())
-			server.log.Info("Server: InvalidLineCount: %d", server.InvalidLineCount.TotalCount.Get())
-			server.log.Info("Server: SuccessSendCount: %d", server.SuccessSendCount.TotalCount.Get())
-			server.log.Info("Server: FailSendCount: %d", server.FailSendCount.TotalCount.Get())
-			server.log.Info("Server: UnsendableSendCount: %d", server.UnsendableSendCount.TotalCount.Get())
-			server.log.Info("Server: UnknownSendCount: %d", server.UnknownSendCount.TotalCount.Get())
-			server.log.Info("Server: AllLinesCount: %d", server.AllLinesCount.TotalCount.Get())
-			server.log.Info("Server: BytesReadCount: %d", server.BytesReadCount.TotalCount.Get())
-			server.log.Info("Server: BytesWrittenCount: %d", server.BytesWrittenCount.TotalCount.Get())
-			server.log.Info("Server: GO Routines Running: %d", runtime.NumGoroutine())
-			server.log.Info("Server: Current Buffer Size: %d/%d bytes", server.CurrentReadBufferRam.Get(), server.MaxReadBufferSize)
-			server.log.Info("Server: Current Out Work Queue length: %d", len(server.WorkQueue))
-			server.log.Info("Server: Current Input Queue length: %d", len(server.InputQueue))
-			server.log.Info("-------")
-			server.log.Info("Server Rate: Duration %ds", uint64(server.ticker/time.Second))
-			server.log.Info("Server Rate: ValidLineCount: %.2f/s", server.ValidLineCount.Rate(server.ticker))
-			server.log.Info("Server Rate: WorkerLineCount: %.2f/s", server.WorkerValidLineCount.Rate(server.ticker))
-			server.log.Info("Server Rate: InvalidLineCount: %.2f/s", server.InvalidLineCount.Rate(server.ticker))
-			server.log.Info("Server Rate: SuccessSendCount: %.2f/s", server.SuccessSendCount.Rate(server.ticker))
-			server.log.Info("Server Rate: FailSendCount: %.2f/s", server.FailSendCount.Rate(server.ticker))
-			server.log.Info("Server Rate: UnsendableSendCount: %.2f/s", server.UnsendableSendCount.Rate(server.ticker))
-			server.log.Info("Server Rate: UnknownSendCount: %.2f/s", server.UnknownSendCount.Rate(server.ticker))
-			server.log.Info("Server Rate: RejectedSendCount: %.2f/s", server.RejectedLinesCount.Rate(server.ticker))
-			server.log.Info("Server Rate: RedirectedSendCount: %.2f/s", server.RedirectedLinesCount.Rate(server.ticker))
-			server.log.Info("Server Rate: AllLinesCount: %.2f/s", server.AllLinesCount.Rate(server.ticker))
-			server.log.Info("Server Rate: BytesReadCount: %.2f/s", server.BytesReadCount.Rate(server.ticker))
-			server.log.Info("Server Rate: BytesWrittenCount: %.2f/s", server.BytesWrittenCount.Rate(server.ticker))
-			server.log.Info("Server Send Method:: %s", server.SendingConnectionMethod)
-			for idx, pool := range server.Outpool {
-				server.log.Info("Free Connections in Pools [%s]: %d/%d", idx, pool.NumFree(), pool.GetMaxConnections())
+			if server.ShowStats {
+				server.log.Info("Server: ValidLineCount: %d", server.ValidLineCount.TotalCount.Get())
+				server.log.Info("Server: WorkerValidLineCount: %d", server.WorkerValidLineCount.TotalCount.Get())
+				server.log.Info("Server: InvalidLineCount: %d", server.InvalidLineCount.TotalCount.Get())
+				server.log.Info("Server: SuccessSendCount: %d", server.SuccessSendCount.TotalCount.Get())
+				server.log.Info("Server: FailSendCount: %d", server.FailSendCount.TotalCount.Get())
+				server.log.Info("Server: UnsendableSendCount: %d", server.UnsendableSendCount.TotalCount.Get())
+				server.log.Info("Server: UnknownSendCount: %d", server.UnknownSendCount.TotalCount.Get())
+				server.log.Info("Server: AllLinesCount: %d", server.AllLinesCount.TotalCount.Get())
+				server.log.Info("Server: BytesReadCount: %d", server.BytesReadCount.TotalCount.Get())
+				server.log.Info("Server: BytesWrittenCount: %d", server.BytesWrittenCount.TotalCount.Get())
+				server.log.Info("Server: GO Routines Running: %d", runtime.NumGoroutine())
+				server.log.Info("Server: Current Buffer Size: %d/%d bytes", server.CurrentReadBufferRam.Get(), server.MaxReadBufferSize)
+				server.log.Info("Server: Current Out Work Queue length: %d", len(server.WorkQueue))
+				server.log.Info("Server: Current Input Queue length: %d", len(server.InputQueue))
+				server.log.Info("-------")
+				server.log.Info("Server Rate: Duration %ds", uint64(server.ticker/time.Second))
+				server.log.Info("Server Rate: ValidLineCount: %.2f/s", server.ValidLineCount.Rate(server.ticker))
+				server.log.Info("Server Rate: WorkerLineCount: %.2f/s", server.WorkerValidLineCount.Rate(server.ticker))
+				server.log.Info("Server Rate: InvalidLineCount: %.2f/s", server.InvalidLineCount.Rate(server.ticker))
+				server.log.Info("Server Rate: SuccessSendCount: %.2f/s", server.SuccessSendCount.Rate(server.ticker))
+				server.log.Info("Server Rate: FailSendCount: %.2f/s", server.FailSendCount.Rate(server.ticker))
+				server.log.Info("Server Rate: UnsendableSendCount: %.2f/s", server.UnsendableSendCount.Rate(server.ticker))
+				server.log.Info("Server Rate: UnknownSendCount: %.2f/s", server.UnknownSendCount.Rate(server.ticker))
+				server.log.Info("Server Rate: RejectedSendCount: %.2f/s", server.RejectedLinesCount.Rate(server.ticker))
+				server.log.Info("Server Rate: RedirectedSendCount: %.2f/s", server.RedirectedLinesCount.Rate(server.ticker))
+				server.log.Info("Server Rate: AllLinesCount: %.2f/s", server.AllLinesCount.Rate(server.ticker))
+				server.log.Info("Server Rate: BytesReadCount: %.2f/s", server.BytesReadCount.Rate(server.ticker))
+				server.log.Info("Server Rate: BytesWrittenCount: %.2f/s", server.BytesWrittenCount.Rate(server.ticker))
+				server.log.Info("Server Send Method:: %s", server.SendingConnectionMethod)
+				for idx, pool := range server.Outpool {
+					server.log.Info("Free Connections in Pools [%s]: %d/%d", idx, pool.NumFree(), pool.GetMaxConnections())
+				}
 			}
-
 			server.ResetTickers()
 			server.stats.mu.Unlock()
 
@@ -1357,8 +1358,9 @@ func CreateServer(cfg *Config, hashers []*ConstHasher) (*Server, error) {
 
 	//start tickin'
 	if cfg.StatsTick {
-		go server.tickDisplay()
+		server.ShowStats = true
 	}
+	go server.tickDisplay()
 
 	server.TrapExit() //trappers
 

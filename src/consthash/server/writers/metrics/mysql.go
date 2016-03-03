@@ -12,36 +12,21 @@ CREATE TABLE `{path_table}` (
   KEY `length` (`length`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `{table}{table_prefix}` (
-  `id` int(11) unsigned NOT NULL AUTO_INCREMENT,
-  `stat` varchar(255) NOT NULL DEFAULT '',
-  `sum` float NOT NULL,
-  `mean` float NOT NULL,
-  `min` float NOT NULL,
-  `max` float NOT NULL,
-  `count` float NOT NULL,
-  `resolution` int(11) NOT NULL,
-  `time` datetime(3) NOT NULL,
-  PRIMARY KEY (`id`),
-  KEY `stat` (`stat`),
-  KEY `time` (`time`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
-
 	OPTIONS: For `Config`
 
 		table: base table name (default: metrics)
-		path_table: base table name (default: metric_path)
 		prefix: table prefix if any (_1s, _5m)
 		batch_count: batch this many inserts for much faster insert performance (default 1000)
 		periodic_flush: regardless of if batch_count met always flush things at this interval (default 1s)
 
 */
 
-package writers
+package metrics
 
 import (
-	"consthash/server/dbs"
 	"consthash/server/repr"
+	"consthash/server/writers/dbs"
+	"consthash/server/writers/indexer"
 	"database/sql"
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
@@ -57,9 +42,11 @@ type MyPath struct {
 }
 
 /****************** Interfaces *********************/
-type MySQLWriter struct {
-	db   *dbs.MySQLDB
-	conn *sql.DB
+type MySQLMetrics struct {
+	db          *dbs.MySQLDB
+	conn        *sql.DB
+	indexer     indexer.Indexer
+	resolutions [][]int
 
 	write_list     []repr.StatRepr // buffer the writes so as to do "multi" inserts per query
 	max_write_size int             // size of that buffer before a flush
@@ -69,13 +56,13 @@ type MySQLWriter struct {
 	log *logging.Logger
 }
 
-func NewMySQLWriter() *MySQLWriter {
-	my := new(MySQLWriter)
+func NewMySQLMetrics() *MySQLMetrics {
+	my := new(MySQLMetrics)
 	my.log = logging.MustGetLogger("writers.mysql")
 	return my
 }
 
-func (my *MySQLWriter) Config(conf map[string]interface{}) error {
+func (my *MySQLMetrics) Config(conf map[string]interface{}) error {
 	gots := conf["dsn"]
 	if gots == nil {
 		return fmt.Errorf("`dsn` (user:pass@tcp(host:port)/db) is needed for mysql config")
@@ -113,7 +100,19 @@ func (my *MySQLWriter) Config(conf map[string]interface{}) error {
 	return nil
 }
 
-func (my *MySQLWriter) PeriodFlush() {
+func (my *MySQLMetrics) SetIndexer(idx indexer.Indexer) error {
+	my.indexer = idx
+	return nil
+}
+
+// Resoltuions should be of the form
+// [BinTime, TTL]
+// we select the BinTime based on the TTL
+func (my *MySQLMetrics) SetResolutions(res [][]int) {
+	my.resolutions = res
+}
+
+func (my *MySQLMetrics) PeriodFlush() {
 	for {
 		time.Sleep(my.max_idle)
 		my.Flush()
@@ -121,7 +120,7 @@ func (my *MySQLWriter) PeriodFlush() {
 	return
 }
 
-func (my *MySQLWriter) Flush() (int, error) {
+func (my *MySQLMetrics) Flush() (int, error) {
 	my.write_lock.Lock()
 	defer my.write_lock.Unlock()
 
@@ -193,7 +192,7 @@ func (my *MySQLWriter) Flush() (int, error) {
 	return l, nil
 }
 
-func (my *MySQLWriter) Write(stat repr.StatRepr) error {
+func (my *MySQLMetrics) Write(stat repr.StatRepr) error {
 
 	if len(my.write_list) > my.max_write_size {
 		_, err := my.Flush()
@@ -207,4 +206,10 @@ func (my *MySQLWriter) Write(stat repr.StatRepr) error {
 	defer my.write_lock.Unlock()
 	my.write_list = append(my.write_list, stat)
 	return nil
+}
+
+/**** READER ***/
+// XXX TODO
+func (my *MySQLMetrics) Render(path string, from string, to string) (WhisperRenderItem, error) {
+	return WhisperRenderItem{}, fmt.Errorf("MYSQL READER NOT YET DONE")
 }

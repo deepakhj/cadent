@@ -319,11 +319,11 @@ General Schema
         segment frozen<segment_pos>,
         path text,
         length int,
-        has_data bool,
+        has_data boolean,
         PRIMARY KEY (segment, path, has_data)
     ) WITH CLUSTERING ORDER BY (path ASC)
         AND bloom_filter_fp_chance = 0.01
-        AND caching = '{"keys":"ALL", "rows_per_partition":"NONE"}'
+        AND caching = {'keys':'ALL', 'rows_per_partition':'NONE'}
         AND comment = ''
         AND compaction = {'class': 'org.apache.cassandra.db.compaction.SizeTieredCompactionStrategy'}
         AND compression = {'sstable_compression': 'org.apache.cassandra.io.compress.LZ4Compressor'}
@@ -343,7 +343,7 @@ General Schema
     ) WITH COMPACT STORAGE
         AND CLUSTERING ORDER BY (segment ASC)
         AND bloom_filter_fp_chance = 0.01
-        AND caching = '{"keys":"ALL", "rows_per_partition":"NONE"}'
+        AND caching = {'keys':'ALL', 'rows_per_partition':'NONE'}
         AND comment = ''
         AND compaction = {'class': 'org.apache.cassandra.db.compaction.SizeTieredCompactionStrategy'}
         AND compression = {'sstable_compression': 'org.apache.cassandra.io.compress.LZ4Compressor'}
@@ -357,7 +357,7 @@ General Schema
         AND speculative_retry = '99.0PERCENTILE';
 
 
-### Readers
+### API/Readers
 
 Readers are an attempt to imitate the Graphite API bits and include 3 main endpoints
 
@@ -366,19 +366,58 @@ Readers are an attempt to imitate the Graphite API bits and include 3 main endpo
     /{root}/metrics -- get the actuall metrics ( ?target=path.*.to.my.*.metric&from=time&to=time )
 
 Unlike the Whisper file format which keeps "nils" for no data (i.e. a round robin DB with a fixed step size and known counts),
-the mature of the metrics in our variou backends write points at what ever the flush time is, and if there is nothing to write
+the mature of the metrics in our various backends write points at what ever the flush time is, and if there is nothing to write
 does not write "nils" so the `/metrics` endpoint has to return an interpolated set of data to attempt to match what graphite expects
 (this is more a warning for those that may notice some time shifting in some data)
 
 #### Cassandra
 
-Currently the only reader, configed in the PreReg `Accumulator` section as follows
+Currently the only reader, configured in the PreReg `Accumulator` section as follows
 
-    [statsd.accumulator.reader]
-    driver = "cassandra"
-    dsn = "192.168.99.100"
-    base_path = "/graphite/"
-    listen = "0.0.0.0:8083"
+    [statsd-regex-map]
+    listen_server="statsd-proxy" # which listener to sit in front of  (must be in the main config)
+    default_backend="statsd-proxy"  # failing a match go here
+    
+        [statsd-regex-map.accumulator]
+        backend = "BLACKHOLE"  # we are just writing to cassandra
+        input_format = "statsd"
+        output_format = "graphite"
+        #keep_keys = true  #  will constantly emit "0" for metrics that have not arrived
+    
+    
+        # options for statsd input formats (for outputs)
+        options = [
+            ["legacyNamespace", "true"],
+            ["prefixGauge", "g"],
+            ["prefixTimer", "t"],
+            ["prefixCounter", "c"],
+            ["globalPrefix", "ss"],
+            ["globalSuffix", "test"],
+            ["percentThreshold", "0.75,0.90,0.95,0.99"]
+        ]
+    
+        # aggregate bin counts
+        times = ["5s:168h", "1m:720h"]
+           
+        # writer of indexes and metrics (happen to be the same data source)
+        [statsd-regex-map.accumulator.writer.metrics]
+            driver = "cassandra"
+            dsn = "192.168.99.100"
+        [statsd-regex-map.accumulator.writer.indexer]
+            driver = "cassandra"
+            dsn = "192.168.99.100"
+    
+        # API options (yes they are the same as above, but there's nothing saying it has to be)
+        [statsd-regex-map.accumulator.api]
+            base_path = "/graphite/"
+            listen = "0.0.0.0:8083"
+            [statsd-regex-map.accumulator.api.metrics]
+                driver = "cassandra"
+                dsn = "192.168.99.100"
+            [statsd-regex-map.accumulator.api.indexer]
+                driver = "cassandra"
+                dsn = "192.168.99.100"
+
     
 This will fire up a http server listening on port 8083 for those 3 endpoints above.  In order to get graphite to "understand" this endpoint you can use
 either "graphite-web" or "graphite-api". And you will need the the forth coming module for it (based on the cyanite one)

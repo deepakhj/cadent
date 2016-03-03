@@ -1,85 +1,124 @@
 /*
-   Fire up an HTTP server for using readers
+   Fire up an HTTP server for an http interface to the
+
+   metrics/indexer interfaces
 */
 
-package readers
+package writers
 
 import (
 	"consthash/server/stats"
+	"consthash/server/writers/indexer"
+	"consthash/server/writers/metrics"
 	"encoding/json"
 	"fmt"
 	"github.com/BurntSushi/toml"
 	"gopkg.in/op/go-logging.v1"
+	golog "log"
 	"net/http"
 	"os"
 	"strings"
 	"time"
 )
 
-type ReaderConfigOptions struct {
+type ApiMetricConfig struct {
 	Driver  string                 `toml:"driver"`
 	DSN     string                 `toml:"dsn"`
 	Options map[string]interface{} `toml:"options"` // option=[ [key, value], [key, value] ...]
 }
 
-type ReaderConfig struct {
-	Listen      string              `toml:"listen"`
-	Logfile     string              `toml:"log_file"`
-	BasePath    string              `toml:"base_path"`
-	ReadOptions ReaderConfigOptions `toml:"reader"`
+type ApiIndexerConfig struct {
+	Driver  string                 `toml:"driver"`
+	DSN     string                 `toml:"dsn"`
+	Options map[string]interface{} `toml:"options"` // option=[ [key, value], [key, value] ...]
 }
 
-func (re *ReaderConfig) GetReader() (Reader, error) {
-	reader, err := NewReader(re.ReadOptions.Driver)
+type ApiConfig struct {
+	Listen            string           `toml:"listen"`
+	Logfile           string           `toml:"log_file"`
+	BasePath          string           `toml:"base_path"`
+	ApiMetricOptions  ApiMetricConfig  `toml:"metrics"`
+	ApiIndexerOptions ApiIndexerConfig `toml:"indexer"`
+}
+
+func (re *ApiConfig) GetMetrics() (metrics.Metrics, error) {
+	reader, err := metrics.NewMetrics(re.ApiMetricOptions.Driver)
 	if err != nil {
 		return nil, err
 	}
-	if re.ReadOptions.Options == nil {
-		re.ReadOptions.Options = make(map[string]interface{})
+	if re.ApiMetricOptions.Options == nil {
+		re.ApiMetricOptions.Options = make(map[string]interface{})
 	}
-	re.ReadOptions.Options["dsn"] = re.ReadOptions.DSN
-	err = reader.Config(re.ReadOptions.Options)
+	re.ApiMetricOptions.Options["dsn"] = re.ApiMetricOptions.DSN
+	err = reader.Config(re.ApiMetricOptions.Options)
 	if err != nil {
 		return nil, err
 	}
 	return reader, nil
 }
 
-type ReaderLoop struct {
-	Conf   ReaderConfig
-	Reader Reader
+func (re *ApiConfig) GetIndexer() (indexer.Indexer, error) {
+	idx, err := indexer.NewIndexer(re.ApiIndexerOptions.Driver)
+	if err != nil {
+		return nil, err
+	}
+	if re.ApiIndexerOptions.Options == nil {
+		re.ApiIndexerOptions.Options = make(map[string]interface{})
+	}
+	re.ApiIndexerOptions.Options["dsn"] = re.ApiIndexerOptions.DSN
+	err = idx.Config(re.ApiIndexerOptions.Options)
+	if err != nil {
+		return nil, err
+	}
+	return idx, nil
+}
+
+type ApiLoop struct {
+	Conf    ApiConfig
+	Metrics metrics.Metrics
+	Indexer indexer.Indexer
 
 	log *logging.Logger
 }
 
-func ParseConfigString(inconf string) (rl *ReaderLoop, err error) {
+func ParseConfigString(inconf string) (rl *ApiLoop, err error) {
 
-	rl = new(ReaderLoop)
+	rl = new(ApiLoop)
 	if _, err := toml.Decode(inconf, &rl.Conf); err != nil {
-		log.Critical("Error decoding config file: %s", err)
 		return nil, err
 	}
 
-	rl.Reader, err = rl.Conf.GetReader()
+	rl.Metrics, err = rl.Conf.GetMetrics()
 	if err != nil {
 		return nil, err
 	}
 
+	rl.Indexer, err = rl.Conf.GetIndexer()
+	if err != nil {
+		return nil, err
+	}
+	rl.Metrics.SetIndexer(rl.Indexer)
 	rl.SetBasePath(rl.Conf.BasePath)
 	rl.log = logging.MustGetLogger("reader.http")
 	return rl, nil
 }
 
-func (re *ReaderLoop) Config(conf ReaderConfig) (err error) {
+func (re *ApiLoop) Config(conf ApiConfig) (err error) {
 	if conf.Logfile == "" {
 		conf.Logfile = "stdout"
 	}
 	re.Conf = conf
 
-	re.Reader, err = conf.GetReader()
+	re.Metrics, err = conf.GetMetrics()
 	if err != nil {
 		return err
 	}
+
+	re.Indexer, err = conf.GetIndexer()
+	if err != nil {
+		return err
+	}
+	re.Metrics.SetIndexer(re.Indexer)
 	re.SetBasePath(conf.BasePath)
 	if re.log == nil {
 		re.log = logging.MustGetLogger("reader.http")
@@ -87,7 +126,7 @@ func (re *ReaderLoop) Config(conf ReaderConfig) (err error) {
 	return nil
 }
 
-func (re *ReaderLoop) SetBasePath(pth string) {
+func (re *ApiLoop) SetBasePath(pth string) {
 	re.Conf.BasePath = pth
 	if len(re.Conf.BasePath) == 0 {
 		re.Conf.BasePath = "/"
@@ -100,11 +139,11 @@ func (re *ReaderLoop) SetBasePath(pth string) {
 	}
 }
 
-func (re *ReaderLoop) SetResolutions(res [][]int) {
-	re.Reader.SetResolutions(res)
+func (re *ApiLoop) SetResolutions(res [][]int) {
+	re.Metrics.SetResolutions(res)
 }
 
-func (re *ReaderLoop) OutError(w http.ResponseWriter, msg string, code int) {
+func (re *ApiLoop) OutError(w http.ResponseWriter, msg string, code int) {
 
 	defer stats.StatsdClient.Incr("reader.http.errors", 1)
 	w.Header().Set("Cache-Control", "private, max-age=0, no-cache")
@@ -112,7 +151,7 @@ func (re *ReaderLoop) OutError(w http.ResponseWriter, msg string, code int) {
 	re.log.Error(msg)
 }
 
-func (re *ReaderLoop) OutJson(w http.ResponseWriter, data interface{}) {
+func (re *ApiLoop) OutJson(w http.ResponseWriter, data interface{}) {
 	// cache theses things for 60 secs
 	defer stats.StatsdClient.Incr("reader.http.ok", 1)
 	w.Header().Set("Cache-Control", "public, max-age=60, cache")
@@ -125,7 +164,7 @@ func (re *ReaderLoop) OutJson(w http.ResponseWriter, data interface{}) {
 	w.Write(stats)
 }
 
-func (re *ReaderLoop) Find(w http.ResponseWriter, r *http.Request) {
+func (re *ApiLoop) Find(w http.ResponseWriter, r *http.Request) {
 	defer stats.StatsdNanoTimeFunc("reader.http.find.get-time-ns", time.Now())
 	r.ParseForm()
 	var query string
@@ -137,7 +176,7 @@ func (re *ReaderLoop) Find(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data, err := re.Reader.Find(query)
+	data, err := re.Indexer.Find(query)
 	if err != nil {
 		re.OutError(w, fmt.Sprintf("%v", err), http.StatusServiceUnavailable)
 		return
@@ -146,7 +185,7 @@ func (re *ReaderLoop) Find(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-func (re *ReaderLoop) Expand(w http.ResponseWriter, r *http.Request) {
+func (re *ApiLoop) Expand(w http.ResponseWriter, r *http.Request) {
 	defer stats.StatsdNanoTimeFunc("reader.http.expand.get-time-ns", time.Now())
 	r.ParseForm()
 	var query string
@@ -162,7 +201,7 @@ func (re *ReaderLoop) Expand(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data, err := re.Reader.Expand(query)
+	data, err := re.Indexer.Expand(query)
 	if err != nil {
 		re.OutError(w, fmt.Sprintf("%v", err), http.StatusServiceUnavailable)
 		return
@@ -170,7 +209,7 @@ func (re *ReaderLoop) Expand(w http.ResponseWriter, r *http.Request) {
 	re.OutJson(w, data)
 }
 
-func (re *ReaderLoop) Render(w http.ResponseWriter, r *http.Request) {
+func (re *ApiLoop) Render(w http.ResponseWriter, r *http.Request) {
 
 	defer stats.StatsdNanoTimeFunc("reader.http.render.get-time-ns", time.Now())
 
@@ -198,7 +237,7 @@ func (re *ReaderLoop) Render(w http.ResponseWriter, r *http.Request) {
 		to = "now"
 	}
 
-	data, err := re.Reader.Render(target, from, to)
+	data, err := re.Metrics.Render(target, from, to)
 	if err != nil {
 		re.OutError(w, fmt.Sprintf("%v", err), http.StatusServiceUnavailable)
 		return
@@ -207,11 +246,11 @@ func (re *ReaderLoop) Render(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-func (re *ReaderLoop) NoOp(w http.ResponseWriter, r *http.Request) {
-	log.Warning("No handler for this URL %s", r.URL)
+func (re *ApiLoop) NoOp(w http.ResponseWriter, r *http.Request) {
+	golog.Fatalf("No handler for this URL %s", r.URL)
 }
 
-func (re *ReaderLoop) Start() {
+func (re *ApiLoop) Start() {
 	mux := http.NewServeMux()
 	re.log.Notice("Starting reader http server on %s, base path: %s", re.Conf.Listen, re.Conf.BasePath)
 
@@ -238,7 +277,7 @@ func (re *ReaderLoop) Start() {
 	} else if re.Conf.Logfile != "none" {
 		outlog, err = os.OpenFile(re.Conf.Logfile, os.O_APPEND|os.O_WRONLY, 0666)
 		if err != nil {
-			log.Error("Could not open Logfile %s, setting to stdout", re.Conf.Listen)
+			golog.Panicf("Could not open Logfile %s, setting to stdout", re.Conf.Listen)
 			outlog = os.Stdout
 
 		}

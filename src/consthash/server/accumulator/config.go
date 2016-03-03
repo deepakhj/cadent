@@ -42,7 +42,7 @@ times = ["5s", "1m", "1h"]
 */
 
 import (
-	readers "consthash/server/readers"
+	writers "consthash/server/writers"
 	"fmt"
 	"github.com/BurntSushi/toml"
 	logging "gopkg.in/op/go-logging.v1"
@@ -57,13 +57,6 @@ const DEFALT_SECTION_NAME = "accumulator"
 const DEFAULT_TTL = 60 * 60 * 24 * 365 * 10 * time.Second
 
 var log = logging.MustGetLogger("accumulator")
-
-// the accumulator can write to other "socket based" backends if desired
-type AccumulatorWriter struct {
-	Driver  string                 `toml:"driver"`
-	DSN     string                 `toml:"dsn"`
-	Options map[string]interface{} `toml:"options"` // option=[ [key, value], [key, value] ...]
-}
 
 // for tagging things if the formatter supports them (influx, or other)
 type AccumulatorTags struct {
@@ -80,8 +73,8 @@ type ConfigAccumulator struct {
 	KeepKeys     bool                 `toml:"keep_keys"` // keeps the keys on flush  "0's" them rather then removal
 	Option       [][]string           `toml:"options"`   // option=[ [key, value], [key, value] ...]
 	Tags         []AccumulatorTags    `toml:"tags"`
-	Writer       AccumulatorWriter    `toml:"writer"`
-	Reader       readers.ReaderConfig `toml:"reader"`           // http server for reading
+	Writer       writers.WriterConfig `toml:"writer"`
+	Reader       writers.ApiConfig    `toml:"api"`              // http server for reading
 	Times        []string             `toml:"times"`            // Aggregate Timers (or the first will be used for Accumulator flushes)
 	AccTimer     string               `toml:"accumulate_flush"` // if specified will be the "main Accumulator" flusher otherwise it will choose the first in the Timers
 
@@ -175,20 +168,21 @@ func (cf *ConfigAccumulator) GetAccumulator() (*Accumulator, error) {
 	}
 
 	// set up the writer it needs to be done AFTER the Keeper times are verified
-	if cf.Writer.Driver != "" {
+	if cf.Writer.Metrics.Driver != "" {
+
+		if cf.Writer.Indexer.Driver == "" {
+			return nil, fmt.Errorf("You need an Indexer config set for a Metric writer")
+		}
 		_, err = ac.SetAggregateLoop(cf.Writer)
 		if err != nil {
 			return nil, err
 		}
+
 	}
 
 	// set up the reader it needs to be done AFTER the Keeper times are verified
 	if cf.Reader.Listen != "" && ac.Aggregators != nil {
-		if cf.Reader.ReadOptions.Driver == "" {
-			// make it the current writer item if not specified
-			cf.Reader.ReadOptions.Driver = cf.Writer.Driver
-			cf.Reader.ReadOptions.DSN = cf.Writer.DSN
-		}
+
 		err = ac.Aggregators.SetReader(cf.Reader)
 		if err != nil {
 			return nil, err

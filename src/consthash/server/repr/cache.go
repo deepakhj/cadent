@@ -1,5 +1,9 @@
 /*
 	FIFO cacher elements
+
+	will keep the last REPR_CACHE_ITEMS metrics with REPR_CACHE_POINTS data points in RAM
+	in an LRU fashion (LRU on the REPR_CACHE_ITEMS access). So keep in minds that REPR_CACHE_ITEMS * REPR_CACHE_POINTS
+	may eat your ram up pretty fast
 */
 
 package repr

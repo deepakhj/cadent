@@ -2,7 +2,7 @@
    Base Json objects to simulate a graphite API response
 */
 
-package readers
+package metrics
 
 import (
 	"fmt"
@@ -11,23 +11,6 @@ import (
 )
 
 /****************** Output structs *********************/
-
-// the basic metric json blob for find
-type MetricFindItem struct {
-	Text          string `json:"text"`
-	Expandable    int    `json:"expandable"`
-	Leaf          int    `json:"leaf"`
-	Id            string `json:"id"`
-	Path          string `json:"path"`
-	AllowChildren int    `json:"allowChildren"`
-}
-
-type MetricFindItems []MetricFindItem
-
-// the basic metric json blob for find
-type MetricExpandItem struct {
-	Results []string `json:"results"`
-}
 
 type DataPoint struct {
 	Time  int

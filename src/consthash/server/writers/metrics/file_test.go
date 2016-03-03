@@ -1,4 +1,4 @@
-package writers
+package metrics
 
 import (
 	"consthash/server/repr"
@@ -16,7 +16,7 @@ func TestFileWriterAccumulator(t *testing.T) {
 		file, _ := ioutil.TempFile("/tmp", "tt")
 		f_name := file.Name()
 		file.Close()
-		fw, _ := NewWriter("file")
+		fw, _ := NewMetrics("file")
 		conf := make(map[string]interface{})
 
 		st := repr.StatRepr{

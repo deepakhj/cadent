@@ -6,28 +6,91 @@ package writers
 
 import (
 	"consthash/server/repr"
+	"consthash/server/writers/indexer"
+	"consthash/server/writers/metrics"
+	"fmt"
+	"time"
 )
 
+// toml config for Metrics
+type WriterMetricConfig struct {
+	Driver  string                 `toml:"driver"`
+	DSN     string                 `toml:"dsn"`
+	Options map[string]interface{} `toml:"options"` // option=[ [key, value], [key, value] ...]
+}
+
+func (wc WriterMetricConfig) NewMetrics(duration time.Duration) (metrics.Metrics, error) {
+
+	mets, err := metrics.NewMetrics(wc.Driver)
+	if err != nil {
+		return nil, err
+	}
+	i_ops := wc.Options
+	if i_ops == nil {
+		i_ops = make(map[string]interface{})
+	}
+	i_ops["dsn"] = wc.DSN
+	i_ops["prefix"] = fmt.Sprintf("_%0.0fs", duration.Seconds())
+	i_ops["resolution"] = duration.Seconds()
+
+	err = mets.Config(i_ops)
+	if err != nil {
+		return nil, err
+	}
+	return mets, nil
+}
+
+// toml config for Indexer
+type WriterIndexerConfig struct {
+	Driver  string                 `toml:"driver"`
+	DSN     string                 `toml:"dsn"`
+	Options map[string]interface{} `toml:"options"` // option=[ [key, value], [key, value] ...]
+}
+
+func (wc WriterIndexerConfig) NewIndexer() (indexer.Indexer, error) {
+	idx, err := indexer.NewIndexer(wc.Driver)
+	if err != nil {
+		return nil, err
+	}
+	i_ops := wc.Options
+	if i_ops == nil {
+		i_ops = make(map[string]interface{})
+	}
+	i_ops["dsn"] = wc.DSN
+	err = idx.Config(i_ops)
+	if err != nil {
+		return nil, err
+	}
+	return idx, nil
+}
+
+type WriterConfig struct {
+	Metrics WriterMetricConfig  `toml:"metrics"`
+	Indexer WriterIndexerConfig `toml:"indexer"`
+}
+
 type WriterLoop struct {
-	writer     Writer
+	metrics    metrics.Metrics
+	indexer    indexer.Indexer
 	write_chan chan repr.StatRepr
 	stop_chan  chan bool
 }
 
-func NewLoop(name string) (loop *WriterLoop, err error) {
+func New() (loop *WriterLoop, err error) {
 	loop = new(WriterLoop)
-	loop.writer, err = NewWriter(name)
-	if err != nil {
-		return nil, err
-	}
-
 	loop.write_chan = make(chan repr.StatRepr, 10000)
 	loop.stop_chan = make(chan bool, 1)
 	return loop, nil
 }
 
-func (loop *WriterLoop) Config(conf map[string]interface{}) error {
-	return loop.writer.Config(conf)
+func (loop *WriterLoop) SetMetrics(mets metrics.Metrics) error {
+	loop.metrics = mets
+	return nil
+}
+
+func (loop *WriterLoop) SetIndexer(idx indexer.Indexer) error {
+	loop.indexer = idx
+	return nil
 }
 
 func (loop *WriterLoop) WriteChan() chan repr.StatRepr {
@@ -38,7 +101,8 @@ func (loop *WriterLoop) procLoop() {
 	for {
 		select {
 		case stat := <-loop.write_chan:
-			loop.writer.Write(stat)
+			loop.indexer.Write(stat.Key)
+			loop.metrics.Write(stat)
 		case <-loop.stop_chan:
 			return
 		}

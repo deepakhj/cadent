@@ -12,10 +12,11 @@
 		rotate_every: Check to rotate the file every interval (default 10s)
 */
 
-package writers
+package metrics
 
 import (
 	"consthash/server/repr"
+	"consthash/server/writers/indexer"
 	"fmt"
 	logging "gopkg.in/op/go-logging.v1"
 	"os"
@@ -24,10 +25,12 @@ import (
 )
 
 /****************** Interfaces *********************/
-type FileWriter struct {
-	fp       *os.File
-	filename string
-	prefix   string
+type FileMetrics struct {
+	fp          *os.File
+	filename    string
+	prefix      string
+	indexer     indexer.Indexer
+	resolutions [][]int
 
 	max_file_size int64 // file rotation
 	write_lock    sync.Mutex
@@ -37,13 +40,25 @@ type FileWriter struct {
 }
 
 // Make a new RotateWriter. Return nil if error occurs during setup.
-func NewFileWriter() *FileWriter {
-	fc := new(FileWriter)
+func NewFileMetrics() *FileMetrics {
+	fc := new(FileMetrics)
 	fc.log = logging.MustGetLogger("writers.file")
 	return fc
 }
 
-func (fi *FileWriter) Config(conf map[string]interface{}) error {
+func (fi *FileMetrics) SetIndexer(idx indexer.Indexer) error {
+	fi.indexer = idx
+	return nil
+}
+
+// Resoltuions should be of the form
+// [BinTime, TTL]
+// we select the BinTime based on the TTL
+func (fi *FileMetrics) SetResolutions(res [][]int) {
+	fi.resolutions = res
+}
+
+func (fi *FileMetrics) Config(conf map[string]interface{}) error {
 	gots := conf["dsn"]
 	if gots == nil {
 		return fmt.Errorf("`dsn` (/path/to/file) needed for FileWriter")
@@ -79,11 +94,11 @@ func (fi *FileWriter) Config(conf map[string]interface{}) error {
 	return nil
 }
 
-func (fi *FileWriter) Filename() string {
+func (fi *FileMetrics) Filename() string {
 	return fi.filename + fi.prefix
 }
 
-func (fi *FileWriter) PeriodicRotate() (err error) {
+func (fi *FileMetrics) PeriodicRotate() (err error) {
 	for {
 		time.Sleep(fi.rotate_check)
 		err := fi.Rotate()
@@ -95,7 +110,7 @@ func (fi *FileWriter) PeriodicRotate() (err error) {
 }
 
 // Perform the actual act of rotating and reopening file.
-func (fi *FileWriter) Rotate() (err error) {
+func (fi *FileMetrics) Rotate() (err error) {
 	fi.write_lock.Lock()
 	defer fi.write_lock.Unlock()
 
@@ -138,13 +153,13 @@ func (fi *FileWriter) Rotate() (err error) {
 	return
 }
 
-func (fi *FileWriter) WriteLine(line string) (int, error) {
+func (fi *FileMetrics) WriteLine(line string) (int, error) {
 	fi.write_lock.Lock()
 	defer fi.write_lock.Unlock()
 	return fi.fp.Write([]byte(line))
 }
 
-func (fi *FileWriter) Write(stat repr.StatRepr) error {
+func (fi *FileMetrics) Write(stat repr.StatRepr) error {
 
 	//	stat\tsum\tmean\tmin\tmax\tcount\tresoltion\ttime
 
@@ -156,4 +171,10 @@ func (fi *FileWriter) Write(stat repr.StatRepr) error {
 	_, err := fi.WriteLine(line)
 
 	return err
+}
+
+/**** READER ***/
+// XXX TODO
+func (my *FileMetrics) Render(path string, from string, to string) (WhisperRenderItem, error) {
+	return WhisperRenderItem{}, fmt.Errorf("FILE READER NOT YET DONE")
 }

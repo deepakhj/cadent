@@ -10,49 +10,32 @@
    Currently just implimenting /find /expand and /render (json only) for graphite-api
 */
 
-package readers
+package metrics
 
 import (
+	"consthash/server/repr"
+	"consthash/server/writers/indexer"
 	logging "gopkg.in/op/go-logging.v1"
 )
 
-var log = logging.MustGetLogger("readers")
+var log = logging.MustGetLogger("metrics")
 
 /****************** Data readers *********************/
 
-type Reader interface {
+type Metrics interface {
 
 	// need to able to set what our resolutions are for ease of resolution picking
 	SetResolutions([][]int)
 
 	Config(map[string]interface{}) error
 
-	// /metrics/find/?query=stats.counters.consthash-graphite.all-1-stats-infra-integ.mfpaws.com.*
-	/*
-			[
-		{
-		text: "accumulator",
-		expandable: 1,
-		leaf: 0,
-		id: "stats.counters.consthash-graphite.all-1-stats-infra-integ.mfpaws.com.accumulator",
-		allowChildren: 1
-		}
-		]
-	*/
-	Find(metric string) (MetricFindItems, error)
+	// need an Indexer 99% of the time to deal with render
+	SetIndexer(indexer.Indexer) error
 
-	// /metric/expand?query=stats.counters.consthash-graphite.all-1-stats-infra-integ.mfpaws.com.success.*
-	/*
-			{
-		results: [
-		"stats.counters.consthash-graphite.all-1-stats-infra-integ.mfpaws.com.success.send",
-		"stats.counters.consthash-graphite.all-1-stats-infra-integ.mfpaws.com.success.sent-bytes",
-		"stats.counters.consthash-graphite.all-1-stats-infra-integ.mfpaws.com.success.valid-lines",
-		"stats.counters.consthash-graphite.all-1-stats-infra-integ.mfpaws.com.success.valid-lines-sent-to-workers"
-		]
-		}
-	*/
-	Expand(metric string) (MetricExpandItem, error)
+	// Writer
+	Write(repr.StatRepr) error
+
+	// Reader
 
 	// /render?target=XXXX&from=-24h&to=now
 	/*

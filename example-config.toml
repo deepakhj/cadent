@@ -8,6 +8,9 @@ pid_file="/tmp/consthash.pid"
 num_procs=0
 
 
+# spit out some stats one 5sec intervals per server
+stats_tick=true
+
 ## if you DO NOT want to pool connections (might be better for certain situations)
 ## `single` -> One connection = one line
 ## `pool` -> Pools connections to each server uses `max_pool_connections` for the pooling amount

@@ -18,7 +18,6 @@ package accumulator
 
 import (
 	broadcast "consthash/server/broadcast"
-	readers "consthash/server/readers"
 	repr "consthash/server/repr"
 	stats "consthash/server/stats"
 	writers "consthash/server/writers"
@@ -43,7 +42,7 @@ type AggregateLoop struct {
 
 	OutWriters []*writers.WriterLoop // write to a DB of some kind on flush
 
-	OutReader *readers.ReaderLoop
+	OutReader *writers.ApiLoop
 
 	log *logging.Logger
 }
@@ -66,8 +65,8 @@ func NewAggregateLoop(flushtimes []time.Duration, ttls []time.Duration, name str
 }
 
 // config the HTTP interface if desired
-func (agg *AggregateLoop) SetReader(conf readers.ReaderConfig) error {
-	rl := new(readers.ReaderLoop)
+func (agg *AggregateLoop) SetReader(conf writers.ApiConfig) error {
+	rl := new(writers.ApiLoop)
 	err := rl.Config(conf)
 	if err != nil {
 		return err
@@ -80,6 +79,7 @@ func (agg *AggregateLoop) SetReader(conf readers.ReaderConfig) error {
 			int(agg.TTLTimes[idx].Seconds()),
 		})
 	}
+
 	rl.SetResolutions(res)
 	rl.SetBasePath(conf.BasePath)
 	agg.OutReader = rl
@@ -87,25 +87,29 @@ func (agg *AggregateLoop) SetReader(conf readers.ReaderConfig) error {
 
 }
 
-func (agg *AggregateLoop) SetWriter(conf AccumulatorWriter) error {
+func (agg *AggregateLoop) SetWriter(conf writers.WriterConfig) error {
+
+	// need only one indexer
+	idx, err := conf.Indexer.NewIndexer()
+	if err != nil {
+		return err
+	}
 
 	// need a writer for each timer loop
 	for _, dur := range agg.FlushTimes {
-		wr, err := writers.NewLoop(conf.Driver)
+		wr, err := writers.New()
 		if err != nil {
 			agg.log.Error("Writer error:: %s", err)
 			return err
 		}
-		ops := conf.Options
-		if ops == nil {
-			ops = make(map[string]interface{})
-		}
-		ops["dsn"] = conf.DSN
-		ops["prefix"] = fmt.Sprintf("_%0.0fs", dur.Seconds())
-		err = wr.Config(ops)
+		mets, err := conf.Metrics.NewMetrics(dur)
 		if err != nil {
 			return err
 		}
+		mets.SetIndexer(idx)
+		wr.SetMetrics(mets)
+		wr.SetIndexer(idx)
+
 		agg.OutWriters = append(agg.OutWriters, wr)
 	}
 	return nil
