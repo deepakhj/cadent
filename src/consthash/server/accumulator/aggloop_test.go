@@ -15,9 +15,8 @@ func TestAccumualtorAggLoop(t *testing.T) {
 	backend = "BLACKHOLE"
 	input_format = "graphite"
 	output_format = "graphite"
-	[keeper]
 	times = ["1s:5s"]
-	[writer]
+	[writer.metrics]
 	driver = "moo"
 	dsn = "/tmp/tt"
 	`
@@ -34,9 +33,8 @@ func TestAccumualtorAggLoop(t *testing.T) {
 	backend = "BLACKHOLE"
 	input_format = "graphite"
 	output_format = "graphite"
-	[keeper]
 	times = ["3s:5s"]
-	[writer]
+	[writer.metrics]
 	driver = "file"
 	dsn = "/tmp/tt"
 	`

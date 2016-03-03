@@ -21,42 +21,45 @@ CREATE TABLE `{path_table}` (
 
 */
 
-package metrics
+package indexer
 
 import (
-	"consthash/server/repr"
 	"consthash/server/writers/dbs"
-	"consthash/server/writers/indexer"
 	"database/sql"
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
 	logging "gopkg.in/op/go-logging.v1"
+	"strings"
 	"sync"
 	"time"
 )
 
+type MyPath struct {
+	Path   string
+	Length int
+}
+
 /****************** Interfaces *********************/
-type MySQLMetrics struct {
+type MySQLIndexer struct {
 	db          *dbs.MySQLDB
 	conn        *sql.DB
-	indexer     indexer.Indexer
 	resolutions [][]int
 
-	write_list     []repr.StatRepr // buffer the writes so as to do "multi" inserts per query
-	max_write_size int             // size of that buffer before a flush
-	max_idle       time.Duration   // either max_write_size will trigger a write or this time passing will
+	write_list     []string      // buffer the writes so as to do "multi" inserts per query
+	max_write_size int           // size of that buffer before a flush
+	max_idle       time.Duration // either max_write_size will trigger a write or this time passing will
 	write_lock     sync.Mutex
 
 	log *logging.Logger
 }
 
-func NewMySQLMetrics() *MySQLMetrics {
-	my := new(MySQLMetrics)
+func NewMySQLIndexer() *MySQLIndexer {
+	my := new(MySQLIndexer)
 	my.log = logging.MustGetLogger("writers.mysql")
 	return my
 }
 
-func (my *MySQLMetrics) Config(conf map[string]interface{}) error {
+func (my *MySQLIndexer) Config(conf map[string]interface{}) error {
 	gots := conf["dsn"]
 	if gots == nil {
 		return fmt.Errorf("`dsn` (user:pass@tcp(host:port)/db) is needed for mysql config")
@@ -94,19 +97,7 @@ func (my *MySQLMetrics) Config(conf map[string]interface{}) error {
 	return nil
 }
 
-func (my *MySQLMetrics) SetIndexer(idx indexer.Indexer) error {
-	my.indexer = idx
-	return nil
-}
-
-// Resoltuions should be of the form
-// [BinTime, TTL]
-// we select the BinTime based on the TTL
-func (my *MySQLMetrics) SetResolutions(res [][]int) {
-	my.resolutions = res
-}
-
-func (my *MySQLMetrics) PeriodFlush() {
+func (my *MySQLIndexer) PeriodFlush() {
 	for {
 		time.Sleep(my.max_idle)
 		my.Flush()
@@ -114,7 +105,7 @@ func (my *MySQLMetrics) PeriodFlush() {
 	return
 }
 
-func (my *MySQLMetrics) Flush() (int, error) {
+func (my *MySQLIndexer) Flush() (int, error) {
 	my.write_lock.Lock()
 	defer my.write_lock.Unlock()
 
@@ -123,45 +114,40 @@ func (my *MySQLMetrics) Flush() (int, error) {
 		return 0, nil
 	}
 
-	Q := fmt.Sprintf(
-		"INSERT INTO %s (stat, sum, mean, min, max, count, resolution, time) VALUES ",
-		my.db.Tablename(),
+	pthQ := fmt.Sprintf(
+		"INSERT IGNORE INTO %s (path, length) VALUES ",
+		my.db.PathTable(),
 	)
 
-	vals := []interface{}{}
+	pvals := []interface{}{}
 
 	for _, stat := range my.write_list {
-		Q += "(?,?,?,?,?,?,?,?), "
-		vals = append(
-			vals, stat.Key, stat.Sum, stat.Mean, stat.Min, stat.Max, stat.Count, stat.Resolution, stat.Time,
-		)
+		pthQ += "(?, ?), "
+		pvals = append(pvals, stat, len(strings.Split(stat, ".")))
 
 	}
-
 	//trim the last ", "
-	Q = Q[0 : len(Q)-2]
+	pthQ = pthQ[0 : len(pthQ)-2]
 
 	//prepare the statement
-	stmt, err := my.conn.Prepare(Q)
+	stmt, err := my.conn.Prepare(pthQ)
 	if err != nil {
-		my.log.Error("Mysql Driver: Metric prepare failed, %v", err)
+		my.log.Error("Mysql Driver: Indexer Path prepare failed, %v", err)
 		return 0, err
 	}
 	defer stmt.Close()
 
 	//format all vals at once
-	_, err = stmt.Exec(vals...)
+	_, err = stmt.Exec(pvals...)
 	if err != nil {
-		my.log.Error("Mysql Driver: Metric insert failed, %v", err)
+		my.log.Error("Mysql Driver: Path insert failed, %v", err)
 		return 0, err
 	}
 
-	my.write_list = nil
-	my.write_list = []repr.StatRepr{}
 	return l, nil
 }
 
-func (my *MySQLMetrics) Write(stat repr.StatRepr) error {
+func (my *MySQLIndexer) Write(skey string) error {
 
 	if len(my.write_list) > my.max_write_size {
 		_, err := my.Flush()
@@ -173,12 +159,16 @@ func (my *MySQLMetrics) Write(stat repr.StatRepr) error {
 	// Flush can cause double locking
 	my.write_lock.Lock()
 	defer my.write_lock.Unlock()
-	my.write_list = append(my.write_list, stat)
+	my.write_list = append(my.write_list, skey)
 	return nil
 }
 
 /**** READER ***/
 // XXX TODO
-func (my *MySQLMetrics) Render(path string, from string, to string) (WhisperRenderItem, error) {
-	return WhisperRenderItem{}, fmt.Errorf("MYSQL READER NOT YET DONE")
+func (my *MySQLIndexer) Find(metric string) (MetricFindItems, error) {
+	return MetricFindItems{}, fmt.Errorf("MYSQL INDEXER NOT YET DONE")
+}
+
+func (my *MySQLIndexer) Expand(metric string) (MetricExpandItem, error) {
+	return MetricExpandItem{}, fmt.Errorf("MYSQL INDEXER NOT YET DONE")
 }

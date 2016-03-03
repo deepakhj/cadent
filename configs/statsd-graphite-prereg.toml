@@ -32,7 +32,7 @@ default_backend="graphite-proxy"
 
     # accumulator and
     [graphite-cassandra.accumulator]
-    backend = "graphite-relay"
+    backend = "graphite-relay"   # this will push stats to the output graphite-relay backend
     input_format = "graphite"
     output_format = "graphite"
     accumulate_flush = "5s"  # push out to writer aggregator collector and the backend every 5s
@@ -40,7 +40,8 @@ default_backend="graphite-proxy"
     # aggregate bin counts
     times = ["10s:168h", "1m:720h"]
 
-        # cassandra api, metrics writer and path indexer
+    # AND write things to the cassandra DB
+    # cassandra api, metrics writer and path indexer
     [graphite-cassandra.accumulator.writer.metrics]
     driver = "cassandra"
     dsn = "metrics-1-cassandra-db-integ.mfpaws.com,metrics-2-cassandra-db-integ.mfpaws.com,metrics-3-cassandra-db-integ.mfpaws.com"
