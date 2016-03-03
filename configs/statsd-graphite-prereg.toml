@@ -40,12 +40,37 @@ default_backend="graphite-proxy"
     # aggregate bin counts
     times = ["10s:168h", "1m:720h"]
 
-        [graphite-cassandra.accumulator.writer]
-        driver = "cassandra"
-        dsn = "metrics-1-cassandra-db-integ.mfpaws.com,metrics-2-cassandra-db-integ.mfpaws.com,metrics-3-cassandra-db-integ.mfpaws.com"
-        [graphite-cassandra.accumulator.writer.options]
+        # cassandra api, metrics writer and path indexer
+    [graphite-cassandra.accumulator.writer.metrics]
+    driver = "cassandra"
+    dsn = "metrics-1-cassandra-db-integ.mfpaws.com,metrics-2-cassandra-db-integ.mfpaws.com,metrics-3-cassandra-db-integ.mfpaws.com"
+        [graphite-cassandra.accumulator.writer.metrics.options]
         user="cassandra"
         pass="cassandra"
+
+    [graphite-cassandra.accumulator.writer.indexer]
+    driver = "cassandra"
+    dsn = "metrics-1-cassandra-db-integ.mfpaws.com,metrics-2-cassandra-db-integ.mfpaws.com,metrics-3-cassandra-db-integ.mfpaws.com"
+        [graphite-cassandra.accumulator.writer.indexer.options]
+        user="cassandra"
+        pass="cassandra"
+
+    [graphite-cassandra.accumulator.api]
+    base_path = "/graphite/"
+    listen = "0.0.0.0:8083"
+        [graphite-cassandra.accumulator.api.metrics]
+        driver = "cassandra"
+        dsn = "metrics-1-cassandra-db-integ.mfpaws.com,metrics-2-cassandra-db-integ.mfpaws.com,metrics-3-cassandra-db-integ.mfpaws.com"
+            [graphite-cassandra.accumulator.api.metrics.options]
+            user="cassandra"
+            pass="cassandra"
+
+        [graphite-cassandra.accumulator.api.indexer]
+        driver = "cassandra"
+        dsn = "metrics-1-cassandra-db-integ.mfpaws.com,metrics-2-cassandra-db-integ.mfpaws.com,metrics-3-cassandra-db-integ.mfpaws.com"
+            [graphite-cassandra.accumulator.api.indexer.options]
+            user="cassandra"
+            pass="cassandra"
 
     [[graphite-cassandra.map]]
     noop="true"
