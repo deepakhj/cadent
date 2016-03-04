@@ -247,7 +247,9 @@ func (re *ApiLoop) Render(w http.ResponseWriter, r *http.Request) {
 }
 
 func (re *ApiLoop) NoOp(w http.ResponseWriter, r *http.Request) {
-	golog.Fatalf("No handler for this URL %s", r.URL)
+	golog.Printf("No handler for this URL %s", r.URL)
+	http.Error(w, "Nothing here", http.StatusNotFound)
+	return
 }
 
 func (re *ApiLoop) Start() {

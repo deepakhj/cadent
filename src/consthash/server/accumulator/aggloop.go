@@ -148,15 +148,19 @@ func (agg *AggregateLoop) startWriteLooper(duration time.Duration, ttl time.Dura
 		}
 		// need to clear out the Agg
 		agg.Aggregators.Clear(duration)
-		stats.StatsdClient.Incr(fmt.Sprintf("aggregator.%s.writesloops", duration.String()), 1)
+		stats.StatsdClient.Incr(fmt.Sprintf("aggregator.%s.writesloops", _dur.String()), 1)
 	}
-
+	agg.log.Notice("Starting Aggregater Loop for %s", _dur.String())
 	ticker := time.NewTicker(_dur)
 	for {
 		select {
 		case <-ticker.C:
 			_mu.Lock()
-			agg.log.Debug("Flushing %d stats in bin %s to writer", len(agg.Aggregators.Get(duration).Items), _dur.String())
+			agg.log.Debug(
+				"Flushing %d stats in bin %s to writer",
+				len(agg.Aggregators.Get(duration).Items),
+				_dur.String(),
+			)
 			post() // for stats
 			_mu.Unlock()
 
