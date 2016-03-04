@@ -1,6 +1,6 @@
 ## this is the current config we run for Integ Stats collectors
 ## it acts like both Graphite and Statsd and flushes to graphite and writes to Cassandra
-##  the statsd out put is basically a loopback (see the pregre.toml)
+##  the statsd out put is basically a loopback (see the prereg.toml)
 
 [default]
 
@@ -40,6 +40,7 @@ cpu_profile=true
 statsd_server="localhost:8125"
 statsd_prefix="consthash-graphite"
 statsd_interval=1  # send to statd every second (buffered)
+
 # global statsd Sample Rates
 
 ## It's HIGHLY recommended you at least put a statsd_timer_sample_rate as we measure
@@ -54,7 +55,7 @@ statsd_sample_rate=0.1
 ## outgoing connections are pooled per outgoign server
 ## this sets the number of pool connections
 ## 10 seems to be a "good" number for us
-max_pool_connections=20
+max_pool_connections=10
 
 ## if using the `bufferedpool` this is the size in bytes to use for the buffer
 ## (defaults to 512)
@@ -66,7 +67,8 @@ read_buffer_size=1048576
 max_buffer_size=104857600
 
 ## number of workers to chew on the sending queue
-## adjust this based on the input load
+## adjust this based on the input load, dont make it too big otherwise you'll get stuck
+## in the land of lock contententions
 workers=10
 
 ## there will be an internal health http server set up as well
