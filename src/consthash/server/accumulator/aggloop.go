@@ -154,6 +154,7 @@ func (agg *AggregateLoop) startWriteLooper(duration time.Duration, ttl time.Dura
 		// need to clear out the Agg
 		agg.Aggregators.Clear(duration)
 		stats.StatsdClientSlow.Incr(fmt.Sprintf("aggregator.%s.writesloops", _dur.String()), 1)
+		return
 	}
 	agg.log.Notice("Starting Aggregater Loop for %s", _dur.String())
 	ticker := time.NewTicker(_dur)
@@ -165,7 +166,7 @@ func (agg *AggregateLoop) startWriteLooper(duration time.Duration, ttl time.Dura
 				len(agg.Aggregators.Get(duration).Items),
 				_dur.String(),
 			)
-			post() // for stats
+			go post()
 
 		case <-shut.Ch:
 			ticker.Stop()
