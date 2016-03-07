@@ -186,7 +186,7 @@ func (cass *CassandraMetric) Flush() (int, error) {
 	if l == 0 {
 		return 0, nil
 	}
-	cass.conn.
+	
 	batch := cass.conn.NewBatch(gocql.LoggedBatch)
 	Q := fmt.Sprintf(
 		"INSERT INTO %s (id, time, point) VALUES  ({path: ?, resolution: ?}, ?, {sum: ?, mean: ?, min: ?, max: ?, count: ?})",
