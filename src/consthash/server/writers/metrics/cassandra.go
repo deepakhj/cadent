@@ -236,7 +236,7 @@ func (cass *CassandraMetric) InsertOne(stat repr.StatRepr) (int, error) {
 	}
 
 	Q := fmt.Sprintf(
-		"UPDATE %s (id, time, point) VALUES  ({path: ?, resolution: ?}, ?, {sum: ?, mean: ?, min: ?, max: ?, count: ?}) ",
+		"INSERT INTO %s (id, time, point) VALUES  ({path: ?, resolution: ?}, ?, {sum: ?, mean: ?, min: ?, max: ?, count: ?}) ",
 		cass.db.MetricTable(),
 	)
 	if ttl > 0 {
