@@ -1,7 +1,5 @@
 package prereg
 
-import ()
-
 // the acctual filter action
 type FilterItem interface {
 	Name() string

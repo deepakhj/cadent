@@ -529,7 +529,7 @@ func (a *StatsdAccumulate) Reset() error {
 	defer a.mu.Unlock()
 
 	if a.InKeepKeys {
-		for idx, _ := range a.StatsdStats {
+		for idx := range a.StatsdStats {
 			a.StatsdStats[idx].ZeroOut()
 		}
 	} else {

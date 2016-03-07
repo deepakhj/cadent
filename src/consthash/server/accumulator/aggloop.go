@@ -140,29 +140,32 @@ func (agg *AggregateLoop) startWriteLooper(duration time.Duration, ttl time.Dura
 	go writer.Start()
 
 	post := func() {
-		defer stats.StatsdNanoTimeFunc(fmt.Sprintf("aggregator.postwrite-time-ns"), time.Now())
-		for _, stat := range agg.Aggregators.Get(duration).Items {
+		defer stats.StatsdSlowNanoTimeFunc("aggregator.postwrite-time-ns", time.Now())
+
+		_mu.Lock()
+		defer _mu.Unlock()
+
+		items := agg.Aggregators.Get(duration).Items
+		for _, stat := range items {
 			stat.Resolution = _dur.Seconds()
 			stat.TTL = int64(_ttl.Seconds()) // need to add in the TTL
 			writer.WriteChan() <- stat
 		}
 		// need to clear out the Agg
 		agg.Aggregators.Clear(duration)
-		stats.StatsdClient.Incr(fmt.Sprintf("aggregator.%s.writesloops", _dur.String()), 1)
+		stats.StatsdClientSlow.Incr(fmt.Sprintf("aggregator.%s.writesloops", _dur.String()), 1)
 	}
 	agg.log.Notice("Starting Aggregater Loop for %s", _dur.String())
 	ticker := time.NewTicker(_dur)
 	for {
 		select {
 		case <-ticker.C:
-			_mu.Lock()
 			agg.log.Debug(
 				"Flushing %d stats in bin %s to writer",
 				len(agg.Aggregators.Get(duration).Items),
 				_dur.String(),
 			)
 			post() // for stats
-			_mu.Unlock()
 
 		case <-shut.Ch:
 			ticker.Stop()
@@ -192,7 +195,7 @@ func (agg *AggregateLoop) Start() error {
 func (agg *AggregateLoop) Stop() {
 	agg.log.Notice("Initiating shutdown of aggregator for `%s`", agg.Name)
 	agg.Shutdown.Send(true)
-	for idx, _ := range agg.FlushTimes {
+	for idx := range agg.FlushTimes {
 		agg.OutWriters[idx].Stop()
 	}
 	return

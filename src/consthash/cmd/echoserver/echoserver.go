@@ -363,7 +363,7 @@ func main() {
 	// background all but the last one
 	num_s := len(srv_list)
 	if num_s-2 >= 0 {
-		for idx, _ := range srv_list[0 : num_s-1] {
+		for idx := range srv_list[0 : num_s-1] {
 			go startServer(srv_list[idx])
 		}
 	}

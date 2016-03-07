@@ -248,7 +248,10 @@ func (re *ApiLoop) Render(w http.ResponseWriter, r *http.Request) {
 
 func (re *ApiLoop) NoOp(w http.ResponseWriter, r *http.Request) {
 	golog.Printf("No handler for this URL %s", r.URL)
-	http.Error(w, "Nothing here", http.StatusNotFound)
+	http.Error(w,
+		fmt.Sprintf("Nothing here .. try %s/find or %s/render or %s/expand", re.Conf.BasePath, re.Conf.BasePath, re.Conf.BasePath),
+		http.StatusNotFound,
+	)
 	return
 }
 

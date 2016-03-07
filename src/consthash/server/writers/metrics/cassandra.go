@@ -96,6 +96,11 @@ type CassandraMetric struct {
 	render_wg sync.WaitGroup
 	render_mu sync.Mutex
 
+	write_list     []repr.StatRepr // buffer the writes so as to do "multi" inserts per query
+	max_write_size int             // size of that buffer before a flush
+	max_idle       time.Duration   // either max_write_size will trigger a write or this time passing will
+	write_lock     sync.Mutex
+
 	log *logging.Logger
 
 	datacache *lrucache.TTLLRUCache
@@ -135,7 +140,87 @@ func (cass *CassandraMetric) Config(conf map[string]interface{}) (err error) {
 	// need to cast for real usage
 	cass.db = db.(*dbs.CassandraDB)
 	cass.conn = db.Connection().(*gocql.Session)
+
+	_wr_buffer := conf["batch_count"]
+	if _wr_buffer == nil {
+		cass.max_write_size = 1000
+	} else {
+		// toml things generic ints are int64
+		cass.max_write_size = int(_wr_buffer.(int64))
+	}
+	if gocql.BatchSizeMaximum < cass.max_write_size {
+		cass.log.Warning("Cassandra Driver: Setting batch size to %d, as it's the largest allowed", gocql.BatchSizeMaximum)
+		cass.max_write_size = gocql.BatchSizeMaximum
+	}
+
+	_pr_flush := conf["periodic_flush"]
+	cass.max_idle = time.Duration(time.Second)
+	if _pr_flush != nil {
+		dur, err := time.ParseDuration(_pr_flush.(string))
+		if err == nil {
+			cass.max_idle = dur
+		} else {
+			cass.log.Error("Cassandra Driver: Invalid Duration `%v`", _pr_flush)
+		}
+	}
+
+	go cass.PeriodFlush()
+
 	return nil
+}
+
+func (cass *CassandraMetric) PeriodFlush() {
+	for {
+		time.Sleep(cass.max_idle)
+		cass.Flush()
+	}
+	return
+}
+
+func (cass *CassandraMetric) Flush() (int, error) {
+	cass.write_lock.Lock()
+	defer cass.write_lock.Unlock()
+	defer stats.StatsdNanoTimeFunc(fmt.Sprintf("writer.cassandra.flush.metric-time-ns"), time.Now())
+
+	l := len(cass.write_list)
+	if l == 0 {
+		return 0, nil
+	}
+
+	batch := gocql.NewBatch(gocql.LoggedBatch)
+	Q := fmt.Sprintf(
+		"INSERT INTO %s (id, time, point) VALUES  ({path: ?, resolution: ?}, ?, {sum: ?, mean: ?, min: ?, max: ?, count: ?})",
+		cass.db.MetricTable(),
+	)
+
+	for _, stat := range cass.write_list {
+		DO_Q := Q
+		if stat.TTL > 0 {
+			DO_Q += fmt.Sprintf(" USING TTL %d", stat.TTL)
+		}
+		batch.Query(
+			DO_Q,
+			stat.Key,
+			int64(stat.Resolution),
+			stat.Time.UnixNano(),
+			float64(stat.Sum),
+			float64(stat.Mean),
+			float64(stat.Min),
+			float64(stat.Max),
+			stat.Count,
+		)
+	}
+	err := cass.conn.ExecuteBatch(batch)
+	if err != nil {
+		cass.log.Error("Cassandra Driver:Batch Metric insert failed, %v", err)
+		stats.StatsdClientSlow.Incr("writer.cassandra.metric-failures", 1)
+		return 0, err
+	}
+	stats.StatsdClientSlow.Incr("writer.cassandra.metric-writes", 1)
+
+	cass.write_list = nil
+	cass.write_list = []repr.StatRepr{}
+	return l, nil
 }
 
 /**** WRITER ****/
@@ -163,20 +248,29 @@ func (cass *CassandraMetric) InsertOne(stat repr.StatRepr) (int, error) {
 
 	if err != nil {
 		cass.log.Error("Cassandra Driver: insert failed, %v", err)
-		stats.StatsdClient.Incr("writer.cassandra.metric-failures", 1)
+		stats.StatsdClientSlow.Incr("writer.cassandra.metric-failures", 1)
 
 		return 0, err
 	}
-	stats.StatsdClient.Incr("writer.cassandra.metric-writes", 1)
+	stats.StatsdClientSlow.Incr("writer.cassandra.metric-writes", 1)
 
 	return 1, nil
 }
 
 func (cass *CassandraMetric) Write(stat repr.StatRepr) error {
 
-	_, err := cass.InsertOne(stat)
-	return err
+	if len(cass.write_list) > cass.max_write_size {
+		_, err := cass.Flush()
+		if err != nil {
+			return err
+		}
+	}
 
+	// Flush can cause double locking
+	cass.write_lock.Lock()
+	defer cass.write_lock.Unlock()
+	cass.write_list = append(cass.write_list, stat)
+	return nil
 }
 
 /************************ READERS ****************/
@@ -199,7 +293,7 @@ func (cass *CassandraMetric) getResolution(from int64, to int64) int {
 
 func (cass *CassandraMetric) RenderOne(path string, from string, to string) (WhisperRenderItem, error) {
 
-	defer stats.StatsdNanoTimeFunc("reader.cassandra.renderone.get-time-ns", time.Now())
+	defer stats.StatsdSlowNanoTimeFunc("reader.cassandra.renderone.get-time-ns", time.Now())
 
 	var whis WhisperRenderItem
 
@@ -350,7 +444,7 @@ func (cass *CassandraMetric) RenderOne(path string, from string, to string) (Whi
 
 func (cass *CassandraMetric) Render(path string, from string, to string) (WhisperRenderItem, error) {
 
-	defer stats.StatsdNanoTimeFunc("reader.cassandra.render.get-time-ns", time.Now())
+	defer stats.StatsdSlowNanoTimeFunc("reader.cassandra.render.get-time-ns", time.Now())
 
 	var whis WhisperRenderItem
 	whis.Series = make(map[string][]DataPoint)

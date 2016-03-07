@@ -19,7 +19,7 @@ GOCLEAN=$(GOCMD) clean
 GOINSTALL=$(GOCMD) install
 GOTEST=$(GOCMD) test
 GODEP=$(GOTEST) -i
-GOFMT=gofmt -w
+GOFMT=gofmt -w -s
  
 # Package lists
 TOPLEVEL_PKG := .

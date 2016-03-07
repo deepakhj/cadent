@@ -121,15 +121,18 @@ const (
 type ConfigServers map[string]*Config
 
 //init a statsd client from our config object
-func SetUpStatsdClient(cfg *Config) statsd.Statsd {
+func SetUpStatsdClient(cfg *Config) {
 
 	if len(cfg.StatsdServer) == 0 {
 		log.Notice("Skipping Statsd setup, no server specified")
 		stats.StatsdClient = new(statsd.StatsdNoop)
-		return stats.StatsdClient
+		stats.StatsdClientSlow = new(statsd.StatsdNoop)
+		return
 	}
 	interval := time.Second * 2 // aggregate stats and flush every 2 seconds
 	statsdclient := statsd.NewStatsdClient(cfg.StatsdServer, cfg.StatsdPrefix+".%HOST%.")
+	statsdclientslow := statsd.NewStatsdClient(cfg.StatsdServer, cfg.StatsdPrefix+".%HOST%.")
+
 	if cfg.StatsdTimerSampleRate > 0 {
 		statsdclient.TimerSampleRate = cfg.StatsdTimerSampleRate
 	}
@@ -145,6 +148,7 @@ func SetUpStatsdClient(cfg *Config) statsd.Statsd {
 		interval = time.Second * time.Duration(cfg.StatsdInterval)
 	}
 	statsder := statsd.NewStatsdBuffer(interval, statsdclient)
+	statsderslow := statsd.NewStatsdBuffer(interval, statsdclientslow)
 	statsder.RetainKeys = true //retain statsd keys to keep emitting 0's
 	if cfg.StatsdTimerSampleRate > 0 {
 		statsder.TimerSampleRate = cfg.StatsdTimerSampleRate
@@ -154,8 +158,10 @@ func SetUpStatsdClient(cfg *Config) statsd.Statsd {
 	}
 
 	stats.StatsdClient = statsder
-	log.Notice("Statsd Client to %s, prefix %s, interval %d", cfg.StatsdServer, cfg.StatsdPrefix, cfg.StatsdInterval)
-	return stats.StatsdClient
+	stats.StatsdClientSlow = statsderslow // slow does not have sample rates enabled
+	log.Notice("Statsd Fast Client to %s, prefix %s, interval %d", cfg.StatsdServer, cfg.StatsdPrefix, cfg.StatsdInterval)
+	log.Notice("Statsd Slow Client to %s, prefix %s, interval %d", cfg.StatsdServer, cfg.StatsdPrefix, cfg.StatsdInterval)
+	return
 }
 
 // make our map of servers to hosts

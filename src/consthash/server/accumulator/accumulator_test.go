@@ -95,13 +95,13 @@ func TestAccumualtorAccumulator(t *testing.T) {
 
 	tickC := make(chan splitter.SplitItem)
 	statsd_acc.Accumulate.SetOptions([][]string{
-		[]string{"legacyNamespace", "true"},
-		[]string{"prefixGauge", "gauges"},
-		[]string{"prefixTimer", "timers"},
-		[]string{"prefixCounter", "counters"},
-		[]string{"globalPrefix", ""},
-		[]string{"globalSuffix", "stats"},
-		[]string{"percentThreshold", "0.75,0.90,0.95,0.99"},
+		{"legacyNamespace", "true"},
+		{"prefixGauge", "gauges"},
+		{"prefixTimer", "timers"},
+		{"prefixCounter", "counters"},
+		{"globalPrefix", ""},
+		{"globalSuffix", "stats"},
+		{"percentThreshold", "0.75,0.90,0.95,0.99"},
 	})
 	statsd_acc.FlushTimes = []time.Duration{time.Duration(time.Second)}
 	statsd_acc.SetOutputQueue(tickC)
@@ -150,13 +150,13 @@ func TestAccumualtorAccumulator(t *testing.T) {
 	// test the keep keys
 	statsd_acc, err = NewAccumlator("statsd", "graphite", true)
 	statsd_acc.Accumulate.SetOptions([][]string{
-		[]string{"legacyNamespace", "true"},
-		[]string{"prefixGauge", "gauges"},
-		[]string{"prefixTimer", "timers"},
-		[]string{"prefixCounter", "counters"},
-		[]string{"globalPrefix", ""},
-		[]string{"globalSuffix", "stats"},
-		[]string{"percentThreshold", "0.75,0.90,0.95,0.99"},
+		{"legacyNamespace", "true"},
+		{"prefixGauge", "gauges"},
+		{"prefixTimer", "timers"},
+		{"prefixCounter", "counters"},
+		{"globalPrefix", ""},
+		{"globalSuffix", "stats"},
+		{"percentThreshold", "0.75,0.90,0.95,0.99"},
 	})
 	statsd_acc.FlushTimes = []time.Duration{time.Duration(time.Second)}
 	statsd_acc.SetOutputQueue(tickC)

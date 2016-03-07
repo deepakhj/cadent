@@ -234,7 +234,7 @@ func (acc *Accumulator) FlushAndPost() ([]splitter.SplitItem, error) {
 			acc.PushStat(stat)
 		}
 	}
-	stats.StatsdClient.Incr("accumulator.flushesposts", 1)
+	stats.StatsdClientSlow.Incr("accumulator.flushesposts", 1)
 
 	acc.log.Debug("Flushed accumulator %s Lines: %d", acc.Name, len(out_spl))
 	items = nil // GC me
@@ -260,7 +260,7 @@ func (acc *Accumulator) Flush() ([]splitter.SplitItem, error) {
 		out_spl = append(out_spl, spl)
 	}
 	items = nil // GC me
-	stats.StatsdClient.Incr("accumulator.flushes", 1)
+	stats.StatsdClientSlow.Incr("accumulator.flushes", 1)
 	return out_spl, nil
 }
 

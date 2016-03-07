@@ -118,12 +118,12 @@ func (cass *CassandraIndexer) Write(skey string) error {
 	defer cass.write_lock.Unlock()
 
 	if _, ok := cass.paths_inserted[skey]; ok {
-		stats.StatsdClient.Incr("indexer.cassandra.cached-writes-path", 1)
+		stats.StatsdClientSlow.Incr("indexer.cassandra.cached-writes-path", 1)
 		return nil
 	}
 
-	defer stats.StatsdNanoTimeFunc(fmt.Sprintf("indexer.cassandra.write.path-time-ns"), time.Now())
-	stats.StatsdClient.Incr("indexer.cassandra.noncached-writes-path", 1)
+	defer stats.StatsdSlowNanoTimeFunc(fmt.Sprintf("indexer.cassandra.write.path-time-ns"), time.Now())
+	stats.StatsdClientSlow.Incr("indexer.cassandra.noncached-writes-path", 1)
 
 	s_parts := strings.Split(skey, ".")
 	p_len := len(s_parts)
@@ -164,9 +164,9 @@ func (cass *CassandraIndexer) Write(skey string) error {
 
 		if err != nil {
 			cass.log.Error("Could not insert segment %v", seg)
-			stats.StatsdClient.Incr("indexer.cassandra.segment-failures", 1)
+			stats.StatsdClientSlow.Incr("indexer.cassandra.segment-failures", 1)
 		} else {
-			stats.StatsdClient.Incr("indexer.cassandra.segment-writes", 1)
+			stats.StatsdClientSlow.Incr("indexer.cassandra.segment-writes", 1)
 		}
 
 		// now for each "partial path" add in the fact that it's not a "data" node
@@ -226,9 +226,9 @@ func (cass *CassandraIndexer) Write(skey string) error {
 
 		if err != nil {
 			cass.log.Error("Could not insert path %v :: %v", last_path, err)
-			stats.StatsdClient.Incr("indexer.cassandra.path-failures", 1)
+			stats.StatsdClientSlow.Incr("indexer.cassandra.path-failures", 1)
 		} else {
-			stats.StatsdClient.Incr("indexer.cassandra.path-writes", 1)
+			stats.StatsdClientSlow.Incr("indexer.cassandra.path-writes", 1)
 		}
 	}
 
@@ -267,7 +267,7 @@ func (cass *CassandraIndexer) ExpandNonRegex(metric string) (MetricExpandItem, e
 // Expand simply pulls out any regexes into full form
 func (cass *CassandraIndexer) Expand(metric string) (MetricExpandItem, error) {
 
-	defer stats.StatsdNanoTimeFunc("indexer.cassandra.expand.get-time-ns", time.Now())
+	defer stats.StatsdSlowNanoTimeFunc("indexer.cassandra.expand.get-time-ns", time.Now())
 
 	has_reg := regexp.MustCompile(`\*|\{|\}|\[|\]`)
 	needs_regex := has_reg.Match([]byte(metric))
@@ -313,7 +313,7 @@ func (cass *CassandraIndexer) Expand(metric string) (MetricExpandItem, error) {
 // basic find for non-regex items
 func (cass *CassandraIndexer) FindNonRegex(metric string) (MetricFindItems, error) {
 
-	defer stats.StatsdNanoTimeFunc("indexer.cassandra.findnoregex.get-time-ns", time.Now())
+	defer stats.StatsdSlowNanoTimeFunc("indexer.cassandra.findnoregex.get-time-ns", time.Now())
 
 	// since there are and regex like things in the strings, we
 	// need to get the all "items" from where the regex starts then hone down
@@ -371,7 +371,7 @@ func (cass *CassandraIndexer) FindNonRegex(metric string) (MetricFindItems, erro
 
 // special case for "root" == "*" finder
 func (cass *CassandraIndexer) FindRoot() (MetricFindItems, error) {
-	defer stats.StatsdNanoTimeFunc("indexer.cassandra.findroot.get-time-ns", time.Now())
+	defer stats.StatsdSlowNanoTimeFunc("indexer.cassandra.findroot.get-time-ns", time.Now())
 
 	cass_Q := fmt.Sprintf(
 		"SELECT segment FROM %s WHERE pos=?",
@@ -410,7 +410,7 @@ func (cass *CassandraIndexer) Find(metric string) (MetricFindItems, error) {
 	// the regex case is a bit more complicated as we need to grab ALL the segments of a given length.
 	// see if the match the regex, and then add them to the lists since cassandra does not provide regex abilities
 	// on the server side
-	defer stats.StatsdNanoTimeFunc("indexer.cassandra.find.get-time-ns", time.Now())
+	defer stats.StatsdSlowNanoTimeFunc("indexer.cassandra.find.get-time-ns", time.Now())
 
 	// special case for "root" == "*"
 

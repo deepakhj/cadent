@@ -212,7 +212,7 @@ func (a *GraphiteAccumulate) Reset() error {
 	defer a.mu.Unlock()
 	// keep or reset
 	if a.InKeepKeys {
-		for idx, _ := range a.GraphiteStats {
+		for idx := range a.GraphiteStats {
 			a.GraphiteStats[idx].ZeroOut()
 		}
 	} else {

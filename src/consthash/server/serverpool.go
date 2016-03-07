@@ -175,7 +175,7 @@ func (self *CheckedServerPool) reAddAllDroppedServers() {
 	self.mu.Lock()
 	defer self.mu.Unlock()
 
-	for idx, _ := range self.DroppedServers {
+	for idx := range self.DroppedServers {
 
 		//add it back to the hash pool
 		if self.DownPolicy == "remove_node" {
@@ -249,7 +249,7 @@ func (self *CheckedServerPool) dropServer(server *ServerPoolServer) {
 
 	var new_s []ServerPoolServer
 
-	for idx, _ := range self.Servers {
+	for idx := range self.Servers {
 		if &self.Servers[idx] == server {
 			self.DroppedServers = append(self.DroppedServers, self.Servers[idx])
 			// remove from server pool if we don't want it any more
@@ -331,7 +331,7 @@ func (self *CheckedServerPool) testConnections() error {
 		ok := self.DoChecks
 		self.checkLock.Unlock()
 		if ok {
-			for idx, _ := range self.Servers {
+			for idx := range self.Servers {
 				testerchan := make(chan bool, 1)
 
 				go self.testUp(&self.Servers[idx], testerchan)
