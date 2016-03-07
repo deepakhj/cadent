@@ -136,6 +136,8 @@ func (cass *CassandraDB) Config(conf map[string]interface{}) (err error) {
 	cluster.NumConns = numcons
 	cluster.RetryPolicy = &gocql.SimpleRetryPolicy{NumRetries: 3}
 
+	cluster.PoolConfig.HostSelectionPolicy = gocql.TokenAwareHostPolicy(gocql.RoundRobinHostPolicy())
+
 	// auth
 	user := ""
 	_user := conf["user"]
