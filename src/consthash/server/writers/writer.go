@@ -78,7 +78,7 @@ type WriterLoop struct {
 
 func New() (loop *WriterLoop, err error) {
 	loop = new(WriterLoop)
-	loop.write_chan = make(chan repr.StatRepr, 10000)
+	loop.write_chan = make(chan repr.StatRepr, 100000)
 	loop.stop_chan = make(chan bool, 1)
 	return loop, nil
 }

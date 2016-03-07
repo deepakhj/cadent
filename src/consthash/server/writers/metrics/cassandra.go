@@ -216,7 +216,7 @@ func (cass *CassandraMetric) Flush() (int, error) {
 		stats.StatsdClientSlow.Incr("writer.cassandra.metric-failures", 1)
 		return 0, err
 	}
-	stats.StatsdClientSlow.Incr("writer.cassandra.metric-writes", l)
+	stats.StatsdClientSlow.Incr("writer.cassandra.metric-writes", int64(l))
 	stats.StatsdClientSlow.Incr("writer.cassandra.batch-writes", 1)
 
 	cass.write_list = nil
