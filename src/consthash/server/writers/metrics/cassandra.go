@@ -143,7 +143,7 @@ func (cass *CassandraMetric) Config(conf map[string]interface{}) (err error) {
 
 	_wr_buffer := conf["batch_count"]
 	if _wr_buffer == nil {
-		cass.max_write_size = 1000
+		cass.max_write_size = 20
 	} else {
 		// toml things generic ints are int64
 		cass.max_write_size = int(_wr_buffer.(int64))
@@ -236,7 +236,7 @@ func (cass *CassandraMetric) InsertOne(stat repr.StatRepr) (int, error) {
 	}
 
 	Q := fmt.Sprintf(
-		"INSERT INTO %s (id, time, point) VALUES  ({path: ?, resolution: ?}, ?, {sum: ?, mean: ?, min: ?, max: ?, count: ?}) ",
+		"UPDATE %s (id, time, point) VALUES  ({path: ?, resolution: ?}, ?, {sum: ?, mean: ?, min: ?, max: ?, count: ?}) ",
 		cass.db.MetricTable(),
 	)
 	if ttl > 0 {
@@ -259,6 +259,10 @@ func (cass *CassandraMetric) InsertOne(stat repr.StatRepr) (int, error) {
 }
 
 func (cass *CassandraMetric) Write(stat repr.StatRepr) error {
+
+	// hmm batchs don't work so well sometimes
+	_, err := cass.InsertOne(stat)
+	return err
 
 	if len(cass.write_list) > cass.max_write_size {
 		_, err := cass.Flush()
