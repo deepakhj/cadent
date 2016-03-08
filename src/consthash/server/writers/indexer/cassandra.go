@@ -80,6 +80,8 @@ type CassandraIndexer struct {
 	write_lock     sync.Mutex
 	paths_inserted map[string]bool // just to not do "extra" work on paths we've already indexed
 
+	write_queue chan string // so we don't "overload" the cassandra connection pool
+
 	log *logging.Logger
 
 	findcache *lrucache.TTLLRUCache
@@ -90,7 +92,6 @@ func NewCassandraIndexer() *CassandraIndexer {
 	cass.log = logging.MustGetLogger("indexer.cassandra")
 	cass.paths_inserted = make(map[string]bool)
 	cass.findcache = lrucache.NewTTLLRUCache(CASSANDRA_RESULT_CACHE_SIZE, CASSANDRA_RESULT_CACHE_TTL)
-
 	return cass
 }
 
@@ -224,6 +225,16 @@ func (cass *CassandraIndexer) WriteOne(skey string) error {
 	return nil
 }
 
+func (cass *CassandraIndexer) writeLoop() {
+	for {
+		select {
+		case key := <-cass.write_queue:
+			cass.WriteOne(key)
+		}
+	}
+	return
+}
+
 // keep an index of the stat keys and their fragments so we can look up
 func (cass *CassandraIndexer) Write(skey string) error {
 
@@ -233,12 +244,13 @@ func (cass *CassandraIndexer) Write(skey string) error {
 		stats.StatsdClientSlow.Incr("indexer.cassandra.cached-writes-path", 1)
 		return nil
 	}
-
-	go cass.WriteOne(skey)
-
-	//cached bits
 	cass.paths_inserted[skey] = true
 
+	if cass.write_queue == nil {
+		cass.write_queue = make(chan string, 10) // only 10 at a time
+		go cass.writeLoop()
+	}
+	cass.write_queue <- skey
 	return nil
 
 }
