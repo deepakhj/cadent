@@ -111,16 +111,7 @@ func (cass *CassandraIndexer) Config(conf map[string]interface{}) (err error) {
 	return nil
 }
 
-// keep an index of the stat keys and their fragments so we can look up
-func (cass *CassandraIndexer) Write(skey string) error {
-
-	cass.write_lock.Lock()
-	if _, ok := cass.paths_inserted[skey]; ok {
-		stats.StatsdClientSlow.Incr("indexer.cassandra.cached-writes-path", 1)
-		return nil
-	}
-	cass.write_lock.Unlock()
-
+func (cass *CassandraIndexer) WriteOne(skey string) error {
 	defer stats.StatsdSlowNanoTimeFunc(fmt.Sprintf("indexer.cassandra.write.path-time-ns"), time.Now())
 	stats.StatsdClientSlow.Incr("indexer.cassandra.noncached-writes-path", 1)
 
@@ -230,11 +221,23 @@ func (cass *CassandraIndexer) Write(skey string) error {
 			stats.StatsdClientSlow.Incr("indexer.cassandra.path-writes", 1)
 		}
 	}
+	return nil
+}
+
+// keep an index of the stat keys and their fragments so we can look up
+func (cass *CassandraIndexer) Write(skey string) error {
+
+	cass.write_lock.Lock()
+	defer cass.write_lock.Unlock()
+	if _, ok := cass.paths_inserted[skey]; ok {
+		stats.StatsdClientSlow.Incr("indexer.cassandra.cached-writes-path", 1)
+		return nil
+	}
+
+	go cass.WriteOne(skey)
 
 	//cached bits
-	cass.write_lock.Lock()
 	cass.paths_inserted[skey] = true
-	cass.write_lock.Unlock()
 
 	return nil
 

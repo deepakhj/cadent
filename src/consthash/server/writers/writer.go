@@ -103,6 +103,7 @@ func (loop *WriterLoop) procLoop() {
 		case stat := <-loop.write_chan:
 			loop.indexer.Write(stat.Key)
 			loop.metrics.Write(stat)
+			continue
 		case <-loop.stop_chan:
 			return
 		}
