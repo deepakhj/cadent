@@ -116,7 +116,7 @@ func NewAccumlator(inputtype string, outputtype string, keepkeys bool) (*Accumul
 
 // create the overlord aggregator
 func (acc *Accumulator) SetAggregateLoop(conf writers.WriterConfig) (agg *AggregateLoop, err error) {
-	acc.Aggregators, err = NewAggregateLoop(acc.FlushTimes, acc.TTLTimes, acc.Name)
+	acc.Aggregators, err = NewAggregateLoop(acc.FlushTimes, acc.TTLTimes, "AGG:"+acc.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -164,7 +164,7 @@ func (acc *Accumulator) Start() error {
 	for {
 		select {
 		case <-acc.timer.C:
-			acc.log.Debug("Flushing accumulator %s", acc.Name)
+			acc.log.Debug("Flushing accumulator %s to: %s", acc.Name, acc.ToBackend)
 			acc.FlushAndPost()
 		case line := <-acc.LineQueue:
 			acc.Accumulate.ProcessLine(line)
@@ -209,8 +209,9 @@ func (acc *Accumulator) FlushAndPost() ([]splitter.SplitItem, error) {
 	items := acc.Accumulate.Flush()
 	//log.Notice("Flush: %s", items)
 	//return []splitter.SplitItem{}, nil
-	var out_spl []splitter.SplitItem
-	for _, item := range items.Lines {
+	t := time.Now()
+	out_spl := make([]splitter.SplitItem, len(items.Lines), len(items.Lines))
+	for idx, item := range items.Lines {
 		spl, err := acc.OutSplitter.ProcessLine(item)
 		if err != nil {
 			acc.log.Error("Invalid Line post flush accumulate `%s` Err:%s", item, err)
@@ -221,22 +222,22 @@ func (acc *Accumulator) FlushAndPost() ([]splitter.SplitItem, error) {
 		//log.Warning("ACC posted: %v  Len %d", spl.Line(), acc.OutputQueue)
 		spl.SetPhase(splitter.AccumulatedParsed)
 		spl.SetOrigin(splitter.Other)
-		out_spl = append(out_spl, spl)
+		out_spl[idx] = spl
 		//log.Notice("sending: %s Len:%d", spl.Line(), len(acc.OutputQueue))
 		acc.PushLine(spl)
 	}
 
 	// background this guy
 	if acc.Aggregators != nil {
-		t := time.Now()
 		for _, stat := range items.Stats {
 			stat.Time = t // need to set this as this is the flush time
 			acc.PushStat(stat)
 		}
+		acc.log.Debug("Flushed to Aggregator `%s` to `%s` Lines: %d", acc.Name, acc.Aggregators.Name, len(items.Stats))
 	}
 	stats.StatsdClientSlow.Incr("accumulator.flushesposts", 1)
 
-	acc.log.Debug("Flushed accumulator %s Lines: %d", acc.Name, len(out_spl))
+	acc.log.Debug("Flushed accumulator `%s` to `Backend`: %s Lines: %d", acc.Name, acc.ToBackend, len(out_spl))
 	items = nil // GC me
 	return out_spl, nil
 }

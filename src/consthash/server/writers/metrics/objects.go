@@ -45,10 +45,12 @@ type RenderItems []RenderItem
 // the basic whisper metric json blob for find
 
 type WhisperRenderItem struct {
-	Start  int                    `json:"from"`
-	End    int                    `json:"to"`
-	Step   int                    `json:"step"`
-	Series map[string][]DataPoint `json:"series"`
+	RealStart int                    `json:"data_from"`
+	RealEnd   int                    `json:"data_end"`
+	Start     int                    `json:"from"`
+	End       int                    `json:"to"`
+	Step      int                    `json:"step"`
+	Series    map[string][]DataPoint `json:"series"`
 }
 
 /**  LRU cacher bits **/

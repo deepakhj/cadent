@@ -9,6 +9,9 @@ import (
 	"consthash/server/writers/indexer"
 	"consthash/server/writers/metrics"
 	"fmt"
+	//"log"
+	"consthash/server/stats"
+	"log"
 	"time"
 )
 
@@ -70,6 +73,7 @@ type WriterConfig struct {
 }
 
 type WriterLoop struct {
+	name       string
 	metrics    metrics.Metrics
 	indexer    indexer.Indexer
 	write_chan chan repr.StatRepr
@@ -83,6 +87,19 @@ func New() (loop *WriterLoop, err error) {
 	return loop, nil
 }
 
+func (loop *WriterLoop) SetName(name string) {
+	loop.name = name
+}
+
+func (loop *WriterLoop) statTick() {
+	for {
+		time.Sleep(time.Second)
+		stats.StatsdClientSlow.Incr(fmt.Sprintf("writer.inputqueue.%s.length", loop.name), int64(len(loop.write_chan)))
+		log.Printf("Write Queue Length %s: %d", loop.name, len(loop.write_chan))
+	}
+	return
+}
+
 func (loop *WriterLoop) SetMetrics(mets metrics.Metrics) error {
 	loop.metrics = mets
 	return nil
@@ -93,7 +110,7 @@ func (loop *WriterLoop) SetIndexer(idx indexer.Indexer) error {
 	return nil
 }
 
-func (loop *WriterLoop) WriteChan() chan repr.StatRepr {
+func (loop *WriterLoop) WriterChan() chan repr.StatRepr {
 	return loop.write_chan
 }
 
@@ -101,9 +118,11 @@ func (loop *WriterLoop) procLoop() {
 	for {
 		select {
 		case stat := <-loop.write_chan:
+			// indexing can be very expensive, and should have their own internal "back locks"
+			//  indexing is done "once" on launch per key (there is an internal cache)
 			loop.indexer.Write(stat.Key)
 			loop.metrics.Write(stat)
-			continue
+			//log.Printf("Stat: %v", stat.Key)
 		case <-loop.stop_chan:
 			return
 		}
@@ -113,6 +132,7 @@ func (loop *WriterLoop) procLoop() {
 
 func (loop *WriterLoop) Start() {
 	go loop.procLoop()
+	go loop.statTick()
 	return
 }
 

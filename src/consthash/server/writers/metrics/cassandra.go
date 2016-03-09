@@ -97,8 +97,9 @@ type CassandraMetric struct {
 	render_mu sync.Mutex
 
 	write_list     []repr.StatRepr // buffer the writes so as to do "multi" inserts per query
-	max_write_size int             // size of that buffer before a flush
-	max_idle       time.Duration   // either max_write_size will trigger a write or this time passing will
+	write_queue    chan repr.StatRepr
+	max_write_size int           // size of that buffer before a flush
+	max_idle       time.Duration // either max_write_size will trigger a write or this time passing will
 	write_lock     sync.Mutex
 
 	log *logging.Logger
@@ -173,6 +174,16 @@ func (cass *CassandraMetric) PeriodFlush() {
 	for {
 		time.Sleep(cass.max_idle)
 		cass.Flush()
+	}
+	return
+}
+
+func (cass *CassandraMetric) consumeWriter() {
+	for {
+		select {
+		case stat := <-cass.write_queue:
+			cass.InsertOne(stat)
+		}
 	}
 	return
 }
@@ -260,6 +271,26 @@ func (cass *CassandraMetric) InsertOne(stat repr.StatRepr) (int, error) {
 
 func (cass *CassandraMetric) Write(stat repr.StatRepr) error {
 
+	/**** single write queue to keep a connection depletion in cassandra ***/
+	if cass.write_queue == nil {
+		cass.write_queue = make(chan repr.StatRepr, cass.db.Cluster().NumConns*100)
+		for i := 0; i < cass.db.Cluster().NumConns; i++ {
+			go cass.consumeWriter()
+		}
+	}
+
+	// if batches are not oddly performant enough
+	for _, stat := range cass.write_list {
+		cass.write_queue <- stat
+	}
+	return nil
+
+	/** Direct insert_one tech
+	go cass.InsertOne(stat)
+	return nil
+	**/
+
+	/* If cassandra batching is faster ... use this .. (cassandra batching is not like mysql batching)
 	if len(cass.write_list) > cass.max_write_size {
 		_, err := cass.Flush()
 		if err != nil {
@@ -272,6 +303,7 @@ func (cass *CassandraMetric) Write(stat repr.StatRepr) error {
 	defer cass.write_lock.Unlock()
 	cass.write_list = append(cass.write_list, stat)
 	return nil
+	*/
 }
 
 /************************ READERS ****************/
@@ -437,8 +469,10 @@ func (cass *CassandraMetric) RenderOne(path string, from string, to string) (Whi
 	}
 
 	whis.Series = series
-	whis.Start = first_t
-	whis.End = last_t
+	whis.RealStart = first_t
+	whis.RealEnd = last_t
+	whis.Start = int(start)
+	whis.End = int(end)
 	whis.Step = resolution
 	return whis, nil
 }

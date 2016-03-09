@@ -118,6 +118,29 @@ func (cass *CassandraIndexer) WriteOne(skey string) error {
 
 	s_parts := strings.Split(skey, ".")
 	p_len := len(s_parts)
+
+	// we are going to assume that if the path is already in the system, we've indexed it and therefore
+	// do not need to do the super loop (which is very expensive)
+	SelQ := fmt.Sprintf(
+		"SELECT path, length, has_data FROM %s WHERE segment={pos: ?, segment: ?}",
+		cass.db.PathTable(),
+	)
+
+	var _pth string
+	var _len int
+	var _dd bool
+	gerr := cass.conn.Query(SelQ,
+		p_len-1, skey,
+	).Scan(&_pth, &_len, &_dd)
+	// got it
+	if gerr == nil {
+		if _pth == skey && _dd && _len == p_len-1 {
+			return nil
+		}
+	} else {
+		cass.log.Notice("Indexer pre-get check fail, on to indexing ... : '%s'", gerr)
+	}
+
 	cur_part := ""
 	segments := []CassSegment{}
 	paths := []CassPath{}
@@ -239,16 +262,20 @@ func (cass *CassandraIndexer) writeLoop() {
 func (cass *CassandraIndexer) Write(skey string) error {
 
 	cass.write_lock.Lock()
-	defer cass.write_lock.Unlock()
+
 	if _, ok := cass.paths_inserted[skey]; ok {
 		stats.StatsdClientSlow.Incr("indexer.cassandra.cached-writes-path", 1)
+		cass.write_lock.Unlock()
 		return nil
 	}
 	cass.paths_inserted[skey] = true
+	cass.write_lock.Unlock()
 
 	if cass.write_queue == nil {
-		cass.write_queue = make(chan string, 10) // only 10 at a time
-		go cass.writeLoop()
+		cass.write_queue = make(chan string, 10000)
+		for i := 0; i < cass.db.Cluster().NumConns; i++ {
+			go cass.writeLoop()
+		}
 	}
 	cass.write_queue <- skey
 	return nil

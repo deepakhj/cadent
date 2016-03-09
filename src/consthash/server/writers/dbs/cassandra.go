@@ -16,6 +16,7 @@ import (
 
 type CassandraDB struct {
 	conn              *gocql.Session
+	cluster           *gocql.ClusterConfig
 	keyspace          string
 	metric_table      string
 	path_table        string
@@ -102,7 +103,7 @@ func (cass *CassandraDB) Config(conf map[string]interface{}) (err error) {
 		timeout = ok
 	}
 
-	numcons := 5
+	numcons := 20
 	_numcons := conf["numcons"]
 	if _numcons != nil {
 		numcons = _numcons.(int)
@@ -135,6 +136,7 @@ func (cass *CassandraDB) Config(conf map[string]interface{}) (err error) {
 	cluster.Timeout = timeout
 	cluster.NumConns = numcons
 	cluster.RetryPolicy = &gocql.SimpleRetryPolicy{NumRetries: 3}
+	cluster.ProtoVersion = 0x04 //
 
 	cluster.PoolConfig.HostSelectionPolicy = gocql.TokenAwareHostPolicy(gocql.RoundRobinHostPolicy())
 
@@ -171,11 +173,16 @@ func (cass *CassandraDB) Config(conf map[string]interface{}) (err error) {
 		return err
 	}
 	cass.log.Notice("Connected to Cassandra: %v", servers)
-
+	cass.cluster = cluster
 	// Not needed as cass does not like Big insert queries
 	// go cass.PeriodicFlush()
 
 	return nil
+}
+
+// getters
+func (cass *CassandraDB) Cluster() *gocql.ClusterConfig {
+	return cass.cluster
 }
 
 // getters

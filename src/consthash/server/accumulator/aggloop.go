@@ -102,6 +102,7 @@ func (agg *AggregateLoop) SetWriter(conf writers.WriterConfig) error {
 			agg.log.Error("Writer error:: %s", err)
 			return err
 		}
+		wr.SetName(dur.String())
 		mets, err := conf.Metrics.NewMetrics(dur)
 		if err != nil {
 			return err
@@ -135,25 +136,25 @@ func (agg *AggregateLoop) startWriteLooper(duration time.Duration, ttl time.Dura
 
 	_dur := duration
 	_ttl := ttl
-	_mu := mu
+	//_mu := mu
 	// start up the writers listeners
 	go writer.Start()
 
 	post := func() {
 		defer stats.StatsdSlowNanoTimeFunc("aggregator.postwrite-time-ns", time.Now())
 
-		_mu.Lock()
-		defer _mu.Unlock()
+		//_mu.Lock()
+		//defer _mu.Unlock()
 
 		items := agg.Aggregators.Get(duration).Items
+		agg.Aggregators.Clear(duration) // clear now before any "new" things get added
 		for _, stat := range items {
 			stat.Resolution = _dur.Seconds()
 			stat.TTL = int64(_ttl.Seconds()) // need to add in the TTL
 			//agg.log.Critical("CHAN WRITE: LEN: %d", len(writer.WriteChan()))
-			writer.WriteChan() <- stat
+			writer.WriterChan() <- stat
 		}
 		// need to clear out the Agg
-		agg.Aggregators.Clear(duration)
 		stats.StatsdClientSlow.Incr(fmt.Sprintf("aggregator.%s.writesloops", _dur.String()), 1)
 		return
 	}
