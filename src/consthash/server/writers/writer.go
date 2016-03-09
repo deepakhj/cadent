@@ -95,8 +95,8 @@ func (loop *WriterLoop) SetName(name string) {
 func (loop *WriterLoop) statTick() {
 	for {
 		time.Sleep(time.Second)
-		stats.StatsdClientSlow.Incr(fmt.Sprintf("writer.metricsqueue.%s.length", loop.name), int64(len(loop.write_chan)))
-		stats.StatsdClientSlow.Incr(fmt.Sprintf("writer.indexerqueue.%s.length", loop.name), int64(len(loop.indexer_chan)))
+		stats.StatsdClientSlow.GaugeAvg(fmt.Sprintf("writer.metricsqueue.%s.length", loop.name), int64(len(loop.write_chan)))
+		stats.StatsdClientSlow.GaugeAvg(fmt.Sprintf("writer.indexerqueue.%s.length", loop.name), int64(len(loop.indexer_chan)))
 		log.Printf("Write Queue Length: %s: Metrics: %d Indexer %d", loop.name, len(loop.write_chan), len(loop.indexer_chan))
 	}
 	return
