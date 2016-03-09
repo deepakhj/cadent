@@ -1401,6 +1401,8 @@ func (server *Server) StartServer() {
 
 	//set the accumulator to this servers input queue
 	if server.PreRegFilter != nil && server.PreRegFilter.Accumulator != nil {
+		// set where we are from
+		server.PreRegFilter.Accumulator.FromBackend = server.Name
 		// There is the special "black_hole" Backend that will let us use Writers exclusively
 		if server.PreRegFilter.Accumulator.ToBackend == accumulator.BLACK_HOLE_BACKEND {
 			log.Notice("NOTE: BlackHole for `%s`", server.PreRegFilter.Accumulator.Name)

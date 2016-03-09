@@ -41,6 +41,7 @@ type Accumulator struct {
 
 	// these are assigned from the config file in the PreReg config file
 	ToBackend       string          `json:"backend"`
+	FromBackend     string          `json:"from_backend"`
 	FormatterName   string          `json:"formatter"`
 	AccumulatorName string          `json:"accumulator"`
 	Name            string          `json:"name"`
@@ -225,6 +226,7 @@ func (acc *Accumulator) FlushAndPost() ([]splitter.SplitItem, error) {
 		//log.Warning("ACC posted: %v  Len %d", spl.Line(), acc.OutputQueue)
 		spl.SetPhase(splitter.AccumulatedParsed)
 		spl.SetOrigin(splitter.Other)
+		spl.SetOriginName(acc.FromBackend) // where we are from
 		out_spl[idx] = spl
 		//log.Notice("sending: %s Len:%d", spl.Line(), len(acc.OutputQueue))
 		acc.PushLine(spl)
