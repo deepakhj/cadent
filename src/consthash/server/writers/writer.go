@@ -5,6 +5,7 @@
 package writers
 
 import (
+	"consthash/server/broadcast"
 	"consthash/server/repr"
 	"consthash/server/stats"
 	"consthash/server/writers/indexer"
@@ -77,6 +78,7 @@ type WriterLoop struct {
 	indexer      indexer.Indexer
 	write_chan   chan repr.StatRepr
 	indexer_chan chan repr.StatRepr
+	shutdowner   *broadcast.Broadcaster
 	stop_chan    chan bool
 }
 
@@ -85,6 +87,7 @@ func New() (loop *WriterLoop, err error) {
 	loop.write_chan = make(chan repr.StatRepr, 100000)
 	loop.indexer_chan = make(chan repr.StatRepr, 1000000) // indexing is slow, so we'll need to buffer things a bit more
 	loop.stop_chan = make(chan bool, 1)
+	loop.shutdowner = broadcast.New(1)
 	return loop, nil
 }
 
@@ -117,29 +120,30 @@ func (loop *WriterLoop) WriterChan() chan repr.StatRepr {
 }
 
 func (loop *WriterLoop) indexLoop() {
+	shut := loop.shutdowner.Listen()
 	for {
 		select {
 		case stat := <-loop.indexer_chan:
 			// indexing can be very expensive (at least for cassandra)
 			// and should have their own internal queues and smarts for handleing a massive influx of metric names
 			loop.indexer.Write(stat.Key)
-		//log.Printf("Stat: %v", stat.Key)
-		case <-loop.stop_chan:
+		case <-shut.Ch:
+			shut.Close()
 			return
 		}
 	}
 }
 
 func (loop *WriterLoop) procLoop() {
+	shut := loop.shutdowner.Listen()
+
 	for {
 		select {
 		case stat := <-loop.write_chan:
-			// indexing can be very expensive (at least for cassandra)
-			// and should have their own internal queues and smarts for handleing a massive influx of metric names
 			loop.metrics.Write(stat)
 			go func() { loop.indexer_chan <- stat }() // non-blocking indexer loop
-			//log.Printf("Stat: %v", stat.Key)
-		case <-loop.stop_chan:
+		case <-shut.Ch:
+			shut.Close()
 			return
 		}
 	}
@@ -155,7 +159,7 @@ func (loop *WriterLoop) Start() {
 
 func (loop *WriterLoop) Stop() {
 	go func() {
-		loop.stop_chan <- true
+		loop.shutdowner.Send(true)
 		return
 	}()
 }
