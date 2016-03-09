@@ -29,6 +29,8 @@ type SplitItem interface {
 	SetPhase(Phase)
 	Origin() Origin
 	SetOrigin(Origin)
+	OriginName() string
+	SetOriginName(string)
 	IsValid() bool
 }
 

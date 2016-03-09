@@ -39,6 +39,7 @@ func TestGraphiteRunner(t *testing.T) {
 		So(gr.Name(), ShouldEqual, "graphite")
 		So(spl.Key(), ShouldEqual, "moo.goo.org")
 		So(spl.Line(), ShouldEqual, good_line)
+		So(spl.OriginName(), ShouldEqual, "")
 		So(spl.Phase(), ShouldEqual, Parsed)
 		So(spl.IsValid(), ShouldEqual, true)
 		So(spl.Fields(), ShouldResemble, []string{
@@ -51,6 +52,8 @@ func TestGraphiteRunner(t *testing.T) {
 		So(spl.Phase(), ShouldEqual, AccumulatedParsed)
 		spl.SetOrigin(TCP)
 		So(spl.Origin(), ShouldEqual, TCP)
+		spl.SetOriginName("moo")
+		So(spl.OriginName(), ShouldEqual, "moo")
 	})
 
 	conf["key_index"] = 10
@@ -78,6 +81,7 @@ func TestStatsdRunner(t *testing.T) {
 		si, _ := gr.ProcessLine(good_line)
 		So(si.Key(), ShouldEqual, "moo.goo.org")
 		So(gr.Name(), ShouldEqual, "statsd")
+		So(si.OriginName(), ShouldEqual, "")
 		So(si.IsValid(), ShouldEqual, true)
 		So(si.Line(), ShouldEqual, good_line)
 		So(si.Fields(), ShouldResemble, []string{
@@ -89,6 +93,9 @@ func TestStatsdRunner(t *testing.T) {
 		So(si.Phase(), ShouldEqual, AccumulatedParsed)
 		si.SetOrigin(UDP)
 		So(si.Origin(), ShouldEqual, UDP)
+		si.SetOriginName("moo")
+		So(si.OriginName(), ShouldEqual, "moo")
+
 	})
 
 	Convey("Statsd Runner should not parser this", t, func() {
@@ -132,12 +139,15 @@ func TestRegexRunner(t *testing.T) {
 		So(ri.Line(), ShouldEqual, good_line)
 		So(ri.Phase(), ShouldEqual, Parsed)
 		So(ri.Origin(), ShouldEqual, Other)
+		So(ri.OriginName(), ShouldEqual, "")
 		So(ri.Fields(), ShouldResemble, spl_string)
 		So(ri.IsValid(), ShouldEqual, true)
 		ri.SetPhase(AccumulatedParsed)
 		So(ri.Phase(), ShouldEqual, AccumulatedParsed)
 		ri.SetOrigin(TCP)
 		So(ri.Origin(), ShouldEqual, TCP)
+		ri.SetOriginName("moo")
+		So(ri.OriginName(), ShouldEqual, "moo")
 	})
 
 	Convey("REgex Runner should not parser this", t, func() {

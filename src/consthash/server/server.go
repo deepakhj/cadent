@@ -285,7 +285,9 @@ func (server *Server) TrapExit() {
 
 func (server *Server) StopServer() {
 
-	server.StopTicker <- true
+	go func() {
+		server.StopTicker <- true
+	}()
 
 	// need to clen up the socket here otherwise it may not get cleaned
 	if server.ListenURL != nil && server.ListenURL.Scheme == "unix" {
@@ -456,7 +458,7 @@ func (server *Server) SendtoOutputWorkers(spl splitter.SplitItem, out chan split
 
 	use_chan := out
 
-	//IF the item's origin is other, we have to use the "generic" outut processor
+	//IF the item's origin is other, we have to use the "generic" output processor
 	// as we've lost the originating socket channel
 	if spl.Origin() == splitter.Other {
 		use_chan = server.ProcessedQueue
@@ -1028,10 +1030,10 @@ func (server *Server) ProcessSplitItem(splitem splitter.SplitItem, out_queue cha
 		return nil
 	}
 
-	//if we've already done the AccumulatedParsed then we do a final pregre
-	// on the new items then direct send, otherwise if there is an Accumulator
-	// we send to that
+	// we cannot have "loopbacks" in this world so we make sure the origin is not the same
+	// as the
 	accumulate := splitem.Phase() != splitter.AccumulatedParsed && server.PreRegFilter.Accumulator != nil
+	//server.log.Notice("Input %s: %s FROM: %s:: doacc: %v", server.Name, splitem.Line(), splitem.accumulate)
 	if accumulate {
 		//log.Notice("Round One Item: %s", splitem.Line())
 		//log.Debug("Acc:%v Line: %s Phase: %s", server.PreRegFilter.Accumulator.Name, splitem.Line())

@@ -100,6 +100,7 @@ func (client *UDPClient) procLines(line string) {
 		//log.Notice("MOOO UDP line: %v MOOO", splitem.Fields())
 		if err == nil {
 			splitem.SetOrigin(splitter.UDP)
+			splitem.SetOriginName(client.server.Name)
 			//client.server.ProcessSplitItem(splitem, client.out_queue)
 			stats.StatsdClient.Incr("incoming.udp.lines", 1)
 			client.server.ValidLineCount.Up(1)

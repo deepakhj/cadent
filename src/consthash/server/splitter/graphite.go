@@ -20,6 +20,7 @@ type GraphiteSplitItem struct {
 	infields []string
 	inphase  Phase
 	inorigin Origin
+	inoname  string
 }
 
 func (g *GraphiteSplitItem) Key() string {
@@ -48,6 +49,14 @@ func (g *GraphiteSplitItem) Origin() Origin {
 
 func (g *GraphiteSplitItem) SetOrigin(n Origin) {
 	g.inorigin = n
+}
+
+func (g *GraphiteSplitItem) OriginName() string {
+	return g.inoname
+}
+
+func (g *GraphiteSplitItem) SetOriginName(n string) {
+	g.inoname = n
 }
 
 func (g *GraphiteSplitItem) IsValid() bool {

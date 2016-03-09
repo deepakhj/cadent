@@ -136,6 +136,7 @@ func (client *TCPClient) handleRequest(outqueue chan splitter.SplitItem) {
 		if err == nil {
 			//this will block once the queue is full
 			splitem.SetOrigin(splitter.TCP)
+			splitem.SetOriginName(client.server.Name)
 			client.server.ValidLineCount.Up(1)
 			client.input_queue <- splitem
 			stats.StatsdClient.Incr("incoming.tcp.lines", 1)

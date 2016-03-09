@@ -129,6 +129,7 @@ func (client *HTTPClient) HttpHandler(w http.ResponseWriter, r *http.Request) {
 		splitem, err := client.server.SplitterProcessor.ProcessLine(n_line)
 		if err == nil {
 			splitem.SetOrigin(splitter.HTTP)
+			splitem.SetOriginName(client.server.Name)
 			stats.StatsdClient.Incr("incoming.http.lines", 1)
 			client.server.ValidLineCount.Up(1)
 			client.input_queue <- splitem

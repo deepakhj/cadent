@@ -232,15 +232,18 @@ func (acc *Accumulator) FlushAndPost() ([]splitter.SplitItem, error) {
 
 	// background this guy
 	if acc.Aggregators != nil {
-		for _, stat := range items.Stats {
-			stat.Time = t // need to set this as this is the flush time
-			acc.PushStat(stat)
-		}
-		acc.log.Debug("Flushed to Aggregator `%s` to `%s` Lines: %d", acc.Name, acc.Aggregators.Name, len(items.Stats))
+		go func() {
+			defer stats.StatsdNanoTimeFunc(fmt.Sprintf("accumulator.aggregator.flushpost-time-ns"), time.Now())
+			for _, stat := range items.Stats {
+				stat.Time = t // need to set this as this is the flush time
+				acc.PushStat(stat)
+			}
+			acc.log.Debug("Aggregator Flush: `%s` to `%s` Lines: %d", acc.Name, acc.Aggregators.Name, len(items.Stats))
+		}()
 	}
 	stats.StatsdClientSlow.Incr("accumulator.flushesposts", 1)
 
-	acc.log.Debug("Flushed accumulator `%s` to `Backend`: %s Lines: %d", acc.Name, acc.ToBackend, len(out_spl))
+	acc.log.Debug("Flushed accumulator `%s` to Backend: `%s` Lines: %d", acc.Name, acc.ToBackend, len(out_spl))
 	items = nil // GC me
 	return out_spl, nil
 }

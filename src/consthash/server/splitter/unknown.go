@@ -38,6 +38,13 @@ func (g *UnkSplitItem) Origin() Origin {
 func (g *UnkSplitItem) SetOrigin(n Origin) {
 }
 
+func (g *UnkSplitItem) OriginName() string {
+	return "n/a"
+}
+
+func (g *UnkSplitItem) SetOriginName(n string) {
+}
+
 func (g *UnkSplitItem) IsValid() bool {
 	return false
 }

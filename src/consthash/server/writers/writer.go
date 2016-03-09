@@ -6,11 +6,11 @@ package writers
 
 import (
 	"consthash/server/repr"
+	"consthash/server/stats"
 	"consthash/server/writers/indexer"
 	"consthash/server/writers/metrics"
 	"fmt"
-	//"log"
-	"consthash/server/stats"
+	"log"
 	"time"
 )
 
@@ -94,7 +94,7 @@ func (loop *WriterLoop) statTick() {
 	for {
 		time.Sleep(time.Second)
 		stats.StatsdClientSlow.Incr(fmt.Sprintf("writer.inputqueue.%s.length", loop.name), int64(len(loop.write_chan)))
-		//log.Printf("Write Queue Length %s: %d", loop.name, len(loop.write_chan))
+		log.Printf("Write Queue Length %s: %d", loop.name, len(loop.write_chan))
 	}
 	return
 }

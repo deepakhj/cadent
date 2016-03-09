@@ -17,6 +17,7 @@ type RegexSplitItem struct {
 	regexed  [][]string
 	inphase  Phase
 	inorigin Origin
+	inoname  string
 }
 
 func (g *RegexSplitItem) Key() string {
@@ -44,6 +45,14 @@ func (g *RegexSplitItem) Origin() Origin {
 
 func (g *RegexSplitItem) SetOrigin(n Origin) {
 	g.inorigin = n
+}
+
+func (g *RegexSplitItem) OriginName() string {
+	return g.inoname
+}
+
+func (g *RegexSplitItem) SetOriginName(n string) {
+	g.inoname = n
 }
 
 func (g *RegexSplitItem) IsValid() bool {

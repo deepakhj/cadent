@@ -17,6 +17,7 @@ type StatsdSplitItem struct {
 	infields []string
 	inphase  Phase
 	inorigin Origin
+	inoname  string
 }
 
 func (g *StatsdSplitItem) Key() string {
@@ -47,6 +48,13 @@ func (g *StatsdSplitItem) SetOrigin(n Origin) {
 	g.inorigin = n
 }
 
+func (g *StatsdSplitItem) OriginName() string {
+	return g.inoname
+}
+
+func (g *StatsdSplitItem) SetOriginName(n string) {
+	g.inoname = n
+}
 func (g *StatsdSplitItem) IsValid() bool {
 	return len(g.inline) > 0
 }
