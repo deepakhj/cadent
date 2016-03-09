@@ -72,16 +72,18 @@ type WriterConfig struct {
 }
 
 type WriterLoop struct {
-	name       string
-	metrics    metrics.Metrics
-	indexer    indexer.Indexer
-	write_chan chan repr.StatRepr
-	stop_chan  chan bool
+	name         string
+	metrics      metrics.Metrics
+	indexer      indexer.Indexer
+	write_chan   chan repr.StatRepr
+	indexer_chan chan repr.StatRepr
+	stop_chan    chan bool
 }
 
 func New() (loop *WriterLoop, err error) {
 	loop = new(WriterLoop)
 	loop.write_chan = make(chan repr.StatRepr, 100000)
+	loop.indexer_chan = make(chan repr.StatRepr, 1000000) // indexing is slow, so we'll need to buffer things a bit more
 	loop.stop_chan = make(chan bool, 1)
 	return loop, nil
 }
@@ -113,14 +115,28 @@ func (loop *WriterLoop) WriterChan() chan repr.StatRepr {
 	return loop.write_chan
 }
 
+func (loop *WriterLoop) indexLoop() {
+	for {
+		select {
+		case stat := <-loop.indexer_chan:
+			// indexing can be very expensive (at least for cassandra)
+			// and should have their own internal queues and smarts for handleing a massive influx of metric names
+			loop.indexer.Write(stat.Key)
+		//log.Printf("Stat: %v", stat.Key)
+		case <-loop.stop_chan:
+			return
+		}
+	}
+}
+
 func (loop *WriterLoop) procLoop() {
 	for {
 		select {
 		case stat := <-loop.write_chan:
 			// indexing can be very expensive (at least for cassandra)
 			// and should have their own internal queues and smarts for handleing a massive influx of metric names
-			loop.indexer.Write(stat.Key)
 			loop.metrics.Write(stat)
+			go func() { loop.indexer_chan <- stat }() // non-blocking indexer loop
 			//log.Printf("Stat: %v", stat.Key)
 		case <-loop.stop_chan:
 			return
@@ -130,6 +146,7 @@ func (loop *WriterLoop) procLoop() {
 }
 
 func (loop *WriterLoop) Start() {
+	go loop.indexLoop()
 	go loop.procLoop()
 	go loop.statTick()
 	return
