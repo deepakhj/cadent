@@ -197,9 +197,12 @@ func (agg *AggregateLoop) Start() error {
 
 func (agg *AggregateLoop) Stop() {
 	agg.log.Notice("Initiating shutdown of aggregator for `%s`", agg.Name)
-	agg.Shutdown.Send(true)
-	for idx := range agg.FlushTimes {
-		agg.OutWriters[idx].Stop()
-	}
+	go func() {
+		agg.Shutdown.Send(true)
+		for idx := range agg.FlushTimes {
+			agg.OutWriters[idx].Stop()
+		}
+		return
+	}()
 	return
 }

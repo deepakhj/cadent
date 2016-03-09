@@ -187,7 +187,10 @@ func (acc *Accumulator) Start() error {
 
 func (acc *Accumulator) Stop() {
 	acc.log.Notice("Initiating shutdown of accumulator `%s`", acc.Name)
-	acc.Shutdown <- true
+	go func() {
+		acc.Shutdown <- true
+		return
+	}()
 	return
 }
 

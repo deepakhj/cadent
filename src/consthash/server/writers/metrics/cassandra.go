@@ -257,7 +257,7 @@ func (cass *CassandraMetric) InsertOne(stat repr.StatRepr) (int, error) {
 	err := cass.conn.Query(Q,
 		stat.Key, int64(stat.Resolution), stat.Time.UnixNano(), float64(stat.Sum), float64(stat.Mean), float64(stat.Min), float64(stat.Max), stat.Count,
 	).Exec()
-
+	//cass.log.Critical("METRICS WRITE %d: %v", ttl, stat)
 	if err != nil {
 		cass.log.Error("Cassandra Driver: insert failed, %v", err)
 		stats.StatsdClientSlow.Incr("writer.cassandra.metric-failures", 1)
@@ -279,10 +279,7 @@ func (cass *CassandraMetric) Write(stat repr.StatRepr) error {
 		}
 	}
 
-	// if batches are not oddly performant enough
-	for _, stat := range cass.write_list {
-		cass.write_queue <- stat
-	}
+	cass.write_queue <- stat
 	return nil
 
 	/** Direct insert_one tech

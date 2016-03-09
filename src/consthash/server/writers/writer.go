@@ -11,7 +11,6 @@ import (
 	"fmt"
 	//"log"
 	"consthash/server/stats"
-	"log"
 	"time"
 )
 
@@ -95,7 +94,7 @@ func (loop *WriterLoop) statTick() {
 	for {
 		time.Sleep(time.Second)
 		stats.StatsdClientSlow.Incr(fmt.Sprintf("writer.inputqueue.%s.length", loop.name), int64(len(loop.write_chan)))
-		log.Printf("Write Queue Length %s: %d", loop.name, len(loop.write_chan))
+		//log.Printf("Write Queue Length %s: %d", loop.name, len(loop.write_chan))
 	}
 	return
 }
@@ -118,8 +117,8 @@ func (loop *WriterLoop) procLoop() {
 	for {
 		select {
 		case stat := <-loop.write_chan:
-			// indexing can be very expensive, and should have their own internal "back locks"
-			//  indexing is done "once" on launch per key (there is an internal cache)
+			// indexing can be very expensive (at least for cassandra)
+			// and should have their own internal queues and smarts for handleing a massive influx of metric names
 			loop.indexer.Write(stat.Key)
 			loop.metrics.Write(stat)
 			//log.Printf("Stat: %v", stat.Key)
@@ -137,5 +136,8 @@ func (loop *WriterLoop) Start() {
 }
 
 func (loop *WriterLoop) Stop() {
-	loop.stop_chan <- true
+	go func() {
+		loop.stop_chan <- true
+		return
+	}()
 }
