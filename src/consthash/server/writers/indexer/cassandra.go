@@ -80,7 +80,8 @@ type CassandraIndexer struct {
 	write_lock     sync.Mutex
 	paths_inserted map[string]bool // just to not do "extra" work on paths we've already indexed
 
-	write_queue chan string // so we don't "overload" the cassandra connection pool
+	write_queue      chan *CassandraIndexerJob   // so we don't "overload" the cassandra connection pool
+	write_dispatcher *CassandraIndexerDispatcher // so we don't "overload" the cassandra connection pool
 
 	log *logging.Logger
 
@@ -247,16 +248,6 @@ func (cass *CassandraIndexer) WriteOne(skey string) error {
 	return nil
 }
 
-func (cass *CassandraIndexer) writeLoop() {
-	for {
-		select {
-		case key := <-cass.write_queue:
-			cass.WriteOne(key)
-		}
-	}
-	return
-}
-
 // keep an index of the stat keys and their fragments so we can look up
 func (cass *CassandraIndexer) Write(skey string) error {
 
@@ -271,12 +262,11 @@ func (cass *CassandraIndexer) Write(skey string) error {
 	cass.write_lock.Unlock()
 
 	if cass.write_queue == nil {
-		cass.write_queue = make(chan string, 10000)
-		for i := 0; i < cass.db.Cluster().NumConns; i++ {
-			go cass.writeLoop()
-		}
+		cass.write_queue = make(chan *CassandraIndexerJob, 10000)
+		cass.write_dispatcher = NewCassandraIndexerDispatcher(cass.db.Cluster().NumConns, cass.write_queue)
+		cass.write_dispatcher.Run()
 	}
-	cass.write_queue <- skey
+	cass.write_queue <- &CassandraIndexerJob{Key: skey, Cass: cass}
 	return nil
 
 }
@@ -521,4 +511,99 @@ func (cass *CassandraIndexer) Find(metric string) (MetricFindItems, error) {
 	}
 
 	return mt, nil
+}
+
+/************************************************************************/
+/**********  Standard Worker Dispatcher Queue ***************************/
+/************************************************************************/
+// insert job queue workers
+type CassandraIndexerJob struct {
+	Cass *CassandraIndexer
+	Key  string
+}
+
+type CassandraIndexerWorker struct {
+	WorkerPool chan chan *CassandraIndexerJob
+	JobChannel chan *CassandraIndexerJob
+	quit       chan bool
+}
+
+func NewCassandraIndexerWorker(workerPool chan chan *CassandraIndexerJob) *CassandraIndexerWorker {
+	return &CassandraIndexerWorker{
+		WorkerPool: workerPool,
+		JobChannel: make(chan *CassandraIndexerJob),
+		quit:       make(chan bool),
+	}
+}
+
+// Start method starts the run loop for the worker, listening for a quit channel in
+// case we need to stop it
+func (w *CassandraIndexerWorker) Start() {
+	go func() {
+		for {
+			// register the current worker into the worker queue.
+			w.WorkerPool <- w.JobChannel
+
+			select {
+			case job := <-w.JobChannel:
+				job.Cass.WriteOne(job.Key)
+			case <-w.quit:
+				return
+			}
+		}
+		return
+	}()
+	return
+}
+
+// Stop signals the worker to stop listening for work requests.
+func (w *CassandraIndexerWorker) Stop() {
+	go func() {
+		w.quit <- true
+		return
+	}()
+}
+
+type CassandraIndexerDispatcher struct {
+	// A pool of workers channels that are registered with the dispatcher
+	WorkerPool chan chan *CassandraIndexerJob
+	MaxWorkers int
+	JobQueue   chan *CassandraIndexerJob
+}
+
+func NewCassandraIndexerDispatcher(maxWorkers int, jobqueue chan *CassandraIndexerJob) *CassandraIndexerDispatcher {
+	pool := make(chan chan *CassandraIndexerJob, maxWorkers)
+	return &CassandraIndexerDispatcher{
+		WorkerPool: pool,
+		MaxWorkers: maxWorkers,
+		JobQueue:   jobqueue,
+	}
+}
+
+func (d *CassandraIndexerDispatcher) Run() {
+	// starting n number of workers
+	for i := 0; i < d.MaxWorkers; i++ {
+		worker := NewCassandraIndexerWorker(d.WorkerPool)
+		worker.Start()
+	}
+
+	go d.dispatch()
+}
+
+func (d *CassandraIndexerDispatcher) dispatch() {
+	for {
+		select {
+		case job := <-d.JobQueue:
+			// a job request has been received
+			go func(job *CassandraIndexerJob) {
+				// try to obtain a worker job channel that is available.
+				// this will block until a worker is idle
+				jobChannel := <-d.WorkerPool
+
+				// dispatch the job to the worker job channel
+				jobChannel <- job
+			}(job)
+		}
+	}
+	return
 }

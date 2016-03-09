@@ -96,11 +96,12 @@ type CassandraMetric struct {
 	render_wg sync.WaitGroup
 	render_mu sync.Mutex
 
-	write_list     []repr.StatRepr // buffer the writes so as to do "multi" inserts per query
-	write_queue    chan repr.StatRepr
-	max_write_size int           // size of that buffer before a flush
-	max_idle       time.Duration // either max_write_size will trigger a write or this time passing will
-	write_lock     sync.Mutex
+	write_list       []repr.StatRepr // buffer the writes so as to do "multi" inserts per query
+	write_queue      chan *CassandraMetricJob
+	write_dispatcher *CassandraMetricDispatcher
+	max_write_size   int           // size of that buffer before a flush
+	max_idle         time.Duration // either max_write_size will trigger a write or this time passing will
+	write_lock       sync.Mutex
 
 	log *logging.Logger
 
@@ -174,16 +175,6 @@ func (cass *CassandraMetric) PeriodFlush() {
 	for {
 		time.Sleep(cass.max_idle)
 		cass.Flush()
-	}
-	return
-}
-
-func (cass *CassandraMetric) consumeWriter() {
-	for {
-		select {
-		case stat := <-cass.write_queue:
-			cass.InsertOne(stat)
-		}
 	}
 	return
 }
@@ -271,15 +262,14 @@ func (cass *CassandraMetric) InsertOne(stat repr.StatRepr) (int, error) {
 
 func (cass *CassandraMetric) Write(stat repr.StatRepr) error {
 
-	/**** single write queue to keep a connection depletion in cassandra ***/
+	/**** dispatcher queue ***/
 	if cass.write_queue == nil {
-		cass.write_queue = make(chan repr.StatRepr, cass.db.Cluster().NumConns*100)
-		for i := 0; i < cass.db.Cluster().NumConns; i++ {
-			go cass.consumeWriter()
-		}
+		cass.write_queue = make(chan *CassandraMetricJob, 10000)
+		cass.write_dispatcher = NewCassandraMetricDispatcher(cass.db.Cluster().NumConns, cass.write_queue)
+		cass.write_dispatcher.Run()
 	}
 
-	cass.write_queue <- stat
+	cass.write_queue <- &CassandraMetricJob{Stat: &stat, Cass: cass}
 	return nil
 
 	/** Direct insert_one tech
@@ -512,4 +502,99 @@ func (cass *CassandraMetric) Render(path string, from string, to string) (Whispe
 	cass.render_wg.Wait()
 	return whis, nil
 
+}
+
+/************************************************************************/
+/**********  Standard Worker Dispatcher Queue ***************************/
+/************************************************************************/
+// insert job queue workers
+type CassandraMetricJob struct {
+	Cass *CassandraMetric
+	Stat *repr.StatRepr
+}
+
+type CassandraMetricWorker struct {
+	WorkerPool chan chan *CassandraMetricJob
+	JobChannel chan *CassandraMetricJob
+	quit       chan bool
+}
+
+func NewCassandraMetricWorker(workerPool chan chan *CassandraMetricJob) *CassandraMetricWorker {
+	return &CassandraMetricWorker{
+		WorkerPool: workerPool,
+		JobChannel: make(chan *CassandraMetricJob),
+		quit:       make(chan bool),
+	}
+}
+
+// Start method starts the run loop for the worker, listening for a quit channel in
+// case we need to stop it
+func (w *CassandraMetricWorker) Start() {
+	go func() {
+		for {
+			// register the current worker into the worker queue.
+			w.WorkerPool <- w.JobChannel
+
+			select {
+			case job := <-w.JobChannel:
+				job.Cass.InsertOne(*job.Stat)
+			case <-w.quit:
+				return
+			}
+		}
+		return
+	}()
+	return
+}
+
+// Stop signals the worker to stop listening for work requests.
+func (w *CassandraMetricWorker) Stop() {
+	go func() {
+		w.quit <- true
+		return
+	}()
+}
+
+type CassandraMetricDispatcher struct {
+	// A pool of workers channels that are registered with the dispatcher
+	WorkerPool chan chan *CassandraMetricJob
+	MaxWorkers int
+	JobQueue   chan *CassandraMetricJob
+}
+
+func NewCassandraMetricDispatcher(maxWorkers int, jobqueue chan *CassandraMetricJob) *CassandraMetricDispatcher {
+	pool := make(chan chan *CassandraMetricJob, maxWorkers)
+	return &CassandraMetricDispatcher{
+		WorkerPool: pool,
+		MaxWorkers: maxWorkers,
+		JobQueue:   jobqueue,
+	}
+}
+
+func (d *CassandraMetricDispatcher) Run() {
+	// starting n number of workers
+	for i := 0; i < d.MaxWorkers; i++ {
+		worker := NewCassandraMetricWorker(d.WorkerPool)
+		worker.Start()
+	}
+
+	go d.dispatch()
+}
+
+func (d *CassandraMetricDispatcher) dispatch() {
+	for {
+		select {
+		case job := <-d.JobQueue:
+			// a job request has been received
+			go func(job *CassandraMetricJob) {
+				// try to obtain a worker job channel that is available.
+				// this will block until a worker is idle
+				jobChannel := <-d.WorkerPool
+
+				// dispatch the job to the worker job channel
+				jobChannel <- job
+			}(job)
+		}
+	}
+	return
 }

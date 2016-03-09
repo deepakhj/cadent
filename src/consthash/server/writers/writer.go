@@ -132,6 +132,7 @@ func (loop *WriterLoop) indexLoop() {
 			return
 		}
 	}
+	return
 }
 
 func (loop *WriterLoop) procLoop() {
