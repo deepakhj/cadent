@@ -82,6 +82,8 @@ func (w *Worker) Stop() {
 type Dispatch struct {
 	work_pool  chan chan IJob
 	job_queue  chan IJob
+	shutdown   chan bool
+	workers    []*Worker
 	numworkers int
 }
 
@@ -90,6 +92,8 @@ func NewDispatch(numworkers int, work_pool chan chan IJob, job_queue chan IJob) 
 		work_pool:  work_pool,
 		numworkers: numworkers,
 		job_queue:  job_queue,
+		workers:    make([]*Worker, numworkers, numworkers),
+		shutdown:   make(chan bool),
 	}
 	return dis
 }
@@ -106,6 +110,7 @@ func (d *Dispatch) Run() error {
 	// starting n number of workers
 	for i := 0; i < d.numworkers; i++ {
 		worker := NewWorker(d.work_pool)
+		d.workers[i] = worker
 		worker.Start()
 	}
 
@@ -113,20 +118,31 @@ func (d *Dispatch) Run() error {
 	return nil
 }
 
+func (d *Dispatch) Shutdown() {
+	d.shutdown <- true
+}
+
 func (d *Dispatch) dispatch() {
 	for {
 		select {
 		case job := <-d.JobsQueue():
 			// a job request has been received
-			go func(job IJob) {
-				// try to obtain a worker job channel that is available.
-				// this will block until a worker is idle
-				jobChannel := <-d.Workpool()
+			//func(job IJob) {
+			// try to obtain a worker job channel that is available.
+			// this will block until a worker is idle
+			jobChannel := <-d.Workpool()
 
-				// dispatch the job to the worker job channel
-				jobChannel <- job
-				return
-			}(job)
+			// dispatch the job to the worker job channel
+			jobChannel <- job
+			//	return
+			//}
+		case <-d.shutdown:
+			for _, w := range d.workers {
+				w.Shutdown() <- true
+			}
+			close(d.JobsQueue())
+			close(d.Workpool())
+			return
 		}
 	}
 	return
