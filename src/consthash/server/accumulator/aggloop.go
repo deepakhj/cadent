@@ -150,6 +150,10 @@ func (agg *AggregateLoop) startWriteLooper(duration time.Duration, ttl time.Dura
 		//defer _mu.Unlock()
 
 		items := agg.Aggregators.Get(duration).GetAndClear()
+		if writer.Full() {
+			agg.log.Critical("Saddly the write queue is full, if we continue adding to it, the entire world dies, we have to bail this write tick")
+			return
+		}
 		for _, stat := range items {
 			stat.Resolution = _dur.Seconds()
 			stat.TTL = int64(_ttl.Seconds()) // need to add in the TTL

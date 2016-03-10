@@ -80,12 +80,17 @@ type WriterLoop struct {
 	indexer_chan chan repr.StatRepr
 	shutdowner   *broadcast.Broadcaster
 	stop_chan    chan bool
+	writer_len   int
+	index_len    int
 }
 
 func New() (loop *WriterLoop, err error) {
 	loop = new(WriterLoop)
-	loop.write_chan = make(chan repr.StatRepr, 100000)
-	loop.indexer_chan = make(chan repr.StatRepr, 1000000) // indexing is slow, so we'll need to buffer things a bit more
+	loop.writer_len = 100000
+	loop.index_len = 100000
+
+	loop.write_chan = make(chan repr.StatRepr, loop.writer_len)
+	loop.indexer_chan = make(chan repr.StatRepr, loop.index_len) // indexing is slow, so we'll need to buffer things a bit more
 	loop.stop_chan = make(chan bool, 1)
 	loop.shutdowner = broadcast.New(1)
 	return loop, nil
@@ -152,6 +157,10 @@ func (loop *WriterLoop) procLoop() {
 		}
 	}
 	return
+}
+
+func (loop *WriterLoop) Full() bool {
+	return len(loop.write_chan) >= loop.writer_len || len(loop.indexer_chan) >= loop.index_len 
 }
 
 func (loop *WriterLoop) Start() {
