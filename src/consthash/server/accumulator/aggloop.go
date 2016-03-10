@@ -149,14 +149,14 @@ func (agg *AggregateLoop) startWriteLooper(duration time.Duration, ttl time.Dura
 		//_mu.Lock()
 		//defer _mu.Unlock()
 
-		items := agg.Aggregators.Get(duration).Items
+		items := agg.Aggregators.Get(duration).GetAndClear()
 		for _, stat := range items {
 			stat.Resolution = _dur.Seconds()
 			stat.TTL = int64(_ttl.Seconds()) // need to add in the TTL
 			//agg.log.Critical("CHAN WRITE: LEN: %d", len(writer.WriteChan()))
 			writer.WriterChan() <- stat
 		}
-		agg.Aggregators.Clear(duration) // clear now before any "new" things get added
+		//agg.Aggregators.Clear(duration) // clear now before any "new" things get added
 		// need to clear out the Agg
 		stats.StatsdClientSlow.Incr(fmt.Sprintf("aggregator.%s.writesloops", _dur.String()), 1)
 		return

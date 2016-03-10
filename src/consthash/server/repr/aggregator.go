@@ -31,6 +31,19 @@ func (sa *Aggregator) Len() int {
 	return len(sa.Items)
 }
 
+func (sa *Aggregator) GetAndClear() map[string]StatRepr {
+	sa.mu.Lock()
+	defer sa.mu.Unlock()
+	t_items := make(map[string]StatRepr)
+	for k, v := range sa.Items{
+		t_items[k] = v
+		delete(sa.Items, k)
+	}
+	return t_items
+}
+
+
+
 func (sa *Aggregator) Add(stat StatRepr) error {
 	sa.mu.Lock()
 	defer sa.mu.Unlock()
