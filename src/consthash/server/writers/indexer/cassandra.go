@@ -80,8 +80,7 @@ type CassandraIndexer struct {
 	write_lock     sync.Mutex
 	paths_inserted map[string]bool // just to not do "extra" work on paths we've already indexed
 
-	write_queue      chan *CassandraIndexerJob   // so we don't "overload" the cassandra connection pool
-	write_dispatcher *CassandraIndexerDispatcher // so we don't "overload" the cassandra connection pool
+	write_queue chan string // so we don't "overload" the cassandra connection pool
 
 	log *logging.Logger
 
@@ -138,8 +137,9 @@ func (cass *CassandraIndexer) WriteOne(skey string) error {
 		if _pth == skey && _dd && _len == p_len-1 {
 			return nil
 		}
+	} else {
+		cass.log.Notice("Indexer pre-get check fail, on to indexing ... : '%s'", gerr)
 	}
-	//cass.log.Notice("Indexer pre-get check fail, on to indexing ... : '%s'", gerr)
 
 	cur_part := ""
 	segments := []CassSegment{}
@@ -248,6 +248,16 @@ func (cass *CassandraIndexer) WriteOne(skey string) error {
 	return nil
 }
 
+func (cass *CassandraIndexer) writeLoop() {
+	for {
+		select {
+		case key := <-cass.write_queue:
+			cass.WriteOne(key)
+		}
+	}
+	return
+}
+
 // keep an index of the stat keys and their fragments so we can look up
 func (cass *CassandraIndexer) Write(skey string) error {
 
@@ -262,11 +272,12 @@ func (cass *CassandraIndexer) Write(skey string) error {
 	cass.write_lock.Unlock()
 
 	if cass.write_queue == nil {
-		cass.write_queue = make(chan *CassandraIndexerJob, 10000)
-		cass.write_dispatcher = NewCassandraIndexerDispatcher(cass.db.Cluster().NumConns, cass.write_queue)
-		cass.write_dispatcher.Run()
+		cass.write_queue = make(chan string, 10000)
+		for i := 0; i < cass.db.Cluster().NumConns; i++ {
+			go cass.writeLoop()
+		}
 	}
-	cass.write_queue <- &CassandraIndexerJob{Key: skey, Cass: cass}
+	cass.write_queue <- skey
 	return nil
 
 }
