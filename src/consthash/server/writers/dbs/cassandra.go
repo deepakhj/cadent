@@ -140,7 +140,7 @@ func (cass *CassandraDB) Config(conf map[string]interface{}) (err error) {
 
 	cluster.PoolConfig.HostSelectionPolicy = gocql.TokenAwareHostPolicy(gocql.RoundRobinHostPolicy())
 
-	compress := true
+	compress := false
 	_compress := conf["compress"]
 	if _compress != nil {
 		compress = _compress.(bool)

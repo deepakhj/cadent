@@ -137,9 +137,8 @@ func (cass *CassandraIndexer) WriteOne(skey string) error {
 		if _pth == skey && _dd && _len == p_len-1 {
 			return nil
 		}
-	} else {
-		cass.log.Notice("Indexer pre-get check fail, on to indexing ... : '%s'", gerr)
 	}
+	//	cass.log.Notice("Indexer pre-get check fail, on to indexing ... : '%s'", gerr)
 
 	cur_part := ""
 	segments := []CassSegment{}
