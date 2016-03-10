@@ -160,7 +160,7 @@ func (loop *WriterLoop) procLoop() {
 }
 
 func (loop *WriterLoop) Full() bool {
-	return len(loop.write_chan) >= loop.writer_len || len(loop.indexer_chan) >= loop.index_len 
+	return len(loop.write_chan) >= loop.writer_len || len(loop.indexer_chan) >= loop.index_len
 }
 
 func (loop *WriterLoop) Start() {

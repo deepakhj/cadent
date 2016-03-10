@@ -30,6 +30,7 @@ import (
 	"github.com/gocql/gocql"
 	logging "gopkg.in/op/go-logging.v1"
 
+	"consthash/server/dispatch"
 	"consthash/server/writers/indexer"
 	"math"
 	"strings"
@@ -96,11 +97,13 @@ type CassandraMetric struct {
 	render_wg sync.WaitGroup
 	render_mu sync.Mutex
 
-	write_list     []repr.StatRepr // buffer the writes so as to do "multi" inserts per query
-	write_queue    chan repr.StatRepr
-	max_write_size int           // size of that buffer before a flush
-	max_idle       time.Duration // either max_write_size will trigger a write or this time passing will
-	write_lock     sync.Mutex
+	write_list       []repr.StatRepr // buffer the writes so as to do "multi" inserts per query
+	write_queue      chan dispatch.IJob
+	dispatch_queue   chan chan dispatch.IJob
+	write_dispatcher *dispatch.Dispatch
+	max_write_size   int           // size of that buffer before a flush
+	max_idle         time.Duration // either max_write_size will trigger a write or this time passing will
+	write_lock       sync.Mutex
 
 	log *logging.Logger
 
@@ -165,7 +168,7 @@ func (cass *CassandraMetric) Config(conf map[string]interface{}) (err error) {
 		}
 	}
 
-	go cass.PeriodFlush()
+	//go cass.PeriodFlush()
 
 	return nil
 }
@@ -178,6 +181,7 @@ func (cass *CassandraMetric) PeriodFlush() {
 	return
 }
 
+/*
 func (cass *CassandraMetric) consumeWriter() {
 	for {
 		select {
@@ -187,7 +191,7 @@ func (cass *CassandraMetric) consumeWriter() {
 	}
 	return
 }
-
+*/
 func (cass *CassandraMetric) Flush() (int, error) {
 	cass.write_lock.Lock()
 	defer cass.write_lock.Unlock()
@@ -271,7 +275,19 @@ func (cass *CassandraMetric) InsertOne(stat repr.StatRepr) (int, error) {
 
 func (cass *CassandraMetric) Write(stat repr.StatRepr) error {
 
-	/**** single write queue to keep a connection depletion in cassandra ***/
+	/**** dispatcher queue ***/
+	if cass.write_queue == nil {
+		workers := 128
+		cass.write_queue = make(chan dispatch.IJob, 10000)
+		cass.dispatch_queue = make(chan chan dispatch.IJob, workers)
+		cass.write_dispatcher = dispatch.NewDispatch(workers, cass.dispatch_queue, cass.write_queue)
+		cass.write_dispatcher.Run()
+	}
+
+	cass.write_queue <- CassandraMetricJob{Stat: stat, Cass: cass}
+	return nil
+
+	/**** single write queue to keep a connection depletion in cassandra
 	if cass.write_queue == nil {
 		cass.write_queue = make(chan repr.StatRepr, cass.db.Cluster().NumConns*100)
 		for i := 0; i < cass.db.Cluster().NumConns; i++ {
@@ -281,6 +297,7 @@ func (cass *CassandraMetric) Write(stat repr.StatRepr) error {
 
 	cass.write_queue <- stat
 	return nil
+	***/
 
 	/** Direct insert_one tech
 	go cass.InsertOne(stat)
@@ -512,4 +529,17 @@ func (cass *CassandraMetric) Render(path string, from string, to string) (Whispe
 	cass.render_wg.Wait()
 	return whis, nil
 
+}
+
+/************************************************************************/
+/**********  Standard Worker Dispatcher JOB   ***************************/
+/************************************************************************/
+// insert job queue workers
+type CassandraMetricJob struct {
+	Cass *CassandraMetric
+	Stat repr.StatRepr
+}
+
+func (j CassandraMetricJob) DoWork() {
+	j.Cass.InsertOne(j.Stat)
 }
