@@ -2,44 +2,44 @@
 package stats
 
 import (
+	"expvar"
 	"strconv"
-	"sync"
 )
 
 // An AtomicInt is an int64 to be accessed atomically.
 type AtomicInt struct {
-	Val int64
-	mu  sync.Mutex
+	Val *expvar.Int
+}
+
+func NewAtomic(name string) *AtomicInt {
+	att := &AtomicInt{
+		Val: expvar.NewInt(name),
+	}
+	att.Set(0)
+	return att
 }
 
 // Add atomically adds n to i.
 func (i *AtomicInt) Add(n int64) int64 {
-	i.mu.Lock()
-	defer i.mu.Unlock()
-	i.Val += n
-	return i.Val
+	i.Val.Add(n)
+	return i.Get()
 }
 
 // Get atomically gets the value of i.
 func (i *AtomicInt) Get() int64 {
-	i.mu.Lock()
-	defer i.mu.Unlock()
-	return i.Val
+	ret, _ := strconv.Atoi(i.Val.String())
+	return int64(ret)
 }
 
 // Set the int to an arb number to a number
 func (i *AtomicInt) Set(n int64) {
-	i.mu.Lock()
-	defer i.mu.Unlock()
-	i.Val = n
+	i.Val.Set(n)
 }
 
 func (i *AtomicInt) Equal(n int64) bool {
-	i.mu.Lock()
-	defer i.mu.Unlock()
-	return i.Val == n
+	return i.Get() == n
 }
 
 func (i *AtomicInt) String() string {
-	return strconv.FormatInt(i.Get(), 10)
+	return i.Val.String()
 }

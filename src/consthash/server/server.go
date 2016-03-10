@@ -179,9 +179,9 @@ type Server struct {
 
 	//if our "buffered" bits exceded this, we're basically out of ram
 	// so we "pause" until we can do something
-	ClientReadBufferSize int64           //for net read buffers
-	MaxReadBufferSize    int64           // the biggest we can make this buffer before "failing"
-	CurrentReadBufferRam stats.AtomicInt // the amount of buffer we're on
+	ClientReadBufferSize int64            //for net read buffers
+	MaxReadBufferSize    int64            // the biggest we can make this buffer before "failing"
+	CurrentReadBufferRam *stats.AtomicInt // the amount of buffer we're on
 
 	// timeouts for tuning
 	WriteTimeout    time.Duration // time out when sending lines
@@ -216,7 +216,7 @@ type Server struct {
 	//workers and ques sizes
 	WorkQueue   chan *OutputMessage
 	WorkerHold  chan int64
-	InWorkQueue stats.AtomicInt
+	InWorkQueue *stats.AtomicInt
 	Workers     int64
 
 	//Worker Breaker
@@ -249,6 +249,27 @@ type Server struct {
 	stats ServerStats
 
 	log *logging.Logger
+}
+
+func (server *Server) InitCounters() {
+	pref := fmt.Sprintf("%p", server)
+
+	server.ValidLineCount = stats.NewStatCount(pref + " " + server.Name + " ValidLineCount")
+	server.WorkerValidLineCount = stats.NewStatCount(pref + " " + server.Name + " WorkerValidLineCount")
+	server.InvalidLineCount = stats.NewStatCount(pref + " " + server.Name + " InvalidLineCount")
+	server.SuccessSendCount = stats.NewStatCount(pref + " " + server.Name + " SuccessSendCount")
+	server.FailSendCount = stats.NewStatCount(pref + " " + server.Name + " FailSendCount")
+	server.UnsendableSendCount = stats.NewStatCount(pref + " " + server.Name + " UnsendableSendCount")
+	server.UnknownSendCount = stats.NewStatCount(pref + " " + server.Name + " UnknownSendCount")
+	server.AllLinesCount = stats.NewStatCount(pref + " " + server.Name + " AllLinesCount")
+	server.RejectedLinesCount = stats.NewStatCount(pref + " " + server.Name + " RejectedLinesCount")
+	server.RedirectedLinesCount = stats.NewStatCount(pref + " " + server.Name + " RedirectedLinesCount")
+	server.BytesWrittenCount = stats.NewStatCount(pref + " " + server.Name + " BytesWrittenCount")
+	server.BytesReadCount = stats.NewStatCount(pref + " " + server.Name + " BytesReadCount")
+
+	server.CurrentReadBufferRam = stats.NewAtomic(pref + " " + server.Name + " CurrentReadBufferRam")
+	server.InWorkQueue = stats.NewAtomic(pref + " " + server.Name + " InWorkQueue")
+
 }
 
 func (server *Server) AddToCurrentTotalBufferSize(length int64) int64 {
@@ -558,6 +579,7 @@ func NewServer(cfg *Config) (server *Server, err error) {
 
 	serv := new(Server)
 	serv.Name = cfg.Name
+	serv.InitCounters()
 	serv.ListenURL = cfg.ListenURL
 	serv.StartTime = time.Now()
 	serv.WorkerHold = make(chan int64)

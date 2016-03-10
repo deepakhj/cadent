@@ -45,11 +45,20 @@ type ServerPoolServer struct {
 	ServerURL url.URL
 	CheckURL  url.URL
 
-	ServerPingCounts        stats.AtomicInt
-	ServerUpCounts          stats.AtomicInt
-	ServerDownCounts        stats.AtomicInt
-	ServerCurrentDownCounts stats.AtomicInt
-	ServerRequestCounts     stats.AtomicInt
+	ServerPingCounts        *stats.AtomicInt
+	ServerUpCounts          *stats.AtomicInt
+	ServerDownCounts        *stats.AtomicInt
+	ServerCurrentDownCounts *stats.AtomicInt
+	ServerRequestCounts     *stats.AtomicInt
+}
+
+func (p *ServerPoolServer) Init() {
+	pref := fmt.Sprintf("%p", p)
+	p.ServerPingCounts = stats.NewAtomic(pref + " " + p.Name + " ServerPingCounts")
+	p.ServerUpCounts = stats.NewAtomic(pref + " " + p.Name + " ServerUpCounts")
+	p.ServerDownCounts = stats.NewAtomic(pref + " " + p.Name + " ServerDownCounts")
+	p.ServerCurrentDownCounts = stats.NewAtomic(pref + " " + p.Name + " ServerCurrentDownCounts")
+	p.ServerRequestCounts = stats.NewAtomic(pref + " " + p.Name + " ServerRequestCounts")
 }
 
 type CheckedServerPool struct {
@@ -63,7 +72,7 @@ type CheckedServerPool struct {
 
 	Servers        []ServerPoolServer
 	DroppedServers []ServerPoolServer
-	AllPingCounts  stats.AtomicInt
+	AllPingCounts  *stats.AtomicInt
 
 	// some stats
 	ServerActiveList map[string]bool
@@ -130,11 +139,13 @@ func createServerPool(serverlist []*url.URL, checklist []*url.URL, serveraction 
 
 	serverp.ServerActions = serveraction
 
-	serverp.AllPingCounts.Set(0)
-
+	v_name := fmt.Sprintf("%p", serverp)
 	for idx, server := range serverlist {
+		v_name += fmt.Sprintf("host: %s check: %s", server.String(), checklist[idx].String())
+
 		serverp.AddServer(server, checklist[idx])
 	}
+	serverp.AllPingCounts = stats.NewAtomic(v_name + " AllPingCounts")
 
 	serverp.ConnectionRetry = DEFAULT_SERVER_RETRY
 	serverp.DownOutCount = DEFAULT_SERVER_OUT_COUNT
@@ -196,17 +207,12 @@ func (self *CheckedServerPool) AddServer(serverUrl *url.URL, checkUrl *url.URL) 
 	self.ServerActions.onServerUp(*serverUrl)
 
 	c_server := ServerPoolServer{
-		Name:                    fmt.Sprintf("%s", serverUrl),
-		ServerURL:               *serverUrl,
-		CheckName:               fmt.Sprintf("%s", checkUrl),
-		CheckURL:                *checkUrl,
-		ServerPingCounts:        stats.AtomicInt{Val: 0},
-		ServerUpCounts:          stats.AtomicInt{Val: 0},
-		ServerDownCounts:        stats.AtomicInt{Val: 0},
-		ServerCurrentDownCounts: stats.AtomicInt{Val: 0},
-		ServerRequestCounts:     stats.AtomicInt{Val: 0},
+		Name:      fmt.Sprintf("%s", serverUrl),
+		ServerURL: *serverUrl,
+		CheckName: fmt.Sprintf("%s", checkUrl),
+		CheckURL:  *checkUrl,
 	}
-
+	c_server.Init()
 	self.Servers = append(self.Servers, c_server)
 	self.log.Notice("Added Server %s checked via %s", c_server.Name, c_server.CheckName)
 }

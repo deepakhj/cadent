@@ -7,15 +7,15 @@ import (
 
 type StatCount struct {
 	Name       string
-	TotalCount AtomicInt
-	TickCount  AtomicInt
+	TotalCount *AtomicInt
+	TickCount  *AtomicInt
 }
 
-func NewStatCount() StatCount {
+func NewStatCount(name string) StatCount {
 	return StatCount{
-		Name:       "",
-		TotalCount: AtomicInt{Val: 0},
-		TickCount:  AtomicInt{Val: 0},
+		Name:       name,
+		TotalCount: NewAtomic(name + "TotalCount"),
+		TickCount:  NewAtomic(name + "TickCount"),
 	}
 }
 func (stat *StatCount) Up(val uint64) {
