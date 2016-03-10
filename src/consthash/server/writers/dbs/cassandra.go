@@ -136,7 +136,7 @@ func (cass *CassandraDB) Config(conf map[string]interface{}) (err error) {
 	cluster.Timeout = timeout
 	cluster.NumConns = numcons
 	cluster.RetryPolicy = &gocql.SimpleRetryPolicy{NumRetries: 3}
-	cluster.ProtoVersion = 0x03 //
+	cluster.ProtoVersion = 0x04 //
 
 	cluster.PoolConfig.HostSelectionPolicy = gocql.TokenAwareHostPolicy(gocql.RoundRobinHostPolicy())
 
