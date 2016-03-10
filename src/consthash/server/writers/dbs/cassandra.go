@@ -136,9 +136,18 @@ func (cass *CassandraDB) Config(conf map[string]interface{}) (err error) {
 	cluster.Timeout = timeout
 	cluster.NumConns = numcons
 	cluster.RetryPolicy = &gocql.SimpleRetryPolicy{NumRetries: 3}
-	cluster.ProtoVersion = 0x04 //
+	cluster.ProtoVersion = 0x03 //
 
 	cluster.PoolConfig.HostSelectionPolicy = gocql.TokenAwareHostPolicy(gocql.RoundRobinHostPolicy())
+
+	compress := true
+	_compress := conf["compress"]
+	if _compress != nil {
+		compress = _compress.(bool)
+	}
+	if compress {
+		cluster.Compressor = new(gocql.SnappyCompressor)
+	}
 
 	// auth
 	user := ""
@@ -169,6 +178,7 @@ func (cass *CassandraDB) Config(conf map[string]interface{}) (err error) {
 		}
 	*/
 	cass.conn, err = cluster.CreateSession()
+
 	if err != nil {
 		return err
 	}

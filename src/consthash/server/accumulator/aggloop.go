@@ -112,7 +112,10 @@ func (agg *AggregateLoop) SetWriter(conf writers.WriterConfig) error {
 		wr.SetIndexer(idx)
 
 		agg.OutWriters = append(agg.OutWriters, wr)
+		agg.log.Notice("Started duration %s Aggregator writer", dur.String())
+
 	}
+	agg.log.Notice("Started %d Aggregator writers", len(agg.OutWriters))
 	return nil
 }
 

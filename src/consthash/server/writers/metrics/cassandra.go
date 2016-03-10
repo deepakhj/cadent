@@ -105,13 +105,15 @@ type CassandraMetric struct {
 
 	log *logging.Logger
 
-	datacache *lrucache.TTLLRUCache
+	datacache   *lrucache.TTLLRUCache
+	default_ttl int64
 }
 
 func NewCassandraMetrics() *CassandraMetric {
 	cass := new(CassandraMetric)
 	cass.log = logging.MustGetLogger("reader.cassandra")
 	cass.datacache = lrucache.NewTTLLRUCache(CASSANDRA_RESULT_CACHE_SIZE, CASSANDRA_RESULT_CACHE_TTL)
+
 	return cass
 }
 
@@ -125,6 +127,7 @@ func (cass *CassandraMetric) SetIndexer(idx indexer.Indexer) error {
 // we select the BinTime based on the TTL
 func (cass *CassandraMetric) SetResolutions(res [][]int) {
 	cass.resolutions = res
+
 }
 
 func (cass *CassandraMetric) Config(conf map[string]interface{}) (err error) {
@@ -232,22 +235,19 @@ func (cass *CassandraMetric) InsertOne(stat repr.StatRepr) (int, error) {
 
 	defer stats.StatsdNanoTimeFunc(fmt.Sprintf("writer.cassandra.write.metric-time-ns"), time.Now())
 
-	ttl := int64(0)
+	ttl := int64(cass.default_ttl)
 	if stat.TTL > 0 {
 		ttl = stat.TTL
 	}
 
 	Q := fmt.Sprintf(
-		"INSERT INTO %s (id, time, point) VALUES  ({path: ?, resolution: ?}, ?, {sum: ?, mean: ?, min: ?, max: ?, count: ?})",
+		"INSERT INTO %s (id, time, point) VALUES  ({path: ?, resolution: ?}, ?, {sum: ?, mean: ?, min: ?, max: ?, count: ?}) USING TTL ?",
 		cass.db.MetricTable(),
 	)
-	if ttl > 0 {
-		Q += fmt.Sprintf(" USING TTL %d", ttl)
-	}
-
 	err := cass.conn.Query(Q,
-		stat.Key, int64(stat.Resolution), stat.Time.UnixNano(), float64(stat.Sum), float64(stat.Mean), float64(stat.Min), float64(stat.Max), stat.Count,
+		stat.Key, int64(stat.Resolution), stat.Time.UnixNano(), float64(stat.Sum), float64(stat.Mean), float64(stat.Min), float64(stat.Max), stat.Count, ttl,
 	).Exec()
+
 	//cass.log.Critical("METRICS WRITE %d: %v", ttl, stat)
 	if err != nil {
 		cass.log.Error("Cassandra Driver: insert failed, %v", err)

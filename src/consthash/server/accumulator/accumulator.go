@@ -209,7 +209,7 @@ func (acc *Accumulator) PushStat(spl repr.StatRepr) {
 }
 
 func (acc *Accumulator) FlushAndPost() ([]splitter.SplitItem, error) {
-	defer stats.StatsdNanoTimeFunc(fmt.Sprintf("accumulator.flushpost-time-ns"), time.Now())
+	defer stats.StatsdSlowNanoTimeFunc(fmt.Sprintf("accumulator.flushpost-time-ns"), time.Now())
 	items := acc.Accumulate.Flush()
 	//log.Notice("Flush: %s", items)
 	//return []splitter.SplitItem{}, nil
@@ -249,7 +249,7 @@ func (acc *Accumulator) FlushAndPost() ([]splitter.SplitItem, error) {
 
 // flush out the accumulator, and "reparse" the lines
 func (acc *Accumulator) Flush() ([]splitter.SplitItem, error) {
-	defer stats.StatsdNanoTimeFunc(fmt.Sprintf("accumulator.flush-time-ns"), time.Now())
+	defer stats.StatsdSlowNanoTimeFunc(fmt.Sprintf("accumulator.flush-time-ns"), time.Now())
 
 	items := acc.Accumulate.Flush()
 	var out_spl []splitter.SplitItem
