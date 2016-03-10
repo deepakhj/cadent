@@ -35,14 +35,12 @@ func (sa *Aggregator) GetAndClear() map[string]StatRepr {
 	sa.mu.Lock()
 	defer sa.mu.Unlock()
 	t_items := make(map[string]StatRepr)
-	for k, v := range sa.Items{
+	for k, v := range sa.Items {
 		t_items[k] = v
 		delete(sa.Items, k)
 	}
 	return t_items
 }
-
-
 
 func (sa *Aggregator) Add(stat StatRepr) error {
 	sa.mu.Lock()
@@ -72,7 +70,7 @@ func (sa *Aggregator) Add(stat StatRepr) error {
 func (sa *Aggregator) Clear() {
 	sa.mu.Lock()
 	defer sa.mu.Unlock()
-	for k, _ := range sa.Items{
+	for k := range sa.Items {
 		delete(sa.Items, k)
 	}
 }
