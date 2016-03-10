@@ -593,6 +593,7 @@ func (d *CassandraMetricDispatcher) dispatch() {
 
 				// dispatch the job to the worker job channel
 				jobChannel <- job
+				return
 			}(job)
 		}
 	}
