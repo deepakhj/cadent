@@ -65,7 +65,7 @@ func (w *Worker) Start() {
 				// put back on queue
 				if err != nil && w.dispatcher.Retries() < job.OnRetry() {
 					job.IncRetry()
-					w.job_channel <- job
+					w.dispatcher.JobsQueue() <- job
 				}
 			case <-w.quit:
 				return
