@@ -162,19 +162,29 @@ func (p *SingleWriter) Write(j *OutputMessage) error {
 type OutputDispatchJob struct {
 	Writer  OutMessageWriter
 	Message *OutputMessage
+	retry   int
 }
 
-func (o OutputDispatchJob) DoWork() {
+func (j OutputDispatchJob) IncRetry() int {
+	j.retry++
+	return j.retry
+}
+func (j OutputDispatchJob) OnRetry() int {
+	return j.retry
+}
+func (o OutputDispatchJob) DoWork() error {
 	err := o.Writer.Write(o.Message)
 
 	if err != nil {
 		o.Message.server.log.Error("%s", err)
 	}
+	return err
 }
 
 func NewOutputDispatcher(workers int) *dispatch.Dispatch {
 	write_queue := make(chan dispatch.IJob, workers*10) // a little buffer
 	dispatch_queue := make(chan chan dispatch.IJob, workers)
 	write_dispatcher := dispatch.NewDispatch(workers, dispatch_queue, write_queue)
+	write_dispatcher.SetRetries(2)
 	return write_dispatcher
 }

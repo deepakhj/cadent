@@ -6,7 +6,9 @@ package dispatch
 // insert job queue workers
 
 type IJob interface {
-	DoWork()
+	OnRetry() int
+	IncRetry() int
+	DoWork() error
 }
 
 type IWorker interface {
@@ -21,6 +23,7 @@ type IWorker interface {
 type IDispatcher interface {
 	Workpool() chan chan IJob
 	JobsQueue() chan IJob
+	Retries() int
 
 	Run() error
 }

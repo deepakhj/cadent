@@ -28,13 +28,15 @@ type Worker struct {
 	worker_pool chan chan IJob
 	job_channel chan IJob
 	quit        chan bool
+	dispatcher  IDispatcher
 }
 
-func NewWorker(workerPool chan chan IJob) *Worker {
+func NewWorker(workerPool chan chan IJob, dispatcher IDispatcher) *Worker {
 	return &Worker{
 		worker_pool: workerPool,
 		job_channel: make(chan IJob),
 		quit:        make(chan bool),
+		dispatcher:  dispatcher,
 	}
 }
 
@@ -59,7 +61,12 @@ func (w *Worker) Start() {
 
 			select {
 			case job := <-w.Jobs():
-				job.DoWork()
+				err := job.DoWork()
+				// put back on queue
+				if err != nil && w.dispatcher.Retries() < job.OnRetry() {
+					job.IncRetry()
+					w.job_channel <- job
+				}
 			case <-w.quit:
 				return
 			}
@@ -85,6 +92,7 @@ type Dispatch struct {
 	shutdown   chan bool
 	workers    []*Worker
 	numworkers int
+	retries    int
 }
 
 func NewDispatch(numworkers int, work_pool chan chan IJob, job_queue chan IJob) *Dispatch {
@@ -94,8 +102,17 @@ func NewDispatch(numworkers int, work_pool chan chan IJob, job_queue chan IJob) 
 		job_queue:  job_queue,
 		workers:    make([]*Worker, numworkers, numworkers),
 		shutdown:   make(chan bool),
+		retries:    0,
 	}
 	return dis
+}
+
+func (d *Dispatch) Retries() int {
+	return d.retries
+}
+
+func (d *Dispatch) SetRetries(r int) {
+	d.retries = r
 }
 
 func (d *Dispatch) Workpool() chan chan IJob {
@@ -109,7 +126,7 @@ func (d *Dispatch) JobsQueue() chan IJob {
 func (d *Dispatch) Run() error {
 	// starting n number of workers
 	for i := 0; i < d.numworkers; i++ {
-		worker := NewWorker(d.work_pool)
+		worker := NewWorker(d.work_pool, d)
 		d.workers[i] = worker
 		worker.Start()
 	}

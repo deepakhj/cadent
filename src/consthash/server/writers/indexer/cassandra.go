@@ -281,6 +281,7 @@ func (cass *CassandraIndexer) Write(skey string) error {
 		cass.write_queue = make(chan dispatch.IJob, 100000)
 		cass.dispatch_queue = make(chan chan dispatch.IJob, workers)
 		cass.write_dispatcher = dispatch.NewDispatch(workers, cass.dispatch_queue, cass.write_queue)
+		cass.write_dispatcher.SetRetries(2)
 		cass.write_dispatcher.Run()
 	}
 	cass.write_queue <- CassandraIndexerJob{Cass: cass, Stat: skey}
@@ -552,10 +553,19 @@ func (cass *CassandraIndexer) Find(metric string) (MetricFindItems, error) {
 /************************************************************************/
 // insert job queue workers
 type CassandraIndexerJob struct {
-	Cass *CassandraIndexer
-	Stat string
+	Cass  *CassandraIndexer
+	Stat  string
+	retry int
 }
 
-func (j CassandraIndexerJob) DoWork() {
-	j.Cass.WriteOne(j.Stat)
+func (j CassandraIndexerJob) IncRetry() int {
+	j.retry++
+	return j.retry
+}
+func (j CassandraIndexerJob) OnRetry() int {
+	return j.retry
+}
+
+func (j CassandraIndexerJob) DoWork() error {
+	return j.Cass.WriteOne(j.Stat)
 }

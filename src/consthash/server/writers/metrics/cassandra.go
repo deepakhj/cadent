@@ -281,6 +281,7 @@ func (cass *CassandraMetric) Write(stat repr.StatRepr) error {
 		cass.write_queue = make(chan dispatch.IJob, 10000)
 		cass.dispatch_queue = make(chan chan dispatch.IJob, workers)
 		cass.write_dispatcher = dispatch.NewDispatch(workers, cass.dispatch_queue, cass.write_queue)
+		cass.write_dispatcher.SetRetries(2)
 		cass.write_dispatcher.Run()
 	}
 
@@ -536,10 +537,20 @@ func (cass *CassandraMetric) Render(path string, from string, to string) (Whispe
 /************************************************************************/
 // insert job queue workers
 type CassandraMetricJob struct {
-	Cass *CassandraMetric
-	Stat repr.StatRepr
+	Cass  *CassandraMetric
+	Stat  repr.StatRepr
+	retry int
 }
 
-func (j CassandraMetricJob) DoWork() {
-	j.Cass.InsertOne(j.Stat)
+func (j CassandraMetricJob) IncRetry() int {
+	j.retry++
+	return j.retry
+}
+func (j CassandraMetricJob) OnRetry() int {
+	return j.retry
+}
+
+func (j CassandraMetricJob) DoWork() error {
+	_, err := j.Cass.InsertOne(j.Stat)
+	return err
 }
