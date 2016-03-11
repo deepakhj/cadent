@@ -8,6 +8,7 @@ package consthash
 import (
 	"bufio"
 	//"log"
+	"consthash/server/dispatch"
 	"consthash/server/splitter"
 	"consthash/server/stats"
 	"fmt"
@@ -20,6 +21,33 @@ import (
 const TCP_BUFFER_SIZE = 1048576
 const TCP_READ_TIMEOUT = 5 * time.Second // second
 
+/************************** TCP Dispatcher Job *******************************/
+type TCPJob struct {
+	Client  *TCPClient
+	Splitem splitter.SplitItem
+}
+
+func (t TCPJob) DoWork() {
+	if t.Splitem == nil {
+		return
+	}
+	l_len := (int64)(len(t.Splitem.Line()))
+	t.Client.server.AddToCurrentTotalBufferSize(l_len)
+	if t.Client.server.NeedBackPressure() {
+		t.Client.server.log.Warning(
+			"Error::Max Queue or buffer reached dropping connection (Buffer %v, queue len: %v)",
+			t.Client.server.CurrentReadBufferRam.Get(),
+			len(t.Client.server.WorkQueue))
+		t.Client.server.BackPressure()
+	}
+	t.Client.server.ProcessSplitItem(t.Splitem, t.Client.server.ProcessedQueue)
+	t.Client.server.AddToCurrentTotalBufferSize(-l_len)
+}
+
+/************************** TCP CLIENT ******************************
+Should be one per connection (unlike udp/http which is one for all servers, so handling is
+treated a bit differently here
+*/
 type TCPClient struct {
 	server     *Server
 	hashers    *[]*ConstHasher
@@ -34,16 +62,18 @@ type TCPClient struct {
 	writer *bufio.Writer
 	reader *bufio.Reader
 
-	out_queue    chan splitter.SplitItem
-	input_queue  chan splitter.SplitItem
-	done         chan Client
-	worker_queue chan *OutputMessage
-	close        chan bool
+	out_queue      chan splitter.SplitItem
+	input_queue    chan splitter.SplitItem
+	dispatch_queue chan dispatch.IJob
+	done           chan Client
+	worker_queue   chan *OutputMessage
+	close          chan bool
 }
 
 func NewTCPClient(server *Server,
 	hashers *[]*ConstHasher,
 	conn net.Conn,
+	dispatch_queue chan dispatch.IJob,
 	done chan Client,
 ) *TCPClient {
 
@@ -60,6 +90,7 @@ func NewTCPClient(server *Server,
 	//to deref things
 	client.worker_queue = server.WorkQueue
 	client.input_queue = server.InputQueue
+	client.dispatch_queue = dispatch_queue
 
 	client.out_queue = server.ProcessedQueue
 
@@ -139,6 +170,7 @@ func (client *TCPClient) handleRequest(outqueue chan splitter.SplitItem) {
 			splitem.SetOriginName(client.server.Name)
 			client.server.ValidLineCount.Up(1)
 			client.input_queue <- splitem
+			//client.dispatch_queue <- TCPJob{Client: client, Splitem: splitem}
 			stats.StatsdClient.Incr("incoming.tcp.lines", 1)
 		} else {
 			client.server.InvalidLineCount.Up(1)
