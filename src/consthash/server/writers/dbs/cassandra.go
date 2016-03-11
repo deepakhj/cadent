@@ -106,7 +106,7 @@ func (cass *CassandraDB) Config(conf map[string]interface{}) (err error) {
 	numcons := 20
 	_numcons := conf["numcons"]
 	if _numcons != nil {
-		numcons = _numcons.(int)
+		numcons = _numcons.(int64)
 	}
 
 	// cassandra does not like batch of large proportions .. so this is rather "not relevant"
@@ -134,7 +134,7 @@ func (cass *CassandraDB) Config(conf map[string]interface{}) (err error) {
 	cluster.Keyspace = cass.keyspace
 	cluster.Consistency = cass.write_consistency
 	cluster.Timeout = timeout
-	cluster.NumConns = numcons
+	cluster.NumConns = int(numcons)
 	cluster.RetryPolicy = &gocql.SimpleRetryPolicy{NumRetries: 3}
 	cluster.ProtoVersion = 0x04 //
 
