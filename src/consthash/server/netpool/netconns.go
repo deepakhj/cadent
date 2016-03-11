@@ -16,7 +16,7 @@ func NewWriterConn(protocal string, host string, timeout time.Duration) (net.Con
 		conn, err := net.DialTimeout(protocal, host, timeout)
 		return conn, err
 	} else if protocal == "http" || protocal == "https" {
-		return NewWrtiterHttpConn(protocal, host, timeout)
+		return NewWriterHttpConn(protocal, host, timeout)
 	}
 	return nil, fmt.Errorf("Invalid connection protocal")
 }
@@ -65,7 +65,7 @@ func (ha HTTPAddr) String() string {
 }
 
 // basically delgate the dial timeout
-func NewWrtiterHttpConn(protocal string, host string, timeout time.Duration) (*WrtiterHttpConn, error) {
+func NewWriterHttpConn(protocal string, host string, timeout time.Duration) (*WrtiterHttpConn, error) {
 	// the "host" may be url + path
 	w := new(WrtiterHttpConn)
 	w.Proto = protocal
