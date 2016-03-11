@@ -14,8 +14,8 @@ type StatCount struct {
 func NewStatCount(name string) StatCount {
 	return StatCount{
 		Name:       name,
-		TotalCount: NewAtomic(name + "TotalCount"),
-		TickCount:  NewAtomic(name + "TickCount"),
+		TotalCount: NewAtomic(name + "-TotalCount"),
+		TickCount:  NewAtomic(name + "-TickCount"),
 	}
 }
 func (stat *StatCount) Up(val uint64) {
