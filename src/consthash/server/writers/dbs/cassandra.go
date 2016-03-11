@@ -103,7 +103,7 @@ func (cass *CassandraDB) Config(conf map[string]interface{}) (err error) {
 		timeout = ok
 	}
 
-	numcons := 20
+	numcons := int64(20)
 	_numcons := conf["numcons"]
 	if _numcons != nil {
 		numcons = _numcons.(int64)
