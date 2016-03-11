@@ -86,7 +86,7 @@ func (job *GraphiteSplitter) ProcessLine(line string) (SplitItem, error) {
 	//<key> <value> <time> <more> <more>
 	//graphite_array := strings.Fields(line)
 	// clean double dots
-	line = strings.Replace(line, "..", ".", 0)
+	line = strings.Replace(line, "..", ".", -1)
 	graphite_array := strings.Split(line, " ")
 	if len(graphite_array) > job.key_index {
 		gi := &GraphiteSplitItem{

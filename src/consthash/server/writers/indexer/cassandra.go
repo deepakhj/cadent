@@ -332,6 +332,8 @@ func (cass *CassandraIndexer) Expand(metric string) (MetricExpandItem, error) {
 
 	has_reg := regexp.MustCompile(`\*|\{|\}|\[|\]`)
 	needs_regex := has_reg.Match([]byte(metric))
+	//cass.log.Debug("REGSS: %v, %s", needs_regex, metric)
+
 	if !needs_regex {
 		return cass.ExpandNonRegex(metric)
 	}
@@ -341,7 +343,7 @@ func (cass *CassandraIndexer) Expand(metric string) (MetricExpandItem, error) {
 	var me MetricExpandItem
 
 	// convert the "graphite regex" into something golang understands (just the "."s really)
-	regable := strings.Replace(metric, ".", "\\.", 0)
+	regable := strings.Replace(metric, ".", "\\.", -1)
 	the_reg, err := regexp.Compile(regable)
 	if err != nil {
 		return me, err
@@ -350,6 +352,8 @@ func (cass *CassandraIndexer) Expand(metric string) (MetricExpandItem, error) {
 		"SELECT segment FROM %s WHERE pos=?",
 		cass.db.SegmentTable(),
 	)
+	//cass.log.Debug("POSPOSPOS: %s", m_len-1)
+
 	iter := cass.conn.Query(cass_Q,
 		m_len-1,
 	).Iter()
@@ -491,8 +495,8 @@ func (cass *CassandraIndexer) Find(metric string) (MetricFindItems, error) {
 		m_len = len(paths)
 	}
 
-	has_reg := regexp.MustCompile(`\*|\{|\}|\[|\]`)
-	needs_regex := has_reg.Match([]byte(metric))
+	has_reg := regexp.MustCompile(`\*|\{|\}|\[|\]\?`)
+	needs_regex := has_reg.MatchString(metric)
 
 	//cass.log.Debug("HasReg: %v Metric: %s", needs_regex, metric)
 	if !needs_regex {
@@ -500,8 +504,10 @@ func (cass *CassandraIndexer) Find(metric string) (MetricFindItems, error) {
 	}
 
 	// convert the "graphite regex" into something golang understands (just the "."s really)
-
-	regable := strings.Replace(metric, ".", "\\.", 0)
+	// need to replace things like "moo*" -> "moo.*" but careful not to do "..*"
+	regable := strings.Replace(metric, "..", ".", -1)
+	regable = strings.Replace(regable, ".", "\\.", -1)
+	regable = strings.Replace(regable, "*", ".*", -1)
 	the_reg, err := regexp.Compile(regable)
 
 	if err != nil {
@@ -520,9 +526,9 @@ func (cass *CassandraIndexer) Find(metric string) (MetricFindItems, error) {
 	var seg string
 	// just grab the "n+1" length ones
 	for iter.Scan(&seg) {
-		//cass.log.Debug("REG:::::PATH %s", seg)
+		//cass.log.Debug("REG:::::PATH %s :: REG: %s MATCH %v", seg, regable, the_reg.Match([]byte(seg)))
 
-		if !the_reg.Match([]byte(seg)) {
+		if !the_reg.MatchString(seg) {
 			continue
 		}
 		items, err := cass.FindNonRegex(seg)
