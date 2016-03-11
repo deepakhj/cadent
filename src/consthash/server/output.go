@@ -177,6 +177,9 @@ func (o OutputDispatchJob) DoWork() error {
 
 	if err != nil {
 		o.Message.server.log.Error("%s", err)
+		if o.OnRetry() < 2{
+			o.Message.server.log.Warning("Retrying message: %s", o.Message.param)
+		}
 	}
 	return err
 }
