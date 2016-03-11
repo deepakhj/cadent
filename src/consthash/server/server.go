@@ -27,6 +27,7 @@ package consthash
 
 import (
 	"consthash/server/broadcast"
+	"consthash/server/dispatch"
 	"consthash/server/netpool"
 	"consthash/server/prereg"
 	"consthash/server/splitter"
@@ -50,7 +51,8 @@ import (
 )
 
 const (
-	DEFAULT_WORKERS                    = int64(500)
+	DEFAULT_WORKERS                    = int64(8)
+	DEFAULT_OUTPUT_WORKERS             = int64(32)
 	DEFAULT_NUM_STATS                  = 100
 	DEFAULT_SENDING_CONNECTIONS_METHOD = "bufferedpool"
 	DEFAULT_SPLITTER_TIMEOUT           = 5000 * time.Millisecond
@@ -218,6 +220,7 @@ type Server struct {
 	WorkerHold  chan int64
 	InWorkQueue *stats.AtomicInt
 	Workers     int64
+	OutWorkers  int64
 
 	//Worker Breaker
 	// work_breaker *breaker.Breaker
@@ -241,7 +244,8 @@ type Server struct {
 	ShutDown   *broadcast.Broadcaster
 
 	//the push function (polling, direct, etc)
-	Writer OutMessageWriter
+	Writer           OutMessageWriter
+	OutputDispatcher *dispatch.Dispatch
 
 	//uptime
 	StartTime time.Time
@@ -254,21 +258,21 @@ type Server struct {
 func (server *Server) InitCounters() {
 	pref := fmt.Sprintf("%p", server)
 
-	server.ValidLineCount = stats.NewStatCount(pref + " " + server.Name + " ValidLineCount")
-	server.WorkerValidLineCount = stats.NewStatCount(pref + " " + server.Name + " WorkerValidLineCount")
-	server.InvalidLineCount = stats.NewStatCount(pref + " " + server.Name + " InvalidLineCount")
-	server.SuccessSendCount = stats.NewStatCount(pref + " " + server.Name + " SuccessSendCount")
-	server.FailSendCount = stats.NewStatCount(pref + " " + server.Name + " FailSendCount")
-	server.UnsendableSendCount = stats.NewStatCount(pref + " " + server.Name + " UnsendableSendCount")
-	server.UnknownSendCount = stats.NewStatCount(pref + " " + server.Name + " UnknownSendCount")
-	server.AllLinesCount = stats.NewStatCount(pref + " " + server.Name + " AllLinesCount")
-	server.RejectedLinesCount = stats.NewStatCount(pref + " " + server.Name + " RejectedLinesCount")
-	server.RedirectedLinesCount = stats.NewStatCount(pref + " " + server.Name + " RedirectedLinesCount")
-	server.BytesWrittenCount = stats.NewStatCount(pref + " " + server.Name + " BytesWrittenCount")
-	server.BytesReadCount = stats.NewStatCount(pref + " " + server.Name + " BytesReadCount")
+	server.ValidLineCount = stats.NewStatCount(pref + "-" + server.Name + "-ValidLineCount")
+	server.WorkerValidLineCount = stats.NewStatCount(pref + "-" + server.Name + "-WorkerValidLineCount")
+	server.InvalidLineCount = stats.NewStatCount(pref + "-" + server.Name + "-InvalidLineCount")
+	server.SuccessSendCount = stats.NewStatCount(pref + "-" + server.Name + "-SuccessSendCount")
+	server.FailSendCount = stats.NewStatCount(pref + "-" + server.Name + "-FailSendCount")
+	server.UnsendableSendCount = stats.NewStatCount(pref + "-" + server.Name + "-UnsendableSendCount")
+	server.UnknownSendCount = stats.NewStatCount(pref + "-" + server.Name + "-UnknownSendCount")
+	server.AllLinesCount = stats.NewStatCount(pref + "-" + server.Name + "-AllLinesCount")
+	server.RejectedLinesCount = stats.NewStatCount(pref + "-" + server.Name + "-RejectedLinesCount")
+	server.RedirectedLinesCount = stats.NewStatCount(pref + "-" + server.Name + "-RedirectedLinesCount")
+	server.BytesWrittenCount = stats.NewStatCount(pref + "-" + server.Name + "-BytesWrittenCount")
+	server.BytesReadCount = stats.NewStatCount(pref + "-" + server.Name + "-BytesReadCount")
 
-	server.CurrentReadBufferRam = stats.NewAtomic(pref + " " + server.Name + " CurrentReadBufferRam")
-	server.InWorkQueue = stats.NewAtomic(pref + " " + server.Name + " InWorkQueue")
+	server.CurrentReadBufferRam = stats.NewAtomic(pref + "-" + server.Name + "-CurrentReadBufferRam")
+	server.InWorkQueue = stats.NewAtomic(pref + "-" + server.Name + "-InWorkQueue")
 
 }
 
@@ -444,25 +448,31 @@ func (server *Server) WorkerOutput() {
 				server.log.Critical("Got Shutdown notice .. stoping")
 				return
 			}
+
+			server.OutputDispatcher.JobsQueue() <- OutputDispatchJob{
+				Message: j,
+				Writer:  server.Writer,
+			}
+		/*
 			err := server.Writer.Write(j)
 
 			if err != nil {
 				server.log.Error("%s", err)
 			}
+		*/
+		/** Does not seem to really work w/o
+		res := server.work_breaker.Run(func() error {
+			err := server.Writer.Write(j)
 
-			/** Does not seem to really work w/o
-			res := server.work_breaker.Run(func() error {
-				err := server.Writer.Write(j)
-
-				if err != nil {
-					server.log.Error("%s", err)
-				}
-				return err
-			})
-			if res == breaker.ErrBreakerOpen {
-				server.log.Warning("Circuit Breaker is ON")
+			if err != nil {
+				server.log.Error("%s", err)
 			}
-			*/
+			return err
+		})
+		if res == breaker.ErrBreakerOpen {
+			server.log.Warning("Circuit Breaker is ON")
+		}
+		*/
 		case <-shuts.Ch:
 			return
 		}
@@ -1184,14 +1194,21 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, done chan Client) 
 		go run()
 	}
 
+	// the dispatcher is just one for each tcp server (clients feed into the main incoming line stream
+	// unlike UDP which is "one client" effectively)
+
+	job_queue := make(chan dispatch.IJob, 10000) //large to handle "bursts"
+	/*disp_queue := make(chan chan dispatch.IJob, server.Workers)
+	dispatcher := dispatch.NewDispatch(int(server.Workers), disp_queue, job_queue)
+	dispatcher.Run()
+	*/
 	accepts_queue, err := server.Accepter()
 	if err != nil {
 		panic(err)
 	}
 
-	// this queue is just for "real" TCP sockets
 	shuts_client := server.ShutDown.Listen()
-	//defer shuts_client.Close()
+
 	for {
 		select {
 		case conn, ok := <-accepts_queue:
@@ -1200,7 +1217,7 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, done chan Client) 
 			}
 			//tcp_socket_out := make(chan splitter.SplitItem)
 
-			client := NewTCPClient(server, hashers, conn, done)
+			client := NewTCPClient(server, hashers, conn, job_queue, done)
 			client.SetBufferSize((int)(server.ClientReadBufferSize))
 			log.Debug("Accepted con %v", conn.RemoteAddr())
 
@@ -1378,6 +1395,11 @@ func CreateServer(cfg *Config, hashers []*ConstHasher) (*Server, error) {
 		server.Workers = int64(cfg.Workers)
 	}
 
+	server.OutWorkers = DEFAULT_OUTPUT_WORKERS
+	if cfg.OutWorkers > 0 {
+		server.OutWorkers = int64(cfg.OutWorkers)
+	}
+
 	server.StopTicker = make(chan bool, 1)
 
 	//start tickin'
@@ -1406,9 +1428,15 @@ func (server *Server) StartServer() {
 	//set the push method (the WorkerOutput depends on it)
 	server.SetWriter()
 
-	for w := int64(1); w <= server.Workers; w++ {
-		go server.WorkerOutput()
-	}
+	/*
+		for w := int64(1); w <= server.Workers; w++ {
+			go server.WorkerOutput()
+		}*/
+
+	// the output dispatcher
+	go server.WorkerOutput() // puts things on the dispatch queue
+	server.OutputDispatcher = NewOutputDispatcher(int(server.OutWorkers))
+	server.OutputDispatcher.Run()
 
 	//get our line proessor in order
 	_, err := server.SetSplitterProcessor()

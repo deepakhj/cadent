@@ -5,6 +5,7 @@
 package consthash
 
 import (
+	"consthash/server/dispatch"
 	"consthash/server/netpool"
 	"consthash/server/stats"
 	"fmt"
@@ -155,4 +156,25 @@ func (p *SingleWriter) Write(j *OutputMessage) error {
 		return fmt.Errorf("Error sending (connection) to backend: %s", err)
 	}
 	return nil
+}
+
+/***** Dispatcher Job ****/
+type OutputDispatchJob struct {
+	Writer  OutMessageWriter
+	Message *OutputMessage
+}
+
+func (o OutputDispatchJob) DoWork() {
+	err := o.Writer.Write(o.Message)
+
+	if err != nil {
+		o.Message.server.log.Error("%s", err)
+	}
+}
+
+func NewOutputDispatcher(workers int) *dispatch.Dispatch {
+	write_queue := make(chan dispatch.IJob, workers*10) // a little buffer
+	dispatch_queue := make(chan chan dispatch.IJob, workers)
+	write_dispatcher := dispatch.NewDispatch(workers, dispatch_queue, write_queue)
+	return write_dispatcher
 }

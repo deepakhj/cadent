@@ -75,7 +75,8 @@ type Config struct {
 	StatsdTimerSampleRate float32 `toml:"statsd_timer_sample_rate"`
 
 	// number of workers to handle message sending queue
-	Workers int64 `toml:"workers"`
+	Workers    int64 `toml:"workers"`
+	OutWorkers int64 `toml:"out_workers"`
 
 	// start a little http server for external health checks and stats probes
 	HealthServerBind   string `toml:"internal_health_server_listen"`
@@ -373,6 +374,12 @@ func (self ConfigServers) ParseConfig(defaults *Config) (out ConfigServers, err 
 				cfg.Workers = defaults.Workers
 			}
 		}
+		if cfg.OutWorkers == 0 {
+			if defaults.OutWorkers > 0 {
+				cfg.OutWorkers = defaults.OutWorkers
+			}
+		}
+
 		if cfg.CacheItems == 0 {
 			if defaults.CacheItems > 0 {
 				cfg.CacheItems = defaults.CacheItems
@@ -569,7 +576,8 @@ func (self *ConfigServers) DebugConfig() {
 			log.Debug("  Max Read Buffer Size: %v ", cfg.MaxReadBufferSize)
 			log.Debug("  Write Pool Method: %v ", cfg.SendingConnectionMethod)
 			log.Debug("  Write Pool Connections: %v ", cfg.MaxPoolConnections)
-			log.Debug("  Workers/Input Queue Size: %v ", cfg.Workers)
+			log.Debug("  Workers-Input Queue Size: %v ", cfg.Workers)
+			log.Debug("  Output workers: %v ", cfg.OutWorkers)
 
 			log.Debug("  Servers")
 			for idx, slist := range cfg.ServerLists {
