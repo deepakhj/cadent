@@ -15,11 +15,17 @@ import (
 	"time"
 )
 
+const (
+	WRITER_DEFAULT_INDEX_QUEUE_LENGTH  = 1024 * 200
+	WRITER_DEFAULT_METRIC_QUEUE_LENGTH = 1024 * 100
+)
+
 // toml config for Metrics
 type WriterMetricConfig struct {
-	Driver  string                 `toml:"driver"`
-	DSN     string                 `toml:"dsn"`
-	Options map[string]interface{} `toml:"options"` // option=[ [key, value], [key, value] ...]
+	Driver      string                 `toml:"driver"`
+	DSN         string                 `toml:"dsn"`
+	QueueLength int                    `toml:"queue_length"` // metric write queue length
+	Options     map[string]interface{} `toml:"options"`      // option=[ [key, value], [key, value] ...]
 }
 
 func (wc WriterMetricConfig) NewMetrics(duration time.Duration) (metrics.Metrics, error) {
@@ -39,6 +45,10 @@ func (wc WriterMetricConfig) NewMetrics(duration time.Duration) (metrics.Metrics
 	err = mets.Config(i_ops)
 	if err != nil {
 		return nil, err
+	}
+
+	if wc.QueueLength <= 0 {
+		wc.QueueLength = WRITER_DEFAULT_METRIC_QUEUE_LENGTH
 	}
 	return mets, nil
 }
@@ -64,12 +74,16 @@ func (wc WriterIndexerConfig) NewIndexer() (indexer.Indexer, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return idx, nil
 }
 
 type WriterConfig struct {
-	Metrics WriterMetricConfig  `toml:"metrics"`
-	Indexer WriterIndexerConfig `toml:"indexer"`
+	Metrics            WriterMetricConfig  `toml:"metrics"`
+	Indexer            WriterIndexerConfig `toml:"indexer"`
+	MetricQueueLength  int                 `toml:"metric_queue_length"`  // metric write queue length
+	IndexerQueueLength int                 `toml:"indexer_queue_length"` // indexer write queue length
+
 }
 
 type WriterLoop struct {
@@ -79,19 +93,15 @@ type WriterLoop struct {
 	write_chan   chan repr.StatRepr
 	indexer_chan chan repr.StatRepr
 	shutdowner   *broadcast.Broadcaster
-	stop_chan    chan bool
-	writer_len   int
-	index_len    int
+	MetricQLen   int
+	IndexerQLen  int
 }
 
 func New() (loop *WriterLoop, err error) {
 	loop = new(WriterLoop)
-	loop.writer_len = 100000
-	loop.index_len = 100000
+	loop.MetricQLen = WRITER_DEFAULT_METRIC_QUEUE_LENGTH
+	loop.IndexerQLen = WRITER_DEFAULT_INDEX_QUEUE_LENGTH
 
-	loop.write_chan = make(chan repr.StatRepr, loop.writer_len)
-	loop.indexer_chan = make(chan repr.StatRepr, loop.index_len) // indexing is slow, so we'll need to buffer things a bit more
-	loop.stop_chan = make(chan bool, 1)
 	loop.shutdowner = broadcast.New(1)
 	return loop, nil
 }
@@ -160,10 +170,13 @@ func (loop *WriterLoop) procLoop() {
 }
 
 func (loop *WriterLoop) Full() bool {
-	return len(loop.write_chan) >= loop.writer_len || len(loop.indexer_chan) >= loop.index_len
+	return len(loop.write_chan) >= loop.MetricQLen || len(loop.indexer_chan) >= loop.IndexerQLen
 }
 
 func (loop *WriterLoop) Start() {
+	loop.write_chan = make(chan repr.StatRepr, loop.MetricQLen)
+	loop.indexer_chan = make(chan repr.StatRepr, loop.IndexerQLen) // indexing is slow, so we'll need to buffer things a bit more
+
 	go loop.indexLoop()
 	go loop.procLoop()
 	go loop.statTick()

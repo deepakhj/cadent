@@ -38,8 +38,12 @@ import (
 	"time"
 )
 
-const CASSANDRA_RESULT_CACHE_SIZE = 1024 * 1024 * 100
-const CASSANDRA_RESULT_CACHE_TTL = 10 * time.Second
+const (
+	CASSANDRA_RESULT_CACHE_SIZE = 1024 * 1024 * 100
+	CASSANDRA_RESULT_CACHE_TTL  = 10 * time.Second
+	CASSANDRA_METRIC_WORKERS    = 128
+	CASSANDRA_METRIC_QUEUE_LEN  = 1024 * 100
+)
 
 /** Being Cassandra we need some mappings to match the schemas **/
 
@@ -277,8 +281,8 @@ func (cass *CassandraMetric) Write(stat repr.StatRepr) error {
 
 	/**** dispatcher queue ***/
 	if cass.write_queue == nil {
-		workers := 128
-		cass.write_queue = make(chan dispatch.IJob, 10000)
+		workers := CASSANDRA_METRIC_WORKERS
+		cass.write_queue = make(chan dispatch.IJob, CASSANDRA_METRIC_QUEUE_LEN)
 		cass.dispatch_queue = make(chan chan dispatch.IJob, workers)
 		cass.write_dispatcher = dispatch.NewDispatch(workers, cass.dispatch_queue, cass.write_queue)
 		cass.write_dispatcher.SetRetries(2)

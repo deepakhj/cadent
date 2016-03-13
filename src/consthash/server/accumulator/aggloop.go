@@ -98,6 +98,12 @@ func (agg *AggregateLoop) SetWriter(conf writers.WriterConfig) error {
 	// need a writer for each timer loop
 	for _, dur := range agg.FlushTimes {
 		wr, err := writers.New()
+		if conf.MetricQueueLength > 0 {
+			wr.MetricQLen = conf.MetricQueueLength
+		}
+		if conf.IndexerQueueLength > 0 {
+			wr.IndexerQLen = conf.IndexerQueueLength
+		}
 		if err != nil {
 			agg.log.Error("Writer error:: %s", err)
 			return err
