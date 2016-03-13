@@ -416,9 +416,11 @@ func (cass *CassandraMetric) RenderOne(path string, from string, to string) (Whi
 		var t int64
 		var mean, min, max, sum float64
 
-		// yes this is not the best use of "smart-y-pants ness" but it does the job
-		// not sure how to detect the min/max usage .. yet
-		use_mean := strings.HasPrefix(metric.Text, "mean")
+		// which value to acctually return
+		use_metric := metric.SelectValue()
+
+		// use mins or maxes for the "upper_xxx, lower_xxx"
+
 		m_key := metric.Id
 
 		d_points := make([]DataPoint, b_len)
@@ -435,7 +437,14 @@ func (cass *CassandraMetric) RenderOne(path string, from string, to string) (Whi
 		for iter.Scan(&mean, &max, &min, &sum, &t) {
 			on_t := int(t / nano) // back convert to seconds
 			d_point := NewDataPoint(on_t, mean)
-			if !use_mean {
+			switch use_metric {
+			case "mean":
+				d_point.SetValue(mean)
+			case "min":
+				d_point.SetValue(min)
+			case "max":
+				d_point.SetValue(max)
+			default:
 				d_point.SetValue(sum)
 			}
 
