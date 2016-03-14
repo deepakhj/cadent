@@ -263,11 +263,19 @@ func (cass *CassandraMetric) InsertOne(stat repr.StatRepr) (int, error) {
 		cass.db.MetricTable(),
 	)
 	if ttl > 0 {
-		Q += fmt.Sprintf(" USING TTL %d", ttl)
+		Q += fmt.Sprintf(" USING TTL ?", ttl)
 	}
 
 	err := cass.conn.Query(Q,
-		stat.Key, int64(stat.Resolution), stat.Time.UnixNano(), float64(stat.Sum), float64(stat.Mean), float64(stat.Min), float64(stat.Max), stat.Count,
+		stat.Key,
+		int64(stat.Resolution),
+		stat.Time.UnixNano(),
+		float64(stat.Sum),
+		float64(stat.Mean),
+		float64(stat.Min),
+		float64(stat.Max),
+		stat.Count,
+		ttl,
 	).Exec()
 	//cass.log.Critical("METRICS WRITE %d: %v", ttl, stat)
 	if err != nil {
