@@ -559,6 +559,10 @@ func (cass *CassandraIndexer) Find(metric string) (MetricFindItems, error) {
 		}
 	}
 
+	if err := iter.Close(); err != nil {
+		return mt, err
+	}
+
 	return mt, nil
 }
 
