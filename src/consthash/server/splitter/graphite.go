@@ -14,6 +14,21 @@ import (
 /****************** RUNNERS *********************/
 const GRAPHITE_NAME = "graphite"
 
+var GRAHITE_REPLACER *strings.Replacer
+
+func init() {
+	GRAHITE_REPLACER = strings.NewReplacer(
+		"..", ".",
+		",", "_",
+		"*", "_",
+		"(", "_",
+		")", "_",
+		"{", "_",
+		"}", "_",
+		"  ", " ",
+	)
+}
+
 type GraphiteSplitItem struct {
 	inkey    string
 	inline   string
@@ -85,8 +100,8 @@ func NewGraphiteSplitter(conf map[string]interface{}) (*GraphiteSplitter, error)
 func (job *GraphiteSplitter) ProcessLine(line string) (SplitItem, error) {
 	//<key> <value> <time> <more> <more>
 	//graphite_array := strings.Fields(line)
-	// clean double dots
-	line = strings.Replace(line, "..", ".", -1)
+	// clean the string of bad chars
+	line = GRAHITE_REPLACER.Replace(line)
 	graphite_array := strings.Split(line, " ")
 	if len(graphite_array) > job.key_index {
 		gi := &GraphiteSplitItem{
