@@ -22,10 +22,18 @@ func (m *MetricFindItem) SelectValue() string {
 	}
 	spl := strings.Split(m.Id, ".")
 	last_path := spl[len(spl)-1]
+
+	// statsd like things are "mean_XX", "upper_XX", "lower_XX", "count_XX"
 	if strings.Contains(last_path, "mean") {
 		return "mean"
 	}
 	if strings.Contains(last_path, "avg") {
+		return "mean"
+	}
+	if strings.Contains(last_path, "count") {
+		return "sum"
+	}
+	if strings.Contains(last_path, "std") { // standard deviation
 		return "mean"
 	}
 	if strings.Contains(last_path, "average") {
