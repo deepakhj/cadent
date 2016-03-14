@@ -306,6 +306,19 @@ func (cass *CassandraIndexer) Write(skey string) error {
 
 /** reader methods **/
 
+func (cass *CassandraIndexer) regifyKey(metric string) (*regexp.Regexp, error) {
+	// convert the "graphite regex" into something golang understands (just the "."s really)
+	// need to replace things like "moo*" -> "moo.*" but careful not to do "..*"
+	// the "graphite" globs of {moo,goo} we can do with (moo|goo) so convert { -> (, , -> |, } -> )
+	regable := strings.Replace(metric, "..", ".", -1)
+	regable = strings.Replace(regable, "{", "(", -1)
+	regable = strings.Replace(regable, "}", ")", -1)
+	regable = strings.Replace(regable, ",", "|", -1)
+	regable = strings.Replace(regable, ".", "\\.", -1)
+	regable = strings.Replace(regable, "*", ".*", -1)
+	return regexp.Compile(regable)
+}
+
 func (cass *CassandraIndexer) ExpandNonRegex(metric string) (MetricExpandItem, error) {
 	paths := strings.Split(metric, ".")
 	m_len := len(paths)
@@ -346,13 +359,7 @@ func (cass *CassandraIndexer) Expand(metric string) (MetricExpandItem, error) {
 
 	var me MetricExpandItem
 
-	// convert the "graphite regex" into something golang understands (just the "."s really)
-	regable := strings.Replace(metric, "..", ".", -1)
-	regable = strings.Replace(regable, "{", "(", -1)
-	regable = strings.Replace(regable, "}", ")", -1)
-	regable = strings.Replace(regable, ".", "\\.", -1)
-	regable = strings.Replace(regable, "*", ".*", -1)
-	the_reg, err := regexp.Compile(regable)
+	the_reg, err := cass.regifyKey(metric)
 
 	if err != nil {
 		return me, err
@@ -485,9 +492,6 @@ func (cass *CassandraIndexer) Find(metric string) (MetricFindItems, error) {
 	// see if the match the regex, and then add them to the lists since cassandra does not provide regex abilities
 	// on the server side
 
-	// currently "{}" globing (bash like) is not supported .. need to think about how to do that one
-	// as neither regex nor golang's glob function supports that either
-
 	defer stats.StatsdSlowNanoTimeFunc("indexer.cassandra.find.get-time-ns", time.Now())
 
 	// special case for "root" == "*"
@@ -517,13 +521,8 @@ func (cass *CassandraIndexer) Find(metric string) (MetricFindItems, error) {
 
 	// convert the "graphite regex" into something golang understands (just the "."s really)
 	// need to replace things like "moo*" -> "moo.*" but careful not to do "..*"
-	// the "graphite" globs of {moo|goo} we can do with (moo|goo) so convert { -> (
-	regable := strings.Replace(metric, "..", ".", -1)
-	regable = strings.Replace(regable, "{", "(", -1)
-	regable = strings.Replace(regable, "}", ")", -1)
-	regable = strings.Replace(regable, ".", "\\.", -1)
-	regable = strings.Replace(regable, "*", ".*", -1)
-	the_reg, err := regexp.Compile(regable)
+	// the "graphite" globs of {moo,goo} we can do with (moo|goo) so convert { -> (, , -> |, } -> )
+	the_reg, err := cass.regifyKey(metric)
 
 	if err != nil {
 		return nil, err
