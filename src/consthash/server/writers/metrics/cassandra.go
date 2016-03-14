@@ -484,7 +484,7 @@ func (cass *CassandraMetric) RenderOne(path string, from string, to string) (Whi
 				interp_vec[i] = DataPoint{Time: cur_step_time, Value: nil}
 
 				for ; j < ct; j++ {
-					if d_points[j].Time >= cur_step_time && d_points[j].Time <= cur_step_time+resolution {
+					if d_points[j].Time <= cur_step_time {
 						interp_vec[i].Value = d_points[j].Value
 						interp_vec[i].Time = d_points[j].Time //this is the "real" time, graphite does not care, but something might
 						j++
