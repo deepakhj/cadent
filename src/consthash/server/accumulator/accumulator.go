@@ -143,12 +143,20 @@ func (acc *Accumulator) ProcessLine(sp string) error {
 	return nil
 }
 
+// this is a helper function to get things to "start" on nicely "rounded"
+// ticker intervals .. i.e. if  duration is 5 seconds .. start on t % 5
+func (acc *Accumulator) delayRoundedTicker(duration time.Duration) *time.Ticker {
+	//time.Sleep(time.Duration(durSec - (time.Now().UnixNano() % durSec)))
+	time.Sleep(time.Now().Truncate(duration).Add(duration).Sub(time.Now()))
+	return time.NewTicker(duration)
+}
+
 // start the flusher at the time interval
 // best to call this in a go routine
 func (acc *Accumulator) Start() error {
 	acc.mu.Lock()
 	if acc.timer == nil {
-		acc.timer = time.NewTicker(acc.AccumulateTime)
+		acc.timer = acc.delayRoundedTicker(acc.AccumulateTime)
 	}
 	if acc.LineQueue == nil {
 		acc.LineQueue = make(chan string, 10000)
@@ -165,7 +173,7 @@ func (acc *Accumulator) Start() error {
 	for {
 		select {
 		case dd := <-acc.timer.C:
-			acc.log.Debug("Flushing accumulator %s to: %s at: %v", acc.Name, acc.ToBackend, dd)
+			acc.log.Debug("Flushing accumulator %s to: %s at: %v", acc.Name, acc.ToBackend, dd.Unix())
 			acc.FlushAndPost(dd)
 		case line := <-acc.LineQueue:
 			acc.Accumulate.ProcessLine(line)

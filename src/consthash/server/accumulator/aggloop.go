@@ -139,6 +139,13 @@ func (agg *AggregateLoop) startInputLooper() {
 	return
 }
 
+// this is a helper function to get things to "start" on nicely "rounded"
+// ticker intervals .. i.e. if  duration is 5 seconds .. start on t % 5
+func (agg *AggregateLoop) delayRoundedTicker(duration time.Duration) *time.Ticker {
+	time.Sleep(time.Now().Truncate(duration).Add(duration).Sub(time.Now()))
+	return time.NewTicker(duration)
+}
+
 // start the looper for each flush time as well as the writers
 func (agg *AggregateLoop) startWriteLooper(duration time.Duration, ttl time.Duration, writer *writers.WriterLoop, mu sync.Mutex) {
 	shut := agg.Shutdown.Listen()
@@ -172,7 +179,7 @@ func (agg *AggregateLoop) startWriteLooper(duration time.Duration, ttl time.Dura
 		return
 	}
 	agg.log.Notice("Starting Aggregater Loop for %s", _dur.String())
-	ticker := time.NewTicker(_dur)
+	ticker := agg.delayRoundedTicker(_dur) // time.NewTicker(_dur)
 	for {
 		select {
 		case <-ticker.C:
