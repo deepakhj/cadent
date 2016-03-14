@@ -196,6 +196,10 @@ func (cass *CassandraMetric) consumeWriter() {
 	return
 }
 */
+
+// note this is not really used.  Batching in cassandra is not always a good idea
+// since the tocken-aware insert will choose the proper server set, where as in batch mode
+// that is not the case
 func (cass *CassandraMetric) Flush() (int, error) {
 	cass.write_lock.Lock()
 	defer cass.write_lock.Unlock()
@@ -404,7 +408,7 @@ func (cass *CassandraMetric) RenderOne(path string, from string, to string) (Whi
 			continue
 		}
 
-		// grab ze data.
+		// grab ze data. (note data is already sorted by time asc va the cassandra schema)
 		cass_Q := fmt.Sprintf(
 			"SELECT point.mean, point.max, point.min, point.sum, time FROM %s WHERE id={path: ?, resolution: ?} AND time <= ? and time >= ?",
 			cass.db.MetricTable(),
@@ -478,20 +482,21 @@ func (cass *CassandraMetric) RenderOne(path string, from string, to string) (Whi
 			for i := int(0); i < b_len; i++ {
 
 				interp_vec[i] = DataPoint{Time: cur_step_time, Value: nil}
-				cur_step_time += resolution
 
 				for ; j < ct; j++ {
-					if d_points[j].Time <= cur_step_time {
+					if d_points[j].Time >= cur_step_time && d_points[j].Time <= cur_step_time+resolution {
 						interp_vec[i].Value = d_points[j].Value
 						interp_vec[i].Time = d_points[j].Time //this is the "real" time, graphite does not care, but something might
 						j++
 					}
 					break
 				}
+				cur_step_time += resolution
 
 			}
 		}
 		series[m_key] = interp_vec
+		cass.datacache.Set(cache_id, WhisperRenderCacher{Data: interp_vec})
 
 		//cass.log.Critical("METR: %s Start: %d END: %d LEN: %d GotLen: %d", metric.Id, first_t, last_t, len(d_points), ct)
 	}
@@ -502,6 +507,7 @@ func (cass *CassandraMetric) RenderOne(path string, from string, to string) (Whi
 	whis.Start = int(start)
 	whis.End = int(end)
 	whis.Step = resolution
+
 	return whis, nil
 }
 
