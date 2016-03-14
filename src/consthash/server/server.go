@@ -256,23 +256,23 @@ type Server struct {
 }
 
 func (server *Server) InitCounters() {
-	pref := fmt.Sprintf("%p", server)
+	//pref := fmt.Sprintf("%p", server)
 
-	server.ValidLineCount = stats.NewStatCount(pref + "-" + server.Name + "-ValidLineCount")
-	server.WorkerValidLineCount = stats.NewStatCount(pref + "-" + server.Name + "-WorkerValidLineCount")
-	server.InvalidLineCount = stats.NewStatCount(pref + "-" + server.Name + "-InvalidLineCount")
-	server.SuccessSendCount = stats.NewStatCount(pref + "-" + server.Name + "-SuccessSendCount")
-	server.FailSendCount = stats.NewStatCount(pref + "-" + server.Name + "-FailSendCount")
-	server.UnsendableSendCount = stats.NewStatCount(pref + "-" + server.Name + "-UnsendableSendCount")
-	server.UnknownSendCount = stats.NewStatCount(pref + "-" + server.Name + "-UnknownSendCount")
-	server.AllLinesCount = stats.NewStatCount(pref + "-" + server.Name + "-AllLinesCount")
-	server.RejectedLinesCount = stats.NewStatCount(pref + "-" + server.Name + "-RejectedLinesCount")
-	server.RedirectedLinesCount = stats.NewStatCount(pref + "-" + server.Name + "-RedirectedLinesCount")
-	server.BytesWrittenCount = stats.NewStatCount(pref + "-" + server.Name + "-BytesWrittenCount")
-	server.BytesReadCount = stats.NewStatCount(pref + "-" + server.Name + "-BytesReadCount")
+	server.ValidLineCount = stats.NewStatCount(server.Name + "-ValidLineCount")
+	server.WorkerValidLineCount = stats.NewStatCount(server.Name + "-WorkerValidLineCount")
+	server.InvalidLineCount = stats.NewStatCount(server.Name + "-InvalidLineCount")
+	server.SuccessSendCount = stats.NewStatCount(server.Name + "-SuccessSendCount")
+	server.FailSendCount = stats.NewStatCount(server.Name + "-FailSendCount")
+	server.UnsendableSendCount = stats.NewStatCount(server.Name + "-UnsendableSendCount")
+	server.UnknownSendCount = stats.NewStatCount(server.Name + "-UnknownSendCount")
+	server.AllLinesCount = stats.NewStatCount(server.Name + "-AllLinesCount")
+	server.RejectedLinesCount = stats.NewStatCount(server.Name + "-RejectedLinesCount")
+	server.RedirectedLinesCount = stats.NewStatCount(server.Name + "-RedirectedLinesCount")
+	server.BytesWrittenCount = stats.NewStatCount(server.Name + "-BytesWrittenCount")
+	server.BytesReadCount = stats.NewStatCount(server.Name + "-BytesReadCount")
 
-	server.CurrentReadBufferRam = stats.NewAtomic(pref + "-" + server.Name + "-CurrentReadBufferRam")
-	server.InWorkQueue = stats.NewAtomic(pref + "-" + server.Name + "-InWorkQueue")
+	server.CurrentReadBufferRam = stats.NewAtomic(server.Name + "-CurrentReadBufferRam")
+	server.InWorkQueue = stats.NewAtomic(server.Name + "-InWorkQueue")
 
 }
 

@@ -148,8 +148,8 @@ func SetUpStatsdClient(cfg *Config) {
 	if cfg.StatsdInterval > 0 {
 		interval = time.Second * time.Duration(cfg.StatsdInterval)
 	}
-	statsder := statsd.NewStatsdBuffer(interval, statsdclient)
-	statsderslow := statsd.NewStatsdBuffer(interval, statsdclientslow)
+	statsder := statsd.NewStatsdBuffer("fast", interval, statsdclient)
+	statsderslow := statsd.NewStatsdBuffer("slow", interval, statsdclientslow)
 	statsder.RetainKeys = true //retain statsd keys to keep emitting 0's
 	if cfg.StatsdTimerSampleRate > 0 {
 		statsder.TimerSampleRate = cfg.StatsdTimerSampleRate
