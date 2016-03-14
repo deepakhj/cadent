@@ -164,16 +164,16 @@ func (acc *Accumulator) Start() error {
 
 	for {
 		select {
-		case <-acc.timer.C:
-			acc.log.Debug("Flushing accumulator %s to: %s", acc.Name, acc.ToBackend)
-			acc.FlushAndPost()
+		case dd := <-acc.timer.C:
+			acc.log.Debug("Flushing accumulator %s to: %s at: %v", acc.Name, acc.ToBackend, dd)
+			acc.FlushAndPost(dd)
 		case line := <-acc.LineQueue:
 			acc.Accumulate.ProcessLine(line)
 			stats.StatsdClient.Incr("accumulator.lines.processed", 1)
 		case <-acc.Shutdown:
 			acc.timer.Stop()
 			acc.log.Notice("Shutting down final flush of accumulator `%s`", acc.Name)
-			acc.FlushAndPost()
+			acc.FlushAndPost(time.Now())
 			if acc.Aggregators != nil {
 				acc.Aggregators.Stop()
 			}
@@ -208,12 +208,12 @@ func (acc *Accumulator) PushStat(spl repr.StatRepr) {
 	acc.Aggregators.InputChan <- spl
 }
 
-func (acc *Accumulator) FlushAndPost() ([]splitter.SplitItem, error) {
+func (acc *Accumulator) FlushAndPost(attime time.Time) ([]splitter.SplitItem, error) {
 	defer stats.StatsdSlowNanoTimeFunc(fmt.Sprintf("accumulator.flushpost-time-ns"), time.Now())
 	items := acc.Accumulate.Flush()
 	//log.Notice("Flush: %s", items)
 	//return []splitter.SplitItem{}, nil
-	t := time.Now()
+	//t := time.Now()
 	out_spl := make([]splitter.SplitItem, len(items.Lines), len(items.Lines))
 	for idx, item := range items.Lines {
 		spl, err := acc.OutSplitter.ProcessLine(item)
@@ -232,10 +232,9 @@ func (acc *Accumulator) FlushAndPost() ([]splitter.SplitItem, error) {
 		acc.PushLine(spl)
 	}
 
-	// background this guy
 	if acc.Aggregators != nil {
 		for _, stat := range items.Stats {
-			stat.Time = t // need to set this as this is the flush time
+			stat.Time = attime // need to set this as this is the flush time
 			acc.PushStat(stat)
 		}
 		acc.log.Debug("Aggregator Flush: `%s` to `%s` Lines: %d", acc.Name, acc.Aggregators.Name, len(items.Stats))
