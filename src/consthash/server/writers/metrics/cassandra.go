@@ -347,6 +347,15 @@ func (cass *CassandraMetric) getResolution(from int64, to int64) int {
 	return cass.resolutions[len(cass.resolutions)-1][0]
 }
 
+// based on the resolution attempt to round start/end nicely by the resolutions
+func (cass *CassandraMetric) truncateTo(num int64, mod int) int64 {
+	_mods := int(math.Mod(float64(num), float64(mod)))
+	if _mods < mod/2 {
+		return num - int64(_mods)
+	}
+	return num + int64(mod-_mods)
+}
+
 func (cass *CassandraMetric) RenderOne(path string, from string, to string) (WhisperRenderItem, error) {
 
 	defer stats.StatsdSlowNanoTimeFunc("reader.cassandra.renderone.get-time-ns", time.Now())
@@ -369,6 +378,9 @@ func (cass *CassandraMetric) RenderOne(path string, from string, to string) (Whi
 	}
 	//figure out the best res
 	resolution := cass.getResolution(start, end)
+
+	start = cass.truncateTo(start, resolution)
+	end = cass.truncateTo(end, resolution)
 
 	// time in cassandra is in NanoSeconds so we need to pad the times from seconds -> nanos
 	nano := int64(time.Second)
