@@ -141,6 +141,7 @@ func (agg *AggregateLoop) startInputLooper() {
 
 // this is a helper function to get things to "start" on nicely "rounded"
 // ticker intervals .. i.e. if  duration is 5 seconds .. start on t % 5
+// this is approximate of course .. there will be some error, but it will be "close"
 func (agg *AggregateLoop) delayRoundedTicker(duration time.Duration) *time.Ticker {
 	time.Sleep(time.Now().Truncate(duration).Add(duration).Sub(time.Now()))
 	return time.NewTicker(duration)
@@ -182,11 +183,12 @@ func (agg *AggregateLoop) startWriteLooper(duration time.Duration, ttl time.Dura
 	ticker := agg.delayRoundedTicker(_dur) // time.NewTicker(_dur)
 	for {
 		select {
-		case <-ticker.C:
+		case dd := <-ticker.C:
 			agg.log.Debug(
-				"Flushing %d stats in bin %s to writer",
+				"Flushing %d stats in bin %s to writer at: %d",
 				len(agg.Aggregators.Get(duration).Items),
 				_dur.String(),
+				dd.Unix(),
 			)
 			go post()
 
