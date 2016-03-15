@@ -242,6 +242,7 @@ func (agg *AggregateLoop) startWriteLooper(duration time.Duration, ttl time.Dura
 					_dur.String(),
 					dd.Unix(),
 				)
+				continue
 			}
 			go post(items)
 

@@ -174,7 +174,7 @@ func (loop *WriterLoop) Full() bool {
 }
 
 func (loop *WriterLoop) Start() {
-	loop.write_chan = make(chan repr.StatRepr, loop.MetricQLen)
+	loop.write_chan = make(chan repr.StatRepr)                     //, loop.MetricQLen)
 	loop.indexer_chan = make(chan repr.StatRepr, loop.IndexerQLen) // indexing is slow, so we'll need to buffer things a bit more
 
 	go loop.indexLoop()
