@@ -13,7 +13,7 @@ If metrics collection and manipulating was simple, I would not have to write thi
 Installation
 ------------
 
-    Well, first you need to install go .. https://golang.org  1.5.1
+    Well, first you need to install go .. https://golang.org  >= 1.5.1
     
 
     git clone git@scm-main-01.dc.myfitnesspal.com:infra/consthashsrv.git
@@ -238,7 +238,7 @@ Config Options
 #### Cassandra
 
 This is probably the best one for massive stat volume. It expects the schema like the MySQL version, 
-and you should certainly use 2.1 or 2.2 versions of cassandra.  Unlike the others, due to Cassandra's type goodness
+and you should certainly use 2.2 versions of cassandra.  Unlike the others, due to Cassandra's type goodness
 there is no need to make "tables per timer".  Expiration of data is up to you to define in your global TTLs for the schemas.
 This is modeled after the `Cyanite` (http://cyanite.io/) schema as the rest of the graphite API can probably be 
 used using the helper tools that ecosystem provides.  (https://github.com/pyr/cyanite/blob/master/doc/schema.cql).  
@@ -247,6 +247,7 @@ then Cyanite as they group their metrics by "path + resolution + precision", i t
 dont' assume a consistent hashing frontend (and so multiple servers can insert the same metric for the same time frame
 but the one with the "most" counts wins in aggregation) .. but then my Clojure skills = 0. 
 For consistent hashing of keys, this should not happen.
+
 
 Please note for now the system assumes there is a `.` naming for metrics names
 
@@ -357,6 +358,53 @@ General Schema
         AND speculative_retry = '99.0PERCENTILE';
 
 
+### Gotcha's
+
+Some notes from the field::
+
+Write Speed:: Cassandra Protocol v3 (cassandra <= 2.1) is MUCH slower then Protocol v4 (cassandra 2.2 -> 3.X). 
+
+Given that we tend to need to write ~100-200 THOUSANDs metric points in our flush window (typically 10s)
+if we cannot fully write all the stats in the flush window beteen flush times, the app will have to SKIP a flush write
+in order to basically not die a horrible death of RAM consumption and deadlocks.
+
+As a result .. don't use cassandra 2.1, use at least cassandra 2.2
+ 
+Time Drift :: Golang's concurency and timers are not "realtime" meaning over time (like 30 min) the flush windows will actually
+move (i.e. 10s -> 10.00001s -> 10.00003s -> 10.0002s ...) as a result the metrics that get written will start to not be exactly
+10s appart, but start to drift from each other.  In Graphite this will cause some "holes" as it expect "exact" 10s offsets, but we need
+to interpolate the approximate bin shift windows for graphite to consume.  Golang's `Tickers` do attempt to compensate for drift
+but nothing is perfect.
+
+To help with this, the tickers here attempt to try to flush things on proper mod internals 
+The ticker will try to start on `time % duration == 0` this is not exact, but it usually hits within a few milliseconds of the correct mode.
+i.e. a "timer" of "10s" shold start on `14579895[0-9]0`
+
+To further make Cassandra data points and timers align, FLUSH times should all be the Smallest timer and timers should be multiples of each other
+(this is not a rule, but you really should do it if trying to immitate graphite whishper data), an example config below
+
+    [graphite-cassandra]
+    listen_server="graphite-proxy"
+    default_backend="graphite-proxy"
+
+    # accumulator and
+    [graphite-cassandra.accumulator]
+    backend = "graphite-gg-relay"  
+    input_format = "graphite"
+    output_format = "graphite"
+
+    # push out to writer aggregator collector and the backend every 10s
+    # this should match the FIRST time in your times below
+    accumulate_flush = "10s"
+
+    # aggregate bin counts
+    times = ["10s:168h", "1m:720h", "10m:21600h"]
+
+    [graphite-cassandra.accumulator.writer.metrics]
+    ...
+
+
+
 ### API/Readers
 
 Readers are an attempt to imitate the Graphite API bits and include 3 main endpoints
@@ -368,7 +416,13 @@ Readers are an attempt to imitate the Graphite API bits and include 3 main endpo
 Unlike the Whisper file format which keeps "nils" for no data (i.e. a round robin DB with a fixed step size and known counts),
 the mature of the metrics in our various backends write points at what ever the flush time is, and if there is nothing to write
 does not write "nils" so the `/metrics` endpoint has to return an interpolated set of data to attempt to match what graphite expects
-(this is more a warning for those that may notice some time shifting in some data)
+(this is more a warning for those that may notice some time shifting in some data and "data" holes)
+
+This may mean that you will see some random interspersed `nils` in the data on small time ranges.  There are a variety of reasons for this
+1) flush times are not "exact" go's in the concurency world, not everything is run exactly when we want it do so over time, "drift" will 
+2) Since we are both "flushing to disk" and "flushing from buffers" from many buffers at different times, sometimes they just don't line up
+
+
 
 #### Cassandra
 
@@ -403,20 +457,33 @@ Currently the only reader, configured in the PreReg `Accumulator` section as fol
         [statsd-regex-map.accumulator.writer.metrics]
             driver = "cassandra"
             dsn = "192.168.99.100"
+            [statsd-regex-map.accumulator.writer.metrics.options]
+                user="cassandra"
+                pass="cassandra"
         [statsd-regex-map.accumulator.writer.indexer]
             driver = "cassandra"
             dsn = "192.168.99.100"
+            [statsd-regex-map.accumulator.writer.indexer.options]
+                 user="cassandra"
+                 pass="cassandra"
     
         # API options (yes they are the same as above, but there's nothing saying it has to be)
         [statsd-regex-map.accumulator.api]
             base_path = "/graphite/"
             listen = "0.0.0.0:8083"
+            
             [statsd-regex-map.accumulator.api.metrics]
                 driver = "cassandra"
                 dsn = "192.168.99.100"
+                [statsd-regex-map.accumulator.api.metrics.options]
+                   user="cassandra"
+                   pass="cassandra"
             [statsd-regex-map.accumulator.api.indexer]
                 driver = "cassandra"
                 dsn = "192.168.99.100"
+                [statsd-regex-map.accumulator.api.indexer.options]
+                    user="cassandra"
+                    pass="cassandra"
 
     
 This will fire up a http server listening on port 8083 for those 3 endpoints above.  In order to get graphite to "understand" this endpoint you can use
