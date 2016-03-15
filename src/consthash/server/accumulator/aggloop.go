@@ -18,6 +18,7 @@ package accumulator
 
 import (
 	broadcast "consthash/server/broadcast"
+	dispatch "consthash/server/dispatch"
 	repr "consthash/server/repr"
 	stats "consthash/server/stats"
 	writers "consthash/server/writers"
@@ -26,6 +27,30 @@ import (
 	"sync"
 	"time"
 )
+
+const (
+	AGGLOOP_DEFAULT_QUEUE_LENGTH = 1024 * 100
+	AGGLOOP_DEFAULT_WORKERS      = 32
+)
+
+/** dispatcher job **/
+type StatJob struct {
+	Aggregators *repr.MultiAggregator
+	Stat        repr.StatRepr
+}
+
+func (j StatJob) IncRetry() int {
+	return 0
+}
+
+func (j StatJob) OnRetry() int {
+	return 0
+}
+
+func (t StatJob) DoWork() error {
+	t.Aggregators.Add(t.Stat)
+	return nil
+}
 
 type AggregateLoop struct {
 	mus []sync.Mutex
@@ -44,6 +69,12 @@ type AggregateLoop struct {
 
 	OutReader *writers.ApiLoop
 
+	// dispathers
+
+	stat_write_queue    chan dispatch.IJob
+	stat_dispatch_queue chan chan dispatch.IJob
+	stat_dispatcher     *dispatch.Dispatch
+
 	log *logging.Logger
 }
 
@@ -56,7 +87,7 @@ func NewAggregateLoop(flushtimes []time.Duration, ttls []time.Duration, name str
 		mus:         make([]sync.Mutex, len(flushtimes)),
 		Shutdown:    broadcast.New(1),
 		Aggregators: repr.NewMulti(flushtimes),
-		InputChan:   make(chan repr.StatRepr, 10000),
+		InputChan:   make(chan repr.StatRepr, AGGLOOP_DEFAULT_QUEUE_LENGTH),
 	}
 
 	agg.log = logging.MustGetLogger("aggregatorloop")
@@ -127,10 +158,20 @@ func (agg *AggregateLoop) SetWriter(conf writers.WriterConfig) error {
 
 func (agg *AggregateLoop) startInputLooper() {
 	shut := agg.Shutdown.Listen()
+
+	if agg.stat_write_queue == nil {
+		workers := AGGLOOP_DEFAULT_WORKERS
+		agg.stat_write_queue = make(chan dispatch.IJob, AGGLOOP_DEFAULT_QUEUE_LENGTH)
+		agg.stat_dispatch_queue = make(chan chan dispatch.IJob, workers)
+		agg.stat_dispatcher = dispatch.NewDispatch(workers, agg.stat_dispatch_queue, agg.stat_write_queue)
+		agg.stat_dispatcher.Run()
+	}
+
 	for {
 		select {
 		case stat := <-agg.InputChan:
-			agg.Aggregators.Add(stat)
+			agg.stat_write_queue <- StatJob{Aggregators: agg.Aggregators, Stat: stat}
+			//agg.Aggregators.Add(stat)
 		case <-shut.Ch:
 			shut.Close()
 			return
