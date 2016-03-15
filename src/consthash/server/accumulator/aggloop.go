@@ -198,13 +198,12 @@ func (agg *AggregateLoop) startWriteLooper(duration time.Duration, ttl time.Dura
 	// start up the writers listeners
 	go writer.Start()
 
-	post := func() {
+	post := func(items map[string]repr.StatRepr) {
 		defer stats.StatsdSlowNanoTimeFunc("aggregator.postwrite-time-ns", time.Now())
 
 		//_mu.Lock()
 		//defer _mu.Unlock()
 
-		items := agg.Aggregators.Get(duration).GetAndClear()
 		if writer.Full() {
 			agg.log.Critical("Saddly the write queue is full, if we continue adding to it, the entire world dies, we have to bail this write tick")
 			return
@@ -225,13 +224,22 @@ func (agg *AggregateLoop) startWriteLooper(duration time.Duration, ttl time.Dura
 	for {
 		select {
 		case dd := <-ticker.C:
+			items := agg.Aggregators.Get(duration).GetAndClear()
+			i_len := len(items)
 			agg.log.Debug(
 				"Flushing %d stats in bin %s to writer at: %d",
-				len(agg.Aggregators.Get(duration).Items),
+				i_len,
 				_dur.String(),
 				dd.Unix(),
 			)
-			go post()
+			if i_len == 0 {
+				agg.log.Warning(
+					"No stats to send to writer in bin %s at: %d",
+					_dur.String(),
+					dd.Unix(),
+				)
+			}
+			go post(items)
 
 		case <-shut.Ch:
 			ticker.Stop()
