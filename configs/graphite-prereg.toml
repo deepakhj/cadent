@@ -24,7 +24,16 @@ default_backend="graphite-proxy"
         [graphite-cassandra.accumulator.writer.metrics.options]
             user="cassandra"
             pass="cassandra"
-            numcons=50
+            port=9042
+            numcons=50 # DB connection pool size
+            timeout="30s" # DB timeout
+            read_consistency="one"  # read consistency "one", "local_quorum" or "quorum"
+            write_consistency="one"  # write consistency "one", "local_quorum" or "quorum" :: REALLY USE "ONE" HERE
+            keyspace="metric"
+            metrics_table="metric"
+            path_table="path"
+            segment_table="segment"
+
 
     [graphite-cassandra.accumulator.writer.indexer]
         driver = "cassandra"
