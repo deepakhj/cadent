@@ -48,11 +48,13 @@ func WriteLog(handle http.Handler, fileHandler *os.File) http.HandlerFunc {
 				request.Host,
 				request.RemoteAddr,
 				request.Method,
-				request.URL.Path, "?",
+				request.URL.Path,
+				"?",
 				request.URL.RawQuery,
 				request.Proto,
 				statusCode,
-				length, request.Header.Get("User-Agent"),
+				length,
+				request.Header.Get("User-Agent"),
 				latency,
 			)
 		} else {
