@@ -178,13 +178,13 @@ func (cass *CassandraMetric) Config(conf map[string]interface{}) (err error) {
 	_workers := conf["write_workers"]
 	cass.num_workers = CASSANDRA_METRIC_WORKERS
 	if _workers != nil {
-		cass.num_workers = _workers.(int)
+		cass.num_workers = int(_workers.(int64))
 	}
 	// tweak ques and worker sizes
 	_qs := conf["write_queue_length"]
 	cass.queue_len = CASSANDRA_METRIC_QUEUE_LEN
 	if _qs != nil {
-		cass.queue_len = _qs.(int)
+		cass.queue_len = int(_qs.(int64))
 	}
 
 	//go cass.PeriodFlush()
