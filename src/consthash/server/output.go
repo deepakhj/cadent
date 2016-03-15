@@ -169,9 +169,11 @@ func (j OutputDispatchJob) IncRetry() int {
 	j.retry++
 	return j.retry
 }
+
 func (j OutputDispatchJob) OnRetry() int {
 	return j.retry
 }
+
 func (o OutputDispatchJob) DoWork() error {
 	err := o.Writer.Write(o.Message)
 
