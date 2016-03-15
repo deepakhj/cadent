@@ -599,5 +599,9 @@ func (j CassandraIndexerJob) OnRetry() int {
 }
 
 func (j CassandraIndexerJob) DoWork() error {
-	return j.Cass.WriteOne(j.Stat)
+	err := j.Cass.WriteOne(j.Stat)
+	if err != nil {
+		j.Cass.log.Error("Insert failed for Index: %v retrying ...", j.Stat)
+	}
+	return err
 }

@@ -606,5 +606,8 @@ func (j CassandraMetricJob) OnRetry() int {
 
 func (j CassandraMetricJob) DoWork() error {
 	_, err := j.Cass.InsertOne(j.Stat)
+	if err != nil {
+		j.Cass.log.Error("Insert failed for Metric: %v retrying ...", j.Stat)
+	}
 	return err
 }
