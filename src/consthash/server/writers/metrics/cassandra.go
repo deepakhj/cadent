@@ -502,7 +502,6 @@ func (cass *CassandraMetric) RenderOne(path string, from string, to string) (Whi
 			for i := int(0); i < b_len; i++ {
 
 				interp_vec[i] = DataPoint{Time: cur_step_time, Value: nil}
-				cur_step_time += resolution
 
 				for ; j < ct; j++ {
 					if d_points[j].Time <= cur_step_time {
@@ -512,6 +511,7 @@ func (cass *CassandraMetric) RenderOne(path string, from string, to string) (Whi
 					}
 					break
 				}
+				cur_step_time += resolution
 
 			}
 		}
