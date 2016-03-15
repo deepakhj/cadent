@@ -205,7 +205,11 @@ func (agg *AggregateLoop) startWriteLooper(duration time.Duration, ttl time.Dura
 		//defer _mu.Unlock()
 
 		if writer.Full() {
-			agg.log.Critical("Saddly the write queue is full, if we continue adding to it, the entire world dies, we have to bail this write tick")
+			agg.log.Critical(
+				"Saddly the write queue is full, if we continue adding to it, the entire world dies, we have to bail this write tick (metric queue: %d, indexer queue: %d)",
+				writer.MetricQLen,
+				writer.IndexerQLen,
+			)
 			return
 		}
 		for _, stat := range items {
