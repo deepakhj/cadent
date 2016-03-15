@@ -275,7 +275,6 @@ func main() {
 
 	if def.Profile {
 		log.Notice("Starting Profiler on localhost:6060")
-		runtime.SetBlockProfileRate(1)
 		runtime.SetCPUProfileRate(1)
 		runtime.MemProfileRate = 1
 		go http.ListenAndServe(":6060", nil)
@@ -284,6 +283,11 @@ func main() {
 		runtime.SetBlockProfileRate(0)
 		runtime.SetCPUProfileRate(0)
 		runtime.MemProfileRate = 0
+	}
+
+	// this can be "very expensive" so turnon lightly
+	if def.BlockProfile {
+		runtime.SetBlockProfileRate(1)
 	}
 
 	//initiallize the statsd singleton
