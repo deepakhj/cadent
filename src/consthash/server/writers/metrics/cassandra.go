@@ -263,7 +263,7 @@ func (cass *CassandraMetric) InsertOne(stat repr.StatRepr) (int, error) {
 		cass.db.MetricTable(),
 	)
 	if ttl > 0 {
-		Q += fmt.Sprintf(" USING TTL ?", ttl)
+		Q += " USING TTL ?"
 	}
 
 	err := cass.conn.Query(Q,
