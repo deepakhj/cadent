@@ -37,8 +37,9 @@ func (sa *Aggregator) GetAndClear() map[string]StatRepr {
 	t_items := make(map[string]StatRepr)
 	for k, v := range sa.Items {
 		t_items[k] = v
-		delete(sa.Items, k)
+		//delete(sa.Items, k)
 	}
+	sa.Items = make(map[string]StatRepr)
 	return t_items
 }
 
