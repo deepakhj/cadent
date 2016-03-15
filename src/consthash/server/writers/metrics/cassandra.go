@@ -105,6 +105,8 @@ type CassandraMetric struct {
 	write_queue      chan dispatch.IJob
 	dispatch_queue   chan chan dispatch.IJob
 	write_dispatcher *dispatch.Dispatch
+	num_workers      int
+	queue_len        int
 	max_write_size   int           // size of that buffer before a flush
 	max_idle         time.Duration // either max_write_size will trigger a write or this time passing will
 	write_lock       sync.Mutex
@@ -170,6 +172,19 @@ func (cass *CassandraMetric) Config(conf map[string]interface{}) (err error) {
 		} else {
 			cass.log.Error("Cassandra Driver: Invalid Duration `%v`", _pr_flush)
 		}
+	}
+
+	// tweak ques and worker sizes
+	_workers := conf["write_workers"]
+	cass.num_workers = CASSANDRA_METRIC_WORKERS
+	if _workers != nil {
+		cass.num_workers = _workers.(int)
+	}
+	// tweak ques and worker sizes
+	_qs := conf["write_queue_length"]
+	cass.queue_len = CASSANDRA_METRIC_QUEUE_LEN
+	if _qs != nil {
+		cass.queue_len = _qs.(int)
 	}
 
 	//go cass.PeriodFlush()
@@ -293,8 +308,8 @@ func (cass *CassandraMetric) Write(stat repr.StatRepr) error {
 
 	/**** dispatcher queue ***/
 	if cass.write_queue == nil {
-		workers := CASSANDRA_METRIC_WORKERS
-		cass.write_queue = make(chan dispatch.IJob, CASSANDRA_METRIC_QUEUE_LEN)
+		workers := cass.num_workers
+		cass.write_queue = make(chan dispatch.IJob, cass.queue_len)
 		cass.dispatch_queue = make(chan chan dispatch.IJob, workers)
 		cass.write_dispatcher = dispatch.NewDispatch(workers, cass.dispatch_queue, cass.write_queue)
 		cass.write_dispatcher.SetRetries(2)
