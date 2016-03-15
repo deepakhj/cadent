@@ -83,6 +83,8 @@ type CassandraIndexer struct {
 	max_write_size int             // size of that buffer before a flush
 	max_idle       time.Duration   // either max_write_size will trigger a write or this time passing will
 	write_lock     sync.Mutex
+	num_workers    int
+	queue_len      int
 	paths_inserted map[string]bool // just to not do "extra" work on paths we've already indexed
 
 	write_queue      chan dispatch.IJob
@@ -115,6 +117,19 @@ func (cass *CassandraIndexer) Config(conf map[string]interface{}) (err error) {
 	}
 	cass.db = db.(*dbs.CassandraDB)
 	cass.conn = db.Connection().(*gocql.Session)
+
+	// tweak queus and worker sizes
+	_workers := conf["write_workers"]
+	cass.num_workers = CASSANDRA_INDEXER_WORKERS
+	if _workers != nil {
+		cass.num_workers = int(_workers.(int64))
+	}
+
+	_qs := conf["write_queue_length"]
+	cass.queue_len = CASSANDRA_INDEXER_QUEUE_LEN
+	if _qs != nil {
+		cass.queue_len = int(_qs.(int64))
+	}
 
 	return nil
 }
@@ -281,8 +296,8 @@ func (cass *CassandraIndexer) Write(skey string) error {
 	cass.write_lock.Unlock()
 
 	if cass.write_queue == nil {
-		workers := CASSANDRA_INDEXER_WORKERS
-		cass.write_queue = make(chan dispatch.IJob, CASSANDRA_INDEXER_QUEUE_LEN)
+		workers := cass.num_workers
+		cass.write_queue = make(chan dispatch.IJob, cass.queue_len)
 		cass.dispatch_queue = make(chan chan dispatch.IJob, workers)
 		cass.write_dispatcher = dispatch.NewDispatch(workers, cass.dispatch_queue, cass.write_queue)
 		cass.write_dispatcher.SetRetries(2)

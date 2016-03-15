@@ -174,13 +174,13 @@ func (cass *CassandraMetric) Config(conf map[string]interface{}) (err error) {
 		}
 	}
 
-	// tweak ques and worker sizes
+	// tweak queus and worker sizes
 	_workers := conf["write_workers"]
 	cass.num_workers = CASSANDRA_METRIC_WORKERS
 	if _workers != nil {
 		cass.num_workers = int(_workers.(int64))
 	}
-	// tweak ques and worker sizes
+
 	_qs := conf["write_queue_length"]
 	cass.queue_len = CASSANDRA_METRIC_QUEUE_LEN
 	if _qs != nil {
