@@ -378,10 +378,10 @@ but nothing is perfect.
 
 To help with this, the tickers here attempt to try to flush things on proper mod internals 
 The ticker will try to start on `time % duration == 0` this is not exact, but it usually hits within a few milliseconds of the correct mode.
-i.e. a "timer" of "10s" shold start on `14579895[0-9]0`
+i.e. a "timer" of "10s" should start on `14579895[0-9]0`
 
 To further make Cassandra data points and timers align, FLUSH times should all be the Smallest timer and timers should be multiples of each other
-(this is not a rule, but you really should do it if trying to immitate graphite whishper data), an example config below
+(this is not a rule, but you really should do it if trying to imitate graphite whisper data), an example config below
 
     [graphite-cassandra]
     listen_server="graphite-proxy"
