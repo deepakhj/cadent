@@ -70,7 +70,9 @@ func (sa *Aggregator) Add(stat StatRepr) error {
 func (sa *Aggregator) Clear() {
 	sa.mu.Lock()
 	defer sa.mu.Unlock()
-	for k := range sa.Items {
-		delete(sa.Items, k)
-	}
+	sa.Items = make(map[string]StatRepr)
+	/*
+		for k := range sa.Items {
+			delete(sa.Items, k)
+		}*/
 }

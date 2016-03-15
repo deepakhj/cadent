@@ -31,12 +31,14 @@ func NewMulti(res []time.Duration) *MultiAggregator {
 	return ma
 }
 
-func (sa *MultiAggregator) Get(dur time.Duration) *Aggregator {
-	return sa.Aggs[dur.Seconds()]
+func (ma *MultiAggregator) Get(dur time.Duration) *Aggregator {
+	ma.mu.Lock()
+	defer ma.mu.Unlock()
+	return ma.Aggs[dur.Seconds()]
 }
 
-func (sa *MultiAggregator) Len() int {
-	return len(sa.Resolutions)
+func (ma *MultiAggregator) Len() int {
+	return len(ma.Resolutions)
 }
 
 // Add one stat to all the queues
