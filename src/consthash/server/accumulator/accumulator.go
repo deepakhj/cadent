@@ -174,7 +174,7 @@ func (acc *Accumulator) Start() error {
 		select {
 		case dd := <-acc.timer.C:
 			acc.log.Debug("Flushing accumulator %s to: %s at: %v", acc.Name, acc.ToBackend, dd.Unix())
-			acc.FlushAndPost(dd)
+			go func() { acc.FlushAndPost(dd) }()
 		case line := <-acc.LineQueue:
 			acc.Accumulate.ProcessLine(line)
 			stats.StatsdClient.Incr("accumulator.lines.processed", 1)
