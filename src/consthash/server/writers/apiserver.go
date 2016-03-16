@@ -221,6 +221,14 @@ func (re *ApiLoop) Render(w http.ResponseWriter, r *http.Request) {
 	for _, tar := range r.Form["target"] {
 		target += strings.TrimSpace(tar) + ","
 	}
+
+	// if no target try "path"
+	if len(target) == 0{
+		for _, tar := range r.Form["path"] {
+			target += strings.TrimSpace(tar) + ","
+		}
+	}
+	
 	from = strings.TrimSpace(r.Form.Get("from"))
 	to = strings.TrimSpace(r.Form.Get("to"))
 
