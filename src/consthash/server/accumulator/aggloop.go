@@ -216,13 +216,17 @@ func (agg *AggregateLoop) startWriteLooper(duration time.Duration, ttl time.Dura
 			stat.Resolution = _dur.Seconds()
 			stat.TTL = int64(_ttl.Seconds()) // need to add in the TTL
 			//agg.log.Critical("CHAN WRITE: LEN: %d", len(writer.WriteChan()))
-			go func() { writer.WriterChan() <- stat }()
+			go func() {
+				writer.WriterChan() <- stat
+				return
+			}()
 		}
 		//agg.Aggregators.Clear(duration) // clear now before any "new" things get added
 		// need to clear out the Agg
 		stats.StatsdClientSlow.Incr(fmt.Sprintf("aggregator.%s.writesloops", _dur.String()), 1)
 		return
 	}
+
 	agg.log.Notice("Starting Aggregater Loop for %s", _dur.String())
 	ticker := agg.delayRoundedTicker(_dur) // time.NewTicker(_dur)
 	for {
