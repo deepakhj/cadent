@@ -1,9 +1,23 @@
 
 
-conshashsrv
-===========
+Cadent
+======
 
-Generic Consistent hash Server (and well, much more) in Go
+Manipulate your metrics
+
+Basically this acts like 4-5 existing projects out in the wilderness statsd, statsd-proxy, carbon-relay, carbon-aggegator, cyanite
+
+It "sorta" behaves like carbon-cache, except it does not write to whisper files, but cassandra (even mysql if you really think that's a good idea)
+(not to say it at some point cannot as most items in here are "pluggable" and all that needs to happen are the interfaces written)
+
+But dramatically retooled and optimized to handle 100's ot thousands of metrics a second
+
+ - consistent hashing relay
+ - metric filter and router
+ - accumulation and aggregation
+ - time series DB writing
+ - graphite-api endpoints
+
 
 Note:: configuration for complex scenarios of loop backs, replicas moving, multiple backends, accumulators, and aggregators 
 can get confusing .. and you can find yourself hitting yourself over the head alot.  You's say "why not keep it simple"
@@ -16,15 +30,15 @@ Installation
     Well, first you need to install go .. https://golang.org  >= 1.5.1
     
 
-    git clone git@scm-main-01.dc.myfitnesspal.com:infra/consthashsrv.git
+    git clone git@scm-main-01.dc.myfitnesspal.com:metrics/cadent.git
     export GOPATH=$(pwd)/src
     
     cd src/
     
     # because things are "private" we need to "hack around" go's usual pulling/get mechanism
     #pull in more git repos you'll need
-    git clone git@scm-main-01.dc.myfitnesspal.com:goutil/statsd.git
-    git clone git@scm-main-01.dc.myfitnesspal.com:goutil/consistent.git
+    git clone git@scm-main-01.dc.myfitnesspal.com:metrics/statsd.git
+    git clone git@scm-main-01.dc.myfitnesspal.com:metrics/consistent.git
     
     
     #get the deps
@@ -82,7 +96,7 @@ towards pre-buffering very "loud" inputs so as no to overwhelm the various backe
 
 The Flow of a given line looks like so
 
-    InLine(s) -> Listener -> Splitter -> [Accumulator] -> [PreReg] -> Backend -> Hasher -> OutPool -> Buffer -> outLine(s)
+    InLine(s) -> Listener -> Splitter -> [Accumulator] -> [PreReg/Filter] -> Backend -> Hasher -> OutPool -> Buffer -> outLine(s)
                                                                 |
                                                                 [-> Replicator -> Hasher -> OutPool -> Buffer -> outLine(s)]
 Things in `[]` are optional
@@ -100,9 +114,9 @@ backend accumulators (in the same fashion that Statsd Proxy -> Statsd and Carbon
 It's easy to do this in one "instance" of this item where one creates a "loop back" to itself, but on a different
 listener port.
 
-     InLine(port 8125) -> Splitter -> [PreReg] -> Backend -> Hasher -> OutPool (port 8126)
+     InLine(port 8125) -> Splitter -> [PreReg/Filter] -> Backend -> Hasher -> OutPool (port 8126)
         
-        --> InLine(port 8126) -> Splitter -> [Accumulator] -> [PreReg] -> Backend -> OutPool (port Other)
+        --> InLine(port 8126) -> Splitter -> [Accumulator] -> [PreReg/Filter] -> Backend -> OutPool (port Other)
 
 This way any farm of hashing servers will properly send the same stat to the same place for proper accumulation.
 
@@ -118,7 +132,7 @@ the timer buckets should be multiples of each other, for instance.
 
     times = ["5s", "1m", "10m"] 
     
-OR w/ TTLs
+OR w/ TTLs (note must be in "hours/min/seconds" not days/months)
 
     times = ["5s:168h", "1m:720h", "10m:17520h"] 
     

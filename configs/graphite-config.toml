@@ -64,8 +64,9 @@ read_buffer_size=1048576
 max_buffer_size=104857600
 
 ## number of workers to chew on the sending queue
-## adjust this based on the input load
-workers=5
+## adjust this based on the input load (1-5)
+## one does a pretty good job so start there
+workers=1
 
 ## there will be an internal health http server set up as well
 ## and will respond to '/ops/status' -> "GET OK"
@@ -90,7 +91,6 @@ internal_health_server_path="/opt/consthash/html"
 
 ## what port/scheme we are listening on for incoming data
 listen="tcp://0.0.0.0:2003"
-workers=20
 
 msg_type="graphite"
 

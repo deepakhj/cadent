@@ -23,8 +23,8 @@ cd "${WORKSPACE}/git/src"
 
 # need to clone our other deps
 
-git clone git@scm-main-01.dc.myfitnesspal.com:goutil/consistent.git consistent
-git clone git@scm-main-01.dc.myfitnesspal.com:goutil/statsd.git statsd
+git clone git@scm-main-01.dc.myfitnesspal.com:metrics/consistent.git consistent
+git clone git@scm-main-01.dc.myfitnesspal.com:metrics/statsd.git statsd
 
 cd "${WORKSPACE}/git"
 

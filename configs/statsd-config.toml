@@ -65,7 +65,7 @@ max_buffer_size=104857600
 
 ## number of workers to chew on the sending queue
 ## adjust this based on the input load
-workers=5
+workers=2
 
 ## there will be an internal health http server set up as well
 ## and will respond to '/ops/status' -> "GET OK"
