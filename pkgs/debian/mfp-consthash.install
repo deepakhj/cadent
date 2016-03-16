@@ -1,4 +1,0 @@
-../consthash	/opt/consthash/
-../echoserver	/opt/consthash/
-../html/* /opt/consthash/html/
-../example-config.toml /opt/consthash/

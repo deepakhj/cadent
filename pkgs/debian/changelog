@@ -1,11 +1,11 @@
-mfp-consthash (0.0.2) unstable; urgency=low
+mfp-cadent (0.0.2) unstable; urgency=low
 
   * debian stuff
   
  -- Bo Blanton <boblanton@myfitnesspal.com>  Thu, 23 Feb 2015 14:20:00 -0800
  
- mfp-consthash (0.0.1) unstable; urgency=low
+ mfp-cadent (0.0.1) unstable; urgency=low
 
-  * First build of consthash server
+  * First build of cadent server
   
  -- Bo Blanton <boblanton@myfitnesspal.com>  Thu, 19 Feb 2015 14:20:00 -0800

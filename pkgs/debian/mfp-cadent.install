@@ -1,0 +1,4 @@
+../cadent	/opt/cadent/
+../echoserver	/opt/cadent/
+../html/* /opt/cadent/html/
+../example-config.toml /opt/cadent/

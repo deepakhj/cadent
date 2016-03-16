@@ -1,5 +1,5 @@
 .idea*
-consthash.iml
+cadent.iml
 *.heap
 *.pprof
 consthashsrv.iml
@@ -12,15 +12,15 @@ build
 *.DS_Store
 statblast
 tester/conf
-consthash
+cadent
 echoserver
-!consthash.go
+!cadent.go
 bin
 pkg
 src/consistent
 src/statsd
 src/github.com
-!src/consthash
-!src/consthash/cmd/*
-src/consthash/cmd/.DS_Store
+!src/cadent
+!src/cadent/cmd/*
+src/cadent/cmd/.DS_Store
 gopkg.in

@@ -24,8 +24,8 @@ GOFMT=gofmt -w -s
 # Package lists
 TOPLEVEL_PKG := .
 INT_LIST := 	#<-- Interface directories
-IMPL_LIST := src/consthash/server	#<-- Implementation directories
-CMD_LIST := src/consthash/cmd/consthash src/consthash/cmd/echoserver src/consthash/cmd/statblast	#<-- Command directories
+IMPL_LIST := src/cadent/server	#<-- Implementation directories
+CMD_LIST := src/cadent/cmd/cadent src/cadent/cmd/echoserver src/cadent/cmd/statblast	#<-- Command directories
  
 # List building
 ALL_LIST = $(INT_LIST) $(IMPL_LIST) $(CMD_LIST)

@@ -63,12 +63,12 @@ and config directory for more examples.
 
 to start
 
-    consthash --config=example-config.toml
+    cadent --config=example-config.toml
     
 There is also the "PreReg" options files as well, this lets one pre-route lines to various backends, that can then 
 be consitently hashed, or "rejected" if so desired, as well as "accumulated" (ala statsd or carbon-aggrigate)
 
-    consthash --config=example-config.toml --prereg=example-prereg.toml
+    cadent --config=example-config.toml --prereg=example-prereg.toml
 
 
 What I do
