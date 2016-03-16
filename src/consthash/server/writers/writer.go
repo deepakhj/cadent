@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	WRITER_DEFAULT_INDEX_QUEUE_LENGTH  = 1024 * 200
-	WRITER_DEFAULT_METRIC_QUEUE_LENGTH = 1024 * 100
+	WRITER_DEFAULT_INDEX_QUEUE_LENGTH  = 1024 * 2000
+	WRITER_DEFAULT_METRIC_QUEUE_LENGTH = 1024 * 1000
 )
 
 // toml config for Metrics
@@ -174,7 +174,7 @@ func (loop *WriterLoop) Full() bool {
 }
 
 func (loop *WriterLoop) Start() {
-	loop.write_chan = make(chan repr.StatRepr)                     //, loop.MetricQLen)
+	loop.write_chan = make(chan repr.StatRepr, loop.MetricQLen)
 	loop.indexer_chan = make(chan repr.StatRepr, loop.IndexerQLen) // indexing is slow, so we'll need to buffer things a bit more
 
 	go loop.indexLoop()
