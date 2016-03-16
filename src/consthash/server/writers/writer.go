@@ -156,12 +156,12 @@ func (loop *WriterLoop) procLoop() {
 	for {
 		select {
 		case stat := <-loop.write_chan:
-			go func() {
-				loop.metrics.Write(stat)
-				loop.indexer.Write(stat.Key)
-				//loop.indexer_chan <- stat
-				return
-			}() // non-blocking indexer loop
+			//go func() {
+			loop.metrics.Write(stat)
+			//loop.indexer.Write(stat.Key)
+			loop.indexer_chan <- stat
+			//return
+			//}() // non-blocking indexer loop
 		case <-shut.Ch:
 			shut.Close()
 			return
