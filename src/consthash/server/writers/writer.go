@@ -167,6 +167,7 @@ func (loop *WriterLoop) procLoop() {
 				//return
 				//}() // non-blocking indexer loop
 			*/
+			// push the stat to the dynamic sized queue (saves oddles of ram on large channels and large metrics dumps)
 			loop.write_queue.Push(stat)
 		case <-shut.Ch:
 			shut.Close()
@@ -190,11 +191,11 @@ func (loop *WriterLoop) processQueue() {
 				loop.indexer.Write((*stat).Key)
 			}
 		}
-
 	}
+
 	for {
 		proc_queue()
-		time.Sleep(time.Millisecond)
+		time.Sleep(time.Millisecond) // so as to not CPU burn
 	}
 }
 
@@ -220,7 +221,23 @@ func (loop *WriterLoop) Stop() {
 	}()
 }
 
-/**** writer "queue" **/
+/******************************************************************
+writer "queue"
+
+ This may seem a bit "odd" as you may think "why not ue buffered channels"
+ well a few reasons ..
+ 1) sometimes the length of the buffered channel nessesary is "huge" and golang does not clean GC ram if most of the
+ time it's not used fully.
+ 2) in order processing for all buckets per "writer"
+ this ensures that inputs are queued up in the order gotten as well as allowing the main aggregator loops
+ to continue simply by filling this up
+ 3) "large influxes handling" (kinda like #1) but when all 10s,1m,10m flush at the same time, inputchannels will block
+ hard on some many inputs/outputs.  this quickly dispatches them to a data structure that during the "slower" times
+ can easily be consumed quickly
+ 4) It also keeps things running should cassandra get slow alowing the queue to fill up and hopefully, things don't
+ run out of ram before that happens so there is a risk
+
+**/
 
 type WriteNode struct {
 	data *repr.StatRepr

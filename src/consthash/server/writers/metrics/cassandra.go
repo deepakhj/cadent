@@ -91,9 +91,20 @@ type CassMetric struct {
 }
 
 /*** set up "one" real writer (per dsn) .. and writer queue .. no
-  need to get hundereds of these things
+  no need to get multiqueues/channel/etc of these per resolution
   as we are all sharing the same DB pool and should write things in as they come in
   multiple writer pools tend to lead to bad lock contention behavior on input channels
+  and output channels as well as the cassandra writer (gocql) itself.
+  Having a "single" real writer for all resolutions saves all of that.
+
+  this, and the "non-channel" Queue in "writer.go", comes from ALOT of performance testing and tuning
+  while not the "go'est" way of doing things.  It works with many 100s of thousands of metrics being flushed
+  one a single machine.
+
+  We don't need to do this for the "indexer" portion of the cassandra writer, as there is only "one" instance
+  of that per DSN and it also maintains it's own "hot" cache check, which after 1-3 flushes will fill up and
+  basically never write anymore
+
 */
 
 // the singleton
