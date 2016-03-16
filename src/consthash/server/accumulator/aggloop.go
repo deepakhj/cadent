@@ -216,7 +216,7 @@ func (agg *AggregateLoop) startWriteLooper(duration time.Duration, ttl time.Dura
 			stat.Resolution = _dur.Seconds()
 			stat.TTL = int64(_ttl.Seconds()) // need to add in the TTL
 			//agg.log.Critical("CHAN WRITE: LEN: %d", len(writer.WriteChan()))
-			writer.WriterChan() <- stat
+			go func() { writer.WriterChan() <- stat }()
 		}
 		//agg.Aggregators.Clear(duration) // clear now before any "new" things get added
 		// need to clear out the Agg
