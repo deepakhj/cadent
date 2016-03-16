@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	WRITER_DEFAULT_INDEX_QUEUE_LENGTH  = 1024 * 2000
-	WRITER_DEFAULT_METRIC_QUEUE_LENGTH = 1024 * 1000
+	WRITER_DEFAULT_INDEX_QUEUE_LENGTH  = 1024 * 20
+	WRITER_DEFAULT_METRIC_QUEUE_LENGTH = 1024 * 10
 )
 
 // toml config for Metrics
@@ -158,7 +158,8 @@ func (loop *WriterLoop) procLoop() {
 		case stat := <-loop.write_chan:
 			go func() {
 				loop.metrics.Write(stat)
-				loop.indexer_chan <- stat
+				loop.indexer.Write(stat.Key)
+				//loop.indexer_chan <- stat
 				return
 			}() // non-blocking indexer loop
 		case <-shut.Ch:
