@@ -10,17 +10,24 @@ call it "ca-dent" (ca as in cat) if you really want to .. but that holds no real
 
 Basically this acts like 4-5 existing projects out in the wilderness statsd, statsd-proxy, carbon-relay, carbon-aggegator, cyanite
 
-It "sorta" behaves like carbon-cache, except it does not write to whisper files, but cassandra (even mysql if you really think that's a good idea)
-(not to say it at some point cannot as most items in here are "pluggable" and all that needs to happen are the interfaces written)
+It "sorta" behaves like carbon-cache, except it does not write to whisper files, but cassandra 
+(even a SQL DB if you really think that's a good idea, watch as you kill your RDBS trying to insert 100k items in 1 second)
+(not to say it at some point cannot write whisper files as most items in here are "pluggable" 
+and all that needs to happen are the interfaces written)
 
-But dramatically retooled and optimized to handle 100's ot thousands of metrics a second
+But dramatically retooled and optimized to handle 100's of thousands of metrics a second.
+
+Has a Hekad feel (same sort of data pipeline like) but optimized for what we really need
 
  - consistent hashing relay
  - metric filter and router
+ - relay replication
  - accumulation and aggregation
  - time series DB writing
  - graphite-api endpoints
-
+ 
+Yes "each" of the above can be handled by a standalone app (and they do exist in the echosystem) .. however at the volume
+we want to address .. there's nothing like raw RAM/CPU power on a local node (the internet is slow people).
 
 Note:: configuration for complex scenarios of loop backs, replicas moving, multiple backends, accumulators, and aggregators 
 can get confusing .. and you can find yourself hitting yourself over the head alot.  You's say "why not keep it simple"
