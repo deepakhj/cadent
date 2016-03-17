@@ -30,7 +30,14 @@ func (m *MetricFindItem) SelectValue() string {
 	if strings.Contains(last_path, "avg") {
 		return "mean"
 	}
-	if strings.Contains(last_path, "count") {
+	// specials for "counts"
+	if strings.Contains(m.Id, "count"){
+		return "sum"
+	}
+	if strings.Contains(last_path, "sum"){
+		return "sum"
+	}
+	if strings.Contains(last_path, "errors"){
 		return "sum"
 	}
 	if strings.Contains(last_path, "std") { // standard deviation
@@ -51,7 +58,7 @@ func (m *MetricFindItem) SelectValue() string {
 	if strings.Contains(last_path, "lower") {
 		return "min"
 	}
-	return "sum"
+	return "mean"
 }
 
 type MetricFindItems []MetricFindItem
