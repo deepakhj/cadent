@@ -47,8 +47,8 @@ Installation
     
     # because things are "private" we need to "hack around" go's usual pulling/get mechanism
     #pull in more git repos you'll need
-    git clone git@scm-main-01.dc.myfitnesspal.com:metrics/statsd.git
-    git clone git@scm-main-01.dc.myfitnesspal.com:metrics/consistent.git
+    git clone git@scm-main-01.dc.myfitnesspal.com:Metrics/statsd.git
+    git clone git@scm-main-01.dc.myfitnesspal.com:Metrics/consistent.git
     
     
     #get the deps
