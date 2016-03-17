@@ -209,10 +209,7 @@ func (re *ApiLoop) Expand(w http.ResponseWriter, r *http.Request) {
 	re.OutJson(w, data)
 }
 
-func (re *ApiLoop) Render(w http.ResponseWriter, r *http.Request) {
-
-	defer stats.StatsdNanoTimeFunc("reader.http.render.get-time-ns", time.Now())
-
+func (re *ApiLoop) parseForRender(w http.ResponseWriter, r *http.Request) (string, string, string, error) {
 	r.ParseForm()
 	var target string
 	var from string
@@ -233,8 +230,8 @@ func (re *ApiLoop) Render(w http.ResponseWriter, r *http.Request) {
 	to = strings.TrimSpace(r.Form.Get("to"))
 
 	if len(target) == 0 {
-		re.OutError(w, "Target is required", http.StatusBadRequest)
-		return
+		return "", "", "", fmt.Errorf("Target is required")
+
 	}
 
 	if len(from) == 0 {
@@ -245,11 +242,42 @@ func (re *ApiLoop) Render(w http.ResponseWriter, r *http.Request) {
 		to = "now"
 	}
 
+	return target, from, to, nil
+}
+
+func (re *ApiLoop) Render(w http.ResponseWriter, r *http.Request) {
+
+	defer stats.StatsdNanoTimeFunc("reader.http.render.get-time-ns", time.Now())
+
+	target, from, to, err := re.parseForRender(w, r)
+	if err != nil {
+		re.OutError(w, fmt.Sprintf("%v", err), http.StatusBadRequest)
+	}
 	data, err := re.Metrics.Render(target, from, to)
 	if err != nil {
 		re.OutError(w, fmt.Sprintf("%v", err), http.StatusServiceUnavailable)
 		return
 	}
+
+	re.OutJson(w, data)
+	return
+}
+
+func (re *ApiLoop) RawRender(w http.ResponseWriter, r *http.Request) {
+
+	defer stats.StatsdNanoTimeFunc("reader.http.render.get-time-ns", time.Now())
+
+	target, from, to, err := re.parseForRender(w, r)
+	if err != nil {
+		re.OutError(w, fmt.Sprintf("%v", err), http.StatusBadRequest)
+	}
+
+	data, err := re.Metrics.RawRender(target, from, to)
+	if err != nil {
+		re.OutError(w, fmt.Sprintf("%v", err), http.StatusServiceUnavailable)
+		return
+	}
+
 	re.OutJson(w, data)
 	return
 }
@@ -279,6 +307,9 @@ func (re *ApiLoop) Start() {
 	mux.HandleFunc(re.Conf.BasePath+"render", re.Render)
 	mux.HandleFunc(re.Conf.BasePath+"metrics/", re.Render)
 	mux.HandleFunc(re.Conf.BasePath+"metrics", re.Render)
+
+	mux.HandleFunc(re.Conf.BasePath+"rawrender/", re.RawRender)
+	mux.HandleFunc(re.Conf.BasePath+"rawrender", re.RawRender)
 
 	mux.HandleFunc("/", re.NoOp)
 	var outlog *os.File

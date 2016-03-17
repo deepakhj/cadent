@@ -49,4 +49,5 @@ type Metrics interface {
 		]}
 	*/
 	Render(path string, from string, to string) (WhisperRenderItem, error)
+	RawRender(path string, from string, to string) ([]*RawRenderItem, error)
 }

@@ -182,3 +182,6 @@ func (my *MySQLMetrics) Write(stat repr.StatRepr) error {
 func (my *MySQLMetrics) Render(path string, from string, to string) (WhisperRenderItem, error) {
 	return WhisperRenderItem{}, fmt.Errorf("MYSQL READER NOT YET DONE")
 }
+func (my *MySQLMetrics) RawRender(path string, from string, to string) ([]*RawRenderItem, error) {
+	return []*RawRenderItem{}, fmt.Errorf("MYSQL READER NOT YET DONE")
+}

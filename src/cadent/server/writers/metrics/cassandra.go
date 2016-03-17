@@ -431,22 +431,25 @@ func (cass *CassandraMetric) truncateTo(num int64, mod int) int64 {
 	return num + int64(mod-_mods)
 }
 
-func (cass *CassandraMetric) RenderOne(path string, from string, to string) (WhisperRenderItem, error) {
+func (cass *CassandraMetric) RawRenderOne(metric indexer.MetricFindItem, from string, to string) (*RawRenderItem, error) {
+	defer stats.StatsdSlowNanoTimeFunc("reader.cassandra.renderraw.get-time-ns", time.Now())
 
-	defer stats.StatsdSlowNanoTimeFunc("reader.cassandra.renderone.get-time-ns", time.Now())
+	rawd := new(RawRenderItem)
 
-	var whis WhisperRenderItem
+	if metric.Leaf == 0 { //data only
+		return rawd, fmt.Errorf("Cassandra: RawRenderOne: Not a data node")
+	}
 
 	start, err := ParseTime(from)
 	if err != nil {
 		cass.writer.log.Error("Invalid from time `%s` :: %v", from, err)
-		return whis, err
+		return rawd, err
 	}
 
 	end, err := ParseTime(to)
 	if err != nil {
 		cass.writer.log.Error("Invalid from time `%s` :: %v", to, err)
-		return whis, err
+		return rawd, err
 	}
 	if end < start {
 		start, end = end, start
@@ -457,143 +460,151 @@ func (cass *CassandraMetric) RenderOne(path string, from string, to string) (Whi
 	start = cass.truncateTo(start, resolution)
 	end = cass.truncateTo(end, resolution)
 
+	b_len := int(end-start) / resolution //just to be safe
+	if b_len <= 0 {
+		return rawd, fmt.Errorf("Cassandra: RawRenderOne: time too narrow")
+	}
+
 	// time in cassandra is in NanoSeconds so we need to pad the times from seconds -> nanos
 	nano := int64(time.Second)
 	nano_end := end * nano
 	nano_start := start * nano
 
-	metrics, err := cass.indexer.Find(path)
-	if err != nil {
-		return whis, err
-	}
-
-	series := make(map[string][]DataPoint)
-
 	first_t := int(start)
 	last_t := int(end)
 
-	for _, metric := range metrics {
-		if metric.Leaf == 0 { //data only
-			continue
-		}
-		b_len := int(end-start) / resolution //just to be safe
-		if b_len <= 0 {
-			continue
-		}
+	// grab ze data. (note data is already sorted by time asc va the cassandra schema)
+	cass_Q := fmt.Sprintf(
+		"SELECT point.mean, point.max, point.min, point.sum, point.count, time FROM %s WHERE id={path: ?, resolution: ?} AND time <= ? and time >= ?",
+		cass.writer.db.MetricTable(),
+	)
+	iter := cass.writer.conn.Query(cass_Q,
+		metric.Id, resolution, nano_end, nano_start,
+	).Iter()
 
-		// check our cache
-		cache_id := fmt.Sprintf("%s-%s-%s", metric.Id, from, to)
-		//cass.log.Critical("Cache  Key %s", cache_id)
-		gots, ok := cass.datacache.Get(cache_id)
-		if ok {
-			// cast the punk
-			data := gots.(WhisperRenderCacher).Data
-			series[metric.Id] = data
-			first_t = data[0].Time
-			last_t = data[len(data)-1].Time
-			cass.writer.log.Critical("Got Cache %s", cache_id)
-			continue
-		}
+	var t, count int64
+	var mean, min, max, sum float64
 
-		// grab ze data. (note data is already sorted by time asc va the cassandra schema)
-		cass_Q := fmt.Sprintf(
-			"SELECT point.mean, point.max, point.min, point.sum, time FROM %s WHERE id={path: ?, resolution: ?} AND time <= ? and time >= ?",
-			cass.writer.db.MetricTable(),
-		)
-		iter := cass.writer.conn.Query(cass_Q,
-			metric.Id, resolution, nano_end, nano_start,
-		).Iter()
+	// use mins or maxes for the "upper_xxx, lower_xxx"
+	m_key := metric.Id
 
-		var t int64
-		var mean, min, max, sum float64
+	var d_points []RawDataPoint
 
-		// which value to acctually return
-		use_metric := metric.SelectValue()
+	ct := 0
+	// sorting order for the table is time ASC (i.e. first_t == first entry)
 
-		// use mins or maxes for the "upper_xxx, lower_xxx"
+	for iter.Scan(&mean, &max, &min, &sum, &count, &t) {
+		on_t := int(t / nano) // back convert to seconds
 
-		m_key := metric.Id
-
-		d_points := make([]DataPoint, b_len)
-
-		// Since graphite does not care about the actual time stamp, but assumes
-		// a "constant step" in time. Since data may not nessesarily "be there" for a given
-		// interval we need to "insert nils" for steps that don't really exist
-		// as basically (start - end) / resolution needs to match
-		// the vector length, in effect we need to "interpolate" the vector to match sizes
-
-		ct := 0
-		// sorting order for the table is time ASC (i.e. first_t == first entry)
-
-		for iter.Scan(&mean, &max, &min, &sum, &t) {
-			on_t := int(t / nano) // back convert to seconds
-			d_point := NewDataPoint(on_t, mean)
-			switch use_metric {
-			case "mean":
-				d_point.SetValue(mean)
-			case "min":
-				d_point.SetValue(min)
-			case "max":
-				d_point.SetValue(max)
-			default:
-				d_point.SetValue(sum)
-			}
-
-			if len(d_points) <= ct {
-				_t_pts := make([]DataPoint, len(d_points)+100)
-				copy(_t_pts, d_points)
-				d_points = _t_pts
-			}
-			d_points[ct] = d_point
-			//cass.log.Critical("POINT %s time:%d data:%f", metric.Id, on_t, mean)
-			ct++
-			last_t = on_t
-		}
-
-		if err := iter.Close(); err != nil {
-			cass.writer.log.Error("Render: Failure closing iterator: %v", err)
-		}
-
-		if len(d_points) > 0 && d_points[0].Time > 0 {
-			first_t = d_points[0].Time
-		}
-
-		// now for the interpolation bit .. basically leaving "times that have no data as nulls"
-		// XXX HOPEFULLY there are usually FEWER or as much "real" data then "wanted" by the resolution
-		// if there's not :boom: and you should really keep tabs on who is messing with your data in the DB
-		interp_vec := make([]DataPoint, b_len)
-		cur_step_time := int(start)
-
-		if ct > 0 {
-			j := 0
-			for i := int(0); i < b_len; i++ {
-
-				interp_vec[i] = DataPoint{Time: cur_step_time, Value: nil}
-
-				for ; j < ct; j++ {
-					if d_points[j].Time <= cur_step_time {
-						interp_vec[i].Value = d_points[j].Value
-						interp_vec[i].Time = d_points[j].Time //this is the "real" time, graphite does not care, but something might
-						j++
-					}
-					break
-				}
-				cur_step_time += resolution
-
-			}
-		}
-		series[m_key] = interp_vec
-		cass.datacache.Set(cache_id, WhisperRenderCacher{Data: interp_vec})
-
-		//cass.log.Critical("METR: %s Start: %d END: %d LEN: %d GotLen: %d", metric.Id, first_t, last_t, len(d_points), ct)
+		d_points = append(d_points, RawDataPoint{
+			Count: count,
+			Sum:   sum,
+			Mean:  mean,
+			Max:   max,
+			Min:   min,
+			Time:  on_t,
+		})
+		//cass.log.Critical("POINT %s time:%d data:%f", metric.Id, on_t, mean)
+		ct++
+		last_t = on_t
 	}
 
-	whis.Series = series
-	whis.RealStart = first_t
-	whis.RealEnd = last_t
-	whis.Start = int(start)
-	whis.End = int(end)
-	whis.Step = resolution
+	if err := iter.Close(); err != nil {
+		cass.writer.log.Error("RawRender: Failure closing iterator: %v", err)
+	}
+
+	if ct > 0 && d_points[0].Time > 0 {
+		first_t = d_points[0].Time
+	}
+
+	//cass.log.Critical("METR: %s Start: %d END: %d LEN: %d GotLen: %d", metric.Id, first_t, last_t, len(d_points), ct)
+
+	rawd.RealEnd = int(last_t)
+	rawd.RealStart = int(first_t)
+	rawd.Start = int(start)
+	rawd.End = int(end)
+	rawd.Step = resolution
+	rawd.Metric = m_key
+	rawd.Data = d_points
+
+	return rawd, nil
+}
+
+func (cass *CassandraMetric) RenderOne(metric indexer.MetricFindItem, from string, to string) (WhisperRenderItem, error) {
+
+	defer stats.StatsdSlowNanoTimeFunc("reader.cassandra.renderone.get-time-ns", time.Now())
+
+	var whis WhisperRenderItem
+
+	rawd, err := cass.RawRenderOne(metric, from, to)
+
+	if err != nil {
+		return whis, err
+	}
+	whis.RealEnd = rawd.RealEnd
+	whis.RealStart = rawd.RealStart
+	whis.Start = rawd.Start
+	whis.End = rawd.End
+	whis.Step = rawd.Step
+	whis.Series = make(map[string][]DataPoint)
+
+	// which value to actually return
+	use_metric := metric.SelectValue()
+
+	m_key := metric.Id
+	b_len := (rawd.End - rawd.Start) / rawd.Step //"proper" length of the metric
+
+	// Since graphite does not care about the actual time stamp, but assumes
+	// a "constant step" in time. Since data may not necessarily "be there" for a given
+	// interval we need to "insert nils" for steps that don't really exist
+	// as basically (start - end) / resolution needs to match
+	// the vector length, in effect we need to "interpolate" the vector to match sizes
+
+	// now for the interpolation bit .. basically leaving "times that have no data as nulls"
+	// XXX HOPEFULLY there are usually FEWER or as much "real" data then "wanted" by the resolution
+	// if there's not :boom: and you should really keep tabs on who is messing with your data in the DB
+	interp_vec := make([]DataPoint, b_len)
+	cur_step_time := rawd.Start
+	d_points := rawd.Data
+	ct := len(d_points)
+	if ct > 0 {
+		j := 0
+		for i := 0; i < b_len; i++ {
+
+			interp_vec[i] = DataPoint{Time: cur_step_time, Value: nil}
+
+			for ; j < ct; j++ {
+				if d_points[j].Time <= cur_step_time {
+					d := d_points[j]
+					// cass.writer.log.Critical("ONPS %v : %v Len %d :I %d, j %d, iLen: %v SUM: %v", d_points[j], interp_vec[i], ct, i, j, b_len, d_points[j].Sum,)
+
+					// the weird setters here are to get the pointers properly (a weird golang thing)
+					switch use_metric {
+					case "mean":
+						m := d.Mean
+						interp_vec[i].Value = &m
+					case "min":
+						m := d.Min
+						interp_vec[i].Value = &m
+					case "max":
+						m := d.Max
+						interp_vec[i].Value = &m
+					default:
+						s := d.Sum
+						interp_vec[i].Value = &s
+					}
+					interp_vec[i].Time = d_points[j].Time //this is the "real" time, graphite does not care, but something might
+					j++
+				}
+				break
+			}
+			cur_step_time += rawd.Step
+
+		}
+	}
+	//cass.log.Critical("METR: %s Start: %d END: %d LEN: %d GotLen: %d", metric.Id, first_t, last_t, len(d_points), ct)
+
+	whis.Series[m_key] = interp_vec
 
 	return whis, nil
 }
@@ -605,10 +616,19 @@ func (cass *CassandraMetric) Render(path string, from string, to string) (Whispe
 	var whis WhisperRenderItem
 	whis.Series = make(map[string][]DataPoint)
 	paths := strings.Split(path, ",")
+	var metrics []indexer.MetricFindItem
+
+	for _, pth := range paths {
+		mets, err := cass.indexer.Find(pth)
+		if err != nil {
+			continue
+		}
+		metrics = append(metrics, mets...)
+	}
 
 	// ye old fan out technique
-	render_one := func(pth string) {
-		_ri, err := cass.RenderOne(pth, from, to)
+	render_one := func(metric indexer.MetricFindItem) {
+		_ri, err := cass.RenderOne(metric, from, to)
 		if err != nil {
 			cass.render_wg.Done()
 			return
@@ -619,6 +639,8 @@ func (cass *CassandraMetric) Render(path string, from string, to string) (Whispe
 		}
 		whis.Start = _ri.Start
 		whis.End = _ri.End
+		whis.RealStart = _ri.RealStart
+		whis.RealEnd = _ri.RealEnd
 		whis.Step = _ri.Step
 
 		cass.render_mu.Unlock()
@@ -626,16 +648,49 @@ func (cass *CassandraMetric) Render(path string, from string, to string) (Whispe
 		return
 	}
 
-	for _, pth := range paths {
-		if len(pth) == 0 {
-			continue
-		}
+	for _, metric := range metrics {
 		cass.render_wg.Add(1)
-		go render_one(pth)
+		go render_one(metric)
 	}
 	cass.render_wg.Wait()
 	return whis, nil
+}
 
+func (cass *CassandraMetric) RawRender(path string, from string, to string) ([]*RawRenderItem, error) {
+
+	defer stats.StatsdSlowNanoTimeFunc("reader.cassandra.render.get-time-ns", time.Now())
+
+	var rawd []*RawRenderItem
+
+	paths := strings.Split(path, ",")
+	var metrics []indexer.MetricFindItem
+
+	for _, pth := range paths {
+		mets, err := cass.indexer.Find(pth)
+		if err != nil {
+			continue
+		}
+		metrics = append(metrics, mets...)
+	}
+
+	// ye old fan out technique
+	render_one := func(metric indexer.MetricFindItem) {
+		_ri, err := cass.RawRenderOne(metric, from, to)
+		if err != nil {
+			cass.render_wg.Done()
+			return
+		}
+		rawd = append(rawd, _ri)
+		cass.render_wg.Done()
+		return
+	}
+
+	for _, metric := range metrics {
+		cass.render_wg.Add(1)
+		go render_one(metric)
+	}
+	cass.render_wg.Wait()
+	return rawd, nil
 }
 
 /************************************************************************/

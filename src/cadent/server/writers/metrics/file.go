@@ -178,3 +178,6 @@ func (fi *FileMetrics) Write(stat repr.StatRepr) error {
 func (my *FileMetrics) Render(path string, from string, to string) (WhisperRenderItem, error) {
 	return WhisperRenderItem{}, fmt.Errorf("FILE READER NOT YET DONE")
 }
+func (my *FileMetrics) RawRender(path string, from string, to string) ([]*RawRenderItem, error) {
+	return []*RawRenderItem{}, fmt.Errorf("FILE READER NOT YET DONE")
+}
