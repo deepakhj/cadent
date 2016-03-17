@@ -5,6 +5,9 @@ Cadent
 
 Manipulate your metrics
 
+So in terms of picking a bad name ... marketers .. is "k-dent" as in "k as in cake" \ˈkā-dənt\ .. 
+call it "ca-dent" (ca as in cat) if you really want to .. but that holds no real meaning (just look it up ... expand your vocab)
+
 Basically this acts like 4-5 existing projects out in the wilderness statsd, statsd-proxy, carbon-relay, carbon-aggegator, cyanite
 
 It "sorta" behaves like carbon-cache, except it does not write to whisper files, but cassandra (even mysql if you really think that's a good idea)
