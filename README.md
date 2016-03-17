@@ -40,7 +40,7 @@ Installation
     Well, first you need to install go .. https://golang.org  >= 1.5.1
     
 
-    git clone git@scm-main-01.dc.myfitnesspal.com:metrics/cadent.git
+    git clone git@scm-main-01.dc.myfitnesspal.com:Metrics/cadent.git
     export GOPATH=$(pwd)/src
     
     cd src/
