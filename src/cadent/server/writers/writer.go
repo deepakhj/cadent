@@ -10,6 +10,8 @@ import (
 	"cadent/server/stats"
 	"cadent/server/writers/indexer"
 	"cadent/server/writers/metrics"
+	logging "gopkg.in/op/go-logging.v1"
+
 	"fmt"
 	"sync"
 	//"log"
@@ -19,7 +21,7 @@ import (
 const (
 	WRITER_DEFAULT_INDEX_QUEUE_LENGTH  = 1024 * 20
 	WRITER_DEFAULT_METRIC_QUEUE_LENGTH = 1024 * 10
-	WRITER_MAX_WRITE_QUEUE = 1024 * 1000
+	WRITER_MAX_WRITE_QUEUE             = 1024 * 1000
 )
 
 // toml config for Metrics
@@ -98,6 +100,7 @@ type WriterLoop struct {
 	write_queue  *WriteQueue
 	MetricQLen   int
 	IndexerQLen  int
+	log          *logging.Logger
 }
 
 func New() (loop *WriterLoop, err error) {
@@ -107,6 +110,8 @@ func New() (loop *WriterLoop, err error) {
 
 	loop.shutdowner = broadcast.New(1)
 	loop.write_queue = NewWriteQueue(WRITER_MAX_WRITE_QUEUE)
+	loop.log = logging.MustGetLogger("writer")
+
 	return loop, nil
 }
 
@@ -169,7 +174,10 @@ func (loop *WriterLoop) procLoop() {
 				//}() // non-blocking indexer loop
 			*/
 			// push the stat to the dynamic sized queue (saves oddles of ram on large channels and large metrics dumps)
-			loop.write_queue.Push(stat)
+			err := loop.write_queue.Push(stat)
+			if err != nil {
+				loop.log.Error("write push error: %s", err)
+			}
 		case <-shut.Ch:
 			shut.Close()
 			return
@@ -247,11 +255,11 @@ type WriteNode struct {
 
 // Fifo queage
 type WriteQueue struct {
-	head  *WriteNode
-	tail  *WriteNode
-	count int
+	head    *WriteNode
+	tail    *WriteNode
+	count   int
 	queumax int
-	lock  *sync.Mutex
+	lock    *sync.Mutex
 }
 
 //	Creates a new pointer to a new queue.
@@ -274,7 +282,7 @@ func (q *WriteQueue) Push(item repr.StatRepr) error {
 	q.lock.Lock()
 	defer q.lock.Unlock()
 
-	if q.count >= q.queumax{
+	if q.count >= q.queumax {
 		return fmt.Errorf("Max write queue hit .. cannot push")
 	}
 	n := &WriteNode{data: &item}
