@@ -8,6 +8,7 @@
 package indexer
 
 import (
+	"cadent/server/stats"
 	"fmt"
 	logging "gopkg.in/op/go-logging.v1"
 	"path/filepath"
@@ -49,7 +50,8 @@ func (ws *WhisperIndexer) Write(skey string) error {
 /**** READER ***/
 func (ws *WhisperIndexer) Find(metric string) (MetricFindItems, error) {
 
-	glob_path := filepath.Join(ws.base_path, strings.Replace(metric, ".", "/", -1))
+	stats.StatsdClientSlow.Incr("indexer.whisper.finds", 1)
+	glob_path := filepath.Join(ws.base_path, strings.Replace(metric, ".", "/", -1)) + "*"
 
 	// golangs globber does not handle "{a,b}" things, so we need to basically do a "*" then
 	// perform a regex of the form (a|b) on the result
@@ -57,6 +59,7 @@ func (ws *WhisperIndexer) Find(metric string) (MetricFindItems, error) {
 
 	var mt MetricFindItems
 	paths, err := filepath.Glob(glob_path)
+
 	if err != nil {
 		return mt, err
 	}
@@ -68,7 +71,7 @@ func (ws *WhisperIndexer) Find(metric string) (MetricFindItems, error) {
 		t := strings.Replace(p, ws.base_path+"/", "", 1)
 		t = strings.Replace(t, "/", ".", -1)
 
-		is_data := filepath.Ext(p) == "wsp"
+		is_data := filepath.Ext(p) == ".wsp"
 		t = strings.Replace(t, ".wsp", "", -1)
 
 		spl := strings.Split(t, ".")
@@ -76,7 +79,7 @@ func (ws *WhisperIndexer) Find(metric string) (MetricFindItems, error) {
 		ms.Text = spl[len(spl)-1]
 
 		ms.Id = t
-		ms.Path = t
+		ms.Path = p
 
 		if is_data {
 			ms.Expandable = 0

@@ -574,8 +574,9 @@ func (cass *CassandraMetric) RenderOne(metric indexer.MetricFindItem, from strin
 			interp_vec[i] = DataPoint{Time: cur_step_time, Value: nil}
 
 			for ; j < ct; j++ {
-				if d_points[j].Time <= cur_step_time {
-					d := d_points[j]
+				d := d_points[j]
+				if d.Time <= cur_step_time {
+
 					// cass.writer.log.Critical("ONPS %v : %v Len %d :I %d, j %d, iLen: %v SUM: %v", d_points[j], interp_vec[i], ct, i, j, b_len, d_points[j].Sum,)
 
 					// the weird setters here are to get the pointers properly (a weird golang thing)
@@ -593,7 +594,7 @@ func (cass *CassandraMetric) RenderOne(metric indexer.MetricFindItem, from strin
 						s := d.Sum
 						interp_vec[i].Value = &s
 					}
-					interp_vec[i].Time = d_points[j].Time //this is the "real" time, graphite does not care, but something might
+					interp_vec[i].Time = d.Time //this is the "real" time, graphite does not care, but something might
 					j++
 				}
 				break
@@ -658,7 +659,7 @@ func (cass *CassandraMetric) Render(path string, from string, to string) (Whispe
 
 func (cass *CassandraMetric) RawRender(path string, from string, to string) ([]*RawRenderItem, error) {
 
-	defer stats.StatsdSlowNanoTimeFunc("reader.cassandra.render.get-time-ns", time.Now())
+	defer stats.StatsdSlowNanoTimeFunc("reader.cassandra.rawrender.get-time-ns", time.Now())
 
 	var rawd []*RawRenderItem
 

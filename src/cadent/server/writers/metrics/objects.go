@@ -6,6 +6,7 @@ package metrics
 
 import (
 	"fmt"
+	"math"
 	"sync"
 	"time"
 )
@@ -24,9 +25,10 @@ func NewDataPoint(time int, val float64) DataPoint {
 }
 
 func (d DataPoint) MarshalJSON() ([]byte, error) {
-	if d.Value == nil {
+	if d.Value == nil || math.IsNaN(*d.Value) {
 		return []byte(fmt.Sprintf("[null, %d]", d.Time)), nil
 	}
+
 	return []byte(fmt.Sprintf("[%f, %d]", *d.Value, d.Time)), nil
 }
 func (d DataPoint) SetValue(val *float64) {
@@ -85,6 +87,7 @@ func (wh WhisperRenderCacher) IsExpired() bool {
 }
 
 /*** Raw renderers **/
+
 type RawDataPoint struct {
 	Time  int     `json:"time"`
 	Sum   float64 `json:"sum"`
