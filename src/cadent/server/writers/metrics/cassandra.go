@@ -108,24 +108,24 @@ type CassMetric struct {
 */
 
 // the singleton
-var _WRITER_SINGLETON map[string]*CassandraWriter
-var _set_mutex sync.Mutex
+var _CASS_WRITER_SINGLETON map[string]*CassandraWriter
+var _cass_set_mutex sync.Mutex
 
 // special initer
 func init() {
-	_WRITER_SINGLETON = make(map[string]*CassandraWriter)
+	_CASS_WRITER_SINGLETON = make(map[string]*CassandraWriter)
 }
 
 func _get_signelton(conf map[string]interface{}) (*CassandraWriter, error) {
-	_set_mutex.Lock()
-	defer _set_mutex.Unlock()
+	_cass_set_mutex.Lock()
+	defer _cass_set_mutex.Unlock()
 	gots := conf["dsn"]
 	if gots == nil {
 		return nil, fmt.Errorf("Metrics: `dsn` (server1,server2,server3) is needed for cassandra config")
 	}
 
 	dsn := gots.(string)
-	if val, ok := _WRITER_SINGLETON[dsn]; ok {
+	if val, ok := _CASS_WRITER_SINGLETON[dsn]; ok {
 		return val, nil
 	}
 
@@ -133,7 +133,7 @@ func _get_signelton(conf map[string]interface{}) (*CassandraWriter, error) {
 	if err != nil {
 		return nil, err
 	}
-	_WRITER_SINGLETON[dsn] = writer
+	_CASS_WRITER_SINGLETON[dsn] = writer
 	return writer, nil
 }
 

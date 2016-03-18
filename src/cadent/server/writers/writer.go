@@ -19,6 +19,7 @@ import (
 const (
 	WRITER_DEFAULT_INDEX_QUEUE_LENGTH  = 1024 * 20
 	WRITER_DEFAULT_METRIC_QUEUE_LENGTH = 1024 * 10
+	WRITER_MAX_WRITE_QUEUE = 1024 * 1000
 )
 
 // toml config for Metrics
@@ -105,7 +106,7 @@ func New() (loop *WriterLoop, err error) {
 	loop.IndexerQLen = WRITER_DEFAULT_INDEX_QUEUE_LENGTH
 
 	loop.shutdowner = broadcast.New(1)
-	loop.write_queue = NewWriteQueue()
+	loop.write_queue = NewWriteQueue(WRITER_MAX_WRITE_QUEUE)
 	return loop, nil
 }
 
@@ -224,7 +225,7 @@ func (loop *WriterLoop) Stop() {
 /******************************************************************
 writer "queue"
 
- This may seem a bit "odd" as you may think "why not ue buffered channels"
+ This may seem a bit "odd" as you may think "why not use a buffered channels"
  well a few reasons ..
  1) sometimes the length of the buffered channel nessesary is "huge" and golang does not clean GC ram if most of the
  time it's not used fully.
@@ -244,23 +245,23 @@ type WriteNode struct {
 	next *WriteNode
 }
 
-//	A go-routine safe FIFO (first in first out) data stucture.
+// Fifo queage
 type WriteQueue struct {
 	head  *WriteNode
 	tail  *WriteNode
 	count int
+	queumax int
 	lock  *sync.Mutex
 }
 
 //	Creates a new pointer to a new queue.
-func NewWriteQueue() *WriteQueue {
-	q := &WriteQueue{}
+func NewWriteQueue(queumax int) *WriteQueue {
+	q := &WriteQueue{queumax: queumax}
 	q.lock = &sync.Mutex{}
 	return q
 }
 
 //	Returns the number of elements in the queue (i.e. size/length)
-//	go-routine safe.
 func (q *WriteQueue) Len() int {
 	q.lock.Lock()
 	defer q.lock.Unlock()
@@ -269,11 +270,13 @@ func (q *WriteQueue) Len() int {
 
 //	Pushes/inserts a value at the end/tail of the queue.
 //	Note: this function does mutate the queue.
-//	go-routine safe.
-func (q *WriteQueue) Push(item repr.StatRepr) {
+func (q *WriteQueue) Push(item repr.StatRepr) error {
 	q.lock.Lock()
 	defer q.lock.Unlock()
 
+	if q.count >= q.queumax{
+		return fmt.Errorf("Max write queue hit .. cannot push")
+	}
 	n := &WriteNode{data: &item}
 
 	if q.tail == nil {
@@ -284,12 +287,12 @@ func (q *WriteQueue) Push(item repr.StatRepr) {
 		q.tail = n
 	}
 	q.count++
+	return nil
 }
 
 //	Returns the value at the front of the queue.
 //	i.e. the oldest value in the queue.
 //	Note: this function does mutate the queue.
-//	go-routine safe.
 func (q *WriteQueue) Poll() *repr.StatRepr {
 	q.lock.Lock()
 	defer q.lock.Unlock()

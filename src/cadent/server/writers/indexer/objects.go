@@ -6,21 +6,8 @@ package indexer
 
 import "strings"
 
-// the basic metric json blob for find
-type MetricFindItem struct {
-	Text          string `json:"text"`
-	Expandable    int    `json:"expandable"`
-	Leaf          int    `json:"leaf"`
-	Id            string `json:"id"`
-	Path          string `json:"path"`
-	AllowChildren int    `json:"allowChildren"`
-}
-
-func (m *MetricFindItem) SelectValue() string {
-	if m.Leaf == 0 {
-		return "sum" // not data
-	}
-	spl := strings.Split(m.Id, ".")
+func GuessAggregateType(metric string) string {
+	spl := strings.Split(metric, ".")
 	last_path := spl[len(spl)-1]
 
 	// statsd like things are "mean_XX", "upper_XX", "lower_XX", "count_XX"
@@ -31,13 +18,13 @@ func (m *MetricFindItem) SelectValue() string {
 		return "mean"
 	}
 	// specials for "counts"
-	if strings.Contains(m.Id, "count"){
+	if strings.Contains(metric, "count") {
 		return "sum"
 	}
-	if strings.Contains(last_path, "sum"){
+	if strings.Contains(last_path, "sum") {
 		return "sum"
 	}
-	if strings.Contains(last_path, "errors"){
+	if strings.Contains(last_path, "errors") {
 		return "sum"
 	}
 	if strings.Contains(last_path, "std") { // standard deviation
@@ -59,6 +46,25 @@ func (m *MetricFindItem) SelectValue() string {
 		return "min"
 	}
 	return "mean"
+}
+
+// the basic metric json blob for find
+type MetricFindItem struct {
+	Text          string `json:"text"`
+	Expandable    int    `json:"expandable"`
+	Leaf          int    `json:"leaf"`
+	Id            string `json:"id"`
+	Path          string `json:"path"`
+	AllowChildren int    `json:"allowChildren"`
+}
+
+// attempt to pick the "correct" metric based on the stats name
+func (m *MetricFindItem) SelectValue() string {
+	if m.Leaf == 0 {
+		return "sum" // not data
+	}
+	return GuessAggregateType(m.Id)
+
 }
 
 type MetricFindItems []MetricFindItem

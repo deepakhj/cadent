@@ -59,8 +59,8 @@ Installation
     go get github.com/smartystreets/goconvey/convey
     go get github.com/go-sql-driver/mysql
     go get github.com/gocql/gocql
+    go get github.com/robyoung/go-whisper
 
-    
     cd ../
     make
    
