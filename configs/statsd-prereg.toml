@@ -15,7 +15,7 @@ default_backend="statsd-proxy"  # failing a match go here
             ["legacyNamespace", "true"],
             ["prefixGauge", "gauges"],
             ["prefixTimer", "timers"],
-            ["prefixCounter", "counters"],
+            ["prefixCounter", ""],  # legacy namespace
             ["globalPrefix", ""],
             ["globalSuffix", "stats"],
             ["percentThreshold", "0.90,0.95,0.99"]

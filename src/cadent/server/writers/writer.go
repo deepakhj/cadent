@@ -255,16 +255,16 @@ type WriteNode struct {
 
 // Fifo queage
 type WriteQueue struct {
-	head    *WriteNode
-	tail    *WriteNode
-	count   int
-	queumax int
-	lock    *sync.Mutex
+	head     *WriteNode
+	tail     *WriteNode
+	count    int
+	queuemax int
+	lock     *sync.Mutex
 }
 
 //	Creates a new pointer to a new queue.
-func NewWriteQueue(queumax int) *WriteQueue {
-	q := &WriteQueue{queumax: queumax}
+func NewWriteQueue(max int) *WriteQueue {
+	q := &WriteQueue{queuemax: max}
 	q.lock = &sync.Mutex{}
 	return q
 }
@@ -282,7 +282,7 @@ func (q *WriteQueue) Push(item repr.StatRepr) error {
 	q.lock.Lock()
 	defer q.lock.Unlock()
 
-	if q.count >= q.queumax {
+	if q.count >= q.queuemax {
 		return fmt.Errorf("Max write queue hit .. cannot push")
 	}
 	n := &WriteNode{data: &item}
