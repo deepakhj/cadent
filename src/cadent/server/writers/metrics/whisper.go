@@ -285,7 +285,7 @@ func (ws *WhisperMetrics) RawRenderOne(metric indexer.MetricFindItem, from strin
 		start, end = end, start
 	}
 
-	whis, err := whisper.Open(metric.Path)
+	whis, err := whisper.Open(metric.Id)
 	if err != nil {
 		ws.writer.log.Error("Could not open file %s", metric.Path)
 		return rawd, err
@@ -298,18 +298,26 @@ func (ws *WhisperMetrics) RawRenderOne(metric indexer.MetricFindItem, from strin
 	}
 
 	var d_points []RawDataPoint
-
+	f_t := 0
+	step_t := 0
 	for _, point := range series.Points() {
 		d_points = append(d_points, RawDataPoint{
 			Mean: point.Value, //just a stub for the only value we know
 			Time: point.Time,
 		})
+		if f_t <= 0 {
+			f_t = point.Time
+		}
+		if step_t <= 0 && f_t >= 0 {
+			step_t = point.Time - f_t
+		}
 	}
 	rawd.RealEnd = int(end)
 	rawd.RealStart = int(start)
 	rawd.Start = int(start)
 	rawd.End = int(end)
-	rawd.Metric = metric.Id
+	rawd.Step = int(step_t)
+	rawd.Metric = metric.Path
 	rawd.Data = d_points
 
 	return rawd, nil
@@ -328,6 +336,7 @@ func (ws *WhisperMetrics) Render(path string, from string, to string) (WhisperRe
 	for _, data := range raw_data {
 		whis.End = data.End
 		whis.Start = data.Start
+		whis.Step = data.Step
 		whis.RealEnd = data.RealEnd
 		whis.RealStart = data.RealStart
 
@@ -338,7 +347,6 @@ func (ws *WhisperMetrics) Render(path string, from string, to string) (WhisperRe
 		}
 		whis.Series[data.Metric] = d_points
 	}
-	ws.log.Critical("%v", whis)
 	return whis, err
 }
 

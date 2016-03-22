@@ -28,8 +28,8 @@ const (
 type WriterMetricConfig struct {
 	Driver      string                 `toml:"driver"`
 	DSN         string                 `toml:"dsn"`
-	QueueLength int                    `toml:"queue_length"` // metric write queue length
-	Options     map[string]interface{} `toml:"options"`      // option=[ [key, value], [key, value] ...]
+	QueueLength int                    `toml:"input_queue_length"` // metric write queue length
+	Options     map[string]interface{} `toml:"options"`            // option=[ [key, value], [key, value] ...]
 }
 
 func (wc WriterMetricConfig) NewMetrics(duration time.Duration) (metrics.Metrics, error) {
@@ -267,6 +267,12 @@ func NewWriteQueue(max int) *WriteQueue {
 	q := &WriteQueue{queuemax: max}
 	q.lock = &sync.Mutex{}
 	return q
+}
+
+func (q *WriteQueue) SetMaxLen(max int) {
+	q.lock.Lock()
+	defer q.lock.Unlock()
+	q.queuemax = max
 }
 
 //	Returns the number of elements in the queue (i.e. size/length)
