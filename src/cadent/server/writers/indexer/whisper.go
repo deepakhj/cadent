@@ -103,18 +103,15 @@ func (ws *WhisperIndexer) Find(metric string) (MetricFindItems, error) {
 	stats.StatsdClientSlow.Incr("indexer.whisper.finds", 1)
 
 	// golangs globber does not handle "{a,b}" things, so we need to basically do a "*" then
-	// perform a regex of the form (a|b) on the result
+	// perform a regex of the form (a|b) on the result ..
 	glob_path, reg_str, _ := ws.toGlob(metric)
 
-	do_reg := reg_str != glob_path
 	var reger *regexp.Regexp
 	var err error
 	var mt MetricFindItems
-	if do_reg {
-		reger, err = regexp.Compile(reg_str)
-		if err != nil {
-			return mt, err
-		}
+	reger, err = regexp.Compile(reg_str)
+	if err != nil {
+		return mt, err
 	}
 
 	paths, err := filepath.Glob(glob_path)
@@ -131,12 +128,10 @@ func (ws *WhisperIndexer) Find(metric string) (MetricFindItems, error) {
 
 		is_data := filepath.Ext(p) == ".wsp"
 		t = strings.Replace(t, ".wsp", "", -1)
-		ws.log.Critical("REG: %s, %s, %s", glob_path, reg_str, p)
+		//ws.log.Critical("REG: %s, %s, %s", glob_path, reg_str, p)
 
-		if do_reg {
-			if !reger.Match([]byte(p)) {
-				continue
-			}
+		if !reger.Match([]byte(p)) {
+			continue
 		}
 		t = strings.Replace(t, "/", ".", -1)
 
