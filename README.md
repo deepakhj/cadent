@@ -427,6 +427,60 @@ To further make Cassandra data points and timers align, FLUSH times should all b
     [graphite-cassandra.accumulator.writer.metrics]
     ...
 
+#### Whisper
+
+Yep, we can even act like good old carbon-cache.py (not exactly, but close).  If you want to write some whisper files
+that can be used choose the whisper writer driver.  Unlink the carbon-cache, here only "one set" of aggregate timers
+is allowed (just the `times=[...]` field) for all the metrics written (i.e. there is no `storage-schema.cof` built in yet). 
+Also this module will attempt to "infer" the aggregation method based on the metric name (sum, mean, min, max) rather
+then using `storage-aggregation.con` for now.   
+
+Aggregation "guesses"  (these aggregation method also apply to the column chosen in the Cassandra/Mysql drivers)
+
+        endsin "mean":      "mean"
+        endsin "avg":       "mean"
+        endsin "average":   "mean"
+        endsin "count":     "sum"
+        endsin "errors":    "sum"
+        endsin "requests":  "sum"
+        endsin "max":       "max"
+        endsin "min":       "min"
+        endsin "upper_*":   "max"
+        endsin "lower_*":   "min"
+        endsin "std":       "mean"
+        default:            "mean"
+
+
+An example config below
+
+
+    [graphite-whisper]
+    listen_server="graphite-proxy"
+    default_backend="graphite-proxy"
+    
+     # accumulator and
+     [graphite-whisper.accumulator]
+        backend = "BLACKHOLE"  
+        input_format = "graphite"
+        output_format = "graphite"
+    
+     # push out to writer aggregator collector and the backend every 10s
+     # this should match the FIRST time in your times below
+     accumulate_flush = "10s"
+    
+     # aggregate bin counts
+     times = ["10s:168h", "1m:720h", "10m:21600h"]
+    
+     [graphite-whisper.accumulator.writer.metrics]
+        driver="whisper"
+     	dsn="/root/metrics/path"
+     	xFilesFactor=0.3
+     	write_workers=32
+     	write_queue_length=102400
+     
+     [graphite-whisper.accumulator.writer.indexer]
+        driver="whisper"
+        dsn="/root/metrics/path"
 
 
 ### API/Readers
@@ -511,17 +565,25 @@ Currently the only reader, configured in the PreReg `Accumulator` section as fol
 
     
 This will fire up a http server listening on port 8083 for those 3 endpoints above.  In order to get graphite to "understand" this endpoint you can use
-either "graphite-web" or "graphite-api". And you will need the the forth coming module for it (based on the cyanite one)
+either "graphite-web" or "graphite-api". And you will need https://gitlab.mfpaws.com/Metrix/pycandent
 
-For graphite-web you'll need to add these in the settings (based on the settings above)
+For graphite-web you'll need to add these in the `settings.py` (based on the settings above)
 
     STORAGE_FINDERS = (
-       'cyanite.CyaniteFinder',
+       'cadent.CadentFinder',
     )
-    CYANITE_TIMEZONE="America/Los_Angeles"
-    CYANITE_URLS = (
+    CADENT_TIMEZONE="America/Los_Angeles"
+    CADENT_URLS = (
         'http://localhost:8083/graphite',
     )
+    
+For graphite-api add this to the yaml conf
+
+    cadent:
+        urls:
+            - http://localhost:8083/graphite
+    finders:
+        - cadent.CadentFinder
 
 
 
