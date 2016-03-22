@@ -8,12 +8,10 @@ Manipulate your metrics
 So in terms of picking a bad name ... marketers .. is "k-dent" as in "k as in cake" \ˈkā-dənt\ .. 
 call it "ca-dent" (ca as in cat) if you really want to .. but that holds no real meaning (just look it up ... expand your vocab)
 
-Basically this acts like 4-5 existing projects out in the wilderness statsd, statsd-proxy, carbon-relay, carbon-aggegator, cyanite
+Basically this acts like 4-6 existing projects out in the wilderness statsd, statsd-proxy, carbon-relay, carbon-aggegator, carbon-cache, cyanite
 
-It "sorta" behaves like carbon-cache, except it does not write to whisper files, but cassandra 
-(even a SQL DB if you really think that's a good idea, watch as you kill your RDBS trying to insert 100k items in 1 second)
-(not to say it at some point cannot write whisper files as most items in here are "pluggable" 
-and all that needs to happen are the interfaces written)
+It "sorta" behaves like carbon-cache, (as it can read/write to whisper files but does not have the "entire functionality set" of carbon-cache)
+Cassandra, and even a SQL DB if you really think that's a good idea, watch as you kill your RDBS trying to insert 100k items in 1 second)
 
 But dramatically retooled and optimized to handle 100's of thousands of metrics a second.
 
