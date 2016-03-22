@@ -1,6 +1,13 @@
 /*
 	The whisper file writer
 
+	[acc.agg.writer.metrics]
+	driver="whisper"
+	dsn="/root/metrics/path"
+	xFilesFactor=0.3
+	write_workers=32
+	write_queue_length=102400
+
 */
 
 package metrics
