@@ -453,10 +453,10 @@ func (s *StatsdAccumulate) SetOptions(ops [][]string) error {
 			s.CounterPrefix = op[1]
 		}
 		if op[0] == "globalSuffix" {
-			s.Prefix = op[1]
+			s.Suffix = op[1]
 		}
 		if op[0] == "globalPrefix" {
-			s.Suffix = op[1]
+			s.Prefix = op[1]
 		}
 		if op[0] == "percentThreshold" {
 			s.Thresholds = []float64{}
