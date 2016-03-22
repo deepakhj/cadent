@@ -92,7 +92,7 @@ func (ws *WhisperIndexer) toGlob(metric string) (string, string, []string) {
 	}
 	glob_str := filepath.Join(ws.base_path, strings.Replace(out_str, ".", "/", -1))
 	reg_str = filepath.Join(ws.base_path, strings.Replace(reg_str, ".", "/", -1))
-	reg_str = strings.Replace(reg_str, "/", "\\/", -1)
+	reg_str = strings.Replace(reg_str, "/", "\\/", -1) + "(.*|.wsp)"
 
 	return glob_str, reg_str, outgs
 }
@@ -131,7 +131,7 @@ func (ws *WhisperIndexer) Find(metric string) (MetricFindItems, error) {
 
 		is_data := filepath.Ext(p) == ".wsp"
 		t = strings.Replace(t, ".wsp", "", -1)
-		//ws.log.Critical("REG: %s, %s, %s", glob_path, reg_str, p)
+		ws.log.Critical("REG: %s, %s, %s", glob_path, reg_str, p)
 
 		if do_reg {
 			if !reger.Match([]byte(p)) {
