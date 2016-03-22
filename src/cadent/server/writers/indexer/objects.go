@@ -21,6 +21,10 @@ func GuessAggregateType(metric string) string {
 	if strings.Contains(metric, "count") {
 		return "sum"
 	}
+	// specials for "requests"
+	if strings.HasSuffix(metric, "requests") {
+		return "sum"
+	}
 	if strings.Contains(last_path, "sum") {
 		return "sum"
 	}
