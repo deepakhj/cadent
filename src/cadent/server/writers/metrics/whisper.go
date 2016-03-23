@@ -91,7 +91,7 @@ func NewWhisperWriter(conf map[string]interface{}) (*WhisperWriter, error) {
 
 	// remove trialing "/"
 	if strings.HasSuffix(dsn, "/") {
-		ws.base_path = dsn[0 : len(dsn)-2]
+		ws.base_path = dsn[0 : len(dsn)-1]
 	}
 	ws.xFilesFactor = 0.3
 	_xf := conf["xFilesFactor"]

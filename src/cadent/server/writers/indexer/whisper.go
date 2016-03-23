@@ -38,7 +38,7 @@ func (ws *WhisperIndexer) Config(conf map[string]interface{}) error {
 
 	// remove trialing "/"
 	if strings.HasSuffix(dsn, "/") {
-		ws.base_path = dsn[0 : len(dsn)-2]
+		ws.base_path = dsn[0 : len(dsn)-1]
 	}
 	return nil
 }
