@@ -22,3 +22,18 @@ func NewMetrics(name string) (Metrics, error) {
 		return nil, fmt.Errorf("Invalid metrics `%s`", name)
 	}
 }
+
+func ResolutionsNeeded(name string) (WritersNeeded, error) {
+	switch {
+	case name == "mysql":
+		return AllResolutions, nil
+	case name == "file":
+		return AllResolutions, nil
+	case name == "cassandra":
+		return AllResolutions, nil
+	case name == "whisper":
+		return FirstResolution, nil
+	default:
+		return AllResolutions, fmt.Errorf("Invalid metrics `%s`", name)
+	}
+}

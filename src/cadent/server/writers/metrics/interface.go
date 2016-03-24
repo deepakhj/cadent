@@ -20,12 +20,23 @@ import (
 
 var log = logging.MustGetLogger("metrics")
 
+type WritersNeeded int
+
+const (
+	AllResolutions  WritersNeeded = iota // all of them
+	FirstResolution                      // just one
+)
+
 /****************** Data readers *********************/
 
 type Metrics interface {
 
 	// need to able to set what our resolutions are for ease of resolution picking
-	SetResolutions([][]int)
+	// the INT return tells the agg loop if we need to have MULTI writers
+	// i.e. for items that DO NOT self rollup (DBs) we need as many writers as resolutions
+	// for Whisper (or 'other' things) we only need the Lowest time for the writers
+	// as the whisper file rolls up internally
+	SetResolutions([][]int) int
 
 	Config(map[string]interface{}) error
 

@@ -24,8 +24,8 @@ Has a Hekad feel (same sort of data pipeline like) but optimized for what we rea
  - time series DB writing
  - graphite-api endpoints
  
-Yes "each" of the above can be handled by a standalone app (and they do exist in the echosystem) .. however at the volume
-we want to address .. there's nothing like raw RAM/CPU power on a local node (the internet is slow people).
+Yes "each" of the above can be handled by a standalone app (and they do exist in the echo system) .. however at the volume
+we want to address .. there's nothing like raw RAM/CPU power on a local node (the internet).
 
 Note:: configuration for complex scenarios of loop backs, replicas moving, multiple backends, accumulators, and aggregators 
 can get confusing .. and you can find yourself hitting yourself over the head alot.  You's say "why not keep it simple"
@@ -563,7 +563,7 @@ Currently the only reader, configured in the PreReg `Accumulator` section as fol
 
     
 This will fire up a http server listening on port 8083 for those 3 endpoints above.  In order to get graphite to "understand" this endpoint you can use
-either "graphite-web" or "graphite-api". And you will need https://gitlab.mfpaws.com/Metrix/pycandent
+either "graphite-web" or "graphite-api". And you will need https://gitlab.mfpaws.com/Metrics/pycandent
 
 For graphite-web you'll need to add these in the `settings.py` (based on the settings above)
 

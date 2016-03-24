@@ -386,8 +386,9 @@ func (cass *CassandraMetric) SetIndexer(idx indexer.Indexer) error {
 // Resoltuions should be of the form
 // [BinTime, TTL]
 // we select the BinTime based on the TTL
-func (cass *CassandraMetric) SetResolutions(res [][]int) {
+func (cass *CassandraMetric) SetResolutions(res [][]int) int {
 	cass.resolutions = res
+	return len(res) // need as many writers as bins
 }
 
 func (cass *CassandraMetric) Config(conf map[string]interface{}) (err error) {

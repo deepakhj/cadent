@@ -102,8 +102,9 @@ func (my *MySQLMetrics) SetIndexer(idx indexer.Indexer) error {
 // Resoltuions should be of the form
 // [BinTime, TTL]
 // we select the BinTime based on the TTL
-func (my *MySQLMetrics) SetResolutions(res [][]int) {
+func (my *MySQLMetrics) SetResolutions(res [][]int) int {
 	my.resolutions = res
+	return len(res) // need as many writers as bins
 }
 
 func (my *MySQLMetrics) PeriodFlush() {

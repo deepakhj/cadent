@@ -32,6 +32,10 @@ type WriterMetricConfig struct {
 	Options     map[string]interface{} `toml:"options"`            // option=[ [key, value], [key, value] ...]
 }
 
+func (wc WriterMetricConfig) ResolutionsNeeded() (metrics.WritersNeeded, error) {
+	return metrics.ResolutionsNeeded(wc.Driver)
+}
+
 func (wc WriterMetricConfig) NewMetrics(duration time.Duration) (metrics.Metrics, error) {
 
 	mets, err := metrics.NewMetrics(wc.Driver)

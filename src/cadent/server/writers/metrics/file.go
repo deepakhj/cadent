@@ -54,8 +54,9 @@ func (fi *FileMetrics) SetIndexer(idx indexer.Indexer) error {
 // Resoltuions should be of the form
 // [BinTime, TTL]
 // we select the BinTime based on the TTL
-func (fi *FileMetrics) SetResolutions(res [][]int) {
+func (fi *FileMetrics) SetResolutions(res [][]int) int {
 	fi.resolutions = res
+	return len(res) // need as many writers as bins
 }
 
 func (fi *FileMetrics) Config(conf map[string]interface{}) error {

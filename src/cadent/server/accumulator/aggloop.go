@@ -22,6 +22,7 @@ import (
 	repr "cadent/server/repr"
 	stats "cadent/server/stats"
 	writers "cadent/server/writers"
+	metrics "cadent/server/writers/metrics"
 	"fmt"
 	logging "gopkg.in/op/go-logging.v1"
 	"sync"
@@ -118,12 +119,24 @@ func (agg *AggregateLoop) SetReader(conf writers.ApiConfig) error {
 
 }
 
+// set the metrics and index wrtiers types.  Based on the writer type
+// the number of actuall aggregator loops needed may change
+// for instance RRD file DBs typically "self rollup" so there's no need
+// to deal with the aggregation of longer times, but DBs (cassandra) cannot do that
+// automatically, so we set things appropriately
 func (agg *AggregateLoop) SetWriter(conf writers.WriterConfig) error {
 
 	// need only one indexer
 	idx, err := conf.Indexer.NewIndexer()
 	if err != nil {
 		return err
+	}
+
+	num_writers, err := conf.Metrics.ResolutionsNeeded()
+
+	// need to "reset" the Aggregators to just be the FIRST one if num_writers == FirstResolution
+	if num_writers == metrics.FirstResolution {
+		agg.Aggregators = repr.NewMulti([]time.Duration{agg.FlushTimes[0]})
 	}
 
 	// need a writer for each timer loop
@@ -144,12 +157,17 @@ func (agg *AggregateLoop) SetWriter(conf writers.WriterConfig) error {
 		if err != nil {
 			return err
 		}
+
 		mets.SetIndexer(idx)
 		wr.SetMetrics(mets)
 		wr.SetIndexer(idx)
 
 		agg.OutWriters = append(agg.OutWriters, wr)
 		agg.log.Notice("Started duration %s Aggregator writer", dur.String())
+		if num_writers == metrics.FirstResolution {
+			agg.log.Notice("Only one writer needed for this writer driver")
+			break
+		}
 
 	}
 	agg.log.Notice("Started %d Aggregator writers", len(agg.OutWriters))
@@ -262,8 +280,8 @@ func (agg *AggregateLoop) Start() error {
 	agg.log.Notice("Starting Aggregator Loop for `%s`", agg.Name)
 	//start the input loop acceptor
 	go agg.startInputLooper()
-	for idx, dur := range agg.FlushTimes {
-		go agg.startWriteLooper(dur, agg.TTLTimes[idx], agg.OutWriters[idx], agg.mus[idx])
+	for idx, writ := range agg.OutWriters {
+		go agg.startWriteLooper(agg.FlushTimes[idx], agg.TTLTimes[idx], writ, agg.mus[idx])
 	}
 
 	// fire up the reader if around
@@ -277,7 +295,7 @@ func (agg *AggregateLoop) Stop() {
 	agg.log.Notice("Initiating shutdown of aggregator for `%s`", agg.Name)
 	go func() {
 		agg.Shutdown.Send(true)
-		for idx := range agg.FlushTimes {
+		for idx := range agg.OutWriters {
 			agg.OutWriters[idx].Stop()
 		}
 		return
