@@ -94,7 +94,7 @@ func NewCacher() *Cacher {
 
 func (wc *Cacher) DumpPoints(pts []*repr.StatRepr) {
 	for idx, pt := range pts {
-		wc.log.Notice("TimerSeries: %d Time: %d Mean: %f", idx, pt.Time, pt.Mean)
+		wc.log.Notice("TimerSeries: %d Time: %d Mean: %f", idx, pt.Time.Unix(), pt.Mean)
 	}
 }
 
