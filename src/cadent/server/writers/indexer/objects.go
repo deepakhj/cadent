@@ -68,7 +68,6 @@ func (m *MetricFindItem) SelectValue() string {
 		return "sum" // not data
 	}
 	return GuessAggregateType(m.Id)
-
 }
 
 type MetricFindItems []MetricFindItem
