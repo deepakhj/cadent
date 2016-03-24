@@ -608,7 +608,7 @@ func (ws *WhisperMetrics) RawRenderOne(metric indexer.MetricFindItem, from strin
 		start_inf_point := 0
 
 		// find the start index in the data points if we've more then inflight
-		if first_inflight.Time < first_dpoint.Time {
+		if first_inflight.Time > first_dpoint.Time {
 			for idx, pt := range d_points {
 				if pt.Time >= first_inflight.Time {
 					start_d_point = idx
