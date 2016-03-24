@@ -126,7 +126,7 @@ func (wc *WhisperCache) updateQueue() {
 
 	sort.Sort(newQueue)
 	//wc.log.Critical("DATA %v", wc.Cache)
-	stats.StatsdClientSlow.Gauge("whisper.queue.count", int64(len(newQueue)))
+	stats.StatsdClientSlow.Gauge("whisper.cache.metrics", int64(len(newQueue)))
 	wc.Queue = newQueue
 }
 
@@ -138,6 +138,7 @@ func (wc *WhisperCache) Add(metric string, time int, value float64) error {
 	if len(wc.Cache) > wc.maxKeys {
 		wc.log.Error("Key Cache is too large .. over %d metrics keys, have to drop this one", wc.maxKeys)
 		return fmt.Errorf("WhisperCache: too many keys, dropping metric")
+		stats.StatsdClientSlow.Incr("whisper.cache.metrics.overflow", 1)
 	}
 
 	pt := &whisper.TimeSeriesPoint{Time: time, Value: value}
@@ -152,6 +153,7 @@ func (wc *WhisperCache) Add(metric string, time int, value float64) error {
 		if len(gots) > wc.maxPoints {
 			wc.log.Error("Too Many points for %s (max points: %d)... have to drop this one", metric, wc.maxPoints)
 			return fmt.Errorf("WhisperCache: too many points in cache, dropping metric")
+			stats.StatsdClientSlow.Incr("whisper.cache.points.overflow", 1)
 		}
 		wc.Cache[metric] = append(gots, pt)
 		return nil
@@ -170,6 +172,8 @@ func (wc *WhisperCache) Add(metric string, time int, value float64) error {
 func (wc *WhisperCache) Get(metric string) ([]*whisper.TimeSeriesPoint, error) {
 	wc.mu.Lock()
 	defer wc.mu.Unlock()
+	stats.StatsdClientSlow.Incr("reader.whisper.cache-gets", 1)
+
 	if gots, ok := wc.Cache[metric]; ok {
 		return gots, nil
 	}
@@ -388,6 +392,7 @@ func (ws *WhisperWriter) getFile(metric string) (*whisper.Whisper, error) {
 
 // insert the metrics from the cache
 func (ws *WhisperWriter) InsertNext() (int, error) {
+	defer stats.StatsdSlowNanoTimeFunc("writer.whisper.update-time-ns", time.Now())
 
 	metric, points := ws.cache_queue.Pop()
 	if points == nil {
@@ -405,9 +410,10 @@ func (ws *WhisperWriter) InsertNext() (int, error) {
 		ws.cache_queue.DumpPoints(points)
 	} */
 	if points != nil {
+		stats.StatsdClientSlow.GaugeAvg("writer.whisper.points-per-update", int64(len(points)))
 		whis.UpdateMany(points)
 	}
-	stats.StatsdClientSlow.Incr("writer.whisper.many-metric-writes", 1)
+	stats.StatsdClientSlow.Incr("writer.whisper.update-many-writes", 1)
 
 	whis.Close()
 	return 1, err
