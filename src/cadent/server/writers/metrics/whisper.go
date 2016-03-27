@@ -317,10 +317,14 @@ func (ws *WhisperWriter) Write(stat repr.StatRepr) error {
 	return nil
 }
 
-// pop from the cache and send to acctuall writers
+// pop from the cache and send to actual writers
 func (ws *WhisperWriter) sendToWriters() error {
+	// NOTE: if the writes per second is really high, this is NOT a good idea (using tickers)
+	// that said, if you actually have the disk capacity to do 10k/writes per second ..  well damn
+	// the extra CPU burn here may not kill you
 	sleep_t := float64(time.Second) * (time.Second.Seconds() / float64(ws.writes_per_second))
 	ticker := time.NewTicker(time.Duration(int(sleep_t)))
+	defer ticker.Stop()
 	for {
 		select {
 		case <-ticker.C:

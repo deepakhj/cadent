@@ -41,7 +41,7 @@ type ApiConfig struct {
 	ApiIndexerOptions ApiIndexerConfig `toml:"indexer"`
 }
 
-func (re *ApiConfig) GetMetrics() (metrics.Metrics, error) {
+func (re *ApiConfig) GetMetrics(resolution float64) (metrics.Metrics, error) {
 	reader, err := metrics.NewMetrics(re.ApiMetricOptions.Driver)
 	if err != nil {
 		return nil, err
@@ -50,6 +50,8 @@ func (re *ApiConfig) GetMetrics() (metrics.Metrics, error) {
 		re.ApiMetricOptions.Options = make(map[string]interface{})
 	}
 	re.ApiMetricOptions.Options["dsn"] = re.ApiMetricOptions.DSN
+	re.ApiMetricOptions.Options["resolution"] = resolution
+
 	err = reader.Config(re.ApiMetricOptions.Options)
 	if err != nil {
 		return nil, err
@@ -88,7 +90,7 @@ func ParseConfigString(inconf string) (rl *ApiLoop, err error) {
 		return nil, err
 	}
 
-	rl.Metrics, err = rl.Conf.GetMetrics()
+	rl.Metrics, err = rl.Conf.GetMetrics(10.0) // stub "10s" as the res
 	if err != nil {
 		return nil, err
 	}
@@ -103,13 +105,13 @@ func ParseConfigString(inconf string) (rl *ApiLoop, err error) {
 	return rl, nil
 }
 
-func (re *ApiLoop) Config(conf ApiConfig) (err error) {
+func (re *ApiLoop) Config(conf ApiConfig, resolution float64) (err error) {
 	if conf.Logfile == "" {
 		conf.Logfile = "stdout"
 	}
 	re.Conf = conf
 
-	re.Metrics, err = conf.GetMetrics()
+	re.Metrics, err = conf.GetMetrics(resolution)
 	if err != nil {
 		return err
 	}

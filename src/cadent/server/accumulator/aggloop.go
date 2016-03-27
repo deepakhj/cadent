@@ -99,10 +99,7 @@ func NewAggregateLoop(flushtimes []time.Duration, ttls []time.Duration, name str
 // config the HTTP interface if desired
 func (agg *AggregateLoop) SetReader(conf writers.ApiConfig) error {
 	rl := new(writers.ApiLoop)
-	err := rl.Config(conf)
-	if err != nil {
-		return err
-	}
+
 	// set the resolution bits
 	var res [][]int
 	for idx, dur := range agg.FlushTimes {
@@ -110,6 +107,12 @@ func (agg *AggregateLoop) SetReader(conf writers.ApiConfig) error {
 			int(dur.Seconds()),
 			int(agg.TTLTimes[idx].Seconds()),
 		})
+	}
+
+	// grab the first resolution as that's the one the main "reader" will be on
+	err := rl.Config(conf, float64(res[0][0]))
+	if err != nil {
+		return err
 	}
 
 	rl.SetResolutions(res)

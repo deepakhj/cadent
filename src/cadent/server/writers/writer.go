@@ -248,7 +248,7 @@ writer "queue"
  hard on some many inputs/outputs.  this quickly dispatches them to a data structure that during the "slower" times
  can easily be consumed quickly
  4) It also keeps things running should cassandra get slow alowing the queue to fill up and hopefully, things don't
- run out of ram before that happens so there is a risk
+ run out of ram before that happens so there is a risk so make sure to properly set the "max queue size"
 
 **/
 

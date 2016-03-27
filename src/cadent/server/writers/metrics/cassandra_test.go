@@ -25,7 +25,7 @@ func TestCassandraReader(t *testing.T) {
 	reader.Config(t_config)
 
 	rdata, err := reader.Render("consthash.zipperwork.local.[a-z]tatsd*", "-1h", "now")
-	js, _ = json.Marshal(rdata)
+	js, _ := json.Marshal(rdata)
 	t.Logf("consthash.zipperwork.local.[a-z]tatsd*: %v", prettyprint(js))
 	t.Logf("ERR: %v", err)
 

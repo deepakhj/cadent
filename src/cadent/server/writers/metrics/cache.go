@@ -16,9 +16,10 @@
 	driver="blaa"
 	dsn="blaa"
 	[acc.agg.writer.metrics.options]
+		...
 		cache_metric_size=102400  # number of metric strings to keep
 		cache_points_size=1024 # number of points per metric to cache above to keep before we drop (this * cache_metric_size * 32 * 128 bytes == your better have that ram)
-
+		...
 */
 
 package metrics
@@ -168,8 +169,10 @@ func (wc *Cacher) Get(metric string) ([]*repr.StatRepr, error) {
 	stats.StatsdClientSlow.Incr("cacher.read.cache-gets", 1)
 
 	if gots, ok := wc.Cache[metric]; ok {
+		stats.StatsdClientSlow.Incr("cacher.read.cache-gets.values", 1)
 		return gots, nil
 	}
+	stats.StatsdClientSlow.Incr("cacher.read.cache-gets.empty", 1)
 	return nil, nil
 }
 
@@ -200,4 +203,11 @@ func (wc *Cacher) Pop() (string, []*repr.StatRepr) {
 		}
 	}
 	return "", nil
+}
+
+// add a metrics/point list back on the queue as it either "failed" or was ratelimited
+func (wc *Cacher) AddBack(metric string, points []*repr.StatRepr) {
+	for _, pt := range points {
+		wc.Add(metric, pt)
+	}
 }
