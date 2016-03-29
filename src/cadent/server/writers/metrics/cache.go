@@ -131,7 +131,7 @@ func (wc *Cacher) updateQueue() {
 	wc.numCurKeys = m_len
 	sort.Sort(newQueue)
 	//wc.log.Critical("DATA %v", wc.Cache)
-	wc.log.Critical("STAT RECALC: Metrics: %v :: Points: %v :: BYTES:: %d", m_len, f_len, wc.curSize)
+	//wc.log.Critical("STAT RECALC: Metrics: %v :: Points: %v :: BYTES:: %d", m_len, f_len, wc.curSize)
 
 	stats.StatsdClientSlow.Gauge("cacher.metrics", int64(m_len))
 	stats.StatsdClientSlow.Gauge("cacher.points", int64(f_len))
