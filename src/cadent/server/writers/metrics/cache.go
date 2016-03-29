@@ -3,12 +3,9 @@
 
 	Designed to behave like "carbon cache" which allows a few things to happen
 
-	1) ability to "buffer/ratelimit" writes so that we don't over whelm and writing backend
+	1) ability to "buffer/ratelimit" writes so that we don't overwhelm and writing backend
 	2) Query things that are not yet written
-	3) allow to reject incoming should things get too far behind (the only real recourse for stats influx)
-
-	NOTE: keep in mind if you're backend uses multiple aggregation writers there will be a Cache for each
-	writer (i.e. 10s, 1m, 10m bins) so plan your memory consumption accordingly
+	3) allow to reject incoming should things get too far behind (the only real recourse for stats influx overload)
 
 	settings
 
