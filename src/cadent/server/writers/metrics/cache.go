@@ -74,19 +74,23 @@ func (v CacheQueue) Less(i, j int) bool { return v[i].count < v[j].count }
 
 // The "cache" item for points
 type Cacher struct {
-	mu        sync.Mutex
-	qmu       sync.Mutex
-	maxKeys   int // max num of keys to keep before we have to drop
-	maxPoints int // max num of points per key to keep before we have to drop
-	log       *logging.Logger
-	Queue     CacheQueue
-	Cache     map[string][]*repr.StatRepr
+	mu          sync.RWMutex
+	qmu         sync.Mutex
+	maxKeys     int // max num of keys to keep before we have to drop
+	maxPoints   int // max num of points per key to keep before we have to drop
+	curSize     int64
+	numCurPoint int
+	numCurKeys  int
+	log         *logging.Logger
+	Queue       CacheQueue
+	Cache       map[string][]*repr.StatRepr
 }
 
 func NewCacher() *Cacher {
 	wc := new(Cacher)
 	wc.maxKeys = CACHER_METRICS_KEYS
 	wc.maxPoints = CACHER_NUMBER_POINTS
+	wc.curSize = 0
 	wc.log = logging.MustGetLogger("cacher")
 	wc.Cache = make(map[string][]*repr.StatRepr)
 	go wc.startUpdateTick()
@@ -113,23 +117,36 @@ func (wc *Cacher) startUpdateTick() {
 
 func (wc *Cacher) updateQueue() {
 	newQueue := make(CacheQueue, 0)
-	wc.qmu.Lock()
-	defer wc.qmu.Unlock()
 
+	wc.mu.RLock() // need both locks
+	f_len := 0
 	for key, values := range wc.Cache {
-		newQueue = append(newQueue, &CacheQueueItem{key, len(values)})
+		p_len := len(values)
+		newQueue = append(newQueue, &CacheQueueItem{key, p_len})
+		f_len += p_len
 	}
-
+	wc.mu.RUnlock()
+	wc.numCurPoint = f_len
+	m_len := len(newQueue)
+	wc.numCurKeys = m_len
 	sort.Sort(newQueue)
 	//wc.log.Critical("DATA %v", wc.Cache)
-	stats.StatsdClientSlow.Gauge("cacher.metrics", int64(len(newQueue)))
+	wc.log.Critical("STAT RECALC: Metrics: %v :: Points: %v :: BYTES:: %d", m_len, f_len, wc.curSize)
+
+	stats.StatsdClientSlow.Gauge("cacher.metrics", int64(m_len))
+	stats.StatsdClientSlow.Gauge("cacher.points", int64(f_len))
+	stats.StatsdClientSlow.Gauge("cacher.bytes", wc.curSize)
+
+	wc.qmu.Lock()
+	defer wc.qmu.Unlock()
+	wc.Queue = nil
 	wc.Queue = newQueue
 }
 
 func (wc *Cacher) Add(metric string, stat *repr.StatRepr) error {
 	wc.mu.Lock()
 	defer wc.mu.Unlock()
-	//wc.log.Critical("STAT: %s, %d, %f", metric, time, value)
+	//wc.log.Critical("STAT: %s, %v", metric, stat)
 
 	if len(wc.Cache) > wc.maxKeys {
 		wc.log.Error("Key Cache is too large .. over %d metrics keys, have to drop this one", wc.maxKeys)
@@ -149,23 +166,23 @@ func (wc *Cacher) Add(metric string, stat *repr.StatRepr) error {
 			return fmt.Errorf("Cacher: too many points in cache, dropping metric")
 			stats.StatsdClientSlow.Incr("cacher.points.overflow", 1)
 		}
+		wc.curSize += stat.ByteSize()
 		wc.Cache[metric] = append(gots, stat)
+		stats.StatsdClient.GaugeAvg("cacher.add.ave-points-per-metric", int64(len(wc.Cache[metric])))
 		return nil
 	}
-	tp := make([]*repr.StatRepr, 0)
-	tp = append(tp, stat)
+	tp := make([]*repr.StatRepr, 1)
+	tp[0] = stat
 	wc.Cache[metric] = tp
-
-	if len(wc.Queue) == 0 {
-		wc.updateQueue()
-	}
+	wc.curSize += stat.ByteSize()
+	stats.StatsdClient.GaugeAvg("cacher.add.ave-points-per-metric", 1)
 
 	return nil
 }
 
 func (wc *Cacher) Get(metric string) ([]*repr.StatRepr, error) {
-	wc.mu.Lock()
-	defer wc.mu.Unlock()
+	wc.mu.RLock()
+	defer wc.mu.RUnlock()
 	stats.StatsdClientSlow.Incr("cacher.read.cache-gets", 1)
 
 	if gots, ok := wc.Cache[metric]; ok {
@@ -177,8 +194,9 @@ func (wc *Cacher) Get(metric string) ([]*repr.StatRepr, error) {
 }
 
 func (wc *Cacher) GetNextMetric() string {
-	wc.mu.Lock()
-	defer wc.mu.Unlock()
+	wc.qmu.Lock()
+	defer wc.qmu.Unlock()
+
 	for {
 		size := len(wc.Queue)
 		if size == 0 {
@@ -198,6 +216,9 @@ func (wc *Cacher) Pop() (string, []*repr.StatRepr) {
 		defer wc.mu.Unlock()
 
 		if value, exists := wc.Cache[metric]; exists {
+			for _, pt := range value {
+				wc.curSize -= pt.ByteSize() // shrink the bytes
+			}
 			delete(wc.Cache, metric)
 			return metric, value
 		}

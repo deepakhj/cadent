@@ -40,6 +40,11 @@ type StatRepr struct {
 	TTL        int64       `json:"ttl"`
 }
 
+// rough size of the object in bytes
+func (s *StatRepr) ByteSize() int64 {
+	return int64(len(s.Key)) + int64(len(s.StatKey)) + 88 // obtained from `reflect.TypeOf(StatRepr).Size()`
+}
+
 // These two structure is to allow a list of stats in a large queue
 // That Queue (which has a LRU bounded size) can then get cycled through
 // and "Written" somewhere, or used as a temporary store in case a writing
