@@ -320,6 +320,9 @@ func (cass *CassandraWriter) InsertMulti(points []*repr.StatRepr) (int, error) {
 	if l == 0 {
 		return 0, nil
 	}
+	if l == 1 {
+		return cass.InsertOne(points[0]) // should be faster then the batcher logic
+	}
 
 	batch := cass.conn.NewBatch(gocql.LoggedBatch)
 	Q := fmt.Sprintf(
