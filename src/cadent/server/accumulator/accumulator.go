@@ -180,7 +180,7 @@ func (acc *Accumulator) Start() error {
 			stats.StatsdClient.Incr("accumulator.lines.processed", 1)
 		case <-acc.Shutdown:
 			acc.timer.Stop()
-			acc.log.Notice("Shutting down final flush of accumulator `%s`", acc.Name)
+			acc.log.Warning("Shutting down final flush of accumulator `%s`", acc.Name)
 			acc.FlushAndPost(time.Now())
 			if acc.Aggregators != nil {
 				acc.Aggregators.Stop()
@@ -195,7 +195,7 @@ func (acc *Accumulator) Start() error {
 }
 
 func (acc *Accumulator) Stop() {
-	acc.log.Notice("Initiating shutdown of accumulator `%s`", acc.Name)
+	acc.log.Warning("Initiating shutdown of accumulator `%s`", acc.Name)
 	go func() {
 		acc.Shutdown <- true
 		return

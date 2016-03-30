@@ -94,6 +94,11 @@ func (my *MySQLMetrics) Config(conf map[string]interface{}) error {
 	return nil
 }
 
+// TODO
+func (my *MySQLMetrics) Stop() {
+	return
+}
+
 func (my *MySQLMetrics) SetIndexer(idx indexer.Indexer) error {
 	my.indexer = idx
 	return nil

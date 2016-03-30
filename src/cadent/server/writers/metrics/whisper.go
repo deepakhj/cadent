@@ -350,6 +350,11 @@ func NewWhisperMetrics() *WhisperMetrics {
 	return ws
 }
 
+//TODO
+func (ws *WhisperMetrics) Stop() {
+	return
+}
+
 func (ws *WhisperMetrics) Config(conf map[string]interface{}) error {
 	gots, err := _get_whisp_signelton(conf)
 	if err != nil {

@@ -41,6 +41,9 @@ import (
 	"fmt"
 	"github.com/gocql/gocql"
 	logging "gopkg.in/op/go-logging.v1"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"cadent/server/dispatch"
 	"cadent/server/writers/indexer"
@@ -204,6 +207,8 @@ type CassandraWriter struct {
 	write_dispatcher *dispatch.Dispatch
 	cacher           *Cacher
 
+	shutdown          chan bool    // when triggered, we skip the rate limiter and go full out till the queue is done
+	shutitdown        bool         // just a flag
 	writes_per_second int          // allowed writes per second
 	rate_limiter      *RateLimiter // rate limit the QPS
 	num_workers       int
@@ -217,6 +222,7 @@ type CassandraWriter struct {
 func NewCassandraWriter(conf map[string]interface{}) (*CassandraWriter, error) {
 	cass := new(CassandraWriter)
 	cass.log = logging.MustGetLogger("metrics.cassandra")
+	cass.shutdown = make(chan bool)
 
 	gots := conf["dsn"]
 	if gots == nil {
@@ -280,33 +286,62 @@ func NewCassandraWriter(conf map[string]interface{}) (*CassandraWriter, error) {
 	} else {
 		cass.rate_limiter = NewRateLimiter(cass.writes_per_second, time.Second)
 	}
-
-	// nope not doing this not efficient enough
-	//go cass.PeriodFlush()
-
+	go cass.TrapExit()
 	return cass, nil
 }
 
-func (cass *CassandraWriter) PeriodFlush() {
-	for {
-		time.Sleep(cass.max_idle)
-		cass.Flush()
+func (cass *CassandraWriter) Stop() {
+
+	if cass.shutitdown {
+		return // already did
 	}
+	cass.shutitdown = true
+	cass.shutdown <- true
+	cass.cacher.Stop()
+
+	mets := cass.cacher.Queue
+	mets_l := len(mets)
+	cass.log.Warning("Shutting down, exhausting the queue (%d items) and quiting", mets_l)
+	// full tilt write out
+	did := 0
+	for _, queueitem := range mets {
+		if did%100 == 0 {
+			cass.log.Warning("shutdown purge: written %d/%d...", did, mets_l)
+		}
+		points, _ := cass.cacher.Get(queueitem.metric)
+		if points != nil {
+			stats.StatsdClient.Incr(fmt.Sprintf("writer.cassandra.write.send-to-writers"), 1)
+			cass.InsertMulti(points)
+		}
+		did++
+	}
+	cass.log.Warning("shutdown purge: written %d/%d...", did, mets_l)
+	cass.log.Warning("Shutdown finished ... quiting cassandra writer")
 	return
 }
 
-// note this is not really used.  Batching in cassandra is not always a good idea
-// since the token-aware insert will choose the proper server set, where as in batch mode
-// that is not the case, this is here in case it turns out to be more performant
-func (cass *CassandraWriter) Flush() (int, error) {
-	cass.write_lock.Lock()
-	defer cass.write_lock.Unlock()
-	defer stats.StatsdNanoTimeFunc(fmt.Sprintf("writer.cassandra.flush.metric-time-ns"), time.Now())
-	l, err := cass.InsertMulti(cass.write_list)
-	if err == nil {
-		cass.write_list = make([]*repr.StatRepr, 0)
-	}
-	return l, err
+func (cass *CassandraWriter) TrapExit() {
+	//trap kills to flush queues and close connections
+	sc := make(chan os.Signal, 1)
+	signal.Notify(sc,
+		syscall.SIGINT,
+		syscall.SIGTERM,
+		syscall.SIGQUIT)
+
+	go func(ins *CassandraWriter) {
+		s := <-sc
+		cass.log.Warning("Caught %s: Flushing remaining points out before quit ", s)
+
+		cass.Stop()
+		signal.Stop(sc)
+		close(sc)
+
+		// re-raise it
+		process, _ := os.FindProcess(os.Getpid())
+		process.Signal(s)
+		return
+	}(cass)
+	return
 }
 
 // we can use the batcher effectively for single metric multi point writes as they share the
@@ -417,6 +452,8 @@ func (cass *CassandraWriter) sendToWriters() error {
 				stats.StatsdClient.Incr(fmt.Sprintf("writer.cassandra.write.send-to-writers"), 1)
 				cass.write_queue <- CassandraMetricJob{Cass: cass, Stats: points}
 			}
+		case <-cass.shutdown:
+			break
 		}
 	}
 }
@@ -434,7 +471,10 @@ func (cass *CassandraWriter) Write(stat repr.StatRepr) error {
 		go cass.sendToWriters() // the dispatcher
 	}
 	s_key := fmt.Sprintf("%s:%d", stat.Key, int(stat.Resolution))
-	cass.cacher.Add(s_key, &stat)
+	// turning off
+	if !cass.shutitdown {
+		cass.cacher.Add(s_key, &stat)
+	}
 
 	//cass.write_queue <- CassandraMetricJob{Stat: &stat, Cass: cass, Cacher: cacher}
 	return nil
@@ -479,11 +519,16 @@ type CassandraMetric struct {
 	writer      *CassandraWriter
 	render_wg   sync.WaitGroup
 	render_mu   sync.Mutex
+	shutonce    sync.Once
 }
 
 func NewCassandraMetrics() *CassandraMetric {
 	cass := new(CassandraMetric)
 	return cass
+}
+
+func (cass *CassandraMetric) Stop() {
+	cass.shutonce.Do(cass.writer.Stop)
 }
 
 func (cass *CassandraMetric) SetIndexer(idx indexer.Indexer) error {

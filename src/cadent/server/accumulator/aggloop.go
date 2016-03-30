@@ -295,13 +295,16 @@ func (agg *AggregateLoop) Start() error {
 }
 
 func (agg *AggregateLoop) Stop() {
-	agg.log.Notice("Initiating shutdown of aggregator for `%s`", agg.Name)
+	agg.log.Warning("Initiating shutdown of aggregator for `%s`", agg.Name)
 	go func() {
 		agg.Shutdown.Send(true)
-		for idx := range agg.OutWriters {
-			agg.OutWriters[idx].Stop()
+		if agg.OutReader != nil {
+			go agg.OutReader.Stop()
 		}
+		for idx := range agg.OutWriters {
+			go agg.OutWriters[idx].Stop()
+		}
+		agg.log.Warning("Shutdown of aggregator `%s`", agg.Name)
 		return
 	}()
-	return
 }

@@ -79,6 +79,8 @@ type Cacher struct {
 	curSize     int64
 	numCurPoint int
 	numCurKeys  int
+	shutdown    chan bool // when recieved stop allowing adds and updates
+	_accept     bool      // flag to stop
 	log         *logging.Logger
 	Queue       CacheQueue
 	Cache       map[string][]*repr.StatRepr
@@ -91,8 +93,14 @@ func NewCacher() *Cacher {
 	wc.curSize = 0
 	wc.log = logging.MustGetLogger("cacher")
 	wc.Cache = make(map[string][]*repr.StatRepr)
+	wc.shutdown = make(chan bool)
+	wc._accept = true
 	go wc.startUpdateTick()
 	return wc
+}
+
+func (wc *Cacher) Stop() {
+	wc.shutdown <- true
 }
 
 func (wc *Cacher) DumpPoints(pts []*repr.StatRepr) {
@@ -109,8 +117,13 @@ func (wc *Cacher) startUpdateTick() {
 		select {
 		case <-tick.C:
 			wc.updateQueue()
+		case <-wc.shutdown:
+			wc._accept = false
+			wc.log.Warning("Cache shutdown .. stopping accepts")
+			return
 		}
 	}
+	return
 }
 
 func (wc *Cacher) updateQueue() {
@@ -154,6 +167,11 @@ func (wc *Cacher) Add(metric string, stat *repr.StatRepr) error {
 	wc.mu.Lock()
 	defer wc.mu.Unlock()
 	//wc.log.Critical("STAT: %s, %v", metric, stat)
+
+	if !wc._accept {
+		//wc.log.Error("Shutting down, will not add any more items to the queue")
+		return nil
+	}
 
 	if len(wc.Cache) > wc.maxKeys {
 		wc.log.Error("Key Cache is too large .. over %d metrics keys, have to drop this one", wc.maxKeys)

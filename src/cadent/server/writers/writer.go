@@ -124,11 +124,18 @@ func (loop *WriterLoop) SetName(name string) {
 }
 
 func (loop *WriterLoop) statTick() {
+	shuts := loop.shutdowner.Listen()
 	for {
-		time.Sleep(time.Second)
-		stats.StatsdClientSlow.GaugeAvg(fmt.Sprintf("writer.metricsqueue.%s.length", loop.name), int64(len(loop.write_chan)))
-		stats.StatsdClientSlow.GaugeAvg(fmt.Sprintf("writer.indexerqueue.%s.length", loop.name), int64(len(loop.indexer_chan)))
-		//log.Printf("Write Queue Length: %s: Metrics: %d Indexer %d", loop.name, len(loop.write_chan), len(loop.indexer_chan))
+		select {
+		case <-shuts.Ch:
+			shuts.Close()
+			return
+		default:
+			time.Sleep(time.Second)
+			stats.StatsdClientSlow.GaugeAvg(fmt.Sprintf("writer.metricsqueue.%s.length", loop.name), int64(len(loop.write_chan)))
+			stats.StatsdClientSlow.GaugeAvg(fmt.Sprintf("writer.indexerqueue.%s.length", loop.name), int64(len(loop.indexer_chan)))
+			//log.Printf("Write Queue Length: %s: Metrics: %d Indexer %d", loop.name, len(loop.write_chan), len(loop.indexer_chan))
+		}
 	}
 	return
 }
@@ -183,6 +190,7 @@ func (loop *WriterLoop) procLoop() {
 				loop.log.Error("write push error: %s", err)
 			}
 		case <-shut.Ch:
+			loop.metrics.Stop()
 			shut.Close()
 			return
 		}
@@ -230,6 +238,8 @@ func (loop *WriterLoop) Start() {
 func (loop *WriterLoop) Stop() {
 	go func() {
 		loop.shutdowner.Send(true)
+		close(loop.indexer_chan)
+		close(loop.write_chan)
 		return
 	}()
 }

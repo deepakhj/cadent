@@ -15,6 +15,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"gopkg.in/op/go-logging.v1"
 	golog "log"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -80,7 +81,8 @@ type ApiLoop struct {
 	Metrics metrics.Metrics
 	Indexer indexer.Indexer
 
-	log *logging.Logger
+	shutdown chan bool
+	log      *logging.Logger
 }
 
 func ParseConfigString(inconf string) (rl *ApiLoop, err error) {
@@ -102,6 +104,7 @@ func ParseConfigString(inconf string) (rl *ApiLoop, err error) {
 	rl.Metrics.SetIndexer(rl.Indexer)
 	rl.SetBasePath(rl.Conf.BasePath)
 	rl.log = logging.MustGetLogger("reader.http")
+	rl.shutdown = make(chan bool)
 	return rl, nil
 }
 
@@ -126,6 +129,10 @@ func (re *ApiLoop) Config(conf ApiConfig, resolution float64) (err error) {
 		re.log = logging.MustGetLogger("reader.http")
 	}
 	return nil
+}
+
+func (re *ApiLoop) Stop() {
+	re.shutdown <- true
 }
 
 func (re *ApiLoop) SetBasePath(pth string) {
@@ -293,7 +300,7 @@ func (re *ApiLoop) NoOp(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-func (re *ApiLoop) Start() {
+func (re *ApiLoop) Start() error {
 	mux := http.NewServeMux()
 	re.log.Notice("Starting reader http server on %s, base path: %s", re.Conf.Listen, re.Conf.BasePath)
 
@@ -328,5 +335,28 @@ func (re *ApiLoop) Start() {
 
 		}
 	}
-	http.ListenAndServe(re.Conf.Listen, WriteLog(mux, outlog))
+
+	tcpAddr, err := net.ResolveTCPAddr("tcp", re.Conf.Listen)
+	if err != nil {
+		return fmt.Errorf("Error resolving: %s", err)
+	}
+
+	conn, err := net.ListenTCP("tcp", tcpAddr)
+	if err != nil {
+		return fmt.Errorf("Could not make http socket: %s", err)
+	}
+	go func() {
+		for {
+			select {
+			case <-re.shutdown:
+				conn.Close()
+				golog.Print("Shutdown of API http server...")
+				close(re.shutdown)
+				return
+			}
+		}
+	}()
+
+	http.Serve(conn, WriteLog(mux, outlog))
+	return nil
 }

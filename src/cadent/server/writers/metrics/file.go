@@ -46,6 +46,11 @@ func NewFileMetrics() *FileMetrics {
 	return fc
 }
 
+// TODO
+func (fi *FileMetrics) Stop() {
+	return
+}
+
 func (fi *FileMetrics) SetIndexer(idx indexer.Indexer) error {
 	fi.indexer = idx
 	return nil

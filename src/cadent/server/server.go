@@ -35,18 +35,18 @@ import (
 	"encoding/json"
 	"fmt"
 	//breaker "github.com/eapache/go-resiliency/breaker"
+	"cadent/server/accumulator"
 	logging "gopkg.in/op/go-logging.v1"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
-	//"os/signal"
+	"os/signal"
 	"runtime"
 	"strconv"
 	"strings"
 	"sync"
-	//"syscall"
-	"cadent/server/accumulator"
+	"syscall"
 	"time"
 )
 
@@ -286,7 +286,7 @@ func (server *Server) GetStats() (stats *ServerStats) {
 
 func (server *Server) TrapExit() {
 	//trap kills to flush queues and close connections
-	/*sc := make(chan os.Signal, 1)
+	sc := make(chan os.Signal, 1)
 	signal.Notify(sc,
 		syscall.SIGINT,
 		syscall.SIGTERM,
@@ -294,18 +294,18 @@ func (server *Server) TrapExit() {
 
 	go func(ins *Server) {
 		s := <-sc
-		ins.log.Notice("Caught %s: Closing Server out before quit ", s)
+		ins.log.Warning("Caught %s: Closing Server out before quit ", s)
 
-		//ins.StopServer()
+		go ins.StopServer()
 
 		signal.Stop(sc)
 		close(sc)
 
 		// re-raise it
-		//process, _ := os.FindProcess(os.Getpid())
-		//process.Signal(s)
+		process, _ := os.FindProcess(os.Getpid())
+		process.Signal(s)
 		return
-	}(server)*/
+	}(server)
 }
 
 func (server *Server) StopServer() {
@@ -349,8 +349,8 @@ func (server *Server) StopServer() {
 	// bleed the pools
 	if server.Outpool != nil {
 		for k, outp := range server.Outpool {
-			server.log.Notice("Bleeding buffer pool %s", k)
-			server.log.Notice("Waiting 5 seconds for pools to empty")
+			server.log.Warning("Bleeding buffer pool %s", k)
+			server.log.Warning("Waiting 2 seconds for pools to empty")
 			tick := time.NewTimer(2 * time.Second)
 			did := make(chan bool, 1)
 			go func() {
@@ -396,7 +396,7 @@ func (server *Server) StopServer() {
 		}
 	}
 
-	server.log.Error("Termination .... ")
+	server.log.Warning("Termination .... ")
 	//close(server.InputQueue)
 	//close(server.WorkQueue)
 	//close(server.ShutDown)
@@ -437,8 +437,6 @@ func (server *Server) NeedBackPressure() bool {
 // each one is wrapped in a breaker
 func (server *Server) WorkerOutput() {
 	shuts := server.ShutDown.Listen()
-
-	// after 5 errors, break, if happy after 1, continue
 
 	for {
 		select {
@@ -870,6 +868,7 @@ func (server *Server) tickDisplay() {
 			//runtime.GC()
 
 		case <-server.StopTicker:
+			server.log.Warning("Stopping stats ticker")
 			return
 		}
 	}
@@ -1117,7 +1116,6 @@ func (server *Server) Accepter() (<-chan net.Conn, error) {
 		}()
 
 		shuts := server.ShutDown.Listen()
-		defer shuts.Close()
 		defer close(conns)
 
 		for {
@@ -1130,6 +1128,9 @@ func (server *Server) Accepter() (<-chan net.Conn, error) {
 					server.back_pressure_lock.Unlock()
 				}
 			case <-shuts.Ch:
+				server.log.Warning("TCP Shutdown gotten .. stopping incoming connections")
+				server.Connection.Close()
+				shuts.Close()
 				return
 			default:
 				conn, err := server.Connection.Accept()
@@ -1226,6 +1227,8 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, done chan Client) 
 			go client.handleRequest(nil)
 			//go client.handleSend(tcp_socket_out)
 		case <-shuts_client.Ch:
+			server.log.Warning("TCP: Shutdown gotten .. stopping incoming connections")
+			server.Connection.Close()
 			return
 
 		case workerUpDown := <-server.WorkerHold:
@@ -1264,7 +1267,9 @@ func (server *Server) startUDPServer(hashers *[]*ConstHasher, done chan Client) 
 	for {
 		select {
 		case <-shuts.Ch:
+			server.log.Warning("UDP shutdown aquired ... stopping incoming connections")
 			client.ShutDown()
+			server.UDPConn.Close()
 			return
 		case workerUpDown := <-server.WorkerHold:
 			server.InWorkQueue.Add(workerUpDown)
