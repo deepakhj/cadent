@@ -320,9 +320,9 @@ func (cass *CassandraWriter) InsertMulti(points []*repr.StatRepr) (int, error) {
 	if l == 0 {
 		return 0, nil
 	}
-	if l == 1 {
+	/*if l == 1 {
 		return cass.InsertOne(points[0]) // should be faster then the batcher logic
-	}
+	}*/
 
 	batch := cass.conn.NewBatch(gocql.LoggedBatch)
 	Q := fmt.Sprintf(
@@ -433,7 +433,7 @@ func (cass *CassandraWriter) Write(stat repr.StatRepr) error {
 		cass.write_dispatcher.Run()
 		go cass.sendToWriters() // the dispatcher
 	}
-	s_key := fmt.Sprintf("%s:%f", stat.Key, stat.Resolution)
+	s_key := fmt.Sprintf("%s:%d", stat.Key, int(stat.Resolution))
 	cass.cacher.Add(s_key, &stat)
 
 	//cass.write_queue <- CassandraMetricJob{Stat: &stat, Cass: cass, Cacher: cacher}
@@ -701,10 +701,10 @@ func (cass *CassandraMetric) RenderOne(metric indexer.MetricFindItem, from strin
 	var last_got_index int
 
 	// grab from cache too if not yet written
-	s_key := fmt.Sprintf("%s:%d", m_key, rawd.Start)
+	s_key := fmt.Sprintf("%s:%d", m_key, rawd.Step)
 	inflight, err := cass.writer.cacher.Get(s_key)
-	//cass.writer.log.Critical("%s :: %v", m_key, inflight)
-	//cass.cacher.DumpPoints(inflight)
+	cass.writer.log.Critical("%s", s_key)
+	cass.writer.cacher.DumpPoints(inflight)
 	inflight_len := len(inflight)
 
 	if ct > 0 { // got something from cassandra, make sure to fill any "missing times" w/ nils

@@ -25,6 +25,7 @@ import (
 	"cadent/server/repr"
 	"cadent/server/stats"
 	"fmt"
+	"math/rand"
 	"sort"
 
 	logging "gopkg.in/op/go-logging.v1"
@@ -103,7 +104,7 @@ func (wc *Cacher) DumpPoints(pts []*repr.StatRepr) {
 // do this only once a second as it can be expensive
 func (wc *Cacher) startUpdateTick() {
 
-	tick := time.NewTicker(time.Second)
+	tick := time.NewTicker(2 * time.Second)
 	for {
 		select {
 		case <-tick.C:
@@ -128,11 +129,20 @@ func (wc *Cacher) updateQueue() {
 	wc.numCurKeys = m_len
 	sort.Sort(newQueue)
 	//wc.log.Critical("DATA %v", wc.Cache)
-	//wc.log.Critical("STAT RECALC: Metrics: %v :: Points: %v :: BYTES:: %d", m_len, f_len, wc.curSize)
+	wc.log.Critical("STAT RECALC: Metrics: %v :: Points: %v :: BYTES:: %d", m_len, f_len, wc.curSize)
 
 	stats.StatsdClientSlow.Gauge("cacher.metrics", int64(m_len))
 	stats.StatsdClientSlow.Gauge("cacher.points", int64(f_len))
 	stats.StatsdClientSlow.Gauge("cacher.bytes", wc.curSize)
+
+	// now for a bit of randomness, where we "reverse" the order on occasion to get the
+	// not-updated often and thus hardly written do this 1/4 of the time
+	r := rand.Float32()
+	if r < 0.25 {
+		for i, j := 0, len(newQueue)-1; i < j; i, j = i+1, j-1 {
+			newQueue[i], newQueue[j] = newQueue[j], newQueue[i]
+		}
+	}
 
 	wc.qmu.Lock()
 	defer wc.qmu.Unlock()
