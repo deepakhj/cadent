@@ -5,6 +5,7 @@
 package cadent
 
 import (
+	"cadent/server/broadcast"
 	"cadent/server/dispatch"
 	"cadent/server/splitter"
 	"cadent/server/stats"
@@ -50,7 +51,7 @@ type UDPClient struct {
 	done         chan Client
 	input_queue  chan splitter.SplitItem
 	worker_queue chan *OutputMessage
-	close        chan bool
+	shutdowner   *broadcast.Broadcaster
 
 	line_queue chan string
 	log        *logging.Logger
@@ -72,7 +73,7 @@ func NewUDPClient(server *Server, hashers *[]*ConstHasher, conn *net.UDPConn, do
 	client.out_queue = server.ProcessedQueue
 	client.done = done
 	client.log = server.log
-	client.close = make(chan bool)
+	client.shutdowner = broadcast.New(0)
 	client.line_queue = make(chan string, server.Workers)
 
 	return client
@@ -80,7 +81,7 @@ func NewUDPClient(server *Server, hashers *[]*ConstHasher, conn *net.UDPConn, do
 }
 
 func (client *UDPClient) ShutDown() {
-	client.close <- true
+	client.shutdowner.Send(true)
 }
 
 func (client *UDPClient) SetBufferSize(size int) error {
@@ -141,12 +142,13 @@ func (client *UDPClient) procLines(line string, job_queue chan dispatch.IJob, ou
 	return
 }
 func (client *UDPClient) run(out_queue chan splitter.SplitItem) {
-
+	shuts := client.shutdowner.Listen()
+	shuts.Close()
 	for {
 		select {
 		case splitem := <-client.input_queue:
 			client.server.ProcessSplitItem(splitem, out_queue)
-		case <-client.close:
+		case <-shuts.Ch:
 			break
 		}
 	}
@@ -154,15 +156,21 @@ func (client *UDPClient) run(out_queue chan splitter.SplitItem) {
 }
 
 func (client *UDPClient) getLines(job_queue chan dispatch.IJob, out_queue chan splitter.SplitItem) {
-
+	shuts := client.shutdowner.Listen()
+	defer shuts.Close()
 	var buf = make([]byte, client.BufferSize)
 	for {
-		rlen, _, _ := client.Connection.ReadFromUDP(buf[:])
-		client.server.BytesReadCount.Up(uint64(rlen))
+		select {
+		case <-shuts.Ch:
+			break
+		default:
+			rlen, _, _ := client.Connection.ReadFromUDP(buf[:])
+			client.server.BytesReadCount.Up(uint64(rlen))
 
-		in_str := string(buf[0:rlen])
-		if rlen > 0 {
-			client.procLines(in_str, job_queue, out_queue)
+			in_str := string(buf[0:rlen])
+			if rlen > 0 {
+				client.procLines(in_str, job_queue, out_queue)
+			}
 		}
 	}
 	return

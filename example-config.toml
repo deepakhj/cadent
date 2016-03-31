@@ -85,6 +85,7 @@ server_down_policy="remove_node"
 ## Turn on CPU/Mem profiling
 ##  there will be a http server set up to yank pprof data on :6060
 cpu_profile=true
+block_profile=false # this is very expensive
 
 ## fire out some internal to statsd if desired
 statsd_server="192.168.59.103:8125"

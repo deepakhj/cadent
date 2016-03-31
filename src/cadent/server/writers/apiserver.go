@@ -104,7 +104,7 @@ func ParseConfigString(inconf string) (rl *ApiLoop, err error) {
 	rl.Metrics.SetIndexer(rl.Indexer)
 	rl.SetBasePath(rl.Conf.BasePath)
 	rl.log = logging.MustGetLogger("reader.http")
-	rl.shutdown = make(chan bool)
+	rl.shutdown = make(chan bool, 10)
 	return rl, nil
 }
 
@@ -345,18 +345,17 @@ func (re *ApiLoop) Start() error {
 	if err != nil {
 		return fmt.Errorf("Could not make http socket: %s", err)
 	}
-	go func() {
-		for {
-			select {
-			case <-re.shutdown:
-				conn.Close()
-				golog.Print("Shutdown of API http server...")
-				close(re.shutdown)
-				return
-			}
-		}
-	}()
 
-	http.Serve(conn, WriteLog(mux, outlog))
+	go http.Serve(conn, WriteLog(mux, outlog))
+
+	for {
+		select {
+		case <-re.shutdown:
+			conn.Close()
+			golog.Print("Shutdown of API http server...")
+			close(re.shutdown)
+			return nil
+		}
+	}
 	return nil
 }

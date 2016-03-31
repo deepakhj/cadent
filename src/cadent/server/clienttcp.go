@@ -192,7 +192,9 @@ func (client *TCPClient) handleRequest(outqueue chan splitter.SplitItem) {
 	//buf = nil
 	//close it and end the send routing
 	//outqueue <- splitter.BlankSplitterItem()
-	client.done <- client
+	if client.done != nil {
+		client.done <- client
+	}
 	//client.close <- true
 
 	return

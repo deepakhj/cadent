@@ -25,6 +25,8 @@ import (
 	"cadent/server/stats"
 	"cadent/server/writers/indexer"
 	"fmt"
+	"os/signal"
+	"syscall"
 
 	whisper "github.com/robyoung/go-whisper"
 	logging "gopkg.in/op/go-logging.v1"
@@ -81,6 +83,9 @@ type WhisperWriter struct {
 
 	cache_queue *Cacher
 
+	shutdown   chan bool // when triggered, we skip the rate limiter and go full out till the queue is done
+	shutitdown bool      // just a flag
+
 	write_queue       chan dispatch.IJob
 	dispatch_queue    chan chan dispatch.IJob
 	write_dispatcher  *dispatch.Dispatch
@@ -94,7 +99,7 @@ type WhisperWriter struct {
 
 func NewWhisperWriter(conf map[string]interface{}) (*WhisperWriter, error) {
 	ws := new(WhisperWriter)
-	ws.log = logging.MustGetLogger("metrics.cassandra")
+	ws.log = logging.MustGetLogger("metrics.whisper")
 	gots := conf["dsn"]
 	if gots == nil {
 		return nil, fmt.Errorf("`dsn` /root/path/of/data is needed for whisper config")
@@ -150,6 +155,9 @@ func NewWhisperWriter(conf map[string]interface{}) (*WhisperWriter, error) {
 	if _rs != nil {
 		ws.writes_per_second = int(_rs.(int64))
 	}
+	ws.shutdown = make(chan bool, 1)
+	ws.shutitdown = false
+	go ws.TrapExit()
 
 	return ws, nil
 }
@@ -237,15 +245,68 @@ func (ws *WhisperWriter) guessValue(metric string, stat *repr.StatRepr) float64 
 	}
 }
 
-// insert the metrics from the cache
-func (ws *WhisperWriter) InsertNext() (int, error) {
-	defer stats.StatsdSlowNanoTimeFunc("writer.whisper.update-time-ns", time.Now())
+func (ws *WhisperWriter) TrapExit() {
+	//trap kills to flush queues and close connections
+	sc := make(chan os.Signal, 1)
+	signal.Notify(sc,
+		syscall.SIGINT,
+		syscall.SIGTERM,
+		syscall.SIGQUIT)
 
-	metric, points := ws.cache_queue.Pop()
-	if points == nil {
-		return 0, nil
+	go func(ins *WhisperWriter) {
+		s := <-sc
+		ins.log.Warning("Caught %s: Flushing remaining points out before quit ", s)
+
+		ins.Stop()
+		signal.Stop(sc)
+		close(sc)
+
+		// re-raise it
+		process, _ := os.FindProcess(os.Getpid())
+		process.Signal(s)
+		return
+	}(ws)
+	return
+}
+
+// shutdown the writer, purging all cache to files as fast as we can
+func (ws *WhisperWriter) Stop() {
+
+	if ws.shutitdown {
+		return // already did
 	}
+	ws.shutitdown = true
+	ws.shutdown <- true
+	ws.cache_queue.Stop()
+	if ws.write_dispatcher != nil {
+		ws.write_dispatcher.Shutdown()
+	}
+	if ws.cache_queue == nil {
+		ws.log.Warning("Whisper: Shutdown finished, nothing in queue to write")
+		return
+	}
+	mets := ws.cache_queue.Queue
+	mets_l := len(mets)
+	ws.log.Warning("Whisper: Shutting down, exhausting the queue (%d items) and quiting", mets_l)
+	// full tilt write out
+	did := 0
+	for _, queueitem := range mets {
+		if did%100 == 0 {
+			ws.log.Warning("Whisper: shutdown purge: written %d/%d...", did, mets_l)
+		}
+		points, _ := ws.cache_queue.Get(queueitem.metric)
+		if points != nil {
+			stats.StatsdClient.Incr(fmt.Sprintf("writer.whisper.write.send-to-writers"), 1)
+			ws.InsertMulti(queueitem.metric, points)
+		}
+		did++
+	}
+	ws.log.Warning("Whisper: shutdown purge: written %d/%d...", did, mets_l)
+	ws.log.Warning("Whisper: Shutdown finished ... quiting whisper writer")
+	return
+}
 
+func (ws *WhisperWriter) InsertMulti(metric string, points []*repr.StatRepr) (int, error) {
 	whis, err := ws.getFile(metric)
 	if err != nil {
 		ws.log.Error("Whisper:InsertMetric write error: %s", err)
@@ -276,7 +337,18 @@ func (ws *WhisperWriter) InsertNext() (int, error) {
 	stats.StatsdClientSlow.Incr("writer.whisper.update-many-writes", 1)
 
 	whis.Close()
-	return 1, err
+	return len(points), nil
+}
+
+// insert the metrics from the cache
+func (ws *WhisperWriter) InsertNext() (int, error) {
+	defer stats.StatsdSlowNanoTimeFunc("writer.whisper.update-time-ns", time.Now())
+
+	metric, points := ws.cache_queue.Pop()
+	if points == nil {
+		return 0, nil
+	}
+	return ws.InsertMulti(metric, points)
 }
 
 // the "simple" insert one metric at a time model
@@ -299,6 +371,10 @@ func (ws *WhisperWriter) InsertOne(stat repr.StatRepr) (int, error) {
 
 // "write" just adds to the whispercache
 func (ws *WhisperWriter) Write(stat repr.StatRepr) error {
+
+	if ws.shutitdown {
+		return nil
+	}
 
 	/**** start the acctuall disk writer dispatcher queue ***/
 	if ws.write_queue == nil {
@@ -328,9 +404,15 @@ func (ws *WhisperWriter) sendToWriters() error {
 	for {
 		select {
 		case <-ticker.C:
-			ws.write_queue <- WhisperMetricsJob{Whis: ws}
+			if ws.write_queue != nil {
+				ws.write_queue <- WhisperMetricsJob{Whis: ws}
+			}
+		case <-ws.shutdown:
+			ws.log.Warning("Whisper shutdown received, stopping write loop")
+			break
 		}
 	}
+	return nil
 }
 
 /****************** Main Writer Interfaces *********************/
@@ -341,6 +423,8 @@ type WhisperMetrics struct {
 	render_wg   sync.WaitGroup
 	render_mu   sync.Mutex
 
+	shutonce sync.Once // just shutdown "once and only once ever"
+
 	log *logging.Logger
 }
 
@@ -350,9 +434,8 @@ func NewWhisperMetrics() *WhisperMetrics {
 	return ws
 }
 
-//TODO
 func (ws *WhisperMetrics) Stop() {
-	return
+	ws.shutonce.Do(ws.writer.Stop)
 }
 
 func (ws *WhisperMetrics) Config(conf map[string]interface{}) error {

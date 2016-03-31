@@ -63,8 +63,9 @@ type AggregateLoop struct {
 	Aggregators *repr.MultiAggregator
 	Name        string
 
-	Shutdown  *broadcast.Broadcaster
-	InputChan chan repr.StatRepr
+	Shutdown   *broadcast.Broadcaster
+	shutitdown bool
+	InputChan  chan repr.StatRepr
 
 	OutWriters []*writers.WriterLoop // write to a DB of some kind on flush
 
@@ -211,6 +212,11 @@ func (agg *AggregateLoop) delayRoundedTicker(duration time.Duration) *time.Ticke
 
 // start the looper for each flush time as well as the writers
 func (agg *AggregateLoop) startWriteLooper(duration time.Duration, ttl time.Duration, writer *writers.WriterLoop, mu sync.Mutex) {
+	if agg.shutitdown {
+		agg.log.Warning("Got shutdown signal, not starting writers")
+		return
+	}
+
 	shut := agg.Shutdown.Listen()
 
 	_dur := duration
@@ -298,6 +304,7 @@ func (agg *AggregateLoop) Stop() {
 	agg.log.Warning("Initiating shutdown of aggregator for `%s`", agg.Name)
 	go func() {
 		agg.Shutdown.Send(true)
+		agg.shutitdown = true
 		if agg.OutReader != nil {
 			go agg.OutReader.Stop()
 		}

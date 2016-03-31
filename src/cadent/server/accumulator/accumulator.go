@@ -61,6 +61,7 @@ type Accumulator struct {
 	LineQueue   chan string
 	OutputQueue chan splitter.SplitItem
 	Shutdown    chan bool
+	shutitdown  bool
 
 	Aggregators *AggregateLoop // writers hook into the main agg flushing loops
 
@@ -91,8 +92,9 @@ func NewAccumlator(inputtype string, outputtype string, keepkeys bool) (*Accumul
 		Name:            fmt.Sprintf("%s -> %s", inputtype, outputtype),
 		FlushTimes:      []time.Duration{time.Duration(time.Second)},
 		AccumulateTime:  time.Duration(time.Second),
-		Shutdown:        make(chan bool, 1),
+		Shutdown:        make(chan bool, 0),
 		LineQueue:       make(chan string, 10000),
+		shutitdown:      false,
 		timer:           nil,
 	}
 
@@ -154,14 +156,18 @@ func (acc *Accumulator) delayRoundedTicker(duration time.Duration) *time.Ticker 
 // start the flusher at the time interval
 // best to call this in a go routine
 func (acc *Accumulator) Start() error {
-	acc.mu.Lock()
+	if acc.shutitdown {
+		acc.log.Warning("Shutting down, will not start `%s`", acc.Name)
+		return nil
+	}
+
 	if acc.timer == nil {
 		acc.timer = acc.delayRoundedTicker(acc.AccumulateTime)
 	}
 	if acc.LineQueue == nil {
 		acc.LineQueue = make(chan string, 10000)
 	}
-	acc.mu.Unlock()
+
 	acc.log.Notice("Starting accumulator loop for `%s`", acc.Name)
 
 	// fire up Aggs
@@ -171,13 +177,14 @@ func (acc *Accumulator) Start() error {
 	}
 
 	for {
+
 		select {
-		case dd := <-acc.timer.C:
-			acc.log.Debug("Flushing accumulator %s to: %s at: %v", acc.Name, acc.ToBackend, dd.Unix())
-			go func() { acc.FlushAndPost(dd) }()
 		case line := <-acc.LineQueue:
 			acc.Accumulate.ProcessLine(line)
 			stats.StatsdClient.Incr("accumulator.lines.processed", 1)
+		case dd := <-acc.timer.C:
+			acc.log.Debug("Flushing accumulator %s to: %s at: %v", acc.Name, acc.ToBackend, dd.Unix())
+			go func() { acc.FlushAndPost(dd) }()
 		case <-acc.Shutdown:
 			acc.timer.Stop()
 			acc.log.Warning("Shutting down final flush of accumulator `%s`", acc.Name)
@@ -185,7 +192,7 @@ func (acc *Accumulator) Start() error {
 			if acc.Aggregators != nil {
 				acc.Aggregators.Stop()
 			}
-			break
+			return nil
 		}
 	}
 
@@ -197,6 +204,7 @@ func (acc *Accumulator) Start() error {
 func (acc *Accumulator) Stop() {
 	acc.log.Warning("Initiating shutdown of accumulator `%s`", acc.Name)
 	go func() {
+		acc.shutitdown = true
 		acc.Shutdown <- true
 		return
 	}()

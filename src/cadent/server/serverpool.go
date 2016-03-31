@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 )
@@ -90,6 +91,7 @@ type CheckedServerPool struct {
 
 	checkLock sync.Mutex
 	DoChecks  bool
+	shutdown  chan bool
 
 	log *logging.Logger
 }
@@ -127,6 +129,7 @@ func createServerPoolFromConfig(cfg *Config, serverlist *ParsedServerConfig, ser
 	serverp.ConnectionTimeout = cfg.ServerHeartBeatTimeout
 	serverp.DownPolicy = cfg.ServerDownPolicy
 	serverp.DoChecks = true
+	serverp.shutdown = make(chan bool)
 	return serverp, nil
 }
 
@@ -153,11 +156,23 @@ func createServerPool(serverlist []*url.URL, checklist []*url.URL, serveraction 
 	serverp.DoChecks = true
 	return serverp, nil
 }
+func (self *CheckedServerPool) ToString() string {
+	var str []string
+	for _, srv := range self.ServerList {
+		str = append(str, srv.String())
+	}
+	return strings.Join(str, ", ")
+}
+
+func (self *CheckedServerPool) Stop() {
+	self.shutdown <- true
+	return
+}
 
 func (self *CheckedServerPool) StopChecks() {
 	self.checkLock.Lock()
+	defer self.checkLock.Unlock()
 	self.DoChecks = false
-	self.checkLock.Unlock()
 }
 
 func (self *CheckedServerPool) StartChecks() {
@@ -332,28 +347,38 @@ func (self *CheckedServerPool) testConnections() error {
 		self.log.Critical("Connection Retry CANNOT be less then 2x the Connection Timeout")
 		return nil
 	}
+
+	tick := time.NewTicker(self.ConnectionRetry)
+	defer tick.Stop()
 	for {
-		self.checkLock.Lock()
-		ok := self.DoChecks
-		self.checkLock.Unlock()
-		if ok {
-			for idx := range self.Servers {
-				testerchan := make(chan bool, 1)
+		select {
+		case <-tick.C:
+			self.checkLock.Lock()
+			ok := self.DoChecks
+			self.checkLock.Unlock()
 
-				go self.testUp(&self.Servers[idx], testerchan)
-				go self.gotTestResponse(&self.Servers[idx], testerchan)
-				// channels is closed in gotTestResponse when done
-			}
+			if ok {
+				for idx := range self.Servers {
+					testerchan := make(chan bool)
 
-			//re-add any killed servers after X ticker counts just to retest them
-			self.AllPingCounts.Add(1)
-			if (self.AllPingCounts.Get()%DEFAULT_SERVER_RE_ADD_TICK == 0) && len(self.DroppedServers) > 0 {
-				self.log.Notice("Attempting to re-add old dead server")
-				self.reAddAllDroppedServers()
+					go self.testUp(&self.Servers[idx], testerchan)
+					go self.gotTestResponse(&self.Servers[idx], testerchan)
+					// channels is closed in gotTestResponse when done
+				}
+
+				//re-add any killed servers after X ticker counts just to retest them
+				self.AllPingCounts.Add(1)
+				if (self.AllPingCounts.Get()%DEFAULT_SERVER_RE_ADD_TICK == 0) && len(self.DroppedServers) > 0 {
+					self.log.Notice("Attempting to re-add old dead server")
+					self.reAddAllDroppedServers()
+				}
+			} else {
+				return nil
 			}
-			time.Sleep(self.ConnectionRetry)
-		} else {
-			break
+		case <-self.shutdown:
+			self.log.Warning("Shutting down health checks for %s", self.ToString())
+
+			return nil
 		}
 	}
 

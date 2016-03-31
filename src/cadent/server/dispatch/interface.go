@@ -24,6 +24,6 @@ type IDispatcher interface {
 	Workpool() chan chan IJob
 	JobsQueue() chan IJob
 	Retries() int
-
+	Shutdown()
 	Run() error
 }

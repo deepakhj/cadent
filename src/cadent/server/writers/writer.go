@@ -112,7 +112,7 @@ func New() (loop *WriterLoop, err error) {
 	loop.MetricQLen = WRITER_DEFAULT_METRIC_QUEUE_LENGTH
 	loop.IndexerQLen = WRITER_DEFAULT_INDEX_QUEUE_LENGTH
 
-	loop.shutdowner = broadcast.New(1)
+	loop.shutdowner = broadcast.New(0)
 	loop.write_queue = NewWriteQueue(WRITER_MAX_WRITE_QUEUE)
 	loop.log = logging.MustGetLogger("writer")
 
@@ -125,10 +125,10 @@ func (loop *WriterLoop) SetName(name string) {
 
 func (loop *WriterLoop) statTick() {
 	shuts := loop.shutdowner.Listen()
+	defer shuts.Close()
 	for {
 		select {
 		case <-shuts.Ch:
-			shuts.Close()
 			return
 		default:
 			time.Sleep(time.Second)
@@ -238,8 +238,12 @@ func (loop *WriterLoop) Start() {
 func (loop *WriterLoop) Stop() {
 	go func() {
 		loop.shutdowner.Send(true)
-		close(loop.indexer_chan)
-		close(loop.write_chan)
+		if loop.indexer_chan != nil {
+			close(loop.indexer_chan)
+		}
+		if loop.write_chan != nil {
+			close(loop.write_chan)
+		}
 		return
 	}()
 }

@@ -169,8 +169,8 @@ func (d *Dispatch) dispatch() {
 			for _, w := range d.workers {
 				w.Shutdown() <- true
 			}
-			close(d.JobsQueue())
-			close(d.Workpool())
+			//close(d.JobsQueue())
+			//close(d.Workpool())
 			return
 		}
 	}
@@ -195,8 +195,8 @@ func (d *Dispatch) background_dispatch() {
 			for _, w := range d.workers {
 				w.Shutdown() <- true
 			}
-			close(d.JobsQueue())
-			close(d.Workpool())
+			//close(d.JobsQueue())
+			//close(d.Workpool())
 			return
 		}
 	}

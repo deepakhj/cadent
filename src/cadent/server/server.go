@@ -294,9 +294,9 @@ func (server *Server) TrapExit() {
 
 	go func(ins *Server) {
 		s := <-sc
-		ins.log.Warning("Caught %s: Closing Server out before quit ", s)
+		ins.log.Warning("Caught %s: Closing Server `%s` out before quit ", s, ins.Name)
 
-		go ins.StopServer()
+		ins.StopServer()
 
 		signal.Stop(sc)
 		close(sc)
@@ -310,41 +310,43 @@ func (server *Server) TrapExit() {
 
 func (server *Server) StopServer() {
 
-	go func() {
-		server.StopTicker <- true
-	}()
+	go func() { server.StopTicker <- true }()
 
 	// need to clen up the socket here otherwise it may not get cleaned
 	if server.ListenURL != nil && server.ListenURL.Scheme == "unix" {
 		os.Remove("/" + server.ListenURL.Host + server.ListenURL.Path)
 	}
 
+	server.log.Warning("Shutting down health checks for `%s`", server.Name)
 	for _, hasher := range server.Hashers {
-		hasher.ServerPool.StopChecks()
+		hasher.ServerPool.Stop()
 	}
-
-	//broadcast die
-	server.ShutDown.Send(true)
 
 	//shut this guy down too
 	if server.PreRegFilter != nil && server.PreRegFilter.Accumulator != nil {
+		server.log.Warning("Shutting down Prereg accumulator for `%s`", server.Name)
 		tick := time.NewTimer(2 * time.Second)
-		did := make(chan bool, 1)
+		did := make(chan bool)
 		go func() {
 			server.PreRegFilter.Accumulator.Stop()
 			did <- true
 			return
 		}()
 
-		for {
-			select {
-			case <-tick.C:
-				break
-			case <-did:
-				break
-			}
+		select {
+		case <-tick.C:
+			close(did)
+			break
+		case <-did:
+			break
 		}
+
+	} else {
+		server.log.Warning("No Accumualtor for `%s` no shutdown", server.Name)
 	}
+
+	//broadcast die
+	server.ShutDown.Send(true)
 
 	// bleed the pools
 	if server.Outpool != nil {
@@ -352,20 +354,20 @@ func (server *Server) StopServer() {
 			server.log.Warning("Bleeding buffer pool %s", k)
 			server.log.Warning("Waiting 2 seconds for pools to empty")
 			tick := time.NewTimer(2 * time.Second)
-			did := make(chan bool, 1)
+			did := make(chan bool)
 			go func() {
 				outp.DestroyAll()
 				did <- true
 				return
 			}()
-			for {
-				select {
-				case <-tick.C:
-					break
-				case <-did:
-					break
-				}
+			select {
+			case <-tick.C:
+				close(did)
+				break
+			case <-did:
+				break
 			}
+
 		}
 	}
 
@@ -396,11 +398,11 @@ func (server *Server) StopServer() {
 		}
 	}
 
+	if server.OutputDispatcher != nil {
+		server.OutputDispatcher.Shutdown()
+	}
 	server.log.Warning("Termination .... ")
-	//close(server.InputQueue)
-	//close(server.WorkQueue)
-	//close(server.ShutDown)
-	//close(server.StopTicker)
+
 }
 
 // set the "push" function we are using "pool" or "single"
@@ -442,10 +444,10 @@ func (server *Server) WorkerOutput() {
 		select {
 		case j := <-server.WorkQueue:
 
-			if j.m_type&shutdown != 0 {
+			/*if j.m_type&shutdown != 0 {
 				server.log.Critical("Got Shutdown notice .. stoping")
 				return
-			}
+			}*/
 
 			server.OutputDispatcher.JobsQueue() <- OutputDispatchJob{
 				Message: j,
@@ -473,6 +475,7 @@ func (server *Server) WorkerOutput() {
 		*/
 		case <-shuts.Ch:
 			return
+
 		}
 	}
 	return
@@ -1245,8 +1248,12 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, done chan Client) 
 			client.Close() //this will close the connection too
 			client = nil
 		}
-	}
 
+		if server.WorkerHold == nil || accepts_queue == nil {
+			break
+		}
+	}
+	return
 }
 
 // different mechanism for UDP servers
@@ -1283,6 +1290,7 @@ func (server *Server) startUDPServer(hashers *[]*ConstHasher, done chan Client) 
 			client.Close()
 		}
 	}
+	return
 }
 
 // different mechanism for http servers much like UDP,
@@ -1321,6 +1329,7 @@ func (server *Server) startHTTPServer(hashers *[]*ConstHasher, done chan Client)
 			client.Close()
 		}
 	}
+	return
 }
 
 func (server *Server) startBackendServer(hashers *[]*ConstHasher, done chan Client) {
@@ -1353,11 +1362,9 @@ func (server *Server) startBackendServer(hashers *[]*ConstHasher, done chan Clie
 	// "socket-less" consumers will eat the ProcessedQueue
 	// just loooop
 	shuts := server.ShutDown.Listen()
-	for {
-		select {
-		case <-shuts.Ch:
-			return
-		}
+	select {
+	case <-shuts.Ch:
+		return
 	}
 
 }
@@ -1428,7 +1435,6 @@ func (server *Server) StartServer() {
 
 	//fire up the send to workers
 	done := make(chan Client)
-	defer close(done)
 
 	//set the push method (the WorkerOutput depends on it)
 	server.SetWriter()
