@@ -13,6 +13,7 @@
 		write_queue_length=102400
 		cache_metric_size=102400  # the "internal carbon-like-cache" size (ram is your friend)
 		cache_points_size=1024 # number of points per metric to cache above to keep before we drop (this * cache_metric_size * 32 * 128 bytes == your better have that ram)
+		cache_low_fruit_rate=0.25 # every 1/4 of the time write "low count" metrics to at least persist them
 		writes_per_second=1000 # allowed physical writes per second
 
 */
@@ -148,6 +149,11 @@ func NewWhisperWriter(conf map[string]interface{}) (*WhisperWriter, error) {
 	_ps := conf["cache_points_size"]
 	if _ps != nil {
 		ws.cache_queue.maxPoints = int(_ps.(int64))
+	}
+
+	_lf := conf["cache_low_fruit_rate"]
+	if _lf != nil {
+		ws.cache_queue.lowFruitRate = _lf.(float64)
 	}
 
 	_rs := conf["writes_per_second"]

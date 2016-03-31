@@ -18,6 +18,7 @@
 		port=9042
 		cache_metric_size=102400  # the "internal carbon-like-cache" size (ram is your friend)
 		cache_points_size=1024 # number of points per metric to cache above to keep before we drop (this * cache_metric_size * 32 * 128 bytes == your better have that ram)
+		cache_low_fruit_rate=0.25 # every 1/4 of the time write "low count" metrics to at least persist them
 		writes_per_second=5000 # allowed insert queries per second
 
 		numcons=5  # cassandra connection pool size
@@ -571,6 +572,11 @@ func (cass *CassandraMetric) Config(conf map[string]interface{}) (err error) {
 		gots.cacher.maxPoints = int(_ps.(int64))
 	}
 
+	_lf := conf["cache_low_fruit_rate"]
+	if _lf != nil {
+		gots.cacher.lowFruitRate = _lf.(float64)
+	}
+
 	return nil
 }
 
@@ -748,8 +754,9 @@ func (cass *CassandraMetric) RenderOne(metric indexer.MetricFindItem, from strin
 	// grab from cache too if not yet written
 	s_key := fmt.Sprintf("%s:%d", m_key, rawd.Step)
 	inflight, err := cass.writer.cacher.Get(s_key)
-	cass.writer.log.Critical("%s", s_key)
-	cass.writer.cacher.DumpPoints(inflight)
+	// debuggers
+	//cass.writer.log.Critical("%s", s_key)
+	//cass.writer.cacher.DumpPoints(inflight)
 	inflight_len := len(inflight)
 
 	if ct > 0 { // got something from cassandra, make sure to fill any "missing times" w/ nils

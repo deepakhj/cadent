@@ -72,18 +72,19 @@ func (v CacheQueue) Less(i, j int) bool { return v[i].count < v[j].count }
 
 // The "cache" item for points
 type Cacher struct {
-	mu          sync.RWMutex
-	qmu         sync.Mutex
-	maxKeys     int // max num of keys to keep before we have to drop
-	maxPoints   int // max num of points per key to keep before we have to drop
-	curSize     int64
-	numCurPoint int
-	numCurKeys  int
-	shutdown    chan bool // when recieved stop allowing adds and updates
-	_accept     bool      // flag to stop
-	log         *logging.Logger
-	Queue       CacheQueue
-	Cache       map[string][]*repr.StatRepr
+	mu           sync.RWMutex
+	qmu          sync.Mutex
+	maxKeys      int // max num of keys to keep before we have to drop
+	maxPoints    int // max num of points per key to keep before we have to drop
+	curSize      int64
+	numCurPoint  int
+	numCurKeys   int
+	lowFruitRate float64   // % of the time we reverse the max sortings to persist low volume stats
+	shutdown     chan bool // when recieved stop allowing adds and updates
+	_accept      bool      // flag to stop
+	log          *logging.Logger
+	Queue        CacheQueue
+	Cache        map[string][]*repr.StatRepr
 }
 
 func NewCacher() *Cacher {
@@ -95,6 +96,7 @@ func NewCacher() *Cacher {
 	wc.Cache = make(map[string][]*repr.StatRepr)
 	wc.shutdown = make(chan bool)
 	wc._accept = true
+	wc.lowFruitRate = 0.25
 	go wc.startUpdateTick()
 	return wc
 }
@@ -149,9 +151,10 @@ func (wc *Cacher) updateQueue() {
 	stats.StatsdClientSlow.Gauge("cacher.bytes", wc.curSize)
 
 	// now for a bit of randomness, where we "reverse" the order on occasion to get the
-	// not-updated often and thus hardly written do this 1/4 of the time
-	r := rand.Float32()
-	if r < 0.25 {
+	// not-updated often and thus hardly written to try to persiste some slow stats
+	// do this 1/4 of the time, so that we don't endup with having to shutdown in order to all things written
+	r := rand.Float64()
+	if r < wc.lowFruitRate {
 		for i, j := 0, len(newQueue)-1; i < j; i, j = i+1, j-1 {
 			newQueue[i], newQueue[j] = newQueue[j], newQueue[i]
 		}
