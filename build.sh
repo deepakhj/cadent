@@ -65,7 +65,7 @@ mkdir -p ${TARGET}
 mkdir -p ${OUTPUT}
 
 cp -rf html ${OUTPUT}
-cp -rf consthash ${OUTPUT}
+cp -rf cadent ${OUTPUT}
 cp -rf echoserver ${OUTPUT}
 
 #tar -cvzf "${OUTPUT}/${APP_NAME}-${BUILDID}.tmp" -C ${PACKAGE_BASE}
@@ -78,7 +78,7 @@ GIT_VERSION=$(git log -1 | head -1 | cut -d " " -f2 | cut -c 1-7)
 ONDATE=$(date +"%a, %d %b %Y %T %z")
 ON_VERIONS=$(cat ./version)
 cat > pkgs/debian/changelog <<EOF
-mfp-consthash (${ON_VERIONS}.${GIT_VERSION}) unstable; urgency=low
+mfp-cadent (${ON_VERIONS}.${GIT_VERSION}) unstable; urgency=low
 
   * git head (${ON_VERIONS}.${GIT_VERSION})
 

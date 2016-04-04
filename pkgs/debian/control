@@ -1,10 +1,10 @@
-Source: mfp-consthash
+Source: mfp-cadent
 Priority: optional
 Maintainer: Bo Blanton <boblanton@myfitnesspal.com>
 Standards-Version: 3.9.3
 Build-Depends: debhelper (>= 8.0.0)
 
-Package: mfp-consthash
+Package: mfp-cadent
 Section: MFP
 Architecture: amd64 i386
 Description: A line-to-line consistent hashing proxy server
