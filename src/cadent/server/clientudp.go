@@ -149,7 +149,7 @@ func (client *UDPClient) run(out_queue chan splitter.SplitItem) {
 		case splitem := <-client.input_queue:
 			client.server.ProcessSplitItem(splitem, out_queue)
 		case <-shuts.Ch:
-			break
+			return
 		}
 	}
 	return
@@ -162,7 +162,7 @@ func (client *UDPClient) getLines(job_queue chan dispatch.IJob, out_queue chan s
 	for {
 		select {
 		case <-shuts.Ch:
-			break
+			return
 		default:
 			rlen, _, _ := client.Connection.ReadFromUDP(buf[:])
 			client.server.BytesReadCount.Up(uint64(rlen))
