@@ -275,8 +275,10 @@ func main() {
 
 	if def.Profile {
 		log.Notice("Starting Profiler on localhost:6060")
-		runtime.SetCPUProfileRate(1)
-		runtime.MemProfileRate = 1
+		if def.ProfileRate > 0 {
+			runtime.SetCPUProfileRate(def.ProfileRate)
+			runtime.MemProfileRate = def.ProfileRate
+		}
 		go http.ListenAndServe(":6060", nil)
 	} else {
 		// disable

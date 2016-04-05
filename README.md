@@ -25,7 +25,7 @@ Has a Hekad feel (same sort of data pipeline like) but optimized for what we rea
  - graphite-api endpoints
  
 Yes "each" of the above can be handled by a standalone app (and they do exist in the echo system) .. however at the volume
-we want to address .. there's nothing like raw RAM/CPU power on a local node (the internet).
+we want to address .. there's nothing like raw RAM/CPU power on a local node (the internet, slow, ram, fast).
 
 Note:: configuration for complex scenarios of loop backs, replicas moving, multiple backends, accumulators, and aggregators 
 can get confusing .. and you can find yourself hitting yourself over the head alot.  You's say "why not keep it simple"
@@ -739,10 +739,34 @@ There is also a "line msg" generator "statblast"
             statsd or graphite (default "statsd")
 
 
+## Performance
+
+After many days a'tweaking and finding the proper ratios for things here are some tips.  But by all means please tweak
+No system is the same, and you will run into context locking and general kernel things at crazy volumes.  
+
+
+### For "reading" UDP incoming lines
+
+    num_procs = N           # number of cores to use
+    workers = N             # processes to consume the lines
+    out_workers = n * 8     # dispatchers to deal with output
+    
+### For "reading" TCP incoming lines
+
+TBD
+
+### For "reading" HTTP incoming lines
+
+TBD
+
+### For "reading" Socket incoming lines
+
+TBD
+
 
 Author
 ------
 
 ![A Flow of examples](configs/example-flow.png)
 
-boblanton@myfitnesspal.com 2015 MyFitnesspal
+boblanton@myfitnesspal.com 2015-2016 MyFitnesspal

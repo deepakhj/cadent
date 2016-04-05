@@ -52,6 +52,7 @@ type Config struct {
 	ServerDownPolicy        string        `toml:"server_down_policy"`
 	CacheItems              uint64        `toml:"cache_items"`
 	Profile                 bool          `toml:"cpu_profile"`
+	ProfileRate             int           `toml:"cpu_profile_rate"`
 	BlockProfile            bool          `toml:"block_profile"`
 	Replicas                int           `toml:"num_dupe_replicas"`
 	HashAlgo                string        `toml:"hasher_algo"`
