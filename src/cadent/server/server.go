@@ -542,7 +542,7 @@ func (server *Server) PushLineToBackend(spl splitter.SplitItem) splitter.SplitIt
 			for nidx, useme := range servs {
 				// just log the valid lines "once" total ends stats are WorkerValidLineCount
 				if idx == 0 && nidx == 0 {
-					server.ValidLineCount.Up(1)
+					// server.ValidLineCount.Up(1) counted on incoming clients
 					stats.StatsdClient.Incr("success.valid-lines", 1)
 				}
 				stats.StatsdClient.Incr("success.valid-lines-sent-to-workers", 1)

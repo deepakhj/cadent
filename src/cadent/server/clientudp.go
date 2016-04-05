@@ -203,6 +203,7 @@ func (client *UDPClient) getLines(job_queue chan dispatch.IJob, out_queue chan s
 
 func (client UDPClient) handleRequest(out_queue chan splitter.SplitItem) {
 
+	// UDP clients are basically "one" uber client (at least per socket)
 	for w := int64(1); w <= client.server.Workers; w++ {
 		go client.run(out_queue)
 		go client.run(client.out_queue) // bleed out non-socket inputs
