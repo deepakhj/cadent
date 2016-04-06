@@ -17,8 +17,6 @@ import (
 
 // 1Mb default buffer size
 const UDP_BUFFER_SIZE = 1048576
-const UDP_LINE_QUEUE_SIZE = 1024 * 1024
-const UDP_WORKER_SIZE = 32
 
 type UDPJob struct {
 	Client   *UDPClient
@@ -56,14 +54,6 @@ type UDPClient struct {
 	worker_queue chan *OutputMessage
 	shutdowner   *broadcast.Broadcaster
 
-	// UDP clients are basically "one" uber client (at least per socket)
-	// to handle the bursts properly, we need to have a proper dispatch queue
-	/*
-		disp_work_queue       chan dispatch.IJob
-		disp_dispatch_queue   chan chan dispatch.IJob
-		disp_write_dispatcher *dispatch.Dispatch
-	*/
-
 	line_queue chan string
 	log        *logging.Logger
 }
@@ -87,15 +77,6 @@ func NewUDPClient(server *Server, hashers *[]*ConstHasher, conn net.PacketConn, 
 	client.shutdowner = broadcast.New(0)
 	client.line_queue = make(chan string, server.Workers)
 
-	/**** dispatcher queue **
-	**** PERFORMS WORSE then just straight buffered channels ****
-	workers := UDP_WORKER_SIZE
-	client.disp_work_queue = make(chan dispatch.IJob, UDP_LINE_QUEUE_SIZE)
-	client.disp_dispatch_queue = make(chan chan dispatch.IJob, workers)
-	client.disp_write_dispatcher = dispatch.NewDispatch(workers, client.disp_dispatch_queue, client.disp_work_queue)
-	client.disp_write_dispatcher.SetRetries(2)
-	client.disp_write_dispatcher.Run()
-	*/
 	return client
 
 }
@@ -107,6 +88,7 @@ func (client *UDPClient) ShutDown() {
 func (client *UDPClient) SetBufferSize(size int) error {
 	client.BufferSize = size
 	return nil
+	// no read buffer for "Packet Types" for the SO_REUSE goodness
 	//return client.Connection.SetReadBuffer(size)
 }
 
@@ -213,11 +195,6 @@ func (client *UDPClient) procLines(line string, job_queue chan dispatch.IJob, ou
 func (client *UDPClient) run(out_queue chan splitter.SplitItem) {
 	shuts := client.shutdowner.Listen()
 	defer shuts.Close()
-	/*for splitem := range client.input_queue {
-		client.server.ProcessSplitItem(splitem, out_queue)
-	}
-
-	return*/
 
 	for {
 		select {
@@ -253,22 +230,14 @@ func (client *UDPClient) getLines(job_queue chan dispatch.IJob, out_queue chan s
 
 func (client UDPClient) handleRequest(out_queue chan splitter.SplitItem) {
 
-	/*client.createWorkers(client.server.Workers, out_queue)
-	if client.out_queue != out_queue {
-		client.createWorkers(client.server.Workers, out_queue)
-	}*/
-
 	// UDP clients are basically "one" uber client (at least per socket)
 	// DO NOT use work counts here, the UDP sockets are "multiplexed" using SO_CONNREUSE
-	// so we have kernel level toggling between the various sockets
-	//for w := int64(1); w <= client.server.Workers; w++ {
+	// so we have kernel level toggling between the various sockets so each "worker" is really
+	// it's own little UDP listener land
 	go client.run(out_queue)
 	go client.run(client.out_queue) // bleed out non-socket inputs
-	//go client.getLines(client.disp_work_queue, out_queue)
 	go client.getLines(nil, out_queue)
-	//}
 
-	//go client.getLines(job_queue, client.out_queue)
 	return
 }
 

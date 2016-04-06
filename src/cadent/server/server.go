@@ -176,8 +176,9 @@ type Server struct {
 	ShowStats            bool
 
 	// our bound connection if TCP or UnixSocket
-	Connection net.Listener
-	UDPConns   []net.PacketConn
+	Connection net.Listener     // unix socket
+	TCPConns   []net.Listener   // TCP SO_REUSEPORT
+	UDPConns   []net.PacketConn //UDP SO_REUSEPORT
 
 	//if our "buffered" bits exceded this, we're basically out of ram
 	// so we "pause" until we can do something
@@ -695,7 +696,27 @@ func (server *Server) StartListen(url *url.URL) error {
 	} else if url.Scheme == "http" {
 
 		//http is yet another "special" case, client HTTP does the hard work
+	} else if url.Scheme == "tcp" {
+		server.TCPConns = make([]net.Listener, server.Workers)
+		// use multiple listeners for UDP, so need to have REUSE enabled
+		for i := 0; i < int(server.Workers); i++ {
+			_, err := net.ResolveTCPAddr(url.Scheme, url.Host)
+			if err != nil {
+				return fmt.Errorf("Error binding: %s", err)
+			}
 
+			// allow multiple connections over the same socket, and let the kernel
+			// deal with delegating to which ever listener
+			conn, err := GetReuseListener(url.Scheme, url.Host)
+			if err != nil {
+				return fmt.Errorf("Error binding: %s", err)
+			}
+			//err = SetUDPReuse(conn) // allows for multi listens on the same port!
+			if err != nil {
+				return fmt.Errorf("Error binding: %s", err)
+			}
+			server.TCPConns[i] = conn
+		}
 	} else {
 		var conn net.Listener
 		var err error
@@ -1122,14 +1143,14 @@ func (server *Server) ProcessSplitItem(splitem splitter.SplitItem, out_queue cha
 
 // accept incoming TCP connections and push them into the
 // a connection channel
-func (server *Server) Accepter() (<-chan net.Conn, error) {
+func (server *Server) Accepter(listen net.Listener) (<-chan net.Conn, error) {
 
 	conns := make(chan net.Conn, server.Workers)
 
 	go func() {
 		defer func() {
-			if server.Connection != nil {
-				server.Connection.Close()
+			if listen != nil {
+				listen.Close()
 			}
 			if server.ListenURL != nil && server.ListenURL.Scheme == "unix" {
 				os.Remove("/" + server.ListenURL.Host + server.ListenURL.Path)
@@ -1150,11 +1171,11 @@ func (server *Server) Accepter() (<-chan net.Conn, error) {
 				}
 			case <-shuts.Ch:
 				server.log.Warning("TCP Shutdown gotten .. stopping incoming connections")
-				server.Connection.Close()
+				listen.Close()
 				shuts.Close()
 				return
 			default:
-				conn, err := server.Connection.Accept()
+				conn, err := listen.Accept()
 				if err != nil {
 					stats.StatsdClient.Incr(fmt.Sprintf("%s.tcp.incoming.failed.connections", server.Name), 1)
 					server.log.Warning("Error Accecption Connection: %s", err)
@@ -1173,7 +1194,7 @@ func (server *Server) Accepter() (<-chan net.Conn, error) {
 
 func (server *Server) startTCPServer(hashers *[]*ConstHasher, done chan Client) {
 
-	//for TCPclients (and unix sockets),
+	// for TCP clients (and unix sockets),
 	// since we basically create a client on each connect each time (unlike the UDP case)
 	// and we want only one processing Q, set up this "queue" here
 	// the main Server input Queue should be larger then the UDP case as we can have many TCP clients
@@ -1181,94 +1202,112 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, done chan Client) 
 
 	// tells the Acceptor to "sleep" incase we need to apply some back pressure
 	// when connections overflood the acceptor
+
+	// We are using multi sockets per listen, so each "run" here is pinned to its listener
 	server.back_pressure = make(chan bool, 1)
 	defer close(server.back_pressure)
 
-	run := func() {
+	MakeHandler := func(servv *Server, listen net.Listener) {
 
-		// consume the input queue of lines
+		run := func() {
+
+			// consume the input queue of lines
+			for {
+				select {
+				case splitem := <-servv.InputQueue:
+					//server.log.Notice("INQ: %d Line: %s", len(server.InputQueue), splitem.Line())
+					if splitem == nil {
+						continue
+					}
+					l_len := (int64)(len(splitem.Line()))
+					servv.AddToCurrentTotalBufferSize(l_len)
+					if servv.NeedBackPressure() {
+						servv.log.Warning(
+							"Error::Max Queue or buffer reached dropping connection (Buffer %v, queue len: %v)",
+							servv.CurrentReadBufferRam.Get(),
+							len(servv.WorkQueue))
+						servv.BackPressure()
+					}
+
+					servv.ProcessSplitItem(splitem, servv.ProcessedQueue)
+					servv.AddToCurrentTotalBufferSize(-l_len)
+
+				}
+			}
+		}
+
+		//fire up the workers
+		go run()
+
+		// the dispatcher is just one for each tcp server (clients feed into the main incoming line stream
+		// unlike UDP which is "one client" effectively)
+
+		accepts_queue, err := servv.Accepter(listen)
+		if err != nil {
+			panic(err)
+		}
+
+		shuts_client := servv.ShutDown.Listen()
+
 		for {
 			select {
-			case splitem := <-server.InputQueue:
-				//server.log.Notice("INQ: %d Line: %s", len(server.InputQueue), splitem.Line())
-				if splitem == nil {
-					continue
+			case conn, ok := <-accepts_queue:
+				if !ok {
+					return
 				}
-				l_len := (int64)(len(splitem.Line()))
-				server.AddToCurrentTotalBufferSize(l_len)
-				if server.NeedBackPressure() {
-					server.log.Warning(
-						"Error::Max Queue or buffer reached dropping connection (Buffer %v, queue len: %v)",
-						server.CurrentReadBufferRam.Get(),
-						len(server.WorkQueue))
-					server.BackPressure()
+				//tcp_socket_out := make(chan splitter.SplitItem)
+
+				client := NewTCPClient(servv, hashers, conn, nil, done)
+				client.SetBufferSize((int)(servv.ClientReadBufferSize))
+				log.Debug("Accepted con %v", conn.RemoteAddr())
+
+				stats.StatsdClient.Incr(fmt.Sprintf("worker.%s.tcp.connection.open", servv.Name), 1)
+
+				go client.handleRequest(nil)
+			//go client.handleSend(tcp_socket_out)
+			case <-shuts_client.Ch:
+				servv.log.Warning("TCP: Shutdown gotten .. stopping incoming connections")
+				listen.Close()
+				return
+
+			case workerUpDown := <-servv.WorkerHold:
+				servv.InWorkQueue.Add(workerUpDown)
+				ct := (int64)(len(servv.WorkQueue))
+				if ct >= servv.Workers {
+					stats.StatsdClient.Incr("worker.queue.isfull", 1)
+					stats.StatsdClient.Incr(fmt.Sprintf("worker.%s.queue.isfull", servv.Name), 1)
+					//server.Logger.Printf("Worker Queue Full %d", ct)
 				}
+				stats.StatsdClient.GaugeAvg("worker.queue.length", ct)
+				stats.StatsdClient.GaugeAvg(fmt.Sprintf("worker.%s.queue.length", servv.Name), ct)
+			case client := <-done:
+				client.Close() //this will close the connection too
+				client = nil
+			}
 
-				server.ProcessSplitItem(splitem, server.ProcessedQueue)
-				server.AddToCurrentTotalBufferSize(-l_len)
-
+			if servv.WorkerHold == nil || accepts_queue == nil {
+				break
 			}
 		}
 	}
 
-	//fire up the workers
-	for w := int64(1); w <= server.Workers; w++ {
-		go run()
+	// unix sockets don't have the SO_REUSEPORT yet
+	if server.Connection != nil {
+		go MakeHandler(server, server.Connection)
+	} else {
+		// handler pre "tcp socket" (yes we can share the sockets thanks to SO_REUSEPORT)
+		for _, listen := range server.TCPConns {
+			go MakeHandler(server, listen)
+		}
 	}
 
-	// the dispatcher is just one for each tcp server (clients feed into the main incoming line stream
-	// unlike UDP which is "one client" effectively)
-
-	job_queue := make(chan dispatch.IJob, 10000) //large to handle "bursts"
-	/*disp_queue := make(chan chan dispatch.IJob, server.Workers)
-	dispatcher := dispatch.NewDispatch(int(server.Workers), disp_queue, job_queue)
-	dispatcher.Run()
-	*/
-	accepts_queue, err := server.Accepter()
-	if err != nil {
-		panic(err)
-	}
-
-	shuts_client := server.ShutDown.Listen()
-
+	// just need to listen for shutdown at this point
+	shuts := server.ShutDown.Listen()
+	defer shuts.Close()
 	for {
 		select {
-		case conn, ok := <-accepts_queue:
-			if !ok {
-				return
-			}
-			//tcp_socket_out := make(chan splitter.SplitItem)
-
-			client := NewTCPClient(server, hashers, conn, job_queue, done)
-			client.SetBufferSize((int)(server.ClientReadBufferSize))
-			log.Debug("Accepted con %v", conn.RemoteAddr())
-
-			stats.StatsdClient.Incr(fmt.Sprintf("worker.%s.tcp.connection.open", server.Name), 1)
-
-			go client.handleRequest(nil)
-			//go client.handleSend(tcp_socket_out)
-		case <-shuts_client.Ch:
-			server.log.Warning("TCP: Shutdown gotten .. stopping incoming connections")
-			server.Connection.Close()
+		case <-shuts.Ch:
 			return
-
-		case workerUpDown := <-server.WorkerHold:
-			server.InWorkQueue.Add(workerUpDown)
-			ct := (int64)(len(server.WorkQueue))
-			if ct >= server.Workers {
-				stats.StatsdClient.Incr("worker.queue.isfull", 1)
-				stats.StatsdClient.Incr(fmt.Sprintf("worker.%s.queue.isfull", server.Name), 1)
-				//server.Logger.Printf("Worker Queue Full %d", ct)
-			}
-			stats.StatsdClient.GaugeAvg("worker.queue.length", ct)
-			stats.StatsdClient.GaugeAvg(fmt.Sprintf("worker.%s.queue.length", server.Name), ct)
-		case client := <-done:
-			client.Close() //this will close the connection too
-			client = nil
-		}
-
-		if server.WorkerHold == nil || accepts_queue == nil {
-			break
 		}
 	}
 	return
@@ -1312,10 +1351,12 @@ func (server *Server) startUDPServer(hashers *[]*ConstHasher, done chan Client) 
 		return
 	}
 
+	// handler pre "socket" (yes we can share the sockets thanks to SO_REUSEPORT)
 	for _, conn := range server.UDPConns {
 		go MakeHandler(server, conn)
 	}
 
+	// just need to listen for shutdown at this point
 	shuts := server.ShutDown.Listen()
 	defer shuts.Close()
 	for {
