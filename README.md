@@ -747,7 +747,7 @@ No system is the same, and you will run into context locking and general kernel 
 
 For UDP and TCP reading connections, SO_REUSEPORT is in use, which means we bind multi listeners to the same
 address/port .. which means we leave lots to the kernel to handle multiplexing (it being C and low level goodness, 
-guess what, performs mucho better).  The `workers` below are the number of bound enties to the socket. 
+guess what, performs mucho better).  The `workers` below are the number of bound entities to the socket. 
 `out_workers` are the number of dispatch works to do writes to output buffers.
 
 

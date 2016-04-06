@@ -116,14 +116,14 @@ func (s *StatsdBaseStatItem) Out(fmatter FormatterItem, acc AccumulatorItem) []s
 			return []string{
 				fmatter.ToString(
 					f_key+s.InKey,
-					val,
+					val_p_s,
 					0, // let formatter handle the time,
 					c_type,
 					acc.Tags(),
 				),
 				fmatter.ToString(
 					rate_pref+s.InKey,
-					val_p_s,
+					val,
 					0, // let formatter handle the time,
 					c_type,
 					acc.Tags(),

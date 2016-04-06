@@ -22,7 +22,7 @@ default_backend="statsd-proxy"  # failing a match go here
     ]
 
     # don't filter anything really
-# Sub string type match
+    # Sub string type match
     [[statsd-regex-map.map]]
     substring=".marvel"  # ignore elastic search marvel stuff
     reject=true
