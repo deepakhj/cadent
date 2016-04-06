@@ -6,17 +6,11 @@
 package cadent
 
 import (
-	"bufio"
-	"errors"
 	reuse "github.com/jbenet/go-reuseport"
 	"net"
-	"os"
-	"runtime"
-	"strconv"
-	"strings"
-	"syscall"
 )
 
+/*
 func ReusePortID() int {
 	switch runtime.GOOS {
 
@@ -252,10 +246,7 @@ func SetUDPReuse(conn *net.UDPConn) error {
 	}
 	return nil
 }
-
-type ReuseConn struct {
-	listener net.Listener
-}
+*/
 
 func GetReuseListener(protocal string, addr string) (net.Listener, error) {
 	return reuse.Listen(protocal, addr)
