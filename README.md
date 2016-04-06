@@ -36,6 +36,7 @@ Installation
 ------------
 
     Well, first you need to install go .. https://golang.org  >= 1.5.1
+    And a kernel that supports SO_REUSEPORT (linux 3.9 or higher and bsd like kernels)
     
 
     git clone git@scm-main-01.dc.myfitnesspal.com:Metrics/cadent.git
@@ -744,16 +745,24 @@ There is also a "line msg" generator "statblast"
 After many days a'tweaking and finding the proper ratios for things here are some tips.  But by all means please tweak
 No system is the same, and you will run into context locking and general kernel things at crazy volumes.  
 
+For UDP and TCP reading connections, SO_REUSEPORT is in use, which means we bind multi listeners to the same
+address/port .. which means we leave lots to the kernel to handle multiplexing (it being C and low level goodness, 
+guess what, performs mucho better).  The `workers` below are the number of bound enties to the socket. 
+`out_workers` are the number of dispatch works to do writes to output buffers.
+
 
 ### For "reading" UDP incoming lines
 
-    num_procs = N           # number of cores to use
-    workers = N             # processes to consume the lines
-    out_workers = n * 8     # dispatchers to deal with output
+    num_procs = N             # number of cores to use
+    workers = N*4             # processes to consume the lines .. this you can tweak depending on your system
+    out_workers = N * 8       # dispatchers to deal with output .. this you can tweak depending on your system
     
 ### For "reading" TCP incoming lines
 
-TBD
+    num_procs = N             # number of cores to use
+    workers = N*4             # processes to consume the lines .. this you can tweak depending on your system
+    out_workers = N * 8       # dispatchers to deal with output .. this you can tweak depending on your system
+
 
 ### For "reading" HTTP incoming lines
 
