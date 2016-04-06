@@ -177,7 +177,7 @@ type Server struct {
 
 	// our bound connection if TCP or UnixSocket
 	Connection net.Listener
-	UDPConn    *net.UDPConn
+	UDPConns   []net.PacketConn
 
 	//if our "buffered" bits exceded this, we're basically out of ram
 	// so we "pause" until we can do something
@@ -659,47 +659,63 @@ func NewServer(cfg *Config) (server *Server, err error) {
 		serv.PreRegFilter = cfg.PreRegFilter
 	}
 
-	if serv.ListenURL == nil {
+	serv.ticker = time.Duration(5) * time.Second
+	return serv, nil
+
+}
+
+func (server *Server) StartListen(url *url.URL) error {
+	if server.ListenURL == nil {
 		// just a backend, no connections
 
-	} else if cfg.ListenURL.Scheme == "udp" {
-		udp_addr, err := net.ResolveUDPAddr(cfg.ListenURL.Scheme, cfg.ListenURL.Host)
-		if err != nil {
-			return nil, fmt.Errorf("Error binding: %s", err)
-		}
-		conn, err := net.ListenUDP(cfg.ListenURL.Scheme, udp_addr)
-		if err != nil {
-			return nil, fmt.Errorf("Error binding: %s", err)
-		}
-		serv.UDPConn = conn
-		serv.UDPConn.SetReadBuffer((int)(serv.ClientReadBufferSize)) //set buffer size to 1024 bytes
+	} else if url.Scheme == "udp" {
 
-	} else if cfg.ListenURL.Scheme == "http" {
+		server.UDPConns = make([]net.PacketConn, server.Workers)
+		// use multiple listeners for UDP, so need to have REUSE enabled
+		for i := 0; i < int(server.Workers); i++ {
+			_, err := net.ResolveUDPAddr(url.Scheme, url.Host)
+			if err != nil {
+				return fmt.Errorf("Error binding: %s", err)
+			}
+
+			//conn, err := net.ListenUDP(url.Scheme, udp_addr)
+			// allow multiple connections over the same socket, and let the kernel
+			// deal with delgating to which ever listener
+			conn, err := GetReusePacketListener(url.Scheme, url.Host)
+			if err != nil {
+				return fmt.Errorf("Error binding: %s", err)
+			}
+			//err = SetUDPReuse(conn) // allows for multi listens on the same port!
+			if err != nil {
+				return fmt.Errorf("Error binding: %s", err)
+			}
+			server.UDPConns[i] = conn
+		}
+
+	} else if url.Scheme == "http" {
 
 		//http is yet another "special" case, client HTTP does the hard work
 
 	} else {
 		var conn net.Listener
 		var err error
-		conn, err = net.Listen(cfg.ListenURL.Scheme, cfg.ListenURL.Host+cfg.ListenURL.Path)
+		conn, err = net.Listen(url.Scheme, url.Host+url.Path)
 
 		if err != nil {
-			return nil, fmt.Errorf("Error binding: %s", err)
+			return fmt.Errorf("Error binding: %s", err)
 		}
-		serv.Connection = conn
+		server.Connection = conn
 	}
 
 	//the queue is only as big as the workers
-	serv.WorkQueue = make(chan *OutputMessage, serv.Workers)
+	server.WorkQueue = make(chan *OutputMessage, server.Workers*20)
 
 	//input queue
-	serv.InputQueue = make(chan splitter.SplitItem, serv.Workers)
+	server.InputQueue = make(chan splitter.SplitItem, server.Workers*20)
 
 	//input queue
-	serv.ProcessedQueue = make(chan splitter.SplitItem, serv.Workers)
-
-	serv.ticker = time.Duration(5) * time.Second
-	return serv, nil
+	server.ProcessedQueue = make(chan splitter.SplitItem, server.Workers*20)
+	return nil
 
 }
 
@@ -1112,7 +1128,9 @@ func (server *Server) Accepter() (<-chan net.Conn, error) {
 
 	go func() {
 		defer func() {
-			server.Connection.Close()
+			if server.Connection != nil {
+				server.Connection.Close()
+			}
 			if server.ListenURL != nil && server.ListenURL.Scheme == "unix" {
 				os.Remove("/" + server.ListenURL.Host + server.ListenURL.Path)
 			}
@@ -1140,7 +1158,7 @@ func (server *Server) Accepter() (<-chan net.Conn, error) {
 				if err != nil {
 					stats.StatsdClient.Incr(fmt.Sprintf("%s.tcp.incoming.failed.connections", server.Name), 1)
 					server.log.Warning("Error Accecption Connection: %s", err)
-					return
+					continue
 				}
 				stats.StatsdClient.Incr(fmt.Sprintf("%s.tcp.incoming.connections", server.Name), 1)
 				//server.log.Debug("Accepted connection from %s", conn.RemoteAddr())
@@ -1259,35 +1277,51 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, done chan Client) 
 // different mechanism for UDP servers
 func (server *Server) startUDPServer(hashers *[]*ConstHasher, done chan Client) {
 
-	//just need one "client" here as we simply just pull from the socket
-	client := NewUDPClient(server, hashers, server.UDPConn, done)
-	client.SetBufferSize((int)(server.ClientReadBufferSize))
+	MakeHandler := func(servv *Server, conn net.PacketConn) {
+		//just need one "client" here as we simply just pull from the socket
+		client := NewUDPClient(servv, hashers, conn, done)
+		client.SetBufferSize((int)(servv.ClientReadBufferSize))
 
-	// this queue is just for "real" TCP sockets
-	udp_socket_out := make(chan splitter.SplitItem)
+		// this queue is just for "real" UDP sockets
+		udp_socket_out := make(chan splitter.SplitItem)
+		shuts := servv.ShutDown.Listen()
+		defer shuts.Close()
+
+		go client.handleRequest(udp_socket_out)
+		go client.handleSend(udp_socket_out)
+
+		for {
+			select {
+			case <-shuts.Ch:
+				servv.log.Warning("UDP shutdown aquired ... stopping incoming connections")
+				client.ShutDown()
+				conn.Close()
+				return
+			case workerUpDown := <-server.WorkerHold:
+				servv.InWorkQueue.Add(workerUpDown)
+				work_len := (int64)(len(server.WorkQueue))
+				if work_len >= server.Workers {
+					stats.StatsdClient.Incr("worker.queue.isfull", 1)
+				}
+				stats.StatsdClient.GaugeAvg("worker.queue.length", work_len)
+
+			case client := <-done:
+				client.Close()
+			}
+		}
+		return
+	}
+
+	for _, conn := range server.UDPConns {
+		go MakeHandler(server, conn)
+	}
+
 	shuts := server.ShutDown.Listen()
 	defer shuts.Close()
-
-	go client.handleRequest(udp_socket_out)
-	go client.handleSend(udp_socket_out)
-
 	for {
 		select {
 		case <-shuts.Ch:
-			server.log.Warning("UDP shutdown aquired ... stopping incoming connections")
-			client.ShutDown()
-			server.UDPConn.Close()
 			return
-		case workerUpDown := <-server.WorkerHold:
-			server.InWorkQueue.Add(workerUpDown)
-			work_len := (int64)(len(server.WorkQueue))
-			if work_len >= server.Workers {
-				stats.StatsdClient.Incr("worker.queue.isfull", 1)
-			}
-			stats.StatsdClient.GaugeAvg("worker.queue.length", work_len)
-
-		case client := <-done:
-			client.Close()
 		}
 	}
 	return
@@ -1412,6 +1446,12 @@ func CreateServer(cfg *Config, hashers []*ConstHasher) (*Server, error) {
 		server.OutWorkers = int64(cfg.OutWorkers)
 	}
 
+	// fire up the listeners
+	err = server.StartListen(cfg.ListenURL)
+	if err != nil {
+		panic(err)
+	}
+
 	server.StopTicker = make(chan bool, 1)
 
 	//start tickin'
@@ -1485,7 +1525,7 @@ func (server *Server) StartServer() {
 	if server.ListenURL == nil {
 		// just the little queue listener for pre-reg only redirects
 		server.startBackendServer(&server.Hashers, done)
-	} else if server.UDPConn != nil {
+	} else if len(server.UDPConns) > 0 {
 		server.startUDPServer(&server.Hashers, done)
 	} else if server.ListenURL.Scheme == "http" {
 		server.startHTTPServer(&server.Hashers, done)

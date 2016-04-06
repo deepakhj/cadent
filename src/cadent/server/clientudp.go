@@ -9,6 +9,7 @@ import (
 	"cadent/server/dispatch"
 	"cadent/server/splitter"
 	"cadent/server/stats"
+	"github.com/reusee/mmh3"
 	logging "gopkg.in/op/go-logging.v1"
 	"net"
 	"strings"
@@ -45,7 +46,7 @@ type UDPClient struct {
 	server  *Server
 	hashers *[]*ConstHasher
 
-	Connection *net.UDPConn
+	Connection net.PacketConn
 	LineCount  uint64
 	BufferSize int
 
@@ -57,15 +58,17 @@ type UDPClient struct {
 
 	// UDP clients are basically "one" uber client (at least per socket)
 	// to handle the bursts properly, we need to have a proper dispatch queue
-	disp_work_queue       chan dispatch.IJob
-	disp_dispatch_queue   chan chan dispatch.IJob
-	disp_write_dispatcher *dispatch.Dispatch
+	/*
+		disp_work_queue       chan dispatch.IJob
+		disp_dispatch_queue   chan chan dispatch.IJob
+		disp_write_dispatcher *dispatch.Dispatch
+	*/
 
 	line_queue chan string
 	log        *logging.Logger
 }
 
-func NewUDPClient(server *Server, hashers *[]*ConstHasher, conn *net.UDPConn, done chan Client) *UDPClient {
+func NewUDPClient(server *Server, hashers *[]*ConstHasher, conn net.PacketConn, done chan Client) *UDPClient {
 
 	client := new(UDPClient)
 	client.server = server
@@ -103,7 +106,8 @@ func (client *UDPClient) ShutDown() {
 
 func (client *UDPClient) SetBufferSize(size int) error {
 	client.BufferSize = size
-	return client.Connection.SetReadBuffer(size)
+	return nil
+	//return client.Connection.SetReadBuffer(size)
 }
 
 func (client UDPClient) Server() (server *Server) {
@@ -128,6 +132,50 @@ func (client UDPClient) Close() {
 	}
 }
 
+// we set up a static array of input and output channels
+// each worker then processes one of these channels, and lines are fed via a mmh3 hash to the proper
+// worker/channel set
+func (client *UDPClient) createWorkers(workers int64, out_queue chan splitter.SplitItem) error {
+	chs := make([]chan splitter.SplitItem, workers)
+	for i := 0; i < int(workers); i++ {
+		ch := make(chan splitter.SplitItem, 128)
+		chs[i] = ch
+		go client.consume(ch, out_queue)
+	}
+	go client.delegate(chs, uint32(workers))
+	return nil
+}
+
+func (client *UDPClient) consume(inchan chan splitter.SplitItem, out_queue chan splitter.SplitItem) {
+	shuts := client.shutdowner.Listen()
+	defer shuts.Close()
+
+	for {
+		select {
+		case splitem := <-inchan:
+			client.server.ProcessSplitItem(splitem, out_queue)
+		case <-shuts.Ch:
+			return
+		}
+	}
+	return
+}
+
+// pick a channel to push the stat to
+func (client *UDPClient) delegate(inchan []chan splitter.SplitItem, workers uint32) {
+	shuts := client.shutdowner.Listen()
+	defer shuts.Close()
+	for {
+		select {
+		case splitem := <-client.input_queue:
+			hash := mmh3.Hash32([]byte(splitem.Key())) % workers
+			inchan[hash] <- splitem
+		case <-shuts.Ch:
+			return
+		}
+	}
+}
+
 func (client *UDPClient) procLines(line string, job_queue chan dispatch.IJob, out_queue chan splitter.SplitItem) {
 	for _, n_line := range strings.Split(line, "\n") {
 		if len(n_line) == 0 {
@@ -147,6 +195,7 @@ func (client *UDPClient) procLines(line string, job_queue chan dispatch.IJob, ou
 			stats.StatsdClient.Incr("incoming.udp.lines", 1)
 			client.server.ValidLineCount.Up(1)
 			client.input_queue <- splitem
+			//client.delegateOne(splitem, uint32(client.server.Workers))
 
 			//performs worse
 			//job_queue <- UDPJob{Client: client, Splitem: splitem, OutQueue: out_queue}
@@ -160,6 +209,7 @@ func (client *UDPClient) procLines(line string, job_queue chan dispatch.IJob, ou
 	}
 	return
 }
+
 func (client *UDPClient) run(out_queue chan splitter.SplitItem) {
 	shuts := client.shutdowner.Listen()
 	defer shuts.Close()
@@ -189,7 +239,7 @@ func (client *UDPClient) getLines(job_queue chan dispatch.IJob, out_queue chan s
 		case <-shuts.Ch:
 			return
 		default:
-			rlen, _, _ := client.Connection.ReadFromUDP(buf[:])
+			rlen, _, _ := client.Connection.ReadFrom(buf[:])
 			client.server.BytesReadCount.Up(uint64(rlen))
 
 			in_str := string(buf[0:rlen])
@@ -203,12 +253,20 @@ func (client *UDPClient) getLines(job_queue chan dispatch.IJob, out_queue chan s
 
 func (client UDPClient) handleRequest(out_queue chan splitter.SplitItem) {
 
+	/*client.createWorkers(client.server.Workers, out_queue)
+	if client.out_queue != out_queue {
+		client.createWorkers(client.server.Workers, out_queue)
+	}*/
+
 	// UDP clients are basically "one" uber client (at least per socket)
-	for w := int64(1); w <= client.server.Workers; w++ {
-		go client.run(out_queue)
-		go client.run(client.out_queue) // bleed out non-socket inputs
-		go client.getLines(client.disp_work_queue, out_queue)
-	}
+	// DO NOT use work counts here, the UDP sockets are "multiplexed" using SO_CONNREUSE
+	// so we have kernel level toggling between the various sockets
+	//for w := int64(1); w <= client.server.Workers; w++ {
+	go client.run(out_queue)
+	go client.run(client.out_queue) // bleed out non-socket inputs
+	//go client.getLines(client.disp_work_queue, out_queue)
+	go client.getLines(nil, out_queue)
+	//}
 
 	//go client.getLines(job_queue, client.out_queue)
 	return
