@@ -12,10 +12,18 @@ type AtomicInt struct {
 }
 
 func NewAtomic(name string) *AtomicInt {
-	att := &AtomicInt{
-		Val: expvar.NewInt(name),
+	var att *AtomicInt
+	gots := expvar.Get(name)
+	if gots == nil {
+		att = &AtomicInt{
+			Val: expvar.NewInt(name),
+		}
+		att.Set(0)
+	} else {
+		att = &AtomicInt{
+			Val: gots.(*expvar.Int),
+		}
 	}
-	att.Set(0)
 	return att
 }
 
