@@ -80,7 +80,10 @@ func (s *StatsdBaseStatItem) Out(fmatter FormatterItem, acc AccumulatorItem) []s
 	root := acc.GetOption("Prefix", "stats").(string)
 	pref := acc.GetOption("CounterPrefix", "counters").(string) //default is none for legacy namepace
 	sufix := acc.GetOption("Suffix", "").(string)
-	f_key := root + "."
+	f_key := ""
+	if len(root) > 0 {
+		f_key = root + "."
+	}
 	if len(pref) > 0 {
 		f_key = f_key + pref + "."
 	}
@@ -269,7 +272,10 @@ func (s *StatsdTimerStatItem) Out(fmatter FormatterItem, acc AccumulatorItem) []
 	pref := acc.GetOption("TimerPrefix", "timers").(string)
 	sufix := acc.GetOption("Suffix", "").(string)
 
-	f_key := root + "."
+	f_key := ""
+	if len(root) > 0 {
+		f_key = root + "."
+	}
 	if len(pref) > 0 {
 		f_key = f_key + pref + "."
 	}

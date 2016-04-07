@@ -59,6 +59,7 @@ Installation
     go get github.com/go-sql-driver/mysql
     go get github.com/gocql/gocql
     go get github.com/robyoung/go-whisper
+    go get github.com/jbenet/go-reuseport
 
     cd ../
     make
