@@ -132,6 +132,7 @@ func (l ListofConfigMaps) ParseConfig() (PreRegMap, error) {
 		}
 
 		if len(cfg.ConfigAccumulator.InputFormat) > 0 {
+			cfg.ConfigAccumulator.Name = chunk
 			acc, err := cfg.ConfigAccumulator.GetAccumulator()
 			if err != nil {
 				log.Critical("%s", err)

@@ -40,15 +40,16 @@ const BLACK_HOLE_BACKEND = "BLACKHOLE"
 type Accumulator struct {
 
 	// these are assigned from the config file in the PreReg config file
-	ToBackend       string          `json:"backend"`
-	FromBackend     string          `json:"from_backend"`
-	FormatterName   string          `json:"formatter"`
-	AccumulatorName string          `json:"accumulator"`
-	Name            string          `json:"name"`
-	KeepKeys        bool            `json:"keep_keys"` // if true, will not "remove" the keys post flush, just set them to 0
-	AccumulateTime  time.Duration   `json:"accumulate_timer"`
-	FlushTimes      []time.Duration `json:"flush_time"`
-	TTLTimes        []time.Duration `json:"ttl_times"`
+	ToBackend         string          `json:"backend"`
+	FromBackend       string          `json:"from_backend"`
+	FormatterName     string          `json:"formatter"`
+	AccumulatorName   string          `json:"accumulator"`
+	Name              string          `json:"name"`
+	KeepKeys          bool            `json:"keep_keys"` // if true, will not "remove" the keys post flush, just set them to 0
+	AccumulateTime    time.Duration   `json:"accumulate_timer"`
+	FlushTimes        []time.Duration `json:"flush_time"`
+	TTLTimes          []time.Duration `json:"ttl_times"`
+	RandomTickerStart bool            `json:"random_ticker_start"`
 
 	Accumulate AccumulatorItem
 	Formatter  FormatterItem
@@ -68,7 +69,7 @@ type Accumulator struct {
 	log *logging.Logger
 }
 
-func NewAccumlator(inputtype string, outputtype string, keepkeys bool) (*Accumulator, error) {
+func NewAccumlator(inputtype string, outputtype string, keepkeys bool, name string) (*Accumulator, error) {
 
 	fmter, err := NewFormatterItem(outputtype)
 	if err != nil {
@@ -84,21 +85,22 @@ func NewAccumlator(inputtype string, outputtype string, keepkeys bool) (*Accumul
 	acc.SetKeepKeys(keepkeys)
 
 	ac := &Accumulator{
-		Accumulate:      acc,
-		Formatter:       fmter,
-		AccumulatorName: inputtype,
-		FormatterName:   outputtype,
-		KeepKeys:        keepkeys,
-		Name:            fmt.Sprintf("%s -> %s", inputtype, outputtype),
-		FlushTimes:      []time.Duration{time.Duration(time.Second)},
-		AccumulateTime:  time.Duration(time.Second),
-		Shutdown:        make(chan bool, 0),
-		LineQueue:       make(chan string, 10000),
-		shutitdown:      false,
-		timer:           nil,
+		Accumulate:        acc,
+		Formatter:         fmter,
+		AccumulatorName:   inputtype,
+		FormatterName:     outputtype,
+		KeepKeys:          keepkeys,
+		Name:              name,
+		FlushTimes:        []time.Duration{time.Duration(time.Second)},
+		AccumulateTime:    time.Duration(time.Second),
+		Shutdown:          make(chan bool, 0),
+		LineQueue:         make(chan string, 10000),
+		shutitdown:        false,
+		timer:             nil,
+		RandomTickerStart: false,
 	}
 
-	ac.log = logging.MustGetLogger("accumulator")
+	ac.log = logging.MustGetLogger("accumulator." + name)
 
 	// determine the splitter from the formatter item
 	nul_conf := make(map[string]interface{})
@@ -119,7 +121,9 @@ func NewAccumlator(inputtype string, outputtype string, keepkeys bool) (*Accumul
 
 // create the overlord aggregator
 func (acc *Accumulator) SetAggregateLoop(conf writers.WriterConfig) (agg *AggregateLoop, err error) {
-	acc.Aggregators, err = NewAggregateLoop(acc.FlushTimes, acc.TTLTimes, "AGG:"+acc.Name)
+	acc.Aggregators, err = NewAggregateLoop(acc.FlushTimes, acc.TTLTimes, acc.Name)
+	acc.Aggregators.flush_random_ticker = acc.RandomTickerStart
+
 	if err != nil {
 		return nil, err
 	}
@@ -162,7 +166,22 @@ func (acc *Accumulator) Start() error {
 	}
 
 	if acc.timer == nil {
-		acc.timer = acc.delayRoundedTicker(acc.AccumulateTime)
+		if acc.RandomTickerStart {
+			acc.log.Notice(
+				"Accumulator Loop for %s at random start .. starting: %d",
+				acc.AccumulateTime.String(),
+				time.Now().Unix(),
+			)
+			acc.timer = time.NewTicker(acc.AccumulateTime)
+		} else {
+			acc.log.Notice(
+				"Aggregater Loop for %s starting at time %% %s .. starting %d",
+				acc.AccumulateTime.String(),
+				acc.AccumulateTime.String(),
+				time.Now().Unix(),
+			)
+			acc.timer = acc.delayRoundedTicker(acc.AccumulateTime)
+		}
 	}
 	if acc.LineQueue == nil {
 		acc.LineQueue = make(chan string, 10000)

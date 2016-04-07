@@ -91,7 +91,6 @@ type WriterConfig struct {
 	Indexer            WriterIndexerConfig `toml:"indexer"`
 	MetricQueueLength  int                 `toml:"metric_queue_length"`  // metric write queue length
 	IndexerQueueLength int                 `toml:"indexer_queue_length"` // indexer write queue length
-
 }
 
 type WriterLoop struct {

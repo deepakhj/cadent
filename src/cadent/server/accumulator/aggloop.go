@@ -77,22 +77,32 @@ type AggregateLoop struct {
 	stat_dispatch_queue chan chan dispatch.IJob
 	stat_dispatcher     *dispatch.Dispatch
 
+	// if true will set the flusher to basically started at "now" time otherwise it will use time % duration
+	// use case:
+	// statsd flushes to a "none-writer" should be more or less randomized to keep everything
+	// from hammering the pre-writer listeners ever tick
+	// things that are writers (especially graphite style) should be flushed on
+	// time % duration intervals
+	// defaults to false
+	flush_random_ticker bool
+
 	log *logging.Logger
 }
 
 func NewAggregateLoop(flushtimes []time.Duration, ttls []time.Duration, name string) (*AggregateLoop, error) {
 
 	agg := &AggregateLoop{
-		Name:        name,
-		FlushTimes:  flushtimes,
-		TTLTimes:    ttls,
-		mus:         make([]sync.Mutex, len(flushtimes)),
-		Shutdown:    broadcast.New(1),
-		Aggregators: repr.NewMulti(flushtimes),
-		InputChan:   make(chan repr.StatRepr, AGGLOOP_DEFAULT_QUEUE_LENGTH),
+		Name:                name,
+		FlushTimes:          flushtimes,
+		TTLTimes:            ttls,
+		mus:                 make([]sync.Mutex, len(flushtimes)),
+		Shutdown:            broadcast.New(1),
+		Aggregators:         repr.NewMulti(flushtimes),
+		InputChan:           make(chan repr.StatRepr, AGGLOOP_DEFAULT_QUEUE_LENGTH),
+		flush_random_ticker: false,
 	}
 
-	agg.log = logging.MustGetLogger("aggregatorloop")
+	agg.log = logging.MustGetLogger("aggloop." + name)
 
 	return agg, nil
 }
@@ -253,7 +263,15 @@ func (agg *AggregateLoop) startWriteLooper(duration time.Duration, ttl time.Dura
 	}
 
 	agg.log.Notice("Starting Aggregater Loop for %s", _dur.String())
-	ticker := agg.delayRoundedTicker(_dur) // time.NewTicker(_dur)
+	var ticker *time.Ticker
+	// either flush at a random "duration interval" or flush at time % duration interval
+	if agg.flush_random_ticker {
+		agg.log.Notice("Aggregater Loop for %s at random start .. starting: %d", _dur.String(), time.Now().Unix())
+		ticker = time.NewTicker(_dur)
+	} else {
+		agg.log.Notice("Aggregater Loop for %s starting at time %% %s .. starting %d", _dur.String(), _dur.String(), time.Now().Unix())
+		ticker = agg.delayRoundedTicker(_dur)
+	}
 	for {
 		select {
 		case dd := <-ticker.C:

@@ -11,6 +11,7 @@ default_backend="statsd-proxy"  # failing a match go here
     input_format = "statsd"
     output_format = "graphite"
     accumulate_flush = "10s"  # since this is going into a graphite ticking at 10s .. they should match
+    random_ticker_start = true  # typically want this to not overwhelm (for statsd)  writer backends with everybody flushing at the same time
     options = [
             ["legacyNamespace", "true"],
             ["prefixGauge", "gauges"],
