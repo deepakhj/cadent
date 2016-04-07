@@ -1,7 +1,7 @@
 [default]
 
 ## PID file to check if things is running already
-pid_file="/opt/consthash/statsd.pid"
+pid_file="/opt/cadent/statsd.pid"
 
 ## performance tuning suggest that n - 2 is best to avoid over creation
 ## of File Descriptors for the many sockets we need (and thus cause more OS
@@ -66,7 +66,8 @@ max_buffer_size=104857600
 
 ## number of workers to chew on the sending queue
 ## adjust this based on the input load
-workers=2
+workers=16
+out_workers=32
 
 ## there will be an internal health http server set up as well
 ## and will respond to '/ops/status' -> "GET OK"
@@ -85,16 +86,10 @@ internal_health_server_path="/opt/consthash/html"
 
 ### PREGREG ACCUMULATOR RELAY
 [graphite-relay]
-# for the output of the accumulator
-## what port/scheme we are listening on for incoming data
 listen="backend_only"
 msg_type="graphite"
 max_pool_connections=32
 
-# graphite style
-hasher_algo="md5"
-hasher_elter="graphite"
-hasher_vnodes=1
 
 ## need higher timeouts for graphite
 write_timeout=2000
@@ -106,7 +101,7 @@ read_buffer_size=8192
 max_buffer_size=819200
 
 [[graphite-relay.servers]]
-## Loop back onto self to get into graphite-proxy stream
+# this is where your CarbonCache (or cadent writer lives)
 servers=["tcp://127.0.0.1:2003"]
 
 
@@ -121,19 +116,14 @@ listen="udp://0.0.0.0:8125"
 
 msg_type="statsd"
 
-# statsd style
-hasher_algo="nodejs-hashring"
+# only one server one node use the fastest one (however not used anyw
+hasher_algo="mmh3"
 hasher_elter="statsd"
 hasher_vnodes=1
 workers=20
 
 
 [[statsd-proxy.servers]]
-
-## the list of servers we hashring send to
-## {scheme}://{ip}:{port},...
-## scheme = tcp|udp
-
 
 servers=[ "udp://127.0.0.1:8125" ]
 check_servers=[ "tcp://127.0.0.1:2003" ]

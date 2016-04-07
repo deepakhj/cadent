@@ -115,8 +115,8 @@ const (
 	DEFAULT_HEARTBEAT            = time.Duration(30)
 	DEFAULT_HEARTBEAT_TIMEOUT    = time.Duration(5)
 	DEFAULT_SERVERDOWN_POLICY    = "keep"
-	DEFAULT_HASHER_ALGO          = "crc32"
-	DEFAULT_HASHER_ELTER         = "graphite"
+	DEFAULT_HASHER_ALGO          = "mmh3"
+	DEFAULT_HASHER_ELTER         = "simple"
 	DEFAULT_HASHER_VNODES        = 4
 	DEFAULT_DUPE_REPLICAS        = 1
 	DEFAULT_MAX_POOL_CONNECTIONS = 10
