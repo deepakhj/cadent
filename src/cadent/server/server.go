@@ -26,6 +26,7 @@
 package cadent
 
 import (
+	"cadent/server/accumulator"
 	"cadent/server/broadcast"
 	"cadent/server/dispatch"
 	"cadent/server/netpool"
@@ -34,8 +35,6 @@ import (
 	"cadent/server/stats"
 	"encoding/json"
 	"fmt"
-	//breaker "github.com/eapache/go-resiliency/breaker"
-	"cadent/server/accumulator"
 	logging "gopkg.in/op/go-logging.v1"
 	"net"
 	"net/http"
