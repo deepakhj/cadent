@@ -1,13 +1,14 @@
 package cadent
 
 import (
+	"statsd"
+
 	"fmt"
 	. "github.com/smartystreets/goconvey/convey"
 	"io/ioutil"
 	"net"
 	"net/url"
 	"os"
-	"statsd"
 	"testing"
 )
 

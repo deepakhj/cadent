@@ -1,6 +1,8 @@
 package cadent
 
 import (
+	"statsd"
+
 	"cadent/server/accumulator"
 	"cadent/server/prereg"
 	"cadent/server/stats"
@@ -10,7 +12,6 @@ import (
 	"math"
 	"net/url"
 	"regexp"
-	"statsd"
 	"strings"
 	"time"
 )
