@@ -20,6 +20,7 @@ pkg
 src/consistent
 src/statsd
 src/github.com
+.cache
 !src/cadent
 !src/cadent/cmd/*
 src/cadent/cmd/.DS_Store
