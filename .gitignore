@@ -23,4 +23,4 @@ src/github.com
 !src/cadent
 !src/cadent/cmd/*
 src/cadent/cmd/.DS_Store
-gopkg.in
+.cache
