@@ -9,7 +9,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"github.com/gocql/gocql/internal/lru"
 	"io"
 	"io/ioutil"
 	"log"
@@ -19,6 +18,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/gocql/gocql/internal/lru"
 
 	"github.com/gocql/gocql/internal/streams"
 )
@@ -137,7 +138,6 @@ type Conn struct {
 	addr            string
 	version         uint8
 	currentKeyspace string
-	started         bool
 
 	host *HostInfo
 
@@ -207,13 +207,38 @@ func Connect(host *HostInfo, addr string, cfg *ConnConfig,
 		c.setKeepalive(cfg.Keepalive)
 	}
 
-	go c.serve()
+	frameTicker := make(chan struct{}, 1)
+	startupErr := make(chan error, 1)
+	go func() {
+		for range frameTicker {
+			err := c.recv()
+			startupErr <- err
+			if err != nil {
+				return
+			}
+		}
+	}()
 
-	if err := c.startup(); err != nil {
+	err = c.startup(frameTicker)
+	close(frameTicker)
+	if err != nil {
 		conn.Close()
 		return nil, err
 	}
-	c.started = true
+
+	select {
+	case err := <-startupErr:
+		if err != nil {
+			log.Println(err)
+			c.Close()
+			return nil, err
+		}
+	case <-time.After(c.timeout):
+		c.Close()
+		return nil, errors.New("gocql: no response to connection startup within timeout")
+	}
+
+	go c.serve()
 
 	return c, nil
 }
@@ -249,7 +274,7 @@ func (c *Conn) Read(p []byte) (n int, err error) {
 	return
 }
 
-func (c *Conn) startup() error {
+func (c *Conn) startup(frameTicker chan struct{}) error {
 	m := map[string]string{
 		"CQL_VERSION": c.cfg.CQLVersion,
 	}
@@ -258,6 +283,7 @@ func (c *Conn) startup() error {
 		m["COMPRESSION"] = c.compressor.Name()
 	}
 
+	frameTicker <- struct{}{}
 	framer, err := c.exec(&writeStartupFrame{opts: m}, nil)
 	if err != nil {
 		return err
@@ -274,13 +300,13 @@ func (c *Conn) startup() error {
 	case *readyFrame:
 		return nil
 	case *authenticateFrame:
-		return c.authenticateHandshake(v)
+		return c.authenticateHandshake(v, frameTicker)
 	default:
 		return NewErrProtocol("Unknown type of response to startup frame: %s", v)
 	}
 }
 
-func (c *Conn) authenticateHandshake(authFrame *authenticateFrame) error {
+func (c *Conn) authenticateHandshake(authFrame *authenticateFrame, frameTicker chan struct{}) error {
 	if c.auth == nil {
 		return fmt.Errorf("authentication required (using %q)", authFrame.class)
 	}
@@ -293,6 +319,7 @@ func (c *Conn) authenticateHandshake(authFrame *authenticateFrame) error {
 	req := &writeAuthResponseFrame{data: resp}
 
 	for {
+		frameTicker <- struct{}{}
 		framer, err := c.exec(req, nil)
 		if err != nil {
 			return err
@@ -352,7 +379,7 @@ func (c *Conn) closeWithError(err error) {
 	close(c.quit)
 	c.conn.Close()
 
-	if c.started && err != nil {
+	if err != nil {
 		c.errorHandler.HandleError(c, err, true)
 	}
 }
@@ -463,14 +490,6 @@ func (c *Conn) recv() error {
 	return nil
 }
 
-type callReq struct {
-	// could use a waitgroup but this allows us to do timeouts on the read/send
-	resp     chan error
-	framer   *framer
-	timeout  chan struct{} // indicates to recv() that a call has timedout
-	streamID int           // current stream in use
-}
-
 func (c *Conn) releaseStream(stream int) {
 	c.mu.Lock()
 	call := c.calls[stream]
@@ -502,11 +521,20 @@ var (
 	}
 )
 
+type callReq struct {
+	// could use a waitgroup but this allows us to do timeouts on the read/send
+	resp     chan error
+	framer   *framer
+	timeout  chan struct{} // indicates to recv() that a call has timedout
+	streamID int           // current stream in use
+
+	timer *time.Timer
+}
+
 func (c *Conn) exec(req frameWriter, tracer Tracer) (*framer, error) {
 	// TODO: move tracer onto conn
 	stream, ok := c.streams.GetStream()
 	if !ok {
-		fmt.Println(c.streams)
 		return nil, ErrNoStreams
 	}
 
@@ -534,6 +562,10 @@ func (c *Conn) exec(req frameWriter, tracer Tracer) (*framer, error) {
 
 	err := req.writeFrame(framer, stream)
 	if err != nil {
+		// closeWithError will block waiting for this stream to either receive a response
+		// or for us to timeout, close the timeout chan here. Im not entirely sure
+		// but we should not get a response after an error on the write side.
+		close(call.timeout)
 		// I think this is the correct thing to do, im not entirely sure. It is not
 		// ideal as readers might still get some data, but they probably wont.
 		// Here we need to be careful as the stream is not available and if all
@@ -545,11 +577,25 @@ func (c *Conn) exec(req frameWriter, tracer Tracer) (*framer, error) {
 
 	var timeoutCh <-chan time.Time
 	if c.timeout > 0 {
-		timeoutCh = time.After(c.timeout)
+		if call.timer == nil {
+			call.timer = time.NewTimer(0)
+			<-call.timer.C
+		} else {
+			if !call.timer.Stop() {
+				select {
+				case <-call.timer.C:
+				default:
+				}
+			}
+		}
+
+		call.timer.Reset(c.timeout)
+		timeoutCh = call.timer.C
 	}
 
 	select {
 	case err := <-call.resp:
+		close(call.timeout)
 		if err != nil {
 			if !c.Closed() {
 				// if the connection is closed then we cant release the stream,
@@ -960,8 +1006,7 @@ func (c *Conn) executeBatch(batch *Batch) *Iter {
 
 		return iter
 	case error:
-
-		return &Iter{err: err, framer: framer}
+		return &Iter{err: x, framer: framer}
 	default:
 		return &Iter{err: NewErrProtocol("Unknown type in response to batch statement: %s", x), framer: framer}
 	}
@@ -1001,6 +1046,11 @@ func (c *Conn) awaitSchemaAgreement() (err error) {
 
 		var schemaVersion string
 		for iter.Scan(&schemaVersion) {
+			if schemaVersion == "" {
+				log.Println("skipping peer entry with empty schema_version")
+				continue
+			}
+
 			versions[schemaVersion] = struct{}{}
 			schemaVersion = ""
 		}

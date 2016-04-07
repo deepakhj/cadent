@@ -5,9 +5,10 @@
 package cadent
 
 import (
+	"consistent"
+
 	"cadent/server/lrucache"
 	"cadent/server/stats"
-	"consistent"
 	"fmt"
 	"net/url"
 	"strconv"
