@@ -114,6 +114,8 @@ func SendMsg(i_url *url.URL, msg string) {
 	_, err = conn.Write(to_send)
 	if err != nil {
 		log.Printf("Error in Write: %s", err)
+		conLock.Lock()
+		defer conLock.Unlock()
 		delete(outCons, i_url)
 	}
 }
