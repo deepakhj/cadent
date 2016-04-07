@@ -32,7 +32,7 @@ value="bar"
 [accumulator.writer]
 driver = "file"
 dsn = "/tmp/moo"
- 	[accumulator.writer.options]
+    [accumulator.writer.options]
     max_file_size=10000
 
 # aggregate bin counts

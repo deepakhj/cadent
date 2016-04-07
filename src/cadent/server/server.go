@@ -52,6 +52,7 @@ import (
 const (
 	DEFAULT_WORKERS                    = int64(8)
 	DEFAULT_OUTPUT_WORKERS             = int64(32)
+	DEFAULT_INTERNAL_QUEUE_LENGTH      = 1024
 	DEFAULT_NUM_STATS                  = 100
 	DEFAULT_SENDING_CONNECTIONS_METHOD = "bufferedpool"
 	DEFAULT_SPLITTER_TIMEOUT           = 5000 * time.Millisecond
@@ -432,7 +433,7 @@ func (server *Server) BackPressure() {
 }
 
 func (server *Server) NeedBackPressure() bool {
-	return server.CurrentReadBufferRam.Get() > server.MaxReadBufferSize || len(server.WorkQueue) == (int)(server.Workers)
+	return server.CurrentReadBufferRam.Get() > server.MaxReadBufferSize || len(server.WorkQueue) == (int)(DEFAULT_INTERNAL_QUEUE_LENGTH)
 }
 
 //spins up the queue of go routines to handle outgoing
@@ -728,13 +729,13 @@ func (server *Server) StartListen(url *url.URL) error {
 	}
 
 	//the queue is only as big as the workers
-	server.WorkQueue = make(chan *OutputMessage, server.Workers*20)
+	server.WorkQueue = make(chan *OutputMessage, DEFAULT_INTERNAL_QUEUE_LENGTH)
 
 	//input queue
-	server.InputQueue = make(chan splitter.SplitItem, server.Workers*20)
+	server.InputQueue = make(chan splitter.SplitItem, DEFAULT_INTERNAL_QUEUE_LENGTH)
 
 	//input queue
-	server.ProcessedQueue = make(chan splitter.SplitItem, server.Workers*20)
+	server.ProcessedQueue = make(chan splitter.SplitItem, DEFAULT_INTERNAL_QUEUE_LENGTH)
 	return nil
 
 }

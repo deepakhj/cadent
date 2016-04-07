@@ -54,12 +54,12 @@ type ServerPoolServer struct {
 }
 
 func (p *ServerPoolServer) Init() {
-	pref := fmt.Sprintf("%p", p)
-	p.ServerPingCounts = stats.NewAtomic(pref + " " + p.Name + " ServerPingCounts")
-	p.ServerUpCounts = stats.NewAtomic(pref + " " + p.Name + " ServerUpCounts")
-	p.ServerDownCounts = stats.NewAtomic(pref + " " + p.Name + " ServerDownCounts")
-	p.ServerCurrentDownCounts = stats.NewAtomic(pref + " " + p.Name + " ServerCurrentDownCounts")
-	p.ServerRequestCounts = stats.NewAtomic(pref + " " + p.Name + " ServerRequestCounts")
+	//pref := fmt.Sprintf("%p", p)
+	p.ServerPingCounts = stats.NewAtomic(p.Name + "-ServerPingCounts")
+	p.ServerUpCounts = stats.NewAtomic(p.Name + "-ServerUpCounts")
+	p.ServerDownCounts = stats.NewAtomic(p.Name + "-ServerDownCounts")
+	p.ServerCurrentDownCounts = stats.NewAtomic(p.Name + "-ServerCurrentDownCounts")
+	p.ServerRequestCounts = stats.NewAtomic(p.Name + "-ServerRequestCounts")
 }
 
 type CheckedServerPool struct {
