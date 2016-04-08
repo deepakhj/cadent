@@ -135,7 +135,7 @@ func (s *GraphiteBaseStatItem) Out(fmatter FormatterItem, acc AccumulatorItem) [
 	}
 }
 
-func (s *GraphiteBaseStatItem) Accumulate(val float64) error {
+func (s *GraphiteBaseStatItem) Accumulate(val float64, sample float64) error {
 	if math.IsInf(val, 0) || math.IsNaN(val) {
 		return nil
 	}
@@ -281,7 +281,7 @@ func (a *GraphiteAccumulate) ProcessLine(line string) (err error) {
 	}
 
 	// needs to lock internally if needed
-	gots.Accumulate(f_val)
+	gots.Accumulate(f_val, 1.0)
 
 	// add it if not there
 	if !ok {

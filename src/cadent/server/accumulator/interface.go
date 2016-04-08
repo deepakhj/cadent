@@ -13,7 +13,7 @@ type StatItem interface {
 	Key() string
 	Type() string
 	Out(fmatter FormatterItem, acc AccumulatorItem) []string
-	Accumulate(val float64) error
+	Accumulate(val float64, sample float64) error
 	ZeroOut() error
 	Repr() repr.StatRepr
 }

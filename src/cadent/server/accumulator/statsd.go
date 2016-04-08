@@ -163,7 +163,7 @@ func (s *StatsdBaseStatItem) Out(fmatter FormatterItem, acc AccumulatorItem) []s
 	}
 }
 
-func (s *StatsdBaseStatItem) Accumulate(val float64) error {
+func (s *StatsdBaseStatItem) Accumulate(val float64, sample float64) error {
 	if math.IsInf(val, 0) || math.IsNaN(val) {
 		return nil
 	}
@@ -176,7 +176,7 @@ func (s *StatsdBaseStatItem) Accumulate(val float64) error {
 
 	switch {
 	case s.InType == "c": //counter
-		s.Sum += val
+		s.Sum += val * sample
 	case s.InType == "g": //gauage
 		s.Sum = val
 	case s.InType == "-g": //gauage negate
@@ -198,14 +198,15 @@ func (s *StatsdBaseStatItem) Accumulate(val float64) error {
 /** timer type **/
 
 type StatsdTimerStatItem struct {
-	InKey  string
-	InType string
-	Count  int64
-	Min    float64
-	Max    float64
-	Sum    float64
-	Mean   float64
-	Values statdFloat64arr
+	InKey     string
+	InType    string
+	Count     int64
+	Min       float64
+	Max       float64
+	Sum       float64
+	Mean      float64
+	SampleSum float64 // sample rate sum
+	Values    statdFloat64arr
 
 	PercentThreshold []float64
 
@@ -228,7 +229,7 @@ func (s *StatsdTimerStatItem) Repr() repr.StatRepr {
 func (s *StatsdTimerStatItem) Key() string  { return s.InKey }
 func (s *StatsdTimerStatItem) Type() string { return s.InType }
 
-func (s *StatsdTimerStatItem) Accumulate(val float64) error {
+func (s *StatsdTimerStatItem) Accumulate(val float64, sample float64) error {
 	if math.IsInf(val, 0) || math.IsNaN(val) {
 		return nil
 	}
@@ -247,7 +248,7 @@ func (s *StatsdTimerStatItem) Accumulate(val float64) error {
 		s.Max = val
 	}
 	//log.Debug("SUM: %v VAL: %v COUNT %v", s.Sum, val, s.Count)
-
+	s.SampleSum += sample
 	s.Mean = s.Sum / float64(s.Count)
 	s.Values = append(s.Values, val)
 	return nil
@@ -262,6 +263,7 @@ func (s *StatsdTimerStatItem) ZeroOut() error {
 	s.Sum = 0.0
 	s.Count = 0
 	s.start_time = 0
+	s.SampleSum = 0
 	return nil
 }
 
@@ -315,8 +317,8 @@ func (s *StatsdTimerStatItem) Out(fmatter FormatterItem, acc AccumulatorItem) []
 	}
 
 	base := []string{
-		fmatter.ToString(f_key+".count", float64(s.Count), t_stamp, "c", nil),
-		fmatter.ToString(f_key+".count_ps", float64(s.Count)/float64(tick), t_stamp, "c", nil),
+		fmatter.ToString(f_key+".count", float64(s.SampleSum), t_stamp, "c", nil),
+		fmatter.ToString(f_key+".count_ps", float64(s.SampleSum)/float64(tick), t_stamp, "c", nil),
 		fmatter.ToString(f_key+".lower", min, t_stamp, "g", nil),
 		fmatter.ToString(f_key+".upper", max, t_stamp, "g", nil),
 		fmatter.ToString(f_key+".sum", s.Sum, t_stamp, "g", nil),
@@ -632,6 +634,7 @@ func (a *StatsdAccumulate) ProcessLine(line string) (err error) {
 				Count:            0,
 				InKey:            key,
 				PercentThreshold: thres,
+				SampleSum:        0,
 			}
 		} else {
 			gots = &StatsdBaseStatItem{
@@ -643,9 +646,9 @@ func (a *StatsdAccumulate) ProcessLine(line string) (err error) {
 			}
 		}
 	}
-	m_val := float64(f_val) / sample
+	m_val := float64(f_val)
 	// needs to lock internally if needed
-	gots.Accumulate(m_val)
+	gots.Accumulate(m_val, 1.0/sample)
 
 	// add it if not there
 	if !ok {
