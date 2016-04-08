@@ -176,9 +176,9 @@ type Server struct {
 	ShowStats            bool
 
 	// our bound connection if TCP or UnixSocket
-	Connection net.Listener     // unix socket
+	Connection net.Listener     // unix socket (no SO_REUSEPORT allowed)
 	TCPConns   []net.Listener   // TCP SO_REUSEPORT
-	UDPConns   []net.PacketConn //UDP SO_REUSEPORT
+	UDPConns   []net.PacketConn // UDP SO_REUSEPORT
 
 	//if our "buffered" bits exceded this, we're basically out of ram
 	// so we "pause" until we can do something
@@ -694,11 +694,10 @@ func (server *Server) StartListen(url *url.URL) error {
 		}
 
 	} else if url.Scheme == "http" {
-
 		//http is yet another "special" case, client HTTP does the hard work
 	} else if url.Scheme == "tcp" {
 		server.TCPConns = make([]net.Listener, server.Workers)
-		// use multiple listeners for UDP, so need to have REUSE enabled
+		// use multiple listeners for TCP, so need to have REUSE enabled
 		for i := 0; i < int(server.Workers); i++ {
 			_, err := net.ResolveTCPAddr(url.Scheme, url.Host)
 			if err != nil {
@@ -718,6 +717,7 @@ func (server *Server) StartListen(url *url.URL) error {
 			server.TCPConns[i] = conn
 		}
 	} else {
+		// unix socket
 		var conn net.Listener
 		var err error
 		conn, err = net.Listen(url.Scheme, url.Host+url.Path)
@@ -728,7 +728,7 @@ func (server *Server) StartListen(url *url.URL) error {
 		server.Connection = conn
 	}
 
-	//the queue is only as big as the workers
+	//the queue is consumed by the main output dispatcher
 	server.WorkQueue = make(chan *OutputMessage, DEFAULT_INTERNAL_QUEUE_LENGTH)
 
 	//input queue
