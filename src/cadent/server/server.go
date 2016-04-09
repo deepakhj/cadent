@@ -810,9 +810,9 @@ func (server *Server) StatsTick() {
 	server.stats.InputQueueSize = len(server.InputQueue)
 	server.stats.WorkQueueSize = len(server.WorkQueue)
 
-	stats.StatsdClient.GaugeAbsolute(fmt.Sprintf("%s.inputqueue.length", server.Name), int64(server.stats.InputQueueSize))
-	stats.StatsdClient.GaugeAbsolute(fmt.Sprintf("%s.workqueue.length", server.Name), int64(server.stats.WorkQueueSize))
-	stats.StatsdClient.GaugeAbsolute(fmt.Sprintf("%s.readbuffer.length", server.Name), int64(server.stats.CurrentReadBufferSize))
+	stats.StatsdClientSlow.GaugeAbsolute(fmt.Sprintf("%s.inputqueue.length", server.Name), int64(server.stats.InputQueueSize))
+	stats.StatsdClientSlow.GaugeAbsolute(fmt.Sprintf("%s.workqueue.length", server.Name), int64(server.stats.WorkQueueSize))
+	stats.StatsdClientSlow.GaugeAbsolute(fmt.Sprintf("%s.readbuffer.length", server.Name), int64(server.stats.CurrentReadBufferSize))
 
 	server.stats.ValidLineCountPerSec = server.ValidLineCount.TotalRate(elapsed)
 	server.stats.WorkerValidLineCountPerSec = server.WorkerValidLineCount.TotalRate(elapsed)
@@ -845,9 +845,9 @@ func (server *Server) StatsTick() {
 		}
 		//tick the cacher stats
 		length, size, capacity, _ := hasher.Cache.Stats()
-		stats.StatsdClient.GaugeAbsolute(fmt.Sprintf("%s.lrucache.length", server.Name), int64(length))
-		stats.StatsdClient.GaugeAbsolute(fmt.Sprintf("%s.lrucache.size", server.Name), int64(size))
-		stats.StatsdClient.GaugeAbsolute(fmt.Sprintf("%s.lrucache.capacity", server.Name), int64(capacity))
+		stats.StatsdClientSlow.GaugeAbsolute(fmt.Sprintf("%s.lrucache.length", server.Name), int64(length))
+		stats.StatsdClientSlow.GaugeAbsolute(fmt.Sprintf("%s.lrucache.size", server.Name), int64(size))
+		stats.StatsdClientSlow.GaugeAbsolute(fmt.Sprintf("%s.lrucache.capacity", server.Name), int64(capacity))
 
 	}
 
