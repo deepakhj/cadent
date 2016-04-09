@@ -98,7 +98,8 @@ func (sb *StatsdBuffer) Incr(stat string, count int64) error {
 		return nil
 	}
 	if 0 != count {
-		sb.eventChannel <- &event.Increment{Name: stat, Value: count}
+		ct := int64(float32(count) / sb.SampleRate)
+		sb.eventChannel <- &event.Increment{Name: stat, Value: ct}
 	}
 	return nil
 }
@@ -109,7 +110,8 @@ func (sb *StatsdBuffer) Decr(stat string, count int64) error {
 		return nil
 	}
 	if 0 != count {
-		sb.eventChannel <- &event.Increment{Name: stat, Value: -count}
+		ct := int64(float32(count) / sb.SampleRate)
+		sb.eventChannel <- &event.Increment{Name: stat, Value: -ct}
 	}
 	return nil
 }
@@ -119,7 +121,7 @@ func (sb *StatsdBuffer) Timing(stat string, delta int64) error {
 	if !sb.registerTimerStat(sb.TimerSampleRate) {
 		return nil
 	}
-	sb.eventChannel <- event.NewTiming(stat, delta)
+	sb.eventChannel <- event.NewTiming(stat, delta, float64(sb.TimerSampleRate))
 	return nil
 }
 
@@ -128,7 +130,7 @@ func (sb *StatsdBuffer) TimingSampling(stat string, delta int64, samplerate floa
 	if !sb.registerTimerStat(samplerate) {
 		return nil
 	}
-	sb.eventChannel <- event.NewTiming(stat, delta)
+	sb.eventChannel <- event.NewTiming(stat, delta, float64(sb.TimerSampleRate))
 	return nil
 }
 

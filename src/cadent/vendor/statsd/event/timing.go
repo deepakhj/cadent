@@ -19,6 +19,7 @@ type Timing struct {
 	Value            int64
 	Values           []int64
 	Count            int64
+	Sample		 float64
 	PercentThreshold []float64
 }
 
@@ -41,8 +42,8 @@ func round(a float64) float64 {
 }
 
 // NewTiming is a factory for a Timing event, setting the Count to 1 to prevent div_by_0 errors
-func NewTiming(k string, delta int64) *Timing {
-	return &Timing{Name: k, Min: delta, Max: delta, Value: delta, Count: 1, PercentThreshold: []float64{0.9, 0.99}}
+func NewTiming(k string, delta int64, sample float64) *Timing {
+	return &Timing{Name: k, Min: delta, Max: delta, Value: delta, Count: 1, Sample: 1.0 / sample, PercentThreshold: []float64{0.9, 0.99}}
 }
 
 // Update the event with metrics coming from a new one of the same type and with the same key
@@ -53,6 +54,7 @@ func (e *Timing) Update(e2 Event) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	p := e2.Payload().(map[string]interface{})
+	e.Sample += p["sample"].(float64)
 	e.Count += p["cnt"].(int64)
 	e.Value += p["val"].(int64)
 	e.Min = minInt64(e.Min, p["min"].(int64))
@@ -76,6 +78,7 @@ func (e *Timing) Reset() {
 func (e Timing) Payload() interface{} {
 	return map[string]interface{}{
 		"min":  e.Min,
+		"sample":  e.Sample,
 		"max":  e.Max,
 		"val":  e.Value,
 		"cnt":  e.Count,
@@ -83,7 +86,7 @@ func (e Timing) Payload() interface{} {
 	}
 }
 
-// Stats returns an array of StatsD events as they travel over UDP
+// Stats returns an array of StatsD events
 func (e Timing) Stats(tick time.Duration) []string {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -107,8 +110,8 @@ func (e Timing) Stats(tick time.Duration) []string {
 	std = math.Sqrt(std / float64(e.Count))
 
 	base := []string{
-		fmt.Sprintf("%s.count:%d|c", e.Name, int64(val_len)),
-		fmt.Sprintf("%s.count_ps:%d|c", e.Name, int64(float64(val_len)/float64(tick)/float64(time.Second))),
+		fmt.Sprintf("%s.count:%d|c", e.Name, int64(e.Sample)),
+		fmt.Sprintf("%s.count_ps:%d|c", e.Name, int64(float64(e.Sample)/float64(tick)/float64(time.Second))),
 		fmt.Sprintf("%s.mean:%d|c", e.Name, int64(avg)), // make sure e.Count != 0
 		fmt.Sprintf("%s.lower:%d|c", e.Name, e.Min),
 		fmt.Sprintf("%s.upper:%d|c", e.Name, e.Max),
