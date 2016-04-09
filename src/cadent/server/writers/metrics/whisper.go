@@ -115,7 +115,7 @@ func NewWhisperWriter(conf map[string]interface{}) (*WhisperWriter, error) {
 	ws.xFilesFactor = 0.3
 	_xf := conf["xFilesFactor"]
 	if _xf != nil {
-		ws.xFilesFactor = float32(_xf.(float32))
+		ws.xFilesFactor = float32(_xf.(float64))
 	}
 
 	ws.num_workers = WHISPER_METRIC_WORKERS

@@ -48,7 +48,8 @@ func (ws *WhisperIndexer) Write(skey string) error {
 	return nil
 }
 
-// change {xxx,yyy} -> * as that's all the globber can handle
+// change {xxx,yyy} -> * as that's all the go lang glob can handle
+// and so we turn it into t regex post
 func (ws *WhisperIndexer) toGlob(metric string) (string, string, []string) {
 
 	outgs := []string{}
@@ -71,7 +72,7 @@ func (ws *WhisperIndexer) toGlob(metric string) (string, string, []string) {
 			}
 		case ",":
 			if got_first {
-				reg_str += "|" // glob , -> |
+				reg_str += "|" // glob , -> regex |
 			} else {
 				out_str += c
 			}
