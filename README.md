@@ -774,6 +774,14 @@ TBD
 TBD
 
 
+### Whisper Writing
+
+99% of the performance issue w/ wishper files are the Disks.  Since we typically here have large space requirements
+(in the TB range) and we are in the Cloud (AWS for us).  We need to use EBS drives which are really slow compared
+to any SSDs in the mix.  So you MUST limit the `writes_per_second` allowed or you'll end up in IOWait death.  For a
+1 Tb (3000 iops) generic EBS (gp2) drive empirically we find that we get ~800 batch point writes per/second max.  
+So we set the `writes_per_second=1000` 
+
 Author
 ------
 

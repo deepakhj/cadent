@@ -121,6 +121,11 @@ func (ws *WhisperIndexer) Find(metric string) (MetricFindItems, error) {
 		return mt, err
 	}
 
+	// a little special case for "exact" data metric matches
+	// i.e. servers.all-1-stats-infra-integ.iostat.xvdg.writes
+	// will match servers.all-1-stats-infra-integ.iostat.xvdg.writes and
+	// servers.all-1-stats-infra-integ.iostat.xvdg.writes_bytes ...
+	// so if we get an exact data hit .. just return that one
 	for _, p := range paths {
 		var ms MetricFindItem
 
@@ -152,6 +157,14 @@ func (ws *WhisperIndexer) Find(metric string) (MetricFindItems, error) {
 			ms.Leaf = 0
 			ms.AllowChildren = 1
 		}
+
+		// exact match special case
+		if is_data && t == metric {
+			mt_ext := make(MetricFindItems, 1)
+			mt_ext[0] = ms
+			return mt_ext, nil
+		}
+
 		mt = append(mt, ms)
 	}
 	return mt, nil
