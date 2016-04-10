@@ -255,6 +255,27 @@ func (c *StatsdClient) EventStatsdString(e event.Event, tick time.Duration, samp
 
 }
 
+// special case for timers, if we are a buffered client,
+// then we DO NOT add the sample rate to the acctuall "timers" parts of the metric lines
+// (lower, upper, median, etc...) just to the "count and count_ps"
+func (c *StatsdClient) EventStatsdStringTimerSample(e event.Event, tick time.Duration, samplerate float32) (string, error) {
+	var out_str = ""
+
+	for _, stat := range e.Stats(tick) {
+		str := fmt.Sprintf("%s%s", c.prefix, stat)
+
+		if len(str) > 0 {
+			// just count and count ps
+			if samplerate < 1.0 && (strings.Contains(stat, "count:") ||  strings.Contains(stat, "count_ps:")){
+				str += fmt.Sprintf("|@%f", samplerate)
+			}
+			out_str += str + "\n"
+		}
+	}
+	return out_str, nil
+
+}
+
 // SendEvent - Sends stats from an event object
 func (c *StatsdClient) SendEvent(e event.Event, tick time.Duration) error {
 	if c.conn == nil {

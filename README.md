@@ -776,11 +776,35 @@ TBD
 
 ### Whisper Writing
 
-99% of the performance issue w/ wishper files are the Disks.  Since we typically here have large space requirements
+99% of the performance issue w/ Wisper files are the Disks.  Since we typically here have large space requirements
 (in the TB range) and we are in the Cloud (AWS for us).  We need to use EBS drives which are really slow compared
 to any SSDs in the mix.  So you MUST limit the `writes_per_second` allowed or you'll end up in IOWait death.  For a
-1 Tb (3000 iops) generic EBS (gp2) drive empirically we find that we get ~800 batch point writes per/second max.  
-So we set the `writes_per_second=1000` 
+1 Tb (3000 iops) generic EBS (gp2) drive empirically we find that we get ~1500 batch point writes per/second max 
+(that's using all the IOPs available, which if you think of each "write" as needing to read first then write that 
+makes some sense).  So we set the `writes_per_second=1200` to allow for readers to actually function a bit.
+
+
+### Writers Cache/Ram
+
+This one is a bit tricky to figure out exactly, and it highly dependent on the metric volume and shortest "tick" interval.
+The cache ram needed depends on # metrics/keys and the write capacity.  The cache holds a `map[key][]points`.  Once
+the writer determines which metric to flush to disk/DB we reclaim the RAM.
+
+Just some empirical numbers to gauge things, but the metric you should "watch" about the ram consumed by the cache are 
+found in `stats.gauges.{statsd_prefix}.{hostname}.cacher.{bytes|metrics|points}`.
+
+    Specs: 
+        Instance: c4.xlarge
+        EBS drive: 1TB (3000 IOPS)
+        Flush Window: 10s
+        Keys Incoming: 140,000
+        Writes/s: 1200(set) ~1000 (actual)
+        CacheRam consumed: ~300MB
+        # Points in Cache: ~1.3 Million
+
+The process that runs the graphite writer then consumes ~1.2GB of ram in total.  Assuming the key space does not
+increase (by "alot") the above is pretty much a steady state.
+
 
 Author
 ------

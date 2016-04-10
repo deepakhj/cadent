@@ -415,7 +415,7 @@ func (sb *StatsdBuffer) flush() (err error) {
 		var str string
 		switch v.(type) {
 		case *event.Timing, *event.PrecisionTiming:
-			str, err = sb.statsd.EventStatsdString(v, sb.flushInterval, sb.TimerSampleRate)
+			str, err = sb.statsd.EventStatsdStringTimerSample(v, sb.flushInterval, sb.TimerSampleRate)
 
 		default:
 			str, err = sb.statsd.EventStatsdString(v, sb.flushInterval, sb.SampleRate)

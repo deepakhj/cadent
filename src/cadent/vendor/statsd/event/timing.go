@@ -100,6 +100,8 @@ func (e Timing) Stats(tick time.Duration) []string {
 
 	sort.Sort(statdInt64arr(e.Values))
 
+	use_count := numInThreshold
+
 	for idx, v := range e.Values {
 		std += math.Pow((float64(v) - avg), 2.0)
 		if idx > 0 {
@@ -110,8 +112,8 @@ func (e Timing) Stats(tick time.Duration) []string {
 	std = math.Sqrt(std / float64(e.Count))
 
 	base := []string{
-		fmt.Sprintf("%s.count:%d|c", e.Name, int64(e.Sample)),
-		fmt.Sprintf("%s.count_ps:%d|c", e.Name, int64(float64(e.Sample)/float64(tick)/float64(time.Second))),
+		fmt.Sprintf("%s.count:%d|c", e.Name, int64(use_count)), // note: the final "client" actually injects the |@{samplerate} to the final outgoing lines
+		fmt.Sprintf("%s.count_ps:%d|c", e.Name, int64((float64(use_count) * float64(time.Second))/float64(tick))),
 		fmt.Sprintf("%s.mean:%d|c", e.Name, int64(avg)), // make sure e.Count != 0
 		fmt.Sprintf("%s.lower:%d|c", e.Name, e.Min),
 		fmt.Sprintf("%s.upper:%d|c", e.Name, e.Max),
