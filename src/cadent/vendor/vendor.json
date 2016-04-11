@@ -76,16 +76,16 @@
 			"revisionTime": "2016-04-06T06:31:54Z"
 		},
 		{
-			"checksumSHA1": "yyFH9quIysCVxs1NzI1udAtSl70=",
+			"checksumSHA1": "DZKWXNBlFSKElWXmolQD1o1Y/8I=",
 			"path": "statsd",
-			"revision": "d9af9a9f1591419a06285681623283b9891d0218",
-			"revisionTime": "2016-04-09T00:50:09Z"
+			"revision": "dafcf23d2df004d8806625355f9903bd5810b8d8",
+			"revisionTime": "2016-04-11T18:16:23Z"
 		},
 		{
 			"checksumSHA1": "kQDJ19Jf9goNalMZmUPn4u3Ipxg=",
 			"path": "statsd/event",
-			"revision": "d9af9a9f1591419a06285681623283b9891d0218",
-			"revisionTime": "2016-04-09T00:50:09Z"
+			"revision": "dafcf23d2df004d8806625355f9903bd5810b8d8",
+			"revisionTime": "2016-04-11T18:16:23Z"
 		}
 	],
 	"rootPath": "cadent"

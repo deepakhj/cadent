@@ -98,8 +98,8 @@ func (sb *StatsdBuffer) Incr(stat string, count int64) error {
 		return nil
 	}
 	if 0 != count {
-		ct := int64(float32(count) / sb.SampleRate)
-		sb.eventChannel <- &event.Increment{Name: stat, Value: ct}
+		//ct := int64(float32(count) / sb.SampleRate)
+		sb.eventChannel <- &event.Increment{Name: stat, Value: count}
 	}
 	return nil
 }
@@ -110,8 +110,8 @@ func (sb *StatsdBuffer) Decr(stat string, count int64) error {
 		return nil
 	}
 	if 0 != count {
-		ct := int64(float32(count) / sb.SampleRate)
-		sb.eventChannel <- &event.Increment{Name: stat, Value: -ct}
+		//ct := int64(float32(count) / sb.SampleRate)
+		sb.eventChannel <- &event.Increment{Name: stat, Value: -count}
 	}
 	return nil
 }
