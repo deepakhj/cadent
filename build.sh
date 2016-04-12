@@ -68,6 +68,7 @@ mkdir -p ${OUTPUT}
 cp -rf html ${OUTPUT}
 cp -rf cadent ${OUTPUT}
 cp -rf echoserver ${OUTPUT}
+cp -rf statblast ${OUTPUT}
 
 #tar -cvzf "${OUTPUT}/${APP_NAME}-${BUILDID}.tmp" -C ${PACKAGE_BASE}
 
