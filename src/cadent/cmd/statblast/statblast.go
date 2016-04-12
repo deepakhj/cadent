@@ -20,6 +20,7 @@ import (
 var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 var randWords = []string{"test", "house", "here", "badline", "cow", "now"}
 var sentLines int64
+var numWords int = 3
 var startTime = time.Now().Unix()
 var ConnectionTimeout, _ = time.ParseDuration("2s")
 var Statsdtypes = []string{"c", "g", "ms"}
@@ -43,23 +44,28 @@ func RandItem(strs []string) string {
 
 func GraphiteStr(ct int) string {
 	return fmt.Sprintf(
-		"graphitetest.%s.%s.%s %d %d\n",
-		RandItem(randWords),
-		RandItem(randWords),
-		RandItem(randWords),
+		"graphitetest.%s %d %d\n",
+		sprinter(numWords),
 		ct,
 		int32(time.Now().Unix()),
 	)
+}
+
+func sprinter(ct int) string {
+	r_ws := []string{RandItem(randWords)}
+
+	for i := 0; i < ct-1; i++ {
+		r_ws = append(r_ws, RandItem(randWords))
+	}
+	return strings.Join(r_ws, ".")
 }
 
 func StatsdStr(ct int) string {
 	cc := Statsdtypes[rand.Intn(len(Statsdtypes))]
 	sample := float32(rand.Intn(1000)) / float32(1000)
 	return fmt.Sprintf(
-		"statdtest.%s.%s.%s:%d|%s|@%0.2f\n",
-		RandItem(randWords),
-		RandItem(randWords),
-		RandItem(randWords),
+		"statdtest.%s:%d|%s|@%0.2f\n",
+		sprinter(numWords),
 		ct,
 		cc,
 		sample,
@@ -110,6 +116,7 @@ func SendMsg(i_url *url.URL, msg string) {
 		log.Printf("Error in Connection: %s", err)
 		return
 	}
+
 	to_send := []byte(msg)
 	_, err = conn.Write(to_send)
 	if err != nil {
@@ -176,6 +183,7 @@ func main() {
 	buffer := flag.Int("buffer", 512, "send buffer")
 	concur := flag.Int("forks", 2, "number of concurrent senders")
 	words := flag.String("words", "test,house,here,there,badline,cow,now", "compose the stat keys from these words")
+	words_p_str := flag.Int("words_per_stat", 3, "make stat keys this long (moo.goo.loo)")
 
 	flag.Parse()
 
@@ -185,6 +193,7 @@ func main() {
 	}
 	outCons = make(map[*url.URL]net.Conn)
 	server_split := strings.Split(*serverList, ",")
+	numWords = *words_p_str
 	if len(*words) > 0 {
 		randWords = strings.Split(*words, ",")
 	}
