@@ -60,6 +60,7 @@ Installation
     go get github.com/gocql/gocql
     go get github.com/robyoung/go-whisper
     go get github.com/jbenet/go-reuseport
+    go get github.com/Shopify/sarama
 
     cd ../
     make
@@ -481,6 +482,49 @@ An example config below
      [graphite-whisper.accumulator.writer.indexer]
         driver="whisper"
         dsn="/root/metrics/path"
+
+
+### KAFKA
+
+I mean why not.  There is no "reader" API available for this mode, as kafka it's not designed to be that.  But you can 
+shuffle your stats to the kafka bus if needed.  There are 2 message types "index" and "metrics".  They can be 
+put on the same topic or each in a different one, the choice is yours.  Below is the 2 messages JSON blobs
+
+        INDEX {
+    	    type: "index",,
+    	    path: "my.metric.is.good",
+    	    segments: ["my", "metric", "is", "good"],
+    	    time: [int64 unix Nano second time stamp]
+    	}
+    	
+    	METRIC{
+    	    type: "metric",
+    	    time: [int64 unix Nano second time stamp],
+    	    metric: "my.metric.is.good",
+    	    sum: float64
+    	    mean: float64
+    	    min: float64
+    	    max: float64
+    	    first: float64
+    	    last: float64
+    	    count: int64
+    	    resolution: float64
+    	    ttl: int64
+    	}
+  
+  
+Here are the configuration options
+           
+           [graphite-kafka.accumulator.writer.metrics]
+            index_topic: topic for index message (default: cadent)
+        	metric_topic: topic for data messages (default: cadent)
+        
+        	# some kafka options
+        	compress: "snappy|gzip|none" (default: none)
+        	max_retry: 10
+        	ack_type: "all|local" (all = all replicas ack, default "local")
+        	flush_time: flush produced messages ever tick (default "1s")
+
 
 
 ### API/Readers

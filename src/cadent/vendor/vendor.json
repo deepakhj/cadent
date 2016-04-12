@@ -9,10 +9,41 @@
 			"revisionTime": "2015-11-04T04:29:09Z"
 		},
 		{
+			"checksumSHA1": "gwnUhIsatKCPs5W7Rx5LfpF2RZA=",
+			"path": "github.com/Shopify/sarama",
+			"revision": "68920ff1be3bbd31449ab1e2c255c50cedeb755c",
+			"revisionTime": "2016-03-28T13:55:27Z"
+		},
+		{
+			"checksumSHA1": "5rPfda8jFccr3A6heL+JAmi9K9g=",
+			"path": "github.com/davecgh/go-spew/spew",
+			"revision": "5215b55f46b2b919f50a1df0eaa5886afe4e3b3d",
+			"revisionTime": "2015-11-05T21:09:06Z"
+		},
+		{
+			"checksumSHA1": "y2Kh4iPlgCPXSGTCcFpzePYdzzg=",
+			"path": "github.com/eapache/go-resiliency/breaker",
+			"revision": "b86b1ec0dd4209a588dc1285cdd471e73525c0b3",
+			"revisionTime": "2016-01-04T19:15:39Z"
+		},
+		{
+			"checksumSHA1": "AEGF/lRMFJukJAnRqdCVQ/0I+BY=",
+			"path": "github.com/eapache/queue",
+			"revision": "ded5959c0d4e360646dc9e9908cff48666781367",
+			"revisionTime": "2015-06-06T11:53:03Z"
+		},
+		{
 			"checksumSHA1": "ctK9mwZKnt/8dHxx2Ef6nZTljZs=",
 			"path": "github.com/gocql/gocql/internal/murmur",
 			"revision": "126b7140b27e309e166ae7922261d9972c02e948",
 			"revisionTime": "2016-04-05T07:59:37Z"
+		},
+		{
+			"checksumSHA1": "X+c0K01uzS1NU1yo6YNnxrSqeIY=",
+			"origin": "cadent/vendor/github.com/golang/snappy",
+			"path": "github.com/golang/snappy",
+			"revision": "857ad66e003f466b64f9055849bab122efd4c87a",
+			"revisionTime": "2016-04-04T00:05:40Z"
 		},
 		{
 			"checksumSHA1": "heMa8aseS2k6NeJYumwo/xeKToY=",
@@ -37,6 +68,12 @@
 			"path": "github.com/jtolds/gls",
 			"revision": "8ddce2a84170772b95dd5d576c48d517b22cac63",
 			"revisionTime": "2016-01-05T22:08:40Z"
+		},
+		{
+			"checksumSHA1": "hX+j017F4PEtIUGflAneDtLC6hs=",
+			"path": "github.com/klauspost/crc32",
+			"revision": "19b0b332c9e4516a6370a0456e6182c3b5036720",
+			"revisionTime": "2016-02-19T14:26:09Z"
 		},
 		{
 			"checksumSHA1": "1CgV24NpUYP9ZPIgcnbZD5F/8CA=",

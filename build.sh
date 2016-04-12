@@ -35,14 +35,13 @@ progress Grabing external packages
 go get github.com/BurntSushi/toml
 go get github.com/davecheney/profile
 go get github.com/reusee/mmh3
-#go get github.com/op/go-logging
 go get gopkg.in/op/go-logging.v1
 go get github.com/smartystreets/goconvey/convey
 go get github.com/go-sql-driver/mysql
 go get github.com/gocql/gocql
 go get github.com/robyoung/go-whisper
 go get github.com/jbenet/go-reuseport
-
+go get github.com/Shopify/sarama
 
 make clean
 

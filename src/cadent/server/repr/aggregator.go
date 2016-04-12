@@ -53,6 +53,9 @@ func (sa *Aggregator) Add(stat StatRepr) error {
 		return nil
 	}
 
+	element.Last = stat.Last
+	element.First = stat.First
+
 	element.Count += stat.Count
 	if element.Max < stat.Max {
 		element.Max = stat.Max

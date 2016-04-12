@@ -34,6 +34,8 @@ type StatRepr struct {
 	Max        JsonFloat64 `json:"max"`
 	Sum        JsonFloat64 `json:"sum"`
 	Mean       JsonFloat64 `json:"mean"`
+	First      JsonFloat64 `json:"first"`
+	Last       JsonFloat64 `json:"last"`
 	Count      int64       `json:"count"`
 	Time       time.Time   `json:"time_ns"`
 	Resolution float64     `json:"resolution"`
@@ -42,7 +44,7 @@ type StatRepr struct {
 
 // rough size of the object in bytes
 func (s *StatRepr) ByteSize() int64 {
-	return int64(len(s.Key)) + int64(len(s.StatKey)) + 88 // obtained from `reflect.TypeOf(StatRepr).Size()`
+	return int64(len(s.Key)) + int64(len(s.StatKey)) + 104 // obtained from `reflect.TypeOf(StatRepr{}).Size()`
 }
 
 // These two structure is to allow a list of stats in a large queue

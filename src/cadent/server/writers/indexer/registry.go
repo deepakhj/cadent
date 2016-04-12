@@ -14,6 +14,10 @@ func NewIndexer(name string) (Indexer, error) {
 		return NewCassandraIndexer(), nil
 	case name == "whisper":
 		return NewWhisperIndexer(), nil
+	case name == "kafka":
+		return NewKafkaIndexer(), nil
+	case name == "mysql":
+		return NewMySQLIndexer(), nil
 	default:
 		return nil, fmt.Errorf("Invalid indexer `%s`", name)
 	}

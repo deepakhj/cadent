@@ -43,6 +43,8 @@ type StatsdBaseStatItem struct {
 	Max        float64
 	Sum        float64
 	Mean       float64
+	First      float64
+	Last       float64
 	InType     string
 	start_time int64
 
@@ -57,6 +59,8 @@ func (s *StatsdBaseStatItem) Repr() repr.StatRepr {
 		Count: s.Count,
 		Mean:  repr.CheckFloat(repr.JsonFloat64(s.Mean)),
 		Sum:   repr.CheckFloat(repr.JsonFloat64(s.Sum)),
+		First: repr.CheckFloat(repr.JsonFloat64(s.First)),
+		Last:  repr.CheckFloat(repr.JsonFloat64(s.Last)),
 	}
 }
 
@@ -71,6 +75,8 @@ func (s *StatsdBaseStatItem) ZeroOut() error {
 	s.Sum = 0.0
 	s.Count = 0
 	s.start_time = 0
+	s.First = STATSD_ACC_MIN_FLAG
+	s.Last = STATSD_ACC_MIN_FLAG
 	return nil
 }
 
@@ -190,6 +196,10 @@ func (s *StatsdBaseStatItem) Accumulate(val float64, sample float64) error {
 	if s.Max == STATSD_ACC_MIN_FLAG || s.Max < val {
 		s.Max = val
 	}
+	if s.First == STATSD_ACC_MIN_FLAG {
+		s.First = val
+	}
+	s.Last = val
 	s.Count += 1
 	s.Mean = s.Sum / float64(s.Count)
 	return nil
@@ -205,6 +215,8 @@ type StatsdTimerStatItem struct {
 	Max       float64
 	Sum       float64
 	Mean      float64
+	First     float64
+	Last      float64
 	SampleSum float64 // sample rate sum
 	Values    statdFloat64arr
 
@@ -223,6 +235,8 @@ func (s *StatsdTimerStatItem) Repr() repr.StatRepr {
 		Count: s.Count,
 		Mean:  repr.CheckFloat(repr.JsonFloat64(s.Mean)),
 		Sum:   repr.CheckFloat(repr.JsonFloat64(s.Sum)),
+		First: repr.CheckFloat(repr.JsonFloat64(s.First)),
+		Last:  repr.CheckFloat(repr.JsonFloat64(s.Last)),
 	}
 }
 
@@ -247,6 +261,11 @@ func (s *StatsdTimerStatItem) Accumulate(val float64, sample float64) error {
 	if s.Max == STATSD_ACC_MIN_FLAG || s.Max < val {
 		s.Max = val
 	}
+	s.Last = val
+	if s.First == STATSD_ACC_MIN_FLAG {
+		s.First = val
+	}
+
 	//log.Debug("SUM: %v VAL: %v COUNT %v", s.Sum, val, s.Count)
 	s.SampleSum += sample
 	s.Mean = s.Sum / float64(s.Count)
@@ -262,6 +281,8 @@ func (s *StatsdTimerStatItem) ZeroOut() error {
 	s.Max = STATSD_ACC_MIN_FLAG
 	s.Sum = 0.0
 	s.Count = 0
+	s.First = STATSD_ACC_MIN_FLAG
+	s.Last = STATSD_ACC_MIN_FLAG
 	s.start_time = 0
 	s.SampleSum = 0
 	return nil
