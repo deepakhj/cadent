@@ -156,8 +156,8 @@ var _CASS_CACHER_SINGLETON map[string]*Cacher
 var _cass_cacher_mutex sync.Mutex
 
 func _get_cacher_signelton(nm string) (*Cacher, error) {
-	_cass_set_mutex.Lock()
-	defer _cass_set_mutex.Unlock()
+	_cass_cacher_mutex.Lock()
+	defer _cass_cacher_mutex.Unlock()
 
 	if val, ok := _CASS_CACHER_SINGLETON[nm]; ok {
 		return val, nil
@@ -208,10 +208,9 @@ type CassandraWriter struct {
 	write_dispatcher *dispatch.Dispatch
 	cacher           *Cacher
 
-	shutdown          chan bool    // when triggered, we skip the rate limiter and go full out till the queue is done
-	shutitdown        bool         // just a flag
-	writes_per_second int          // allowed writes per second
-	rate_limiter      *RateLimiter // rate limit the QPS
+	shutdown          chan bool // when triggered, we skip the rate limiter and go full out till the queue is done
+	shutitdown        bool      // just a flag
+	writes_per_second int       // allowed writes per second
 	num_workers       int
 	queue_len         int
 	max_write_size    int           // size of that buffer before a flush
@@ -281,12 +280,6 @@ func NewCassandraWriter(conf map[string]interface{}) (*CassandraWriter, error) {
 		cass.writes_per_second = int(_rs.(int64))
 	}
 
-	// if 5k/s allow 500 bursts in 100 millis
-	if cass.writes_per_second > 1000 {
-		cass.rate_limiter = NewRateLimiter(cass.writes_per_second, 100*time.Millisecond)
-	} else {
-		cass.rate_limiter = NewRateLimiter(cass.writes_per_second, time.Second)
-	}
 	go cass.TrapExit()
 	return cass, nil
 }

@@ -305,7 +305,7 @@ func (ws *WhisperWriter) Stop() {
 			ws.log.Warning("Whisper: shutdown purge: written %d/%d...", did, mets_l)
 		}
 		if pts != nil {
-			stats.StatsdClient.Incr(fmt.Sprintf("writer.whisper.write.send-to-writers"), 1)
+			stats.StatsdClient.Incr("writer.whisper.write.send-to-writers", 1)
 			ws.InsertMulti(met, pts)
 		}
 		did++
@@ -409,12 +409,14 @@ func (ws *WhisperWriter) sendToWriters() error {
 	// that said, if you actually have the disk capacity to do 10k/writes per second ..  well damn
 	// the extra CPU burn here may not kill you
 	sleep_t := float64(time.Second) * (time.Second.Seconds() / float64(ws.writes_per_second))
+	ws.log.Notice("Starting Write limiter every %f nanoseconds (%d writes per second)", sleep_t, ws.writes_per_second)
 	ticker := time.NewTicker(time.Duration(int(sleep_t)))
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ticker.C:
 			if ws.write_queue != nil {
+				stats.StatsdClient.Incr("writer.whisper.write.send-to-writers", 1)
 				ws.write_queue <- WhisperMetricsJob{Whis: ws}
 			}
 		case <-ws.shutdown:
