@@ -16,6 +16,6 @@ kafka:
     - /var/run/docker.sock:/var/run/docker.sock
 
 cassandra:
-  image: cassandra:2.2
+  image: cassandra
   ports:
     - "9042:9042"

@@ -41,8 +41,9 @@ import (
 const (
 	CASSANDRA_RESULT_CACHE_SIZE = 1024 * 1024 * 100
 	CASSANDRA_RESULT_CACHE_TTL  = 10 * time.Second
-	CASSANDRA_INDEXER_QUEUE_LEN = 1024 * 100
+	CASSANDRA_INDEXER_QUEUE_LEN = 1024 * 1024
 	CASSANDRA_INDEXER_WORKERS   = 128
+	CASSANDRA_WRITES_PER_SECOND = 1000
 )
 
 /** Being Cassandra we need some mappings to match the schemas **/
@@ -74,6 +75,28 @@ type CassPath struct {
 	Hasdata bool
 }
 
+// the singleton
+var _CASS_CACHER_SINGLETON map[string]*Cacher
+var _cass_cacher_mutex sync.Mutex
+
+func _get_cacher_signelton(nm string) (*Cacher, error) {
+	_cass_cacher_mutex.Lock()
+	defer _cass_cacher_mutex.Unlock()
+
+	if val, ok := _CASS_CACHER_SINGLETON[nm]; ok {
+		return val, nil
+	}
+
+	cacher := NewCacher()
+	_CASS_CACHER_SINGLETON[nm] = cacher
+	return cacher, nil
+}
+
+// special onload init
+func init() {
+	_CASS_CACHER_SINGLETON = make(map[string]*Cacher)
+}
+
 /****************** Writer *********************/
 type CassandraIndexer struct {
 	db   *dbs.CassandraDB
@@ -85,11 +108,13 @@ type CassandraIndexer struct {
 	write_lock     sync.Mutex
 	num_workers    int
 	queue_len      int
-	paths_inserted map[string]bool // just to not do "extra" work on paths we've already indexed
 
 	write_queue      chan dispatch.IJob
 	dispatch_queue   chan chan dispatch.IJob
 	write_dispatcher *dispatch.Dispatch
+
+	cache             *Cacher // simple cache to rate limit and buffer writes
+	writes_per_second int     // rate limit writer
 
 	log *logging.Logger
 
@@ -99,7 +124,6 @@ type CassandraIndexer struct {
 func NewCassandraIndexer() *CassandraIndexer {
 	cass := new(CassandraIndexer)
 	cass.log = logging.MustGetLogger("indexer.cassandra")
-	cass.paths_inserted = make(map[string]bool)
 	cass.findcache = lrucache.NewTTLLRUCache(CASSANDRA_RESULT_CACHE_SIZE, CASSANDRA_RESULT_CACHE_TTL)
 	return cass
 }
@@ -131,6 +155,21 @@ func (cass *CassandraIndexer) Config(conf map[string]interface{}) (err error) {
 		cass.queue_len = int(_qs.(int64))
 	}
 
+	cass.cache, err = _get_cacher_signelton(dsn)
+	if err != nil {
+		return err
+	}
+
+	_ms := conf["cache_index_size"]
+	if _ms != nil {
+		cass.cache.maxKeys = int(_ms.(int64))
+	}
+
+	cass.writes_per_second = CASSANDRA_WRITES_PER_SECOND
+	_ws := conf["writes_per_second"]
+	if _ws != nil {
+		cass.writes_per_second = int(_ws.(int64))
+	}
 	return nil
 }
 
@@ -269,31 +308,30 @@ func (cass *CassandraIndexer) WriteOne(skey string) error {
 	return nil
 }
 
-/*
-func (cass *CassandraIndexer) writeLoop() {
+// pop from the cache and send to actual writers
+func (cass *CassandraIndexer) sendToWriters() error {
+	// this may not be the "greatest" ratelimiter of all time,
+	// as "high frequency tickers" can be costly .. but should the workers get backedup
+	// it will block on the write_queue stage
+	sleep_t := float64(time.Second) * (time.Second.Seconds() / float64(cass.writes_per_second))
+	ticker := time.NewTicker(time.Duration(int(sleep_t)))
+	cass.log.Notice("Starting Indexer limiter every %f nanoseconds (%d writes per second)", sleep_t, cass.writes_per_second)
+	defer ticker.Stop()
+
 	for {
 		select {
-		case key := <-cass.write_queue:
-			cass.WriteOne(key)
+		case <-ticker.C:
+			skey := cass.cache.Pop()
+			if skey != "" {
+				stats.StatsdClient.Incr(fmt.Sprintf("indexer.cassandra.write.send-to-writers"), 1)
+				cass.write_queue <- CassandraIndexerJob{Cass: cass, Stat: skey}
+			}
 		}
 	}
-	return
 }
-*/
 
 // keep an index of the stat keys and their fragments so we can look up
 func (cass *CassandraIndexer) Write(skey string) error {
-
-	cass.write_lock.Lock()
-
-	if _, ok := cass.paths_inserted[skey]; ok {
-		stats.StatsdClientSlow.Incr("indexer.cassandra.cached-writes-path", 1)
-		cass.write_lock.Unlock()
-		return nil
-	}
-	cass.paths_inserted[skey] = true
-
-	cass.write_lock.Unlock()
 
 	if cass.write_queue == nil {
 		workers := cass.num_workers
@@ -302,8 +340,12 @@ func (cass *CassandraIndexer) Write(skey string) error {
 		cass.write_dispatcher = dispatch.NewDispatch(workers, cass.dispatch_queue, cass.write_queue)
 		cass.write_dispatcher.SetRetries(2)
 		cass.write_dispatcher.Run()
+		go cass.sendToWriters() // the dispatcher
 	}
-	cass.write_queue <- CassandraIndexerJob{Cass: cass, Stat: skey}
+
+	cass.cache.Add(skey)
+
+	//cass.write_queue <- CassandraIndexerJob{Cass: cass, Stat: skey}
 
 	return nil
 	/*

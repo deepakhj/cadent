@@ -52,7 +52,7 @@ import (
 const (
 	DEFAULT_WORKERS                    = int64(8)
 	DEFAULT_OUTPUT_WORKERS             = int64(32)
-	DEFAULT_INTERNAL_QUEUE_LENGTH      = 8192
+	DEFAULT_INTERNAL_QUEUE_LENGTH      = 16384
 	DEFAULT_NUM_STATS                  = 256
 	DEFAULT_SENDING_CONNECTIONS_METHOD = "bufferedpool"
 	DEFAULT_SPLITTER_TIMEOUT           = 5000 * time.Millisecond

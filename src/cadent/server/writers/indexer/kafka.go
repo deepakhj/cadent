@@ -48,8 +48,9 @@ func (kp *KafkaPath) Encode() ([]byte, error) {
 
 /****************** Interfaces *********************/
 type KafkaIndexer struct {
-	db   *dbs.KafkaDB
-	conn sarama.AsyncProducer
+	db          *dbs.KafkaDB
+	conn        sarama.AsyncProducer
+	write_index bool // if false, we skip the index writing message as well, the stat metric itself has the key in it
 
 	log *logging.Logger
 }
@@ -57,6 +58,7 @@ type KafkaIndexer struct {
 func NewKafkaIndexer() *KafkaIndexer {
 	kf := new(KafkaIndexer)
 	kf.log = logging.MustGetLogger("writers.indexer.kafka")
+	kf.write_index = true
 	return kf
 }
 
@@ -71,6 +73,11 @@ func (kf *KafkaIndexer) Config(conf map[string]interface{}) error {
 		return err
 	}
 
+	_wr := conf["write_index"]
+	if _wr != nil {
+		kf.write_index = _wr.(bool)
+	}
+
 	kf.db = db.(*dbs.KafkaDB)
 	kf.conn = db.Connection().(sarama.AsyncProducer)
 
@@ -78,6 +85,10 @@ func (kf *KafkaIndexer) Config(conf map[string]interface{}) error {
 }
 
 func (kf *KafkaIndexer) Write(skey string) error {
+	// noop if not writing indexes
+	if !kf.write_index {
+		return nil
+	}
 
 	item := &KafkaPath{
 		Type:     "index",

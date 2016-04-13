@@ -174,6 +174,7 @@ func (fi *FileMetrics) Write(stat repr.StatRepr) error {
 		stat.Key, stat.Sum, stat.Mean, stat.Min, stat.Max, stat.Count, stat.Resolution, stat.Time.UnixNano(), stat.TTL,
 	)
 
+	fi.indexer.Write(stat.Key) // index me
 	_, err := fi.WriteLine(line)
 
 	return err

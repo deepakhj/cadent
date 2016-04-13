@@ -488,7 +488,9 @@ An example config below
 
 I mean why not.  There is no "reader" API available for this mode, as kafka it's not designed to be that.  But you can 
 shuffle your stats to the kafka bus if needed.  There are 2 message types "index" and "metrics".  They can be 
-put on the same topic or each in a different one, the choice is yours.  Below is the 2 messages JSON blobs
+put on the same topic or each in a different one, the choice is yours.  Below is the 2 messages JSON blobs.
+You can set `write_index = false` if you want to NOT write the index message (as the metric message has the metric in it
+already and consumers can deal with indexing)
 
         INDEX {
     	    type: "index",,
@@ -516,6 +518,8 @@ put on the same topic or each in a different one, the choice is yours.  Below is
 Here are the configuration options
            
            [graphite-kafka.accumulator.writer.metrics]
+            driver: "kafka"
+            dsn: "pathtokafka:9092,pathtokafka2:9092"
             index_topic: topic for index message (default: cadent)
         	metric_topic: topic for data messages (default: cadent)
         
@@ -524,8 +528,10 @@ Here are the configuration options
         	max_retry: 10
         	ack_type: "all|local" (all = all replicas ack, default "local")
         	flush_time: flush produced messages ever tick (default "1s")
-
-
+        	[graphite-kafka.accumulator.writer.indexer]
+            write_index = true
+            
+            
 
 ### API/Readers
 

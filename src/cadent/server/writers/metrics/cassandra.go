@@ -575,6 +575,11 @@ func (cass *CassandraMetric) Config(conf map[string]interface{}) (err error) {
 
 // simple proxy to the cacher
 func (cass *CassandraMetric) Write(stat repr.StatRepr) error {
+	// write the index from the cache as indexing can be slooowwww
+	// keep note of this, when things are not yet "warm" (the indexer should
+	// keep tabs on what it's already indexed for speed sake,
+	// the push "push" of stats will cause things to get pretty slow for a while
+	cass.indexer.Write(stat.Key)
 	return cass.writer.Write(stat)
 }
 

@@ -92,7 +92,7 @@ func NewCacher() *Cacher {
 	wc.maxKeys = CACHER_METRICS_KEYS
 	wc.maxPoints = CACHER_NUMBER_POINTS
 	wc.curSize = 0
-	wc.log = logging.MustGetLogger("cacher")
+	wc.log = logging.MustGetLogger("cacher.metrics")
 	wc.Cache = make(map[string][]*repr.StatRepr)
 	wc.shutdown = make(chan bool)
 	wc._accept = true
@@ -144,15 +144,15 @@ func (wc *Cacher) updateQueue() {
 	wc.numCurKeys = m_len
 	sort.Sort(newQueue)
 	//wc.log.Critical("DATA %v", wc.Cache)
-	wc.log.Critical("STAT RECALC: Metrics: %v :: Points: %v :: BYTES:: %d", m_len, f_len, wc.curSize)
+	wc.log.Debug("Cacher Sort: Metrics: %v :: Points: %v :: Bytes:: %d", m_len, f_len, wc.curSize)
 
 	stats.StatsdClientSlow.Gauge("cacher.metrics", int64(m_len))
 	stats.StatsdClientSlow.Gauge("cacher.points", int64(f_len))
 	stats.StatsdClientSlow.Gauge("cacher.bytes", wc.curSize)
 
 	// now for a bit of randomness, where we "reverse" the order on occasion to get the
-	// not-updated often and thus hardly written to try to persiste some slow stats
-	// do this 1/4 of the time, so that we don't endup with having to shutdown in order to all things written
+	// not-updated often and thus hardly written to try to persist some slow stats
+	// do this 1/4 of the time, so that we don't end up with having to shutdown in order to all things written
 	r := rand.Float64()
 	if r < wc.lowFruitRate {
 		for i, j := 0, len(newQueue)-1; i < j; i, j = i+1, j-1 {

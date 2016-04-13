@@ -107,6 +107,7 @@ func (kf *KafkaMetrics) SetResolutions(res [][]int) int {
 
 func (kf *KafkaMetrics) Write(stat repr.StatRepr) error {
 
+	kf.indexer.Write(stat.Key) // to the indexer
 	item := &KafkaMetric{
 		Type:       "metric",
 		Metric:     stat.Key,

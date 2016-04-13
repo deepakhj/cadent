@@ -14,14 +14,13 @@ import (
 
 	"fmt"
 	"sync"
-	//"log"
 	"time"
 )
 
 const (
 	WRITER_DEFAULT_INDEX_QUEUE_LENGTH  = 1024 * 20
 	WRITER_DEFAULT_METRIC_QUEUE_LENGTH = 1024 * 10
-	WRITER_MAX_WRITE_QUEUE             = 1024 * 1000
+	WRITER_MAX_WRITE_QUEUE             = 1024 * 1024
 )
 
 // toml config for Metrics
@@ -125,12 +124,12 @@ func (loop *WriterLoop) SetName(name string) {
 func (loop *WriterLoop) statTick() {
 	shuts := loop.shutdowner.Listen()
 	defer shuts.Close()
+	ticker := time.NewTicker(time.Second)
 	for {
 		select {
 		case <-shuts.Ch:
 			return
-		default:
-			time.Sleep(time.Second)
+		case <-ticker.C:
 			stats.StatsdClientSlow.GaugeAvg(fmt.Sprintf("writer.metricsqueue.%s.length", loop.name), int64(len(loop.write_chan)))
 			stats.StatsdClientSlow.GaugeAvg(fmt.Sprintf("writer.indexerqueue.%s.length", loop.name), int64(len(loop.indexer_chan)))
 			//log.Printf("Write Queue Length: %s: Metrics: %d Indexer %d", loop.name, len(loop.write_chan), len(loop.indexer_chan))
@@ -207,8 +206,11 @@ func (loop *WriterLoop) processQueue() {
 			case nil:
 				break
 			default:
+				// metric writers send to indexer so as to take advantage of it's
+				// caching middle layer to prevent pounding the queue
+				//loop.indexer.Write((*stat).Key)
+
 				loop.metrics.Write(*stat)
-				loop.indexer.Write((*stat).Key)
 			}
 		}
 	}
@@ -306,7 +308,7 @@ func (q *WriteQueue) Push(item repr.StatRepr) error {
 	defer q.lock.Unlock()
 
 	if q.count >= q.queuemax {
-		return fmt.Errorf("Max write queue hit .. cannot push")
+		return fmt.Errorf("Max write queue hit (max: %d) .. cannot push", q.queuemax)
 	}
 	n := &WriteNode{data: &item}
 

@@ -474,6 +474,7 @@ func (ws *WhisperMetrics) SetResolutions(res [][]int) int {
 }
 
 func (ws *WhisperMetrics) Write(stat repr.StatRepr) error {
+	ws.indexer.Write(stat.Key) // write an index for the key
 	err := ws.writer.Write(stat)
 	return err
 }

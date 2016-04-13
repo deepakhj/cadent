@@ -176,6 +176,8 @@ func (my *MySQLMetrics) Write(stat repr.StatRepr) error {
 		}
 	}
 
+	my.indexer.Write(stat.Key) // to the indexer
+
 	// Flush can cause double locking
 	my.write_lock.Lock()
 	defer my.write_lock.Unlock()
