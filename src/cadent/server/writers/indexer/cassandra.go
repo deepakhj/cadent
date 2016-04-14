@@ -321,18 +321,37 @@ func (cass *CassandraIndexer) sendToWriters() error {
 	// this may not be the "greatest" ratelimiter of all time,
 	// as "high frequency tickers" can be costly .. but should the workers get backedup
 	// it will block on the write_queue stage
-	sleep_t := float64(time.Second) * (time.Second.Seconds() / float64(cass.writes_per_second))
-	ticker := time.NewTicker(time.Duration(int(sleep_t)))
-	cass.log.Notice("Starting Indexer limiter every %f nanoseconds (%d writes per second)", sleep_t, cass.writes_per_second)
-	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ticker.C:
+	if cass.writes_per_second <= 0 {
+		cass.log.Notice("Starting indexer writer: No rate limiting enabled")
+		for {
+			if !cass._accept {
+				return nil
+			}
 			skey := cass.cache.Pop()
-			if skey != "" {
+			switch skey {
+			case "":
+				time.Sleep(time.Second)
+			default:
 				stats.StatsdClient.Incr(fmt.Sprintf("indexer.cassandra.write.send-to-writers"), 1)
 				cass.write_queue <- CassandraIndexerJob{Cass: cass, Stat: skey}
+			}
+		}
+	} else {
+		sleep_t := float64(time.Second) * (time.Second.Seconds() / float64(cass.writes_per_second))
+		cass.log.Notice("Starting indexer writer: limiter every %f nanoseconds (%d writes per second)", sleep_t, cass.writes_per_second)
+		for {
+			if !cass._accept {
+				return nil
+			}
+			skey := cass.cache.Pop()
+			switch skey {
+			case "":
+				time.Sleep(time.Second)
+			default:
+				stats.StatsdClient.Incr(fmt.Sprintf("indexer.cassandra.write.send-to-writers"), 1)
+				cass.write_queue <- CassandraIndexerJob{Cass: cass, Stat: skey}
+				time.Sleep(time.Duration(int(sleep_t)))
 			}
 		}
 	}

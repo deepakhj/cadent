@@ -435,7 +435,13 @@ func (cass *CassandraWriter) sendToWriters() error {
 
 	//ye old unlimited
 	if cass.writes_per_second <= 0 {
+		cass.log.Notice("Starting metric writer: No Write limiter")
+
 		for {
+			if cass.shutitdown {
+				return nil
+			}
+
 			_, points := cass.cacher.Pop()
 			switch points {
 			case nil:
@@ -448,21 +454,25 @@ func (cass *CassandraWriter) sendToWriters() error {
 	} else {
 
 		sleep_t := float64(time.Second) * (time.Second.Seconds() / float64(cass.writes_per_second))
-		ticker := time.NewTicker(time.Duration(int(sleep_t)))
-		cass.log.Notice("Starting Write limiter every %f nanoseconds (%d writes per second)", sleep_t, cass.writes_per_second)
-		defer ticker.Stop()
+		cass.log.Notice("Starting metric writer: limiter every %f nanoseconds (%d writes per second)", sleep_t, cass.writes_per_second)
 
 		for {
-			select {
-			case <-ticker.C:
-				_, points := cass.cacher.Pop()
-				if points != nil {
-					stats.StatsdClient.Incr(fmt.Sprintf("writer.cassandra.write.send-to-writers"), 1)
-					cass.write_queue <- CassandraMetricJob{Cass: cass, Stats: points}
-				}
-			case <-cass.shutdown:
-				break
+			if cass.shutitdown {
+				return nil
 			}
+
+			_, points := cass.cacher.Pop()
+
+			switch points {
+			case nil:
+				time.Sleep(time.Second)
+			default:
+
+				stats.StatsdClient.Incr(fmt.Sprintf("writer.cassandra.write.send-to-writers"), 1)
+				cass.write_queue <- CassandraMetricJob{Cass: cass, Stats: points}
+				time.Sleep(time.Duration(int(sleep_t)))
+			}
+
 		}
 	}
 }
