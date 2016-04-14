@@ -455,6 +455,7 @@ func (cass *CassandraWriter) sendToWriters() error {
 
 		sleep_t := float64(time.Second) * (time.Second.Seconds() / float64(cass.writes_per_second))
 		cass.log.Notice("Starting metric writer: limiter every %f nanoseconds (%d writes per second)", sleep_t, cass.writes_per_second)
+		dur := time.Duration(int(sleep_t))
 
 		for {
 			if cass.shutitdown {
@@ -470,7 +471,7 @@ func (cass *CassandraWriter) sendToWriters() error {
 
 				stats.StatsdClient.Incr(fmt.Sprintf("writer.cassandra.write.send-to-writers"), 1)
 				cass.write_queue <- CassandraMetricJob{Cass: cass, Stats: points}
-				time.Sleep(time.Duration(int(sleep_t)))
+				time.Sleep(dur)
 			}
 
 		}

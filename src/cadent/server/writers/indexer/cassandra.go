@@ -340,6 +340,7 @@ func (cass *CassandraIndexer) sendToWriters() error {
 	} else {
 		sleep_t := float64(time.Second) * (time.Second.Seconds() / float64(cass.writes_per_second))
 		cass.log.Notice("Starting indexer writer: limiter every %f nanoseconds (%d writes per second)", sleep_t, cass.writes_per_second)
+		dur := time.Duration(int(sleep_t))
 		for {
 			if !cass._accept {
 				return nil
@@ -351,7 +352,7 @@ func (cass *CassandraIndexer) sendToWriters() error {
 			default:
 				stats.StatsdClient.Incr(fmt.Sprintf("indexer.cassandra.write.send-to-writers"), 1)
 				cass.write_queue <- CassandraIndexerJob{Cass: cass, Stat: skey}
-				time.Sleep(time.Duration(int(sleep_t)))
+				time.Sleep(dur)
 			}
 		}
 	}
