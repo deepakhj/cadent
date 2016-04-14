@@ -102,6 +102,7 @@ func (wc *Cacher) Add(metric string) error {
 	*/
 	if _, ok := wc.AlreadyWrittenCache[metric]; ok {
 		stats.StatsdClient.Incr("cacher.indexer.already-written", 1)
+		return nil
 	}
 
 	wc.Cache[metric] = true
