@@ -106,8 +106,10 @@ type CassandraIndexer struct {
 	max_write_size int             // size of that buffer before a flush
 	max_idle       time.Duration   // either max_write_size will trigger a write or this time passing will
 	write_lock     sync.Mutex
+	shutonce       sync.Once
 	num_workers    int
 	queue_len      int
+	_accept        bool //shtdown notice
 
 	write_queue      chan dispatch.IJob
 	dispatch_queue   chan chan dispatch.IJob
@@ -124,8 +126,14 @@ type CassandraIndexer struct {
 func NewCassandraIndexer() *CassandraIndexer {
 	cass := new(CassandraIndexer)
 	cass.log = logging.MustGetLogger("indexer.cassandra")
+	cass._accept = true
 	cass.findcache = lrucache.NewTTLLRUCache(CASSANDRA_RESULT_CACHE_SIZE, CASSANDRA_RESULT_CACHE_TTL)
 	return cass
+}
+
+func (cass *CassandraIndexer) Stop() {
+	cass._accept = false
+	cass.shutonce.Do(cass.cache.Stop)
 }
 
 func (cass *CassandraIndexer) Config(conf map[string]interface{}) (err error) {

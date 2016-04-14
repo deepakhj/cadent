@@ -97,6 +97,10 @@ func (my *MySQLIndexer) Config(conf map[string]interface{}) error {
 	return nil
 }
 
+func (my *MySQLIndexer) Stop() {
+	//noop
+}
+
 func (my *MySQLIndexer) PeriodFlush() {
 	for {
 		time.Sleep(my.max_idle)

@@ -39,4 +39,7 @@ type Indexer interface {
 		}
 	*/
 	Expand(metric string) (MetricExpandItem, error)
+
+	Stop() // kill stuff
+
 }

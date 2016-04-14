@@ -341,8 +341,7 @@ func (cass *CassandraWriter) TrapExit() {
 // we can use the batcher effectively for single metric multi point writes as they share the
 // the same token
 func (cass *CassandraWriter) InsertMulti(points []*repr.StatRepr) (int, error) {
-	cass.write_lock.Lock()
-	defer cass.write_lock.Unlock()
+
 	defer stats.StatsdNanoTimeFunc(fmt.Sprintf("writer.cassandra.batch.metric-time-ns"), time.Now())
 
 	l := len(points)
@@ -433,21 +432,37 @@ func (cass *CassandraWriter) sendToWriters() error {
 	// this may not be the "greatest" ratelimiter of all time,
 	// as "high frequency tickers" can be costly .. but should the workers get backedup
 	// it will block on the write_queue stage
-	sleep_t := float64(time.Second) * (time.Second.Seconds() / float64(cass.writes_per_second))
-	ticker := time.NewTicker(time.Duration(int(sleep_t)))
-	cass.log.Notice("Starting Write limiter every %f nanoseconds (%d writes per second)", sleep_t, cass.writes_per_second)
-	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ticker.C:
+	//ye old unlimited
+	if cass.writes_per_second <= 0 {
+		for {
 			_, points := cass.cacher.Pop()
-			if points != nil {
+			switch points {
+			case nil:
+				time.Sleep(time.Second)
+			default:
 				stats.StatsdClient.Incr(fmt.Sprintf("writer.cassandra.write.send-to-writers"), 1)
 				cass.write_queue <- CassandraMetricJob{Cass: cass, Stats: points}
 			}
-		case <-cass.shutdown:
-			break
+		}
+	} else {
+
+		sleep_t := float64(time.Second) * (time.Second.Seconds() / float64(cass.writes_per_second))
+		ticker := time.NewTicker(time.Duration(int(sleep_t)))
+		cass.log.Notice("Starting Write limiter every %f nanoseconds (%d writes per second)", sleep_t, cass.writes_per_second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				_, points := cass.cacher.Pop()
+				if points != nil {
+					stats.StatsdClient.Incr(fmt.Sprintf("writer.cassandra.write.send-to-writers"), 1)
+					cass.write_queue <- CassandraMetricJob{Cass: cass, Stats: points}
+				}
+			case <-cass.shutdown:
+				break
+			}
 		}
 	}
 }

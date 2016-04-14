@@ -70,6 +70,11 @@ func (wc *Cacher) statsTick() {
 	ticker := time.NewTicker(2 * time.Second)
 	for {
 		select {
+		case <-wc.shutdown:
+			wc._accept = false
+			wc.log.Warning("Index Cache shutdown .. stopping accepts")
+			return
+
 		case <-ticker.C:
 			stats.StatsdClientSlow.Gauge("cacher.indexer.bytes", wc.curSize)
 			stats.StatsdClientSlow.Gauge("cacher.indexer.keys", int64(len(wc.Cache)))
@@ -105,9 +110,13 @@ func (wc *Cacher) Add(metric string) error {
 		return nil
 	}
 
-	wc.Cache[metric] = true
-	wc.curSize += int64(len(metric))
-	stats.StatsdClient.Incr("cacher.indexer.add", 1)
+	if _, ok := wc.Cache[metric]; ok {
+		stats.StatsdClient.Incr("cacher.indexer.already-added", 1)
+	} else {
+		wc.Cache[metric] = true
+		wc.curSize += int64(len(metric))
+		stats.StatsdClient.Incr("cacher.indexer.add", 1)
+	}
 
 	return nil
 }

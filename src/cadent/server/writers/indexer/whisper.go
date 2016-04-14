@@ -43,6 +43,10 @@ func (ws *WhisperIndexer) Config(conf map[string]interface{}) error {
 	return nil
 }
 
+func (ws *WhisperIndexer) Stop() {
+	//noop
+}
+
 //noop
 func (ws *WhisperIndexer) Write(skey string) error {
 	return nil

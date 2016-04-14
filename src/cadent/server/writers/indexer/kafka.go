@@ -62,6 +62,10 @@ func NewKafkaIndexer() *KafkaIndexer {
 	return kf
 }
 
+func (kf *KafkaIndexer) Stop() {
+	//noop
+}
+
 func (kf *KafkaIndexer) Config(conf map[string]interface{}) error {
 	gots := conf["dsn"]
 	if gots == nil {
