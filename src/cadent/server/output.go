@@ -165,13 +165,13 @@ type OutputDispatchJob struct {
 	retry   int
 }
 
-func (j OutputDispatchJob) IncRetry() int {
-	j.retry++
-	return j.retry
+func (o OutputDispatchJob) IncRetry() int {
+	o.retry++
+	return o.retry
 }
 
-func (j OutputDispatchJob) OnRetry() int {
-	return j.retry
+func (o OutputDispatchJob) OnRetry() int {
+	return o.retry
 }
 
 func (o OutputDispatchJob) DoWork() error {

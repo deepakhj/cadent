@@ -4,6 +4,9 @@ import (
 	"testing"
 	"math/rand"
 	"hash/crc32"
+	mmh3 "github.com/reusee/mmh3"
+
+	"hash/fnv"
 )
 
 var mp_str map[string]bool
@@ -14,12 +17,16 @@ var mp_int map[int]bool
 var r_list_int []int
 
 var mp_crc map[uint32]bool
+var mp_mmh map[uint32]bool
+var mp_fvn map[uint32]bool
 
 func init() {
 
 	mp_str = make(map[string]bool)
 	mp_int = make(map[int]bool)
 	mp_crc = make(map[uint32]bool)
+	mp_mmh = make(map[uint32]bool)
+	mp_fvn = make(map[uint32]bool)
 
 	r_list_str = make([]string, 100000)
 	for idx, _ := range r_list_str {
@@ -90,6 +97,58 @@ func BenchmarkMapCRCGet(b *testing.B) {
 		for _, st := range r_list_str {
 			k := crc32.ChecksumIEEE([]byte(st))
 			_ = mp_crc[k]
+		}
+	}
+}
+
+
+func BenchmarkMapMMHPut(b *testing.B) {
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		for _, st := range r_list_str {
+			hash := mmh3.New32()
+			hash.Write([]byte(st))
+			out := hash.Sum32()
+			mp_mmh[out] = true
+		}
+	}
+}
+
+func BenchmarkMapMMHGet(b *testing.B) {
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		for _, st := range r_list_str {
+			hash := mmh3.New32()
+			hash.Write([]byte(st))
+			out := hash.Sum32()
+			_ = mp_mmh[out]
+		}
+	}
+}
+
+
+func BenchmarkMapFVNPut(b *testing.B) {
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		for _, st := range r_list_str {
+			hash := fnv.New32a()
+			hash.Write([]byte(st))
+			out := hash.Sum32()
+			mp_fvn[out] = true
+		}
+	}
+}
+
+func BenchmarkMapFVNGet(b *testing.B) {
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		for _, st := range r_list_str {
+			hash := fnv.New32a()
+			hash.Write([]byte(st))
+			out := hash.Sum32()
+			_ = mp_fvn[out]
 		}
 	}
 }

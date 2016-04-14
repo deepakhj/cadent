@@ -550,7 +550,7 @@ This may mean that you will see some random interspersed `nils` in the data on s
 1) flush times are not "exact" go's in the concurency world, not everything is run exactly when we want it do so over time, "drift" will 
 2) Since we are both "flushing to disk" and "flushing from buffers" from many buffers at different times, sometimes they just don't line up
 
-
+*NOTE*  Currently only Cassandra and Whisper "readers" are valid (MySQL can be, just not yet written). File and Kafka writers can have no reader apis.
 
 #### Cassandra
 
@@ -771,24 +771,24 @@ the make will make that as well, to run and listen on 3 UDP ports
     echoserver --servers=tcp://127.0.0.1:6002,tcp://127.0.0.1:6003,tcp://127.0.0.1:6004
     
 
-You may want to get a statsd deamon (in golang as well) .. (github.com/bitly/statsdaemon)
-
-    statsdaemon -debug -percent-threshold=90 -percent-threshold=99  -persist-count-keys=0 -address=":8136" -admin-address=":8137"  -receive-counter="go-statsd.counts" -graphite="127.0.0.1:2003"
-
-There is also a "line msg" generator "statblast"
+There is also a "line msg" generator "statblast." It will make a bunch of random stats based on the `-words` given
 
    
     Usage of statblast:
       -buffer int
-            send buffer (default 512)
+        	send buffer (default 512)
       -forks int
-            number of concurrent senders (default 2)
+        	number of concurrent senders (default 2)
       -rate string
-            fire rate for stat lines (default "0.1s")
+        	fire rate for stat lines (default "0.1s")
       -servers string
-            list of servers to open (tcp://127.0.0.1:6002,tcp://127.0.0.1:6003) (default "tcp://127.0.0.1:8125")
+        	list of servers to open (tcp://127.0.0.1:6002,tcp://127.0.0.1:6003), you can choose tcp://, udp://, http://, unix:// (default "tcp://127.0.0.1:8125")
       -type string
-            statsd or graphite (default "statsd")
+        	statsd or graphite (default "statsd")
+      -words string
+        	compose the stat keys from these words (default "test,house,here,there,badline,cow,now")
+      -words_per_stat int
+        	make stat keys this long (moo.goo.loo) (default 3)
 
 
 ## Performance
@@ -849,7 +849,7 @@ found in `stats.gauges.{statsd_prefix}.{hostname}.cacher.{bytes|metrics|points}`
         Flush Window: 10s
         Keys Incoming: 140,000
         Writes/s: 1200(set) ~1000 (actual)
-        CacheRam consumed: ~300MB
+        CacheRam consumed: ~300-600MB
         # Points in Cache: ~1.3 Million
 
 The process that runs the graphite writer then consumes ~1.2GB of ram in total.  Assuming the key space does not
