@@ -72,6 +72,7 @@ func (wc *Cacher) statsTick() {
 		select {
 		case <-wc.shutdown:
 			wc._accept = false
+			ticker.Stop()
 			wc.log.Warning("Index Cache shutdown .. stopping accepts")
 			return
 

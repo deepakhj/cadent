@@ -120,6 +120,7 @@ func (wc *Cacher) startUpdateTick() {
 		case <-tick.C:
 			wc.updateQueue()
 		case <-wc.shutdown:
+			tick.Stop()
 			wc._accept = false
 			wc.log.Warning("Cache shutdown .. stopping accepts")
 			return
