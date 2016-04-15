@@ -517,26 +517,28 @@ already and consumers can deal with indexing)
   
 Here are the configuration options
            
-           [graphite-kafka.accumulator.writer.metrics]
-            driver: "kafka"
-            dsn: "pathtokafka:9092,pathtokafka2:9092"
-            index_topic: topic for index message (default: cadent)
-        	metric_topic: topic for data messages (default: cadent)
+            [to-kafka.accumulator.writer.metrics]
+            driver = "kafka"
+            dsn = "pathtokafka:9092,pathtokafka2:9092"
+            index_topic = "cadent" # topic for index message (default: cadent)
+        	metric_topic = "cadent" # topic for data messages (default: cadent)
         
         	# some kafka options
-        	compress: "snappy|gzip|none" (default: none)
-        	max_retry: 10
-        	ack_type: "all|local" (all = all replicas ack, default "local")
-        	flush_time: flush produced messages ever tick (default "1s")
+        	compress = "snappy|gzip|none" (default: none)
+        	max_retry = 10
+        	ack_type = "local" # (all = all replicas ack, default "local")
+        	flush_time = "1s" # flush produced messages ever tick (default "1s")
         	
-        	[graphite-kafka.accumulator.writer.indexer]
-            driver: "kafka"
-            dsn: "pathtokafka:9092,pathtokafka2:9092"
+        	[to-kafka..accumulator.writer.indexer]
+            driver = "kafka"
+            dsn = "pathtokafka:9092,pathtokafka2:9092"
             
-        	    [graphite-cassandra.accumulator.writer.indexer.options]
+        	    [to-kafka..accumulator.writer.indexer.options]
                 write_index = false|true
         	
-            
+If you want to bypass the entire "graphite" thing and go straight to a kafka dump, look to 
+`configs/statsd-kafka-config.toml` and `configs/statsd-kafka-pregre.toml` pair .. this is probably the most typical use
+of a kafka writer backend.  One can easily do the same with straight graphite data (i.e. from `diamond` or similar).
             
 
 ### API/Readers
