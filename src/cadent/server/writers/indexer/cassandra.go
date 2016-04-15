@@ -136,6 +136,18 @@ func (cass *CassandraIndexer) Stop() {
 	cass.shutonce.Do(cass.cache.Stop)
 }
 
+func (cass *CassandraIndexer) Start() {
+	if cass.write_queue == nil {
+		workers := cass.num_workers
+		cass.write_queue = make(chan dispatch.IJob, cass.queue_len)
+		cass.dispatch_queue = make(chan chan dispatch.IJob, workers)
+		cass.write_dispatcher = dispatch.NewDispatch(workers, cass.dispatch_queue, cass.write_queue)
+		cass.write_dispatcher.SetRetries(2)
+		cass.write_dispatcher.Run()
+		go cass.sendToWriters() // the dispatcher
+	}
+}
+
 func (cass *CassandraIndexer) Config(conf map[string]interface{}) (err error) {
 	gots := conf["dsn"]
 	if gots == nil {
@@ -178,6 +190,9 @@ func (cass *CassandraIndexer) Config(conf map[string]interface{}) (err error) {
 	if _ws != nil {
 		cass.writes_per_second = int(_ws.(int64))
 	}
+
+	cass.Start() // fire it up
+
 	return nil
 }
 
@@ -360,33 +375,7 @@ func (cass *CassandraIndexer) sendToWriters() error {
 
 // keep an index of the stat keys and their fragments so we can look up
 func (cass *CassandraIndexer) Write(skey string) error {
-
-	if cass.write_queue == nil {
-		workers := cass.num_workers
-		cass.write_queue = make(chan dispatch.IJob, cass.queue_len)
-		cass.dispatch_queue = make(chan chan dispatch.IJob, workers)
-		cass.write_dispatcher = dispatch.NewDispatch(workers, cass.dispatch_queue, cass.write_queue)
-		cass.write_dispatcher.SetRetries(2)
-		cass.write_dispatcher.Run()
-		go cass.sendToWriters() // the dispatcher
-	}
-
-	cass.cache.Add(skey)
-
-	//cass.write_queue <- CassandraIndexerJob{Cass: cass, Stat: skey}
-
-	return nil
-	/*
-		if cass.write_queue == nil {
-			cass.write_queue = make(chan string, 10000)
-			for i := 0; i < cass.db.Cluster().NumConns; i++ {
-				go cass.writeLoop()
-			}
-		}
-		cass.write_queue <- skey
-		return nil
-	*/
-
+	return cass.cache.Add(skey)
 }
 
 /** reader methods **/

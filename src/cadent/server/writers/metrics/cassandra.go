@@ -314,6 +314,19 @@ func (cass *CassandraWriter) Stop() {
 	return
 }
 
+func (cass *CassandraWriter) Start() {
+	/**** dispatcher queue ***/
+	if cass.write_queue == nil {
+		workers := cass.num_workers
+		cass.write_queue = make(chan dispatch.IJob, cass.queue_len)
+		cass.dispatch_queue = make(chan chan dispatch.IJob, workers)
+		cass.write_dispatcher = dispatch.NewDispatch(workers, cass.dispatch_queue, cass.write_queue)
+		cass.write_dispatcher.SetRetries(2)
+		cass.write_dispatcher.Run()
+		go cass.sendToWriters() // the dispatcher
+	}
+}
+
 func (cass *CassandraWriter) TrapExit() {
 	//trap kills to flush queues and close connections
 	sc := make(chan os.Signal, 1)
@@ -480,56 +493,14 @@ func (cass *CassandraWriter) sendToWriters() error {
 
 func (cass *CassandraWriter) Write(stat repr.StatRepr) error {
 
-	/**** dispatcher queue ***/
-	if cass.write_queue == nil {
-		workers := cass.num_workers
-		cass.write_queue = make(chan dispatch.IJob, cass.queue_len)
-		cass.dispatch_queue = make(chan chan dispatch.IJob, workers)
-		cass.write_dispatcher = dispatch.NewDispatch(workers, cass.dispatch_queue, cass.write_queue)
-		cass.write_dispatcher.SetRetries(2)
-		cass.write_dispatcher.Run()
-		go cass.sendToWriters() // the dispatcher
-	}
 	s_key := fmt.Sprintf("%s:%d", stat.Key, int(stat.Resolution))
 	// turning off
 	if !cass.shutitdown {
 		cass.cacher.Add(s_key, &stat)
 	}
 
-	//cass.write_queue <- CassandraMetricJob{Stat: &stat, Cass: cass, Cacher: cacher}
 	return nil
 
-	/**** single write queue to keep a connection depletion in cassandra
-	if cass.write_queue == nil {
-		cass.write_queue = make(chan repr.StatRepr, cass.db.Cluster().NumConns*100)
-		for i := 0; i < cass.db.Cluster().NumConns; i++ {
-			go cass.consumeWriter()
-		}
-	}
-
-	cass.write_queue <- stat
-	return nil
-	***/
-
-	/** Direct insert_one tech
-	go cass.InsertOne(stat)
-	return nil
-	**/
-
-	/* If cassandra batching is faster ... use this .. (cassandra batching is not like mysql batching)
-	if len(cass.write_list) > cass.max_write_size {
-		_, err := cass.Flush()
-		if err != nil {
-			return err
-		}
-	}
-
-	// Flush can cause double locking
-	cass.write_lock.Lock()
-	defer cass.write_lock.Unlock()
-	cass.write_list = append(cass.write_list, stat)
-	return nil
-	*/
 }
 
 /****************** Metrics Writer *********************/
@@ -595,6 +566,8 @@ func (cass *CassandraMetric) Config(conf map[string]interface{}) (err error) {
 	if _lf != nil {
 		gots.cacher.lowFruitRate = _lf.(float64)
 	}
+
+	cass.writer.Start() //start up
 
 	return nil
 }

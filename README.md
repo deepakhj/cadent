@@ -528,8 +528,14 @@ Here are the configuration options
         	max_retry: 10
         	ack_type: "all|local" (all = all replicas ack, default "local")
         	flush_time: flush produced messages ever tick (default "1s")
+        	
         	[graphite-kafka.accumulator.writer.indexer]
-            write_index = true
+            driver: "kafka"
+            dsn: "pathtokafka:9092,pathtokafka2:9092"
+            
+        	    [graphite-cassandra.accumulator.writer.indexer.options]
+                write_index = false|true
+        	
             
             
 
