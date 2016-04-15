@@ -261,6 +261,7 @@ func (s *StatsdTimerStatItem) Accumulate(val float64, sample float64) error {
 	if s.Max == STATSD_ACC_MIN_FLAG || s.Max < val {
 		s.Max = val
 	}
+
 	s.Last = val
 	if s.First == STATSD_ACC_MIN_FLAG {
 		s.First = val
@@ -652,6 +653,8 @@ func (a *StatsdAccumulate) ProcessLine(line string) (err error) {
 				Sum:              0,
 				Min:              STATSD_ACC_MIN_FLAG,
 				Max:              STATSD_ACC_MIN_FLAG,
+				First:            STATSD_ACC_MIN_FLAG,
+				Last:             STATSD_ACC_MIN_FLAG,
 				Count:            0,
 				InKey:            key,
 				PercentThreshold: thres,
@@ -663,6 +666,8 @@ func (a *StatsdAccumulate) ProcessLine(line string) (err error) {
 				Sum:    0.0,
 				Min:    STATSD_ACC_MIN_FLAG,
 				Max:    STATSD_ACC_MIN_FLAG,
+				First:  STATSD_ACC_MIN_FLAG,
+				Last:   STATSD_ACC_MIN_FLAG,
 				InKey:  key,
 			}
 		}

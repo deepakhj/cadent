@@ -285,6 +285,10 @@ func (a *GraphiteAccumulate) ProcessLine(line string) (err error) {
 		gots = &GraphiteBaseStatItem{
 			InType:     "graphite",
 			InKey:      key,
+			Min:        GRAPHITE_ACC_MIN_FLAG,
+			Max:        GRAPHITE_ACC_MIN_FLAG,
+			First:      GRAPHITE_ACC_MIN_FLAG,
+			Last:       GRAPHITE_ACC_MIN_FLAG,
 			ReduceFunc: def_agg,
 		}
 	}
