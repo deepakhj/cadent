@@ -1,0 +1,108 @@
+[default]
+
+## PID file to check if things is running already
+pid_file="/opt/cadent/statsd.pid"
+
+## performance tuning suggest that n - 2 is best to avoid over creation
+## of File Descriptors for the many sockets we need (and thus cause more OS
+## overhead as time goes on)
+
+num_procs=4
+
+stats_tick=false
+
+
+## cache keys/server pairs in an LRU mem cache for speed
+cache_items=100000
+
+## Health Checking options
+### check every "X" seconds
+heartbeat_time_delay=60
+
+### Timeout for failed connections (in Seconds)
+heartbeat_time_timeout=1
+
+## if a server has failed "X" times it's out of the loop
+failed_heartbeat_count=3
+
+## If we detect a downed node,
+## `remove_node` -- we can REMOVE the node from the hashpool
+## `ignore` -- stop checking the node
+server_down_policy="ignore"
+
+## Turn on CPU/Mem profiling
+##  there will be a http server set up to yank pprof data on :6060
+cpu_profile=false
+block_profile=false # this is very expensive
+
+## fire out some internal to statsd if desired
+statsd_server="localhost:8125"
+statsd_prefix="consthash-statsd"
+statsd_interval=1  # send to statd every second (buffered)
+# global statsd Sample Rates
+
+## It's HIGHLY recommended you at least put a statsd_timer_sample_rate as we measure
+## rates of very fast functions, and it can take _alot_ of CPU cycles just to do that
+## unless your server not under much stress 1% is a good number
+## `statsd_sample_rate` is for counters
+## `statsd_timer_sample_rate` is for timers
+statsd_timer_sample_rate=0.01
+statsd_sample_rate=0.1
+
+
+## outgoing connections are pooled per outgoign server
+## this sets the number of pool connections
+## 10 seems to be a "good" number for us
+max_pool_connections=20
+
+## if using the `bufferedpool` this is the size in bytes to use for the buffer
+## (defaults to 512)
+pool_buffersize=1024
+
+## If using a UDP input, you may wish to set the buffer size for clients
+## default is 1Mb
+read_buffer_size=1048576
+max_buffer_size=104857600
+
+## number of workers to chew on the sending queue
+## adjust this based on the input load
+workers=16
+out_workers=32
+
+## there will be an internal health http server set up as well
+## and will respond to '/ops/status' -> "GET OK"
+## '/stats' --> blob of json data (adding ?jsonp=xxx will return jsonp data)
+## '/' --> a little file that charts (poorly) the above stats
+internal_health_server_listen="0.0.0.0:6063"
+
+## stats are "rendered" every 5 seconds, so this will keep last
+## `internal_health_server_points` in RAM (careful with how many you store)
+## (use the statsd emitter to store longer term stuff)
+internal_health_server_points=500
+
+## path to the html files for the internal health serer
+internal_health_server_path="/opt/consthash/html"
+
+[statsd-proxy]
+
+### Server sections .. note all the above is overridable in each section
+### (except the `statsd_*` and `internal_health_server_listen`)
+### NOTE: `hasher_replicas` will NOT use the defaults, be explict there
+
+## what port/scheme we are listening on for incoming data
+listen="udp://0.0.0.0:8125"
+
+msg_type="statsd"
+
+# only one server one node use the fastest one (however not used anyw
+hasher_algo="mmh3"
+hasher_elter="statsd"
+hasher_vnodes=1
+workers=20
+
+
+[[statsd-proxy.servers]]
+
+servers=[ "udp://127.0.0.1:8125" ]
+check_servers=[ "tcp://127.0.0.1:2003" ]
+

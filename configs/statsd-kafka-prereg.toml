@@ -1,0 +1,43 @@
+
+### pre-regex filters to push things around various backends
+### if there are multiple backends or reject some things
+
+[statsd-regex-map]
+listen_server="statsd-proxy" # which listener to sit in front of  (must be in the main config)
+default_backend="statsd-proxy"  # failing a match go here
+
+    [statsd-regex-map.accumulator]
+    backend = "graphite-relay"  # farm to relay
+    input_format = "statsd"
+    output_format = "graphite"
+    accumulate_flush = "10s"  # since this is going into a graphite ticking at 10s .. they should match
+    random_ticker_start = true  # typically want this to not overwhelm (for statsd)  writer backends with everybody flushing at the same time
+    options = [
+            ["legacyNamespace", "true"],
+            ["prefixGauge", "gauges"],
+            ["prefixTimer", "timers"],
+            ["prefixCounter", ""],  # legacy namespace
+            ["globalPrefix", "stats"],
+            ["globalSuffix", ""],
+            ["percentThreshold", "0.90,0.95,0.99"]
+    ]
+
+    # don't filter anything really
+    # Sub string type match
+    [[statsd-regex-map.map]]
+    substring=".marvel"  # ignore elastic search marvel stuff
+    reject=true
+
+    [statsd-regex-map.accumulator.writer.metrics]
+        driver = "kafka"
+        dsn = "192.168.99.100:9092"
+        [statsd-regex-map.accumulator.writer.metrics.options]
+        index_topic = "cadent"
+        metric_topic = "cadent"
+
+    [statsd-regex-map.accumulator.writer.indexer]
+        driver = "kafka"
+        dsn = "192.168.99.100:9092"
+        [statsd-regex-map.accumulator.writer.indexer.options]
+        write_index = false  ## noop indexer writes as we don't need them here
+
