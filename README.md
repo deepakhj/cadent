@@ -131,10 +131,29 @@ listener port.
 
 This way any farm of hashing servers will properly send the same stat to the same place for proper accumulation.
 
-Times here are always assumed to be "NOW" on the incoming items.  Items are given the "NOW" time when flushed. There 
-is no "going backwards" in time. If that's something you require, alternate methods for getting your data to writers
-should be used.  This only matters for accumulators. If no Accumulators are used in the pipline, time is maintained
-in the original incoming line (if it has one, graphite does, statsd style does not).
+### Time 
+
+A finicky thing.  So it's best to have NTP running on all the nodes.  
+
+I don't claim nanosecond proper timescales yet this requires much more syncro of clocks between hasher nodes then
+this currently has, but milliseconds should work so long as NTP is doing it's job.
+
+For protocals that don't support a "time" in their line protocal (statsd), time is "NOW" whenever time is needed.
+(i.e. a statsd incoming to graphite outgoing). 
+
+For those that do (graphite), time will be propogated from whatever the incoming time is.  Since things are "binned"
+by some flush/aggregation time, any incomming will be rounded to fit the nearest flush time and aggregated in that
+bin.  The Binning is effectively the nearest `time % resolution` (https://golang.org/pkg/time/#Time.Truncate)
+
+For Regex lines, you can specify the `Timestamp` key for the regex (if available) same as the `Key`. i.e
+ 
+    `^(<\d+>)?(?P<Timestamp>[A-Z][a-z]+\s+\d+\s\d+:\d+:\d+) (?P<Key>\S+) (?P<Logger>\S+):(.*)`
+
+To use it properly you will need to specify a `timeLayout` in the regex options, of the golang variety
+(see: https://golang.org/src/time/format.go .. note that the timeLayout should be a string example like shown
+"Mon Jan 02 15:04:05 2006")
+
+Time really only matters for sending things to writer backends or another service that uses that time.
 
 Unlike the generic `graphite` data format, which can have different time retentions and bin sizes for different metrics
 I have taken the approach that all metrics will have the same bin size(s).  Meaning that all metrics will get 
