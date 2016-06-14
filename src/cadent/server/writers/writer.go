@@ -208,8 +208,6 @@ func (loop *WriterLoop) processQueue() {
 			default:
 				// metric writers send to indexer so as to take advantage of it's
 				// caching middle layer to prevent pounding the queue
-				//loop.indexer.Write((*stat).Key)
-
 				loop.metrics.Write(*stat)
 			}
 		}

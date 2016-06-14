@@ -5,6 +5,7 @@
 package repr
 
 import (
+	"fmt"
 	"sync"
 	"time"
 )
@@ -13,6 +14,7 @@ import (
 // obviously this is ram intensive for many many unique keys
 // So if spreading out the accumulation across multiple nodes, make sure each stat key
 // is consistently hashed to a single instance to make the aggregator work
+
 type Aggregator struct {
 	mu sync.Mutex
 
@@ -27,10 +29,22 @@ func NewAggregator(res time.Duration) *Aggregator {
 	}
 }
 
+// based on the resolution we need to aggregate around a
+// "key+time bucket" mix.  to figure out the time bucket
+// we simply use the resolution -- time % resolution
+func (sa *Aggregator) ResolutionTime(t time.Time) time.Time {
+	return t.Truncate(sa.Resolution)
+}
+
+func (sa *Aggregator) MapKey(name string, t time.Time) string {
+	return fmt.Sprintf("%s-%d", name, sa.ResolutionTime(t).UnixNano())
+}
+
 func (sa *Aggregator) Len() int {
 	return len(sa.Items)
 }
 
+// get the data and clear out the current cache
 func (sa *Aggregator) GetAndClear() map[string]StatRepr {
 	sa.mu.Lock()
 	defer sa.mu.Unlock()
@@ -47,9 +61,11 @@ func (sa *Aggregator) Add(stat StatRepr) error {
 	sa.mu.Lock()
 	defer sa.mu.Unlock()
 
-	element, ok := sa.Items[stat.Key]
+	res_time := sa.ResolutionTime(stat.Time)
+	m_k := sa.MapKey(stat.Key, stat.Time)
+	element, ok := sa.Items[m_k]
 	if !ok {
-		sa.Items[stat.Key] = stat
+		sa.Items[m_k] = stat
 		return nil
 	}
 
@@ -65,9 +81,9 @@ func (sa *Aggregator) Add(stat StatRepr) error {
 	}
 	element.Sum += stat.Sum
 	element.Mean = JsonFloat64(float64(element.Sum) / float64(element.Count))
-	element.Time = stat.Time
+	element.Time = res_time
 	element.Resolution = sa.Resolution.Seconds()
-	sa.Items[stat.Key] = element
+	sa.Items[m_k] = element
 	return nil
 }
 

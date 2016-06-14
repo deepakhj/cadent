@@ -107,11 +107,8 @@ func NewAggregateLoop(flushtimes []time.Duration, ttls []time.Duration, name str
 	return agg, nil
 }
 
-// config the HTTP interface if desired
-func (agg *AggregateLoop) SetReader(conf writers.ApiConfig) error {
-	rl := new(writers.ApiLoop)
-
-	// set the resolution bits
+func (agg *AggregateLoop) getResolutionArray() [][]int {
+	// get the [time, ttl] array for use in the Metrics Writers
 	var res [][]int
 	for idx, dur := range agg.FlushTimes {
 		res = append(res, []int{
@@ -119,6 +116,15 @@ func (agg *AggregateLoop) SetReader(conf writers.ApiConfig) error {
 			int(agg.TTLTimes[idx].Seconds()),
 		})
 	}
+	return res
+}
+
+// config the HTTP interface if desired
+func (agg *AggregateLoop) SetReader(conf writers.ApiConfig) error {
+	rl := new(writers.ApiLoop)
+
+	// set the resolution bits
+	res := agg.getResolutionArray()
 
 	// grab the first resolution as that's the one the main "reader" will be on
 	err := rl.Config(conf, float64(res[0][0]))
@@ -133,7 +139,7 @@ func (agg *AggregateLoop) SetReader(conf writers.ApiConfig) error {
 
 }
 
-// set the metrics and index wrtiers types.  Based on the writer type
+// set the metrics and index writers types.  Based on the writer type
 // the number of actuall aggregator loops needed may change
 // for instance RRD file DBs typically "self rollup" so there's no need
 // to deal with the aggregation of longer times, but DBs (cassandra) cannot do that
@@ -173,6 +179,7 @@ func (agg *AggregateLoop) SetWriter(conf writers.WriterConfig) error {
 		}
 
 		mets.SetIndexer(idx)
+		mets.SetResolutions(agg.getResolutionArray())
 		wr.SetMetrics(mets)
 		wr.SetIndexer(idx)
 
@@ -250,7 +257,7 @@ func (agg *AggregateLoop) startWriteLooper(duration time.Duration, ttl time.Dura
 			return
 		}
 		for _, stat := range items {
-
+			agg.log.Critical("FLUSH POST: %s", stat)
 			stat.Resolution = _dur.Seconds()
 			stat.TTL = int64(_ttl.Seconds()) // need to add in the TTL
 			writer.WriterChan() <- stat

@@ -6,14 +6,16 @@ package accumulator
 
 import (
 	"cadent/server/repr"
+	"time"
 )
 
 /****************** Interfaces *********************/
 type StatItem interface {
 	Key() string
+	StatTime() time.Time
 	Type() string
 	Out(fmatter FormatterItem, acc AccumulatorItem) []string
-	Accumulate(val float64, sample float64) error
+	Accumulate(val float64, sample float64, stattime time.Time) error
 	ZeroOut() error
 	Repr() repr.StatRepr
 }
@@ -28,6 +30,8 @@ type AccumulatorItem interface {
 	Tags() []AccumulatorTags
 	SetKeepKeys(bool) error
 	SetTags([]AccumulatorTags)
+	SetResolution(time.Duration) error
+	GetResolution() time.Duration
 	SetOptions([][]string) error
 	GetOption(name string, defaults interface{}) interface{}
 }

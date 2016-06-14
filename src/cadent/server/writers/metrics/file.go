@@ -22,6 +22,7 @@ import (
 	"os"
 	"sync"
 	"time"
+	"cadent/server/broadcast"
 )
 
 /****************** Interfaces *********************/
@@ -35,6 +36,7 @@ type FileMetrics struct {
 	max_file_size int64 // file rotation
 	write_lock    sync.Mutex
 	rotate_check  time.Duration
+	shutdown *broadcast.Broadcaster
 
 	log *logging.Logger
 }
@@ -42,13 +44,14 @@ type FileMetrics struct {
 // Make a new RotateWriter. Return nil if error occurs during setup.
 func NewFileMetrics() *FileMetrics {
 	fc := new(FileMetrics)
+	fc.shutdown = broadcast.New(1)
 	fc.log = logging.MustGetLogger("writers.file")
 	return fc
 }
 
 // TODO
 func (fi *FileMetrics) Stop() {
-	return
+	fi.shutdown.Send(true)
 }
 
 func (fi *FileMetrics) SetIndexer(idx indexer.Indexer) error {
@@ -105,14 +108,26 @@ func (fi *FileMetrics) Filename() string {
 }
 
 func (fi *FileMetrics) PeriodicRotate() (err error) {
+	shuts := fi.shutdown.Listen()
+	ticks := time.NewTicker(fi.rotate_check)
 	for {
-		time.Sleep(fi.rotate_check)
-		err := fi.Rotate()
-		if err != nil {
-			fi.log.Error("File Rotate Error: %v", err)
+		select {
+		case <-shuts.Ch:
+			shuts.Close()
+			fi.log.Warning("Shutting down file writer...")
+			if fi.fp != nil{
+				fi.fp.Close()
+				fi.fp = nil
+			}
+			break
+		case <-ticks.C:
+			err := fi.Rotate()
+			if err != nil {
+				fi.log.Error("File Rotate Error: %v", err)
+			}
 		}
 	}
-	return
+	return nil
 }
 
 // Perform the actual act of rotating and reopening file.
@@ -121,7 +136,6 @@ func (fi *FileMetrics) Rotate() (err error) {
 	defer fi.write_lock.Unlock()
 
 	f_name := fi.Filename()
-
 	// Close existing file if open
 	if fi.fp != nil {
 		// check the size and rotate if too big
@@ -162,16 +176,20 @@ func (fi *FileMetrics) Rotate() (err error) {
 func (fi *FileMetrics) WriteLine(line string) (int, error) {
 	fi.write_lock.Lock()
 	defer fi.write_lock.Unlock()
+	if fi.fp == nil {
+		return 0, fmt.Errorf("Cannot write point, no file pointer")
+	}
 	return fi.fp.Write([]byte(line))
 }
 
 func (fi *FileMetrics) Write(stat repr.StatRepr) error {
 
-	//	stat\tsum\tmean\tmin\tmax\tcount\tresoltion\ttime
+	// stat\tsum\tmean\tmin\tmax\tcount\tresoltion\ttime\tttl
 
 	line := fmt.Sprintf(
 		"%s\t%0.6f\t%0.6f\t%0.6f\t%0.6f\t%d\t%0.2f\t%d\t%d\n",
-		stat.Key, stat.Sum, stat.Mean, stat.Min, stat.Max, stat.Count, stat.Resolution, stat.Time.UnixNano(), stat.TTL,
+		stat.Key, stat.Sum, stat.Mean, stat.Min, stat.Max, stat.Count,
+		stat.Resolution, stat.Time.UnixNano(), stat.TTL,
 	)
 
 	fi.indexer.Write(stat.Key) // index me

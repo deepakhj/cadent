@@ -83,6 +83,7 @@ func NewAccumlator(inputtype string, outputtype string, keepkeys bool, name stri
 	}
 	acc.Init(fmter)
 	acc.SetKeepKeys(keepkeys)
+	acc.SetResolution(time.Duration(time.Second))
 
 	ac := &Accumulator{
 		Accumulate:        acc,
@@ -166,6 +167,11 @@ func (acc *Accumulator) Start() error {
 	}
 
 	if acc.timer == nil {
+		// make sure to set the proper resolution in the
+		// aggregator matters for those things that have time components on the incoming
+		// graphite/carbon
+		acc.Accumulate.SetResolution(acc.AccumulateTime)
+
 		if acc.RandomTickerStart {
 			acc.log.Notice(
 				"Accumulator Loop for %s at random start .. starting: %d",
@@ -269,7 +275,9 @@ func (acc *Accumulator) FlushAndPost(attime time.Time) ([]splitter.SplitItem, er
 
 	if acc.Aggregators != nil {
 		for _, stat := range items.Stats {
-			stat.Time = attime // need to set this as this is the flush time
+			if stat.Time.IsZero() {
+				stat.Time = attime // need to set this as this is the flush time
+			}
 			acc.PushStat(stat)
 		}
 		acc.log.Debug("Aggregator Flush: `%s` to `%s` Lines: %d", acc.Name, acc.Aggregators.Name, len(items.Stats))

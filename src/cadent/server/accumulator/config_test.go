@@ -63,9 +63,7 @@ func TestConfigAccumualtorAccumulator(t *testing.T) {
 	`
 	acc_c, err = ParseConfigString(conf_test)
 	Convey("Config toml keeper should not have proper mutiples", t, func() {
-		Convey("Error should NOT be nil", func() {
-			So(err, ShouldNotEqual, nil)
-		})
+		So(err, ShouldNotEqual, nil)
 	})
 
 	conf_test = `
@@ -76,9 +74,7 @@ func TestConfigAccumualtorAccumulator(t *testing.T) {
 	`
 	acc_c, err = ParseConfigString(conf_test)
 	Convey("Config toml keeper should not have proper order", t, func() {
-		Convey("Error should NOT be nil", func() {
-			So(err, ShouldNotEqual, nil)
-		})
+		So(err, ShouldNotEqual, nil)
 	})
 
 	conf_test = `
@@ -89,9 +85,7 @@ func TestConfigAccumualtorAccumulator(t *testing.T) {
 	`
 	acc_c, err = ParseConfigString(conf_test)
 	Convey("Config toml keeper should fail on TTL", t, func() {
-		Convey("Error should NOT be nil", func() {
-			So(err, ShouldNotEqual, nil)
-		})
+		So(err, ShouldNotEqual, nil)
 	})
 
 	conf_test = `
@@ -102,9 +96,7 @@ func TestConfigAccumualtorAccumulator(t *testing.T) {
 	`
 	acc_c, err = ParseConfigString(conf_test)
 	Convey("Config toml keeper should parse correctly", t, func() {
-		Convey("Error should NOT be nil", func() {
-			So(err, ShouldEqual, nil)
-		})
+		So(err, ShouldEqual, nil)
 	})
 
 	conf_test = `
@@ -113,9 +105,7 @@ func TestConfigAccumualtorAccumulator(t *testing.T) {
 	`
 	acc_c, err = ParseConfigString(conf_test)
 	Convey("Config toml should parse", t, func() {
-		Convey("Error should be nil", func() {
-			So(err, ShouldNotEqual, nil)
-		})
+		So(err, ShouldNotEqual, nil)
 	})
 
 	conf_test = `
@@ -125,9 +115,8 @@ func TestConfigAccumualtorAccumulator(t *testing.T) {
 	`
 	acc_c, err = ParseConfigString(conf_test)
 	Convey("Config toml should parse to a fail on bad toml", t, func() {
-		Convey("Error should be nil", func() {
-			So(err, ShouldNotEqual, nil)
-		})
+		acc_c, err = ParseConfigString(conf_test)
+		So(err, ShouldNotEqual, nil)
 	})
 
 	conf_test = `
@@ -138,9 +127,7 @@ func TestConfigAccumualtorAccumulator(t *testing.T) {
 	`
 	acc_c, err = ParseConfigString(conf_test)
 	Convey("Config toml should parse to a fail on input_format", t, func() {
-		Convey("Error should be nil", func() {
-			So(err, ShouldNotEqual, nil)
-		})
+		So(err, ShouldNotEqual, nil)
 	})
 
 	conf_test = `
@@ -152,9 +139,7 @@ func TestConfigAccumualtorAccumulator(t *testing.T) {
 	`
 	acc_c, err = ParseConfigString(conf_test)
 	Convey("Config toml should parse to a fail on flush time", t, func() {
-		Convey("Error should be nil", func() {
-			So(err, ShouldNotEqual, nil)
-		})
+		So(err, ShouldNotEqual, nil)
 	})
 
 	conf_test = `
@@ -164,9 +149,7 @@ func TestConfigAccumualtorAccumulator(t *testing.T) {
 	`
 	acc_c, err = ParseConfigString(conf_test)
 	Convey("Config toml should parse to a fail on No Backend", t, func() {
-		Convey("Error should be nil", func() {
-			So(err, ShouldNotEqual, nil)
-		})
+		So(err, ShouldNotEqual, nil)
 	})
 
 	conf_test = `
@@ -184,8 +167,6 @@ func TestConfigAccumualtorAccumulator(t *testing.T) {
 	`
 	acc_c, err = ParseConfigString(conf_test)
 	Convey("Config toml should parse to a fail on output_format", t, func() {
-		Convey("Error should be nil", func() {
-			So(err, ShouldNotEqual, nil)
-		})
+		So(err, ShouldNotEqual, nil)
 	})
 }

@@ -7,6 +7,7 @@ package splitter
 import (
 	"fmt"
 	"strings"
+	"time"
 )
 
 const STATSD_NAME = "statsd"
@@ -22,6 +23,14 @@ type StatsdSplitItem struct {
 
 func (g *StatsdSplitItem) Key() string {
 	return g.inkey
+}
+
+func (g *StatsdSplitItem) HasTime() bool {
+	return false
+}
+
+func (g *StatsdSplitItem) Timestamp() time.Time {
+	return time.Time{}
 }
 
 func (g *StatsdSplitItem) Line() string {

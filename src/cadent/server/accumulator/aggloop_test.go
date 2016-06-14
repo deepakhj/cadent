@@ -19,6 +19,8 @@ func TestAccumualtorAggLoop(t *testing.T) {
 	[writer.metrics]
 	driver = "moo"
 	dsn = "/tmp/tt"
+	[writer.indexer]
+	driver = "noop"
 	`
 	_, err := ParseConfigString(conf_str)
 
@@ -37,6 +39,9 @@ func TestAccumualtorAggLoop(t *testing.T) {
 	[writer.metrics]
 	driver = "file"
 	dsn = "/tmp/tt"
+	[writer.indexer]
+	driver = "noop"
+
 	`
 
 	cf, err := DecodeConfigString(conf_str)

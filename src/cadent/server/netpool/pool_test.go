@@ -17,6 +17,28 @@ import (
 
 var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
+func FreeTCPPort() int {
+	addr, err := net.ResolveTCPAddr("tcp", "localhost:0")
+	if err != nil {
+		panic(err)
+	}
+
+	l, err := net.ListenTCP("tcp", addr)
+	if err != nil {
+		panic(err)
+	}
+	defer l.Close()
+	return l.Addr().(*net.TCPAddr).Port
+}
+func FreeUDPPort() int {
+	addr, err := net.ResolveUDPAddr("udp", "localhost:0")
+	if err != nil {
+		panic(err)
+	}
+
+	return addr.Port
+}
+
 // random char gen
 func RandChars(length uint) string {
 
@@ -97,18 +119,26 @@ func MakeTesterServer(proto string, server string) net.Listener {
 
 func TestPoolerConns(t *testing.T) {
 
-	list := MakeTesterServer("tcp", "127.0.0.1:30002")
+	free_p := FreeTCPPort()
+	list := MakeTesterServer("tcp", fmt.Sprintf("127.0.0.1:%d", free_p))
 	defer list.Close()
 
-	udplist, _ := TesterUDPMockListener("127.0.0.1:30005")
+	free_p_2 := FreeUDPPort()
+	udplist, _ := TesterUDPMockListener(fmt.Sprintf("127.0.0.1:%d", free_p_2))
 	defer udplist.Close()
 
-	sock := "/tmp/_tester.sock"
+	file, _ := ioutil.TempFile("/tmp", "cadent_file_test")
+	f_name := file.Name()
+	file.Close()
+	defer func(){ os.Remove(f_name) }()
+
+	sock := fmt.Sprintf("%s.sock", f_name)
 	socklist := MakeTesterServer("unix", sock)
 	defer socklist.Close()
 	defer os.Remove(sock)
 
-	go TesterHTTPMockListener("127.0.0.1:30003")
+	free_p_3 := FreeTCPPort()
+	go TesterHTTPMockListener(fmt.Sprintf("127.0.0.1:%d", free_p_3))
 
 	t_out := time.Duration(10 * time.Second)
 	time.Sleep(time.Duration(time.Second)) // let things start up
@@ -120,10 +150,10 @@ func TestPoolerConns(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
-		conn, err := NewWriterConn("tcp", "127.0.0.1:30002", t_out)
+		conn, err := NewWriterConn("tcp", fmt.Sprintf("127.0.0.1:%d", free_p), t_out)
 		Convey("get a real tcp client", func() {
 			So(err, ShouldBeNil)
-			So(conn.RemoteAddr().String(), ShouldEqual, "127.0.0.1:30002")
+			So(conn.RemoteAddr().String(), ShouldEqual, fmt.Sprintf("127.0.0.1:%d", free_p))
 		})
 
 		n, err := conn.Write([]byte("moo"))
@@ -145,11 +175,11 @@ func TestPoolerConns(t *testing.T) {
 			So(ferr, ShouldNotBeNil)
 		})
 
-		hconn, herr := NewWriterConn("http", "127.0.0.1:30003/", t_out)
+		hconn, herr := NewWriterConn("http", fmt.Sprintf("127.0.0.1:%d/", free_p_3), t_out)
 
 		Convey("get a real http client", func() {
 			So(herr, ShouldBeNil)
-			So(hconn.RemoteAddr().String(), ShouldEqual, "127.0.0.1:30003")
+			So(hconn.RemoteAddr().String(), ShouldEqual, fmt.Sprintf("127.0.0.1:%d", free_p_3))
 		})
 
 		n, err := hconn.Write([]byte("moo"))
@@ -173,11 +203,11 @@ func TestPoolerConns(t *testing.T) {
 
 	Convey("UDP Pool connections should", t, func() {
 
-		hconn, herr := NewWriterConn("udp", "127.0.0.1:30005", t_out)
+		hconn, herr := NewWriterConn("udp", fmt.Sprintf("127.0.0.1:%d", free_p_3), t_out)
 
 		Convey("get a real udp client", func() {
 			So(herr, ShouldBeNil)
-			So(hconn.RemoteAddr().String(), ShouldEqual, "127.0.0.1:30005")
+			So(hconn.RemoteAddr().String(), ShouldEqual, fmt.Sprintf("127.0.0.1:%d", free_p_3))
 		})
 
 		n, err := hconn.Write([]byte("moo"))

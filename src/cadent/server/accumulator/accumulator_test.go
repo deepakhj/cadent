@@ -16,7 +16,7 @@ func TestAccumualtorAccumulator(t *testing.T) {
 	//profiler
 	//go http.ListenAndServe(":6065", nil)
 
-	fail_acc, err := NewAccumlator("monkey", "graphite", false)
+	fail_acc, err := NewAccumlator("monkey", "graphite", false, "monkeytest")
 	Convey("Bad formatter name `monkey` should faile ", t, func() {
 		Convey("Error should not be nil", func() {
 			So(err, ShouldNotEqual, nil)
@@ -26,7 +26,7 @@ func TestAccumualtorAccumulator(t *testing.T) {
 		})
 	})
 
-	fail_acc, err = NewAccumlator("graphite", "monkey", false)
+	fail_acc, err = NewAccumlator("graphite", "monkey", false, "monkeytest")
 	Convey("Bad accumulator name `monkey` should faile ", t, func() {
 		Convey("Error should not be nil", func() {
 			So(err, ShouldNotEqual, nil)
@@ -36,7 +36,7 @@ func TestAccumualtorAccumulator(t *testing.T) {
 		})
 	})
 
-	grph_acc, err := NewAccumlator("graphite", "graphite", false)
+	grph_acc, err := NewAccumlator("graphite", "graphite", false, "monkeytest")
 
 	Convey("Graphite to graphite -> graphite accumulator should be ok", t, func() {
 
@@ -72,7 +72,7 @@ func TestAccumualtorAccumulator(t *testing.T) {
 			grph_acc.LogConfig()
 		})
 	})
-	statsd_acc, err := NewAccumlator("statsd", "statsd", true)
+	statsd_acc, err := NewAccumlator("statsd", "statsd", true, "statsdstatsd")
 	Convey("Statsd to statsd accumulator should be ok", t, func() {
 
 		Convey("Error should be nil", func() {
@@ -82,7 +82,7 @@ func TestAccumualtorAccumulator(t *testing.T) {
 			So(statsd_acc, ShouldNotEqual, nil)
 		})
 	})
-	statsd_acc, err = NewAccumlator("statsd", "graphite", false)
+	statsd_acc, err = NewAccumlator("statsd", "graphite", false, "statsdgraphite")
 	Convey("Statsd to graphite accumulator should be ok", t, func() {
 
 		Convey("Error should be nil", func() {
@@ -148,7 +148,7 @@ func TestAccumualtorAccumulator(t *testing.T) {
 	})
 
 	// test the keep keys
-	statsd_acc, err = NewAccumlator("statsd", "graphite", true)
+	statsd_acc, err = NewAccumlator("statsd", "graphite", true, "statsdgraphite")
 	statsd_acc.Accumulate.SetOptions([][]string{
 		{"legacyNamespace", "true"},
 		{"prefixGauge", "gauges"},
@@ -212,7 +212,7 @@ func TestAccumualtorAccumulator(t *testing.T) {
 	// test the keep keys
 	tickG := make(chan splitter.SplitItem, 1000)
 
-	graphite_acc, err := NewAccumlator("graphite", "graphite", true)
+	graphite_acc, err := NewAccumlator("graphite", "graphite", true, "graphitegraphite")
 	graphite_acc.FlushTimes = []time.Duration{time.Duration(time.Second)}
 	graphite_acc.SetOutputQueue(tickG)
 
@@ -221,12 +221,12 @@ func TestAccumualtorAccumulator(t *testing.T) {
 		//time.Sleep(2 * time.Second) // wait for things to kick off
 		// should "flush" 4 times, the first w/2 lines
 		// the next 3 with only 2
-		err = graphite_acc.ProcessLine("moo.goo.poo 12 123123")
-		err = graphite_acc.ProcessLine("moo.goo.poo 35 123124")
-		err = graphite_acc.ProcessLine("moo.goo.poo 66 123125")
-		err = graphite_acc.ProcessLine("moo.goo.loo 100 123123")
-		err = graphite_acc.ProcessLine("moo.goo.loo 100 123123")
-		err = graphite_acc.ProcessLine("moo.goo.loo 100 123123")
+		err = graphite_acc.ProcessLine("moo.goo.poo 12 1465867151")
+		err = graphite_acc.ProcessLine("moo.goo.poo 35 1465867152")
+		err = graphite_acc.ProcessLine("moo.goo.poo 66 1465867153")
+		err = graphite_acc.ProcessLine("moo.goo.loo 100 1465867150")
+		err = graphite_acc.ProcessLine("moo.goo.loo 100 1465867150")
+		err = graphite_acc.ProcessLine("moo.goo.loo 100 1465867150")
 
 		outs := []splitter.SplitItem{}
 		t.Logf("Graphite -> Graphite:: LineQueue %d", len(graphite_acc.LineQueue))

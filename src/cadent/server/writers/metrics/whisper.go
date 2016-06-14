@@ -329,7 +329,7 @@ func (ws *WhisperWriter) InsertMulti(metric string, points []*repr.StatRepr) (in
 		ws.cache_queue.DumpPoints(points)
 	} */
 
-	// convert "poits" to a whisper object
+	// convert "points" to a whisper object
 	whisp_points := make([]*whisper.TimeSeriesPoint, 0)
 	for _, pt := range points {
 

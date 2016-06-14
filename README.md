@@ -539,6 +539,11 @@ Here are the configuration options
 If you want to bypass the entire "graphite" thing and go straight to a kafka dump, look to 
 `configs/statsd-kafka-config.toml` and `configs/statsd-kafka-pregre.toml` pair .. this is probably the most typical use
 of a kafka writer backend.  One can easily do the same with straight graphite data (i.e. from `diamond` or similar).
+
+
+Since ordering and time lag and all sorts of other things can mess w/ the works for things, it's still best to fire stats to 
+a consistent hash location, that properly routes and aggregates keys to times such that stats are emitted "once" at a given time 
+window.  In that way, ordering/time differences are avoided.  Basically  `statsd -> flush to consthasher -> route -> flush to kafka`
             
 
 ### API/Readers

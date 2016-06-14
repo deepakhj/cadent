@@ -63,7 +63,9 @@ func NewKafkaIndexer() *KafkaIndexer {
 }
 
 func (kf *KafkaIndexer) Stop() {
-	//noop
+	if err := kf.conn.Close(); err != nil {
+		kf.log.Error("Failed to shut down producer cleanly %v", err)
+	}
 }
 
 func (kf *KafkaIndexer) Config(conf map[string]interface{}) error {

@@ -61,11 +61,13 @@ type KafkaMetrics struct {
 	indexer     indexer.Indexer
 	resolutions [][]int
 
-	log *logging.Logger
+	batches int // number of stats to "batch" per message (default 0)
+	log     *logging.Logger
 }
 
 func NewKafkaMetrics() *KafkaMetrics {
 	kf := new(KafkaMetrics)
+	kf.batches = 0
 	kf.log = logging.MustGetLogger("writers.kafka.metrics")
 	return kf
 }
@@ -89,7 +91,9 @@ func (kf *KafkaMetrics) Config(conf map[string]interface{}) error {
 
 // TODO
 func (kf *KafkaMetrics) Stop() {
-	return
+	if err := kf.conn.Close(); err != nil {
+		kf.log.Error("Failed to shut down producer cleanly %v", err)
+	}
 }
 
 func (kf *KafkaMetrics) SetIndexer(idx indexer.Indexer) error {
