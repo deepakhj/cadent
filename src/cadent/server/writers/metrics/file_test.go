@@ -2,12 +2,12 @@ package metrics
 
 import (
 	"cadent/server/repr"
+	"cadent/server/writers/indexer"
 	. "github.com/smartystreets/goconvey/convey"
 	"io/ioutil"
 	"os"
 	"testing"
 	"time"
-	"cadent/server/writers/indexer"
 )
 
 func TestFileWriterAccumulator(t *testing.T) {
@@ -61,6 +61,7 @@ func TestFileWriterAccumulator(t *testing.T) {
 		time.Sleep(time.Second)
 		fw.Stop()
 		os.Remove(file.Name())
+		fw = nil
 
 	})
 

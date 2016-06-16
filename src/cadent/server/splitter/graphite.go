@@ -89,6 +89,10 @@ func (g *GraphiteSplitItem) IsValid() bool {
 	return len(g.inline) > 0
 }
 
+func (job *GraphiteSplitItem) String() string {
+	return fmt.Sprintf("Splitter: Graphite: %s @ %s", job.infields, job.intime)
+}
+
 type GraphiteSplitter struct {
 	key_index  int
 	time_index int

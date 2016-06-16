@@ -68,6 +68,10 @@ func (g *StatsdSplitItem) IsValid() bool {
 	return len(g.inline) > 0
 }
 
+func (job *StatsdSplitItem) String() string {
+	return fmt.Sprintf("Splitter: Statsd: %s", job.infields)
+}
+
 type StatsdSplitter struct {
 }
 

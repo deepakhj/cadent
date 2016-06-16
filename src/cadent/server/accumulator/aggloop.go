@@ -257,7 +257,7 @@ func (agg *AggregateLoop) startWriteLooper(duration time.Duration, ttl time.Dura
 			return
 		}
 		for _, stat := range items {
-			agg.log.Critical("FLUSH POST: %s", stat)
+			// agg.log.Critical("FLUSH POST: %s", stat)
 			stat.Resolution = _dur.Seconds()
 			stat.TTL = int64(_ttl.Seconds()) // need to add in the TTL
 			writer.WriterChan() <- stat

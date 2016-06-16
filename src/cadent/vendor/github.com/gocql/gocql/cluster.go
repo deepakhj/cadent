@@ -72,6 +72,9 @@ type ClusterConfig struct {
 
 	Discovery DiscoveryConfig
 
+	// If not zero, gocql attempt to reconnect known DOWN nodes in every ReconnectSleep.
+	ReconnectInterval time.Duration
+
 	// The maximum amount of time to wait for schema agreement in a cluster after
 	// receiving a schema change frame. (deault: 60s)
 	MaxWaitSchemaAgreement time.Duration
@@ -107,6 +110,14 @@ type ClusterConfig struct {
 		DisableSchemaEvents bool
 	}
 
+	// DisableSkipMetadata will override the internal result metadata cache so that the driver does not
+	// send skip_metadata for queries, this means that the result will always contain
+	// the metadata to parse the rows and will not reuse the metadata from the prepared
+	// staement.
+	//
+	// See https://issues.apache.org/jira/browse/CASSANDRA-10786
+	DisableSkipMetadata bool
+
 	// internal config for testing
 	disableControlConn bool
 }
@@ -126,6 +137,7 @@ func NewCluster(hosts ...string) *ClusterConfig {
 		PageSize:               5000,
 		DefaultTimestamp:       true,
 		MaxWaitSchemaAgreement: 60 * time.Second,
+		ReconnectInterval:      60 * time.Second,
 	}
 	return cfg
 }

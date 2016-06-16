@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"github.com/Shopify/sarama"
 	logging "gopkg.in/op/go-logging.v1"
+	"strings"
 	"time"
 )
 
@@ -33,6 +34,7 @@ type KafkaMetric struct {
 	First      repr.JsonFloat64 `json:"first"`
 	Resolution float64          `json:"resolution"`
 	TTL        int64            `json:"ttl"`
+	Tags       []string         `json:"tags"` // key1=value1,key2=value2...
 
 	encoded []byte
 	err     error
@@ -60,6 +62,7 @@ type KafkaMetrics struct {
 	conn        sarama.AsyncProducer
 	indexer     indexer.Indexer
 	resolutions [][]int
+	static_tags []string
 
 	batches int // number of stats to "batch" per message (default 0)
 	log     *logging.Logger
@@ -86,6 +89,10 @@ func (kf *KafkaMetrics) Config(conf map[string]interface{}) error {
 	kf.db = db.(*dbs.KafkaDB)
 	kf.conn = db.Connection().(sarama.AsyncProducer)
 
+	g_tag, ok := conf["tags"]
+	if ok {
+		kf.static_tags = strings.Split(g_tag.(string), ",")
+	}
 	return nil
 }
 
@@ -125,6 +132,7 @@ func (kf *KafkaMetrics) Write(stat repr.StatRepr) error {
 		Min:        stat.Min,
 		Resolution: stat.Resolution,
 		TTL:        stat.TTL,
+		Tags:       kf.static_tags,
 	}
 
 	stats.StatsdClientSlow.Incr("writer.kafka.metrics.writes", 1)

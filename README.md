@@ -531,6 +531,7 @@ already and consumers can deal with indexing)
     	    count: int64
     	    resolution: float64
     	    ttl: int64
+    	    tags: []string //[key1=value1, key2=value2...]
     	}
   
   
@@ -547,6 +548,7 @@ Here are the configuration options
         	max_retry = 10
         	ack_type = "local" # (all = all replicas ack, default "local")
         	flush_time = "1s" # flush produced messages ever tick (default "1s")
+        	tags = "server=host1,env=prod" # these are static for whatever process is running this
         	
         	[to-kafka..accumulator.writer.indexer]
             driver = "kafka"

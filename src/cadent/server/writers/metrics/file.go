@@ -15,6 +15,7 @@
 package metrics
 
 import (
+	"cadent/server/broadcast"
 	"cadent/server/repr"
 	"cadent/server/writers/indexer"
 	"fmt"
@@ -22,7 +23,6 @@ import (
 	"os"
 	"sync"
 	"time"
-	"cadent/server/broadcast"
 )
 
 /****************** Interfaces *********************/
@@ -36,7 +36,7 @@ type FileMetrics struct {
 	max_file_size int64 // file rotation
 	write_lock    sync.Mutex
 	rotate_check  time.Duration
-	shutdown *broadcast.Broadcaster
+	shutdown      *broadcast.Broadcaster
 
 	log *logging.Logger
 }
@@ -115,7 +115,7 @@ func (fi *FileMetrics) PeriodicRotate() (err error) {
 		case <-shuts.Ch:
 			shuts.Close()
 			fi.log.Warning("Shutting down file writer...")
-			if fi.fp != nil{
+			if fi.fp != nil {
 				fi.fp.Close()
 				fi.fp = nil
 			}

@@ -130,7 +130,7 @@ func TestPoolerConns(t *testing.T) {
 	file, _ := ioutil.TempFile("/tmp", "cadent_file_test")
 	f_name := file.Name()
 	file.Close()
-	defer func(){ os.Remove(f_name) }()
+	defer func() { os.Remove(f_name) }()
 
 	sock := fmt.Sprintf("%s.sock", f_name)
 	socklist := MakeTesterServer("unix", sock)

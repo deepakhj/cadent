@@ -75,12 +75,12 @@ func NewAccumlator(inputtype string, outputtype string, keepkeys bool, name stri
 	if err != nil {
 		return nil, err
 	}
-	fmter.Init()
 
 	acc, err := NewAccumulatorItem(inputtype)
 	if err != nil {
 		return nil, err
 	}
+	fmter.Init()
 	acc.Init(fmter)
 	acc.SetKeepKeys(keepkeys)
 	acc.SetResolution(time.Duration(time.Second))

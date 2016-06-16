@@ -39,7 +39,7 @@ const (
 	DEFAULT_KAFKA_RETRY       = 10
 	DEFAULT_KAFKA_ACK         = "local"
 	DEFAULT_KAFKA_FLUSH       = "1s"
-	DEFAULT_KAFKA_COMPRESSION = "none"
+	DEFAULT_KAFKA_COMPRESSION = "snappy"
 )
 
 /****************** Interfaces *********************/
@@ -84,7 +84,7 @@ func (kf *KafkaDB) Config(conf map[string]interface{}) error {
 		kf.data_topic = _ptable.(string)
 	}
 
-	// file prefix
+	// batch count
 	_batch := conf["batch_count"]
 	if _batch == nil {
 		kf.batch_count = DEFAULT_KAFKA_BATCH_SIZE

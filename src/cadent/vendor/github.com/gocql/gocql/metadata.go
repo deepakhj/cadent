@@ -105,8 +105,6 @@ func (s *schemaDescriber) getSchema(keyspaceName string) (*KeyspaceMetadata, err
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// TODO handle schema change events
-
 	metadata, found := s.cache[keyspaceName]
 	if !found {
 		// refresh the cache for this keyspace
@@ -119,6 +117,14 @@ func (s *schemaDescriber) getSchema(keyspaceName string) (*KeyspaceMetadata, err
 	}
 
 	return metadata, nil
+}
+
+// clears the already cached keyspace metadata
+func (s *schemaDescriber) clearSchema(keyspaceName string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	delete(s.cache, keyspaceName)
 }
 
 // forcibly updates the current KeyspaceMetadata held by the schema describer
@@ -404,6 +410,7 @@ func getKeyspaceMetadata(session *Session, keyspaceName string) (*KeyspaceMetada
 func getTableMetadata(session *Session, keyspaceName string) ([]TableMetadata, error) {
 
 	var (
+		iter *Iter
 		scan func(iter *Iter, table *TableMetadata) bool
 		stmt string
 
@@ -418,10 +425,29 @@ func getTableMetadata(session *Session, keyspaceName string) ([]TableMetadata, e
 		FROM system_schema.tables
 		WHERE keyspace_name = ?`
 
+		switchIter := func() *Iter {
+			iter.Close()
+			stmt = `
+				SELECT
+					view_name
+				FROM system_schema.views
+				WHERE keyspace_name = ?`
+			iter = session.control.query(stmt, keyspaceName)
+			return iter
+		}
+
 		scan = func(iter *Iter, table *TableMetadata) bool {
-			return iter.Scan(
+			r := iter.Scan(
 				&table.Name,
 			)
+			if !r {
+				iter = switchIter()
+				if iter != nil {
+					switchIter = func() *Iter { return nil }
+					r = iter.Scan(&table.Name)
+				}
+			}
+			return r
 		}
 	} else if session.cfg.ProtoVersion < protoVersion4 {
 		// we have key aliases
@@ -469,7 +495,7 @@ func getTableMetadata(session *Session, keyspaceName string) ([]TableMetadata, e
 		}
 	}
 
-	iter := session.control.query(stmt, keyspaceName)
+	iter = session.control.query(stmt, keyspaceName)
 
 	tables := []TableMetadata{}
 	table := TableMetadata{Keyspace: keyspaceName}
