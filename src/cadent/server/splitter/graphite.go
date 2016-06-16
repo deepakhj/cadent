@@ -8,7 +8,9 @@ package splitter
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
+	"time"
 )
 
 /****************** RUNNERS *********************/
@@ -32,6 +34,7 @@ func init() {
 type GraphiteSplitItem struct {
 	inkey    string
 	inline   string
+	intime   time.Time
 	infields []string
 	inphase  Phase
 	inorigin Origin
@@ -40,6 +43,14 @@ type GraphiteSplitItem struct {
 
 func (g *GraphiteSplitItem) Key() string {
 	return g.inkey
+}
+
+func (g *GraphiteSplitItem) HasTime() bool {
+	return true
+}
+
+func (g *GraphiteSplitItem) Timestamp() time.Time {
+	return g.intime
 }
 
 func (g *GraphiteSplitItem) Line() string {
@@ -78,35 +89,55 @@ func (g *GraphiteSplitItem) IsValid() bool {
 	return len(g.inline) > 0
 }
 
-type GraphiteSplitter struct {
-	key_index int
+func (g *GraphiteSplitItem) String() string {
+	return fmt.Sprintf("Splitter: Graphite: %s @ %s", g.infields, g.intime)
 }
 
-func (job *GraphiteSplitter) Name() (name string) { return GRAPHITE_NAME }
+type GraphiteSplitter struct {
+	key_index  int
+	time_index int
+}
+
+func (g *GraphiteSplitter) Name() (name string) { return GRAPHITE_NAME }
 
 func NewGraphiteSplitter(conf map[string]interface{}) (*GraphiteSplitter, error) {
 
 	//<key> <value> <time> <thigns>
 	job := &GraphiteSplitter{
-		key_index: 0,
+		key_index:  0,
+		time_index: 2,
 	}
 	// allow for a config option to pick the proper thing in the line
 	if idx, ok := conf["key_index"].(int); ok {
 		job.key_index = idx
 	}
+	if idx, ok := conf["time_index"].(int); ok {
+		job.time_index = idx
+	}
 	return job, nil
 }
 
-func (job *GraphiteSplitter) ProcessLine(line string) (SplitItem, error) {
+func (g *GraphiteSplitter) ProcessLine(line string) (SplitItem, error) {
 	//<key> <value> <time> <more> <more>
 	//graphite_array := strings.Fields(line)
 	// clean the string of bad chars
 	line = GRAHITE_REPLACER.Replace(line)
 	graphite_array := strings.Split(line, " ")
-	if len(graphite_array) > job.key_index {
+	if len(graphite_array) > g.key_index {
+
+		// graphite timestamps are in unix seconds
+		t := time.Time{}
+		if len(graphite_array) >= g.time_index {
+			i, err := strconv.ParseInt(graphite_array[g.time_index], 10, 64)
+			if err == nil {
+				t = time.Unix(i, 0)
+			}
+		}
+		// log.Printf("IN GRAPHITE: %s ARR: %v  t_idx: %d, time: %s", graphite_array, line, graphite_array[job.time_index], t.String())
 		gi := &GraphiteSplitItem{
-			inkey:    graphite_array[job.key_index],
+			inkey:    graphite_array[g.key_index],
 			inline:   line,
+			intime:   t,
 			infields: graphite_array,
 			inphase:  Parsed,
 			inorigin: Other,

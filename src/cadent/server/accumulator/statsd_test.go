@@ -125,11 +125,12 @@ func TestStatsdAccumulator(t *testing.T) {
 		got_timer := ""
 		have_upper := ""
 		for _, item := range b_arr.Lines {
-			t.Logf("Statsd Line: %s", item)
+			t.Logf("Flush Lines Statsd Line: %s", item)
 			if strings.Contains(item, "stats.timers") {
 				got_timer = item
 			}
-			if strings.Contains(item, "moo.goo.org.upper_95:20.000000|g") {
+			// note: timers don't get the rate dividor
+			if strings.Contains(item, "moo.goo.org.upper_95:2.000000|g") {
 				have_upper = item
 			}
 		}
@@ -139,20 +140,17 @@ func TestStatsdAccumulator(t *testing.T) {
 		Convey("Statsd should have proper upper_95 ", func() {
 			So(len(have_upper), ShouldNotEqual, 0)
 		})
+		have_upper = ""
+		got_timer = ""
 		for _, item := range b_arr.Stats {
-			t.Logf("Statsd Line: %v", item)
+			t.Logf("Flush Stats Statsd Line: %v", item)
 			if strings.Contains(item.Key, "stats.timers") {
 				got_timer = item.Key
 			}
-			if strings.Contains(item.StatKey, "moo.goo.org.upper_95:20.000000|g") {
-				have_upper = item.StatKey
-			}
+
 		}
 		Convey("Statsd statitem should not have stats.timers ", func() {
 			So(len(got_timer), ShouldEqual, 0)
-		})
-		Convey("Statsd statitem should have proper upper_95 ", func() {
-			So(len(have_upper), ShouldNotEqual, 0)
 		})
 	})
 }

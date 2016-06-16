@@ -119,7 +119,7 @@ func (c *Consistent) SetElterByName(elter string) {
 	switch elter {
 	case "statsd":
 		c.elter = statsdElt
-	case "consistent", "goconsistent":
+	case "consistent", "goconsistent", "simple":
 		c.elter = consistentElt
 	default:
 		c.elter = graphiteElt

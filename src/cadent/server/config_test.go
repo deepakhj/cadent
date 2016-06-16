@@ -3,6 +3,7 @@ package cadent
 import (
 	"statsd"
 
+	"cadent/server/stats"
 	"fmt"
 	. "github.com/smartystreets/goconvey/convey"
 	"io/ioutil"
@@ -139,7 +140,8 @@ msg_type="graphite"
 		})
 	})
 
-	statsclient = SetUpStatsdClient(defc)
+	SetUpStatsdClient(defc)
+	statsclient = stats.StatsdClient
 	stats_listen = TesterUDPMockListener("udp://" + defc.StatsdServer)
 	defer stats_listen.Close()
 

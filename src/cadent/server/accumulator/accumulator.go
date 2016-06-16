@@ -75,14 +75,15 @@ func NewAccumlator(inputtype string, outputtype string, keepkeys bool, name stri
 	if err != nil {
 		return nil, err
 	}
-	fmter.Init()
 
 	acc, err := NewAccumulatorItem(inputtype)
 	if err != nil {
 		return nil, err
 	}
+	fmter.Init()
 	acc.Init(fmter)
 	acc.SetKeepKeys(keepkeys)
+	acc.SetResolution(time.Duration(time.Second))
 
 	ac := &Accumulator{
 		Accumulate:        acc,
@@ -166,6 +167,11 @@ func (acc *Accumulator) Start() error {
 	}
 
 	if acc.timer == nil {
+		// make sure to set the proper resolution in the
+		// aggregator matters for those things that have time components on the incoming
+		// graphite/carbon
+		acc.Accumulate.SetResolution(acc.AccumulateTime)
+
 		if acc.RandomTickerStart {
 			acc.log.Notice(
 				"Accumulator Loop for %s at random start .. starting: %d",
@@ -195,6 +201,11 @@ func (acc *Accumulator) Start() error {
 		go acc.Aggregators.Start()
 	}
 
+	defer func(){
+		close(acc.LineQueue)
+		acc.LineQueue = nil
+	}()
+
 	for {
 
 		select {
@@ -215,8 +226,6 @@ func (acc *Accumulator) Start() error {
 		}
 	}
 
-	close(acc.LineQueue)
-	acc.LineQueue = nil
 	return nil
 }
 
@@ -233,13 +242,14 @@ func (acc *Accumulator) Stop() {
 // move back into Main Server loop
 func (acc *Accumulator) PushLine(spl splitter.SplitItem) {
 	if acc.OutputQueue != nil && acc.ToBackend != BLACK_HOLE_BACKEND {
+		stats.StatsdClient.Incr("accumulator.stats.lines.outgoing", 1)
 		acc.OutputQueue <- spl
 	}
 }
 
 // move into Aggregator land
 func (acc *Accumulator) PushStat(spl repr.StatRepr) {
-	stats.StatsdClient.Incr("accumulator.stats.outgoing", 1)
+	stats.StatsdClient.Incr("accumulator.stats.repr.outgoing", 1)
 	acc.Aggregators.InputChan <- spl
 }
 
@@ -269,7 +279,9 @@ func (acc *Accumulator) FlushAndPost(attime time.Time) ([]splitter.SplitItem, er
 
 	if acc.Aggregators != nil {
 		for _, stat := range items.Stats {
-			stat.Time = attime // need to set this as this is the flush time
+			if stat.Time.IsZero() {
+				stat.Time = attime // need to set this as this is the flush time
+			}
 			acc.PushStat(stat)
 		}
 		acc.log.Debug("Aggregator Flush: `%s` to `%s` Lines: %d", acc.Name, acc.Aggregators.Name, len(items.Stats))

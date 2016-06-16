@@ -4,6 +4,8 @@ An interface that is the "runner" for various Line Processors
 
 package splitter
 
+import "time"
+
 type Phase int
 
 const (
@@ -23,6 +25,8 @@ const (
 
 type SplitItem interface {
 	Key() string
+	HasTime() bool
+	Timestamp() time.Time
 	Line() string
 	Fields() []string
 	Phase() Phase

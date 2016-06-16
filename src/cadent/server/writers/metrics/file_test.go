@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"cadent/server/repr"
+	"cadent/server/writers/indexer"
 	. "github.com/smartystreets/goconvey/convey"
 	"io/ioutil"
 	"os"
@@ -13,34 +14,40 @@ func TestFileWriterAccumulator(t *testing.T) {
 	// Only pass t into top-level Convey calls
 
 	Convey("a dummy file writer", t, func() {
-		file, _ := ioutil.TempFile("/tmp", "tt")
+		file, _ := ioutil.TempFile("/tmp", "cadent_file_test")
 		f_name := file.Name()
 		file.Close()
 		fw, _ := NewMetrics("file")
+
+		idx, _ := indexer.NewIndexer("noop")
 		conf := make(map[string]interface{})
+		conf["max_file_size"] = int64(200)
+
+		ok := fw.Config(conf)
+
+		Convey("Config Should config fail", func() {
+			So(ok, ShouldNotEqual, nil)
+		})
+
+		conf["dsn"] = f_name
+		conf["rotate_every"] = time.Duration(time.Second)
+		ok = fw.Config(conf)
+		fw.SetIndexer(idx)
+
+		Convey("Config Should not fail", func() {
+			So(ok, ShouldEqual, nil)
+		})
 
 		st := repr.StatRepr{
+			Time:       time.Now(),
 			StatKey:    "goo",
 			Sum:        5,
 			Min:        1,
 			Max:        3,
 			Count:      4,
-			Time:       time.Now(),
 			Resolution: 2,
 		}
-		conf["max_file_size"] = int64(200)
-		conf["rotate_every"] = time.Duration(time.Second)
-		ok := fw.Config(conf)
 
-		Convey("Should config fail", func() {
-			So(ok, ShouldNotEqual, nil)
-		})
-		conf["dsn"] = f_name
-		ok = fw.Config(conf)
-
-		Convey("Should config", func() {
-			So(ok, ShouldEqual, nil)
-		})
 		Convey("Should write", func() {
 			err := fw.Write(st)
 			So(err, ShouldEqual, nil)
@@ -50,9 +57,11 @@ func TestFileWriterAccumulator(t *testing.T) {
 		for i := 0; i < 1000; i++ {
 			fw.Write(st)
 		}
+
 		time.Sleep(time.Second)
-		file.Close()
+		fw.Stop()
 		os.Remove(file.Name())
+		fw = nil
 
 	})
 

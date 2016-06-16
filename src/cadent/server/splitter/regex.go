@@ -7,6 +7,7 @@ package splitter
 import (
 	"fmt"
 	"regexp"
+	"time"
 )
 
 const REGEX_NAME = "regex"
@@ -14,6 +15,7 @@ const REGEX_NAME = "regex"
 type RegexSplitItem struct {
 	inkey    string
 	inline   string
+	intime   time.Time
 	regexed  [][]string
 	inphase  Phase
 	inorigin Origin
@@ -26,6 +28,14 @@ func (g *RegexSplitItem) Key() string {
 
 func (g *RegexSplitItem) Line() string {
 	return g.inline
+}
+
+func (g *RegexSplitItem) HasTime() bool {
+	return g.intime.IsZero()
+}
+
+func (g *RegexSplitItem) Timestamp() time.Time {
+	return g.intime
 }
 
 func (g *RegexSplitItem) Fields() []string {
@@ -63,21 +73,30 @@ type RegExSplitter struct {
 	key_regex       *regexp.Regexp
 	key_regex_names []string
 	key_index       int
+	time_index      int
+	time_layout     string
 }
 
 func (job *RegExSplitter) Name() (name string) { return REGEX_NAME }
 
 func NewRegExSplitter(conf map[string]interface{}) (*RegExSplitter, error) {
 
-	//<key>:blaaa
+	//<key>:<timestamp>:blaaa
 	job := &RegExSplitter{}
 	job.key_regex = conf["regexp"].(*regexp.Regexp)
 	job.key_regex_names = conf["regexpNames"].([]string)
+
+	// see if there is a time_layout
+	if val, ok := conf["timeLayout"]; ok {
+		job.time_layout = val.(string)
+	}
 	// get the "Key" index for easy lookup
 	for i, n := range job.key_regex_names {
 		if n == "Key" {
 			job.key_index = i
-			break
+		}
+		if n == "Timestamp" {
+			job.time_index = i
 		}
 	}
 
@@ -86,7 +105,7 @@ func NewRegExSplitter(conf map[string]interface{}) (*RegExSplitter, error) {
 }
 
 func (job *RegExSplitter) ProcessLine(line string) (SplitItem, error) {
-	var key_param string
+	var key_param, time_param string
 
 	matched := job.key_regex.FindAllStringSubmatch(line, -1)
 	if matched == nil {
@@ -97,10 +116,20 @@ func (job *RegExSplitter) ProcessLine(line string) (SplitItem, error) {
 	}
 	key_param = matched[0][job.key_index+1] // first string is always the original string
 
+	t := time.Time{}
+	if job.time_index > 0 && len(job.time_layout) > 0 {
+		time_param = matched[0][job.time_index+1]
+		_time, err := time.Parse(job.time_layout, time_param)
+		if err == nil {
+			t = _time
+		}
+	}
+
 	if len(key_param) > 0 {
 		ri := &RegexSplitItem{
 			inkey:    key_param,
 			inline:   line,
+			intime:   t,
 			regexed:  matched,
 			inphase:  Parsed,
 			inorigin: Other,
