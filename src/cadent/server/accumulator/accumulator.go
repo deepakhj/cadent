@@ -201,6 +201,11 @@ func (acc *Accumulator) Start() error {
 		go acc.Aggregators.Start()
 	}
 
+	defer func(){
+		close(acc.LineQueue)
+		acc.LineQueue = nil
+	}()
+
 	for {
 
 		select {
@@ -221,8 +226,6 @@ func (acc *Accumulator) Start() error {
 		}
 	}
 
-	close(acc.LineQueue)
-	acc.LineQueue = nil
 	return nil
 }
 
@@ -239,13 +242,14 @@ func (acc *Accumulator) Stop() {
 // move back into Main Server loop
 func (acc *Accumulator) PushLine(spl splitter.SplitItem) {
 	if acc.OutputQueue != nil && acc.ToBackend != BLACK_HOLE_BACKEND {
+		stats.StatsdClient.Incr("accumulator.stats.lines.outgoing", 1)
 		acc.OutputQueue <- spl
 	}
 }
 
 // move into Aggregator land
 func (acc *Accumulator) PushStat(spl repr.StatRepr) {
-	stats.StatsdClient.Incr("accumulator.stats.outgoing", 1)
+	stats.StatsdClient.Incr("accumulator.stats.repr.outgoing", 1)
 	acc.Aggregators.InputChan <- spl
 }
 
