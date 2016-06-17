@@ -201,7 +201,7 @@ func (acc *Accumulator) Start() error {
 		go acc.Aggregators.Start()
 	}
 
-	defer func(){
+	defer func() {
 		close(acc.LineQueue)
 		acc.LineQueue = nil
 	}()
