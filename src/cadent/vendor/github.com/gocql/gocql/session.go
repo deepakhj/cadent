@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"strconv"
 	"strings"
@@ -17,6 +18,8 @@ import (
 	"sync/atomic"
 	"time"
 	"unicode"
+
+	"golang.org/x/net/context"
 
 	"github.com/gocql/gocql/internal/lru"
 )
@@ -65,6 +68,12 @@ type Session struct {
 
 	closeMu  sync.RWMutex
 	isClosed bool
+}
+
+var queryPool = &sync.Pool{
+	New: func() interface{} {
+		return new(Query)
+	},
 }
 
 func addrsToHosts(addrs []string, defaultPort int) ([]*HostInfo, error) {
@@ -174,6 +183,10 @@ func NewSession(cfg ClusterConfig) (*Session, error) {
 		}
 	}
 
+	if cfg.ReconnectInterval > 0 {
+		go s.reconnectDownedHosts(cfg.ReconnectInterval)
+	}
+
 	// TODO(zariel): we probably dont need this any more as we verify that we
 	// can connect to one of the endpoints supplied by using the control conn.
 	// See if there are any connections in the pool
@@ -185,6 +198,30 @@ func NewSession(cfg ClusterConfig) (*Session, error) {
 	s.useSystemSchema = hosts[0].Version().Major >= 3
 
 	return s, nil
+}
+
+func (s *Session) reconnectDownedHosts(intv time.Duration) {
+	for !s.Closed() {
+		time.Sleep(intv)
+
+		hosts := s.ring.allHosts()
+
+		// Print session.ring for debug.
+		if gocqlDebug {
+			buf := bytes.NewBufferString("Session.ring:")
+			for _, h := range hosts {
+				buf.WriteString("[" + h.Peer() + ":" + h.State().String() + "]")
+			}
+			log.Println(buf.String())
+		}
+
+		for _, h := range hosts {
+			if h.IsUp() {
+				continue
+			}
+			s.handleNodeUp(net.ParseIP(h.Peer()), h.Port(), true)
+		}
+	}
 }
 
 // SetConsistency sets the default consistency level for this session. This
@@ -228,11 +265,17 @@ func (s *Session) SetTrace(trace Tracer) {
 // if it has not previously been executed.
 func (s *Session) Query(stmt string, values ...interface{}) *Query {
 	s.mu.RLock()
-	qry := &Query{stmt: stmt, values: values, cons: s.cons,
-		session: s, pageSize: s.pageSize, trace: s.trace,
-		prefetch: s.prefetch, rt: s.cfg.RetryPolicy, serialCons: s.cfg.SerialConsistency,
-		defaultTimestamp: s.cfg.DefaultTimestamp,
-	}
+	qry := queryPool.Get().(*Query)
+	qry.stmt = stmt
+	qry.values = values
+	qry.cons = s.cons
+	qry.session = s
+	qry.pageSize = s.pageSize
+	qry.trace = s.trace
+	qry.prefetch = s.prefetch
+	qry.rt = s.cfg.RetryPolicy
+	qry.serialCons = s.cfg.SerialConsistency
+	qry.defaultTimestamp = s.cfg.DefaultTimestamp
 	s.mu.RUnlock()
 	return qry
 }
@@ -359,7 +402,7 @@ func (s *Session) getConn() *Conn {
 }
 
 // returns routing key indexes and type info
-func (s *Session) routingKeyInfo(stmt string) (*routingKeyInfo, error) {
+func (s *Session) routingKeyInfo(ctx context.Context, stmt string) (*routingKeyInfo, error) {
 	s.routingKeyInfoCache.mu.Lock()
 
 	entry, cached := s.routingKeyInfoCache.lru.Get(stmt)
@@ -402,7 +445,7 @@ func (s *Session) routingKeyInfo(stmt string) (*routingKeyInfo, error) {
 	}
 
 	// get the query info for the statement
-	info, inflight.err = conn.prepareStatement(stmt, nil)
+	info, inflight.err = conn.prepareStatement(ctx, stmt, nil)
 	if inflight.err != nil {
 		// don't cache this error
 		s.routingKeyInfoCache.Remove(stmt)
@@ -569,23 +612,25 @@ func (s *Session) connect(addr string, errorHandler ConnErrorHandler, host *Host
 
 // Query represents a CQL statement that can be executed.
 type Query struct {
-	stmt                string
-	values              []interface{}
-	cons                Consistency
-	pageSize            int
-	routingKey          []byte
-	routingKeyBuffer    []byte
-	pageState           []byte
-	prefetch            float64
-	trace               Tracer
-	session             *Session
-	rt                  RetryPolicy
-	binding             func(q *QueryInfo) ([]interface{}, error)
-	attempts            int
-	totalLatency        int64
-	serialCons          SerialConsistency
-	defaultTimestamp    bool
-	disableSkipMetadata bool
+	stmt                  string
+	values                []interface{}
+	cons                  Consistency
+	pageSize              int
+	routingKey            []byte
+	routingKeyBuffer      []byte
+	pageState             []byte
+	prefetch              float64
+	trace                 Tracer
+	session               *Session
+	rt                    RetryPolicy
+	binding               func(q *QueryInfo) ([]interface{}, error)
+	attempts              int
+	totalLatency          int64
+	serialCons            SerialConsistency
+	defaultTimestamp      bool
+	defaultTimestampValue int64
+	disableSkipMetadata   bool
+	context               context.Context
 
 	disableAutoPage bool
 }
@@ -649,10 +694,29 @@ func (q *Query) DefaultTimestamp(enable bool) *Query {
 	return q
 }
 
+// WithTimestamp will enable the with default timestamp flag on the query
+// like DefaultTimestamp does. But also allows to define value for timestamp.
+// It works the same way as USING TIMESTAMP in the query itself, but
+// should not break prepared query optimization
+//
+// Only available on protocol >= 3
+func (q *Query) WithTimestamp(timestamp int64) *Query {
+	q.DefaultTimestamp(true)
+	q.defaultTimestampValue = timestamp
+	return q
+}
+
 // RoutingKey sets the routing key to use when a token aware connection
 // pool is used to optimize the routing of this query.
 func (q *Query) RoutingKey(routingKey []byte) *Query {
 	q.routingKey = routingKey
+	return q
+}
+
+// WithContext will set the context to use during a query, it will be used to
+// timeout when waiting for responses from Cassandra.
+func (q *Query) WithContext(ctx context.Context) *Query {
+	q.context = ctx
 	return q
 }
 
@@ -687,7 +751,7 @@ func (q *Query) GetRoutingKey() ([]byte, error) {
 	}
 
 	// try to determine the routing key
-	routingKeyInfo, err := q.session.routingKeyInfo(q.stmt)
+	routingKeyInfo, err := q.session.routingKeyInfo(q.context, q.stmt)
 	if err != nil {
 		return nil, err
 	}
@@ -895,6 +959,40 @@ func (q *Query) MapScanCAS(dest map[string]interface{}) (applied bool, err error
 	return applied, iter.Close()
 }
 
+// Release releases a query back into a pool of queries. Released Queries
+// cannot be reused.
+//
+// Example:
+// 		qry := session.Query("SELECT * FROM my_table")
+// 		qry.Exec()
+// 		qry.Release()
+func (q *Query) Release() {
+	q.reset()
+	queryPool.Put(q)
+}
+
+// reset zeroes out all fields of a query so that it can be safely pooled.
+func (q *Query) reset() {
+	q.stmt = ""
+	q.values = nil
+	q.cons = 0
+	q.pageSize = 0
+	q.routingKey = nil
+	q.routingKeyBuffer = nil
+	q.pageState = nil
+	q.prefetch = 0
+	q.trace = nil
+	q.session = nil
+	q.rt = nil
+	q.binding = nil
+	q.attempts = 0
+	q.totalLatency = 0
+	q.serialCons = 0
+	q.defaultTimestamp = false
+	q.disableSkipMetadata = false
+	q.disableAutoPage = false
+}
+
 // Iter represents an iterator that can be used to iterate over all rows that
 // were returned by a query. The iterator might send additional queries to the
 // database during the iteration if paging was enabled.
@@ -1042,6 +1140,13 @@ func (iter *Iter) PageState() []byte {
 	return iter.meta.pagingState
 }
 
+// NumRows returns the number of rows in this pagination, it will update when new
+// pages are fetcehd, it is not the value of the total number of rows this iter
+// will return unless there is only a single page returned.
+func (iter *Iter) NumRows() int {
+	return iter.numRows
+}
+
 type nextIter struct {
 	qry  Query
 	pos  int
@@ -1057,14 +1162,16 @@ func (n *nextIter) fetch() *Iter {
 }
 
 type Batch struct {
-	Type             BatchType
-	Entries          []BatchEntry
-	Cons             Consistency
-	rt               RetryPolicy
-	attempts         int
-	totalLatency     int64
-	serialCons       SerialConsistency
-	defaultTimestamp bool
+	Type                  BatchType
+	Entries               []BatchEntry
+	Cons                  Consistency
+	rt                    RetryPolicy
+	attempts              int
+	totalLatency          int64
+	serialCons            SerialConsistency
+	defaultTimestamp      bool
+	defaultTimestampValue int64
+	context               context.Context
 }
 
 // NewBatch creates a new batch operation without defaults from the cluster
@@ -1122,6 +1229,13 @@ func (b *Batch) RetryPolicy(r RetryPolicy) *Batch {
 	return b
 }
 
+// WithContext will set the context to use during a query, it will be used to
+// timeout when waiting for responses from Cassandra.
+func (b *Batch) WithContext(ctx context.Context) *Batch {
+	b.context = ctx
+	return b
+}
+
 // Size returns the number of batch statements to be executed by the batch operation.
 func (b *Batch) Size() int {
 	return len(b.Entries)
@@ -1147,6 +1261,18 @@ func (b *Batch) SerialConsistency(cons SerialConsistency) *Batch {
 // Only available on protocol >= 3
 func (b *Batch) DefaultTimestamp(enable bool) *Batch {
 	b.defaultTimestamp = enable
+	return b
+}
+
+// WithTimestamp will enable the with default timestamp flag on the query
+// like DefaultTimestamp does. But also allows to define value for timestamp.
+// It works the same way as USING TIMESTAMP in the query itself, but
+// should not break prepared query optimization
+//
+// Only available on protocol >= 3
+func (b *Batch) WithTimestamp(timestamp int64) *Batch {
+	b.DefaultTimestamp(true)
+	b.defaultTimestampValue = timestamp
 	return b
 }
 

@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 /****************** RUNNERS *********************/
@@ -84,6 +85,8 @@ type GraphiteBaseStatItem struct {
 	Values     graphiteFloat64
 	InType     string
 	ReduceFunc string
+	Time       time.Time
+	Resolution time.Duration
 
 	Min   float64
 	Max   float64
@@ -98,6 +101,7 @@ type GraphiteBaseStatItem struct {
 
 func (s *GraphiteBaseStatItem) Repr() repr.StatRepr {
 	return repr.StatRepr{
+		Time:  s.Time,
 		Key:   s.InKey,
 		Min:   repr.CheckFloat(repr.JsonFloat64(s.Min)),
 		Max:   repr.CheckFloat(repr.JsonFloat64(s.Max)),
@@ -108,12 +112,13 @@ func (s *GraphiteBaseStatItem) Repr() repr.StatRepr {
 		Last:  repr.CheckFloat(repr.JsonFloat64(s.Last)),
 	}
 }
-
-func (s *GraphiteBaseStatItem) Type() string { return s.InType }
-func (s *GraphiteBaseStatItem) Key() string  { return s.InKey }
+func (s *GraphiteBaseStatItem) StatTime() time.Time { return s.Time }
+func (s *GraphiteBaseStatItem) Type() string        { return s.InType }
+func (s *GraphiteBaseStatItem) Key() string         { return s.InKey }
 
 func (s *GraphiteBaseStatItem) ZeroOut() error {
 	// reset the values
+	s.Time = time.Time{}
 	s.Values = graphiteFloat64{}
 	s.Min = GRAPHITE_ACC_MIN_FLAG
 	s.Mean = 0.0
@@ -133,14 +138,14 @@ func (s *GraphiteBaseStatItem) Out(fmatter FormatterItem, acc AccumulatorItem) [
 		fmatter.ToString(
 			s.InKey,
 			val,
-			0, // let formatter handle the time,
+			int32(s.StatTime().Unix()),
 			"c",
 			acc.Tags(),
 		),
 	}
 }
 
-func (s *GraphiteBaseStatItem) Accumulate(val float64, sample float64) error {
+func (s *GraphiteBaseStatItem) Accumulate(val float64, sample float64, stattime time.Time) error {
 	if math.IsInf(val, 0) || math.IsNaN(val) {
 		return nil
 	}
@@ -174,6 +179,7 @@ type GraphiteAccumulate struct {
 	OutFormat     FormatterItem
 	InTags        []AccumulatorTags
 	InKeepKeys    bool
+	Resolution    time.Duration
 
 	mu sync.Mutex
 }
@@ -182,9 +188,30 @@ func NewGraphiteAccumulate() (*GraphiteAccumulate, error) {
 	return new(GraphiteAccumulate), nil
 }
 
+// based on the resolution we need to aggregate around a
+// "key+time bucket" mix.  to figure out the time bucket
+// we simply use the resolution -- time % resolution
+func (s *GraphiteAccumulate) ResolutionTime(t time.Time) time.Time {
+	return t.Truncate(s.Resolution)
+}
+
+func (s *GraphiteAccumulate) MapKey(name string, t time.Time) string {
+	return fmt.Sprintf("%s-%d", name, s.ResolutionTime(t).UnixNano())
+}
+
+func (s *GraphiteAccumulate) SetResolution(dur time.Duration) error {
+	s.Resolution = dur
+	return nil
+}
+
+func (s *GraphiteAccumulate) GetResolution() time.Duration {
+	return s.Resolution
+}
+
 func (s *GraphiteAccumulate) SetOptions(ops [][]string) error {
 	return nil
 }
+
 func (s *GraphiteAccumulate) GetOption(opt string, defaults interface{}) interface{} {
 	return defaults
 }
@@ -256,15 +283,22 @@ func (a *GraphiteAccumulate) ProcessLine(line string) (err error) {
 	//
 	key := stats_arr[0]
 	val := stats_arr[1]
+	_intime := stats_arr[2] // should be unix timestamp
+	t := time.Now()
+	i, err := strconv.ParseInt(_intime, 10, 64)
+	if err == nil {
+		t = time.Unix(i, 0)
+	}
 
 	f_val, err := strconv.ParseFloat(val, 64)
 	if err != nil {
 		return fmt.Errorf("Accumulate: Bad Value | Invalid Graphite line `%s`", line)
 	}
 
-	stat_key := key
+	stat_key := a.MapKey(key, t)
 	// now the accumlator
 	a.mu.Lock()
+
 	gots, ok := a.GraphiteStats[stat_key]
 	a.mu.Unlock()
 
@@ -284,6 +318,7 @@ func (a *GraphiteAccumulate) ProcessLine(line string) (err error) {
 		}
 		gots = &GraphiteBaseStatItem{
 			InType:     "graphite",
+			Time:       a.ResolutionTime(t),
 			InKey:      key,
 			Min:        GRAPHITE_ACC_MIN_FLAG,
 			Max:        GRAPHITE_ACC_MIN_FLAG,
@@ -294,7 +329,8 @@ func (a *GraphiteAccumulate) ProcessLine(line string) (err error) {
 	}
 
 	// needs to lock internally if needed
-	gots.Accumulate(f_val, 1.0)
+	gots.Accumulate(f_val, 1.0, t)
+	// log.Critical("key: %s Dr: %s, InTime: %s (%s), ResTime: %s", stat_key, a.Resolution.String(), t.String(), _intime, a.ResolutionTime(t).String())
 
 	// add it if not there
 	if !ok {

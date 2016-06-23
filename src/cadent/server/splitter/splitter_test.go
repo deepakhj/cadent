@@ -31,7 +31,7 @@ func TestGraphiteRunner(t *testing.T) {
 	conf := make(map[string]interface{})
 	conf["key_index"] = 0
 
-	good_line := "moo.goo.org 123 123123"
+	good_line := "moo.goo.org 123 1465866540"
 	Convey("Graphite Runner should parse lines nicely", t, func() {
 
 		gr, _ := NewGraphiteSplitter(conf)
@@ -42,10 +42,13 @@ func TestGraphiteRunner(t *testing.T) {
 		So(spl.OriginName(), ShouldEqual, "")
 		So(spl.Phase(), ShouldEqual, Parsed)
 		So(spl.IsValid(), ShouldEqual, true)
+		So(spl.HasTime(), ShouldEqual, true)
+		So(spl.Timestamp().Unix(), ShouldEqual, 1465866540)
+
 		So(spl.Fields(), ShouldResemble, []string{
 			"moo.goo.org",
 			"123",
-			"123123",
+			"1465866540",
 		})
 
 		spl.SetPhase(AccumulatedParsed)

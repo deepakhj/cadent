@@ -6,6 +6,7 @@ package splitter
 
 import (
 	"fmt"
+	"time"
 )
 
 const UNKNOWN_NAME = "unknown"
@@ -19,6 +20,14 @@ func (g *UnkSplitItem) Key() string {
 
 func (g *UnkSplitItem) Line() string {
 	return ""
+}
+
+func (g *UnkSplitItem) HasTime() bool {
+	return false
+}
+
+func (g *UnkSplitItem) Timestamp() time.Time {
+	return time.Time{}
 }
 
 func (g *UnkSplitItem) Fields() []string {

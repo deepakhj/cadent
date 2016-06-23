@@ -64,8 +64,10 @@ func (s *StatsdBaseStatItem) Repr() repr.StatRepr {
 	}
 }
 
-func (s *StatsdBaseStatItem) Type() string { return s.InType }
-func (s *StatsdBaseStatItem) Key() string  { return s.InKey }
+// statsd has no time in the format other then "now"
+func (s *StatsdBaseStatItem) StatTime() time.Time { return time.Now() }
+func (s *StatsdBaseStatItem) Type() string        { return s.InType }
+func (s *StatsdBaseStatItem) Key() string         { return s.InKey }
 
 func (s *StatsdBaseStatItem) ZeroOut() error {
 	// reset the values
@@ -111,6 +113,7 @@ func (s *StatsdBaseStatItem) Out(fmatter FormatterItem, acc AccumulatorItem) []s
 			f_key = f_key + sufix + "."
 		}
 		c_type = "g"
+		val = s.Last // gauges get the "last" value
 	}
 
 	// reset the ticker
@@ -169,7 +172,7 @@ func (s *StatsdBaseStatItem) Out(fmatter FormatterItem, acc AccumulatorItem) []s
 	}
 }
 
-func (s *StatsdBaseStatItem) Accumulate(val float64, sample float64) error {
+func (s *StatsdBaseStatItem) Accumulate(val float64, sample float64, stattime time.Time) error {
 	if math.IsInf(val, 0) || math.IsNaN(val) {
 		return nil
 	}
@@ -183,11 +186,11 @@ func (s *StatsdBaseStatItem) Accumulate(val float64, sample float64) error {
 	switch {
 	case s.InType == "c": //counter
 		s.Sum += val * sample
-	case s.InType == "g": //gauage
+	case s.InType == "g": //gauge
 		s.Sum = val
-	case s.InType == "-g": //gauage negate
+	case s.InType == "-g": //gauge negate
 		s.Sum -= val
-	case s.InType == "+g": //gauage add
+	case s.InType == "+g": //gauge add
 		s.Sum += val
 	}
 	if s.Min == STATSD_ACC_MIN_FLAG || s.Min > val {
@@ -229,6 +232,7 @@ type StatsdTimerStatItem struct {
 
 func (s *StatsdTimerStatItem) Repr() repr.StatRepr {
 	return repr.StatRepr{
+		Time:  time.Now(),
 		Key:   s.InKey,
 		Min:   repr.CheckFloat(repr.JsonFloat64(s.Min)),
 		Max:   repr.CheckFloat(repr.JsonFloat64(s.Max)),
@@ -240,10 +244,13 @@ func (s *StatsdTimerStatItem) Repr() repr.StatRepr {
 	}
 }
 
-func (s *StatsdTimerStatItem) Key() string  { return s.InKey }
-func (s *StatsdTimerStatItem) Type() string { return s.InType }
+// time is 'now' basically for statsd
+func (s *StatsdTimerStatItem) StatTime() time.Time { return time.Now() }
+func (s *StatsdTimerStatItem) Key() string         { return s.InKey }
+func (s *StatsdTimerStatItem) Type() string        { return s.InType }
 
-func (s *StatsdTimerStatItem) Accumulate(val float64, sample float64) error {
+// stattime is not used for statsd, but there for interface goodness
+func (s *StatsdTimerStatItem) Accumulate(val float64, sample float64, stattime time.Time) error {
 	if math.IsInf(val, 0) || math.IsNaN(val) {
 		return nil
 	}
@@ -529,6 +536,15 @@ func (s *StatsdAccumulate) GetOption(opt string, defaults interface{}) interface
 	return defaults
 }
 
+// noops for statsd
+func (s *StatsdAccumulate) SetResolution(dur time.Duration) error {
+	return nil
+}
+
+func (s *StatsdAccumulate) GetResolution() time.Duration {
+	return time.Duration(time.Second)
+}
+
 func (s *StatsdAccumulate) Tags() []AccumulatorTags {
 	return s.InTags
 }
@@ -674,7 +690,7 @@ func (a *StatsdAccumulate) ProcessLine(line string) (err error) {
 	}
 	m_val := float64(f_val)
 	// needs to lock internally if needed
-	gots.Accumulate(m_val, 1.0/sample)
+	gots.Accumulate(m_val, 1.0/sample, time.Time{})
 
 	// add it if not there
 	if !ok {

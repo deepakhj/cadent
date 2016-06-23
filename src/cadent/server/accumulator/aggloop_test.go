@@ -3,7 +3,7 @@ package accumulator
 import (
 	. "github.com/smartystreets/goconvey/convey"
 	"testing"
-	//"time"
+
 )
 
 func TestAccumualtorAggLoop(t *testing.T) {
@@ -11,7 +11,10 @@ func TestAccumualtorAggLoop(t *testing.T) {
 
 	//profiler
 	//go http.ListenAndServe(":6065", nil)
-	conf_str := `
+
+	Convey("AggLoop Tests", t, func() {
+		Convey("Aggloop should fail", func() {
+			conf_str := `
 	backend = "BLACKHOLE"
 	input_format = "graphite"
 	output_format = "graphite"
@@ -19,17 +22,17 @@ func TestAccumualtorAggLoop(t *testing.T) {
 	[writer.metrics]
 	driver = "moo"
 	dsn = "/tmp/tt"
+	[writer.indexer]
+	driver = "noop"
 	`
-	_, err := ParseConfigString(conf_str)
+			_, err := ParseConfigString(conf_str)
+			Convey("Error should not be nil", func() {
+				So(err, ShouldNotEqual, nil)
+			})
 
-	Convey("Aggloop should fail", t, func() {
-		Convey("Error should not be nil", func() {
-			So(err, ShouldNotEqual, nil)
 		})
 
-	})
-
-	conf_str = `
+		conf_str := `
 	backend = "BLACKHOLE"
 	input_format = "graphite"
 	output_format = "graphite"
@@ -37,28 +40,32 @@ func TestAccumualtorAggLoop(t *testing.T) {
 	[writer.metrics]
 	driver = "file"
 	dsn = "/tmp/tt"
+	[writer.indexer]
+	driver = "noop"
+
 	`
 
-	cf, err := DecodeConfigString(conf_str)
+		cf, err := DecodeConfigString(conf_str)
+		Convey("Aggloop should have been configed properly", func() {
 
-	Convey("Aggloop should have been configed properly", t, func() {
-		Convey("Error should not be nil", func() {
-			So(err, ShouldEqual, nil)
-		})
-	})
-
-	Convey("Aggloop created properly", t, func() {
-		cf.ParseDurations()
-
-		agg, err := NewAggregateLoop(cf.durations, cf.ttls, "tester")
-		Convey("Aggregator should init", func() {
-			So(agg, ShouldNotEqual, nil)
+			Convey("Error should not be nil", func() {
+				So(err, ShouldEqual, nil)
+			})
 		})
 
-		err = agg.SetWriter(cf.Writer)
-		Convey("Aggregator writer should init", func() {
-			So(err, ShouldEqual, nil)
-		})
+		Convey("Aggloop created properly", func() {
+			cf.ParseDurations()
 
+			agg, err := NewAggregateLoop(cf.durations, cf.ttls, "tester")
+			Convey("Aggregator should init", func() {
+				So(agg, ShouldNotEqual, nil)
+			})
+
+			err = agg.SetWriter(cf.Writer)
+			Convey("Aggregator writer should init", func() {
+				So(err, ShouldEqual, nil)
+			})
+			agg.Stop()
+			})
 	})
 }

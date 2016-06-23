@@ -16,7 +16,7 @@ func NewMetrics(name string) (Metrics, error) {
 		return NewFileMetrics(), nil
 	case name == "cassandra":
 		return NewCassandraMetrics(), nil
-	case name == "whisper":
+	case name == "whisper" || name == "carbon" || name == "graphite":
 		return NewWhisperMetrics(), nil
 	case name == "kafka":
 		return NewKafkaMetrics(), nil
@@ -35,7 +35,7 @@ func ResolutionsNeeded(name string) (WritersNeeded, error) {
 		return AllResolutions, nil
 	case name == "kafka":
 		return AllResolutions, nil
-	case name == "whisper":
+	case name == "whisper" || name == "carbon" || name == "graphite":
 		return FirstResolution, nil
 	default:
 		return AllResolutions, fmt.Errorf("Invalid metrics `%s`", name)

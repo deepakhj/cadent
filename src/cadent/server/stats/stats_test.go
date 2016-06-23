@@ -2,14 +2,25 @@ package stats
 
 import (
 	. "github.com/smartystreets/goconvey/convey"
+	"math/rand"
 	"testing"
 	"time"
 )
 
+var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+
+func RandString(n int) string {
+	b := make([]rune, n)
+	for i := range b {
+		b[i] = letterRunes[rand.Intn(len(letterRunes))]
+	}
+	return string(b)
+}
+
 func TestStatsAtomic(t *testing.T) {
 	// Only pass t into top-level Convey calls
 	Convey("Given an AtomicInt", t, func() {
-		var atm AtomicInt
+		atm := NewAtomic("tester")
 		atm.Set(1)
 		Convey("Should be 1", func() {
 			So(atm.Get(), ShouldEqual, 1)
@@ -28,7 +39,9 @@ func TestStatsAtomic(t *testing.T) {
 func TestStatsCounter(t *testing.T) {
 	// Only pass t into top-level Convey calls
 	Convey("Given an Counter", t, func() {
-		ctr := NewStatCount()
+		// need a random string as tests can be called a few times
+		nm := RandString(10)
+		ctr := NewStatCount(nm)
 		Convey("initial should be 0", func() {
 			So(ctr.TotalCount.Get(), ShouldEqual, 0)
 			So(ctr.TickCount.Get(), ShouldEqual, 0)

@@ -2,13 +2,13 @@ package accumulator
 
 /*
 
-Accumulator TOML configgy helper
+Accumulator TOML config helper
 
 For each accumulator there are 3 basic items to config
 
  InputFormat (statsd, graphite, etc)
  OutputFormat (statsd, graphite, etc)
- Accumulator Tick (time between flushing the statss)
+ Accumulator Tick (time between flushing the stats)
  OutPutBackend (the name of the PreReg backend to send the flush results to)
 
 This config object is currently used in the "PreReg" world to configure
@@ -71,7 +71,7 @@ type ConfigAccumulator struct {
 	Name              string
 	ToBackend         string               `toml:"backend"` // once "parsed and flushed" re-inject into another pre-reg group for delegation
 	InputFormat       string               `toml:"input_format"`
-	OutoutFormat      string               `toml:"output_format"`
+	OutputFormat      string               `toml:"output_format"`
 	KeepKeys          bool                 `toml:"keep_keys"` // keeps the keys on flush  "0's" them rather then removal
 	Option            [][]string           `toml:"options"`   // option=[ [key, value], [key, value] ...]
 	Tags              []AccumulatorTags    `toml:"tags"`
@@ -101,7 +101,7 @@ func (cf *ConfigAccumulator) ParseDurations() error {
 			spl := strings.Split(st, ":")
 			dd := spl[0]
 			if len(spl) > 2 {
-				return fmt.Errorf("Keeper times can be `duration` or `duration:TTL` only")
+				return fmt.Errorf("Times can be `duration` or `duration:TTL` only")
 			} else if len(spl) == 2 {
 				ttl := spl[1]
 				ttl_dur, err := time.ParseDuration(ttl)
@@ -120,19 +120,22 @@ func (cf *ConfigAccumulator) ParseDurations() error {
 			// need to be properly time ordered and MULTIPLES of each other
 			if last_keeper.Seconds() > 0 {
 				if t_dur.Seconds() < last_keeper.Seconds() {
-					return fmt.Errorf("Keeper Durations need to be in smallest to longest order")
+					return fmt.Errorf("Times need to be in smallest to longest order")
 				}
 				if math.Mod(float64(t_dur.Seconds()), float64(last_keeper.Seconds())) != 0.0 {
-					return fmt.Errorf("Keeper Durations need to be in multiples of themselves")
+					return fmt.Errorf("Times need to be in multiples of themselves")
 				}
 			}
 			last_keeper = t_dur
 			cf.durations = append(cf.durations, t_dur)
 		}
 	}
-
+	if len(cf.durations) <= 0 {
+		return fmt.Errorf("Accumulator: No Times/Durations given, cannot proceed")
+	}
 	cf.accumulate_time = cf.durations[0]
 	if len(cf.AccTimer) > 0 {
+		log.Critical("cf.AccTimer: %v", cf.AccTimer)
 		_dur, err := time.ParseDuration(cf.AccTimer)
 		if err != nil {
 			return err
@@ -145,14 +148,20 @@ func (cf *ConfigAccumulator) ParseDurations() error {
 
 func (cf *ConfigAccumulator) GetAccumulator() (*Accumulator, error) {
 
-	ac, err := NewAccumlator(cf.InputFormat, cf.OutoutFormat, cf.KeepKeys, cf.Name)
-	// start flusher at "now" or at time % duration
-	ac.RandomTickerStart = cf.RandomTickerStart
+	if len(cf.InputFormat) <= 0 || len(cf.OutputFormat) <= 0 {
+		return nil, fmt.Errorf("Accumulator: Invalid input or output format (blank)")
+	}
+	ac, err := NewAccumlator(cf.InputFormat, cf.OutputFormat, cf.KeepKeys, cf.Name)
 
 	if err != nil {
 		log.Critical("%s", err)
 		return nil, err
 	}
+
+	// start flusher at "now" or at time % duration
+	ac.RandomTickerStart = cf.RandomTickerStart
+
+
 	if len(cf.durations) == 0 {
 		err = cf.ParseDurations()
 		if err != nil {
@@ -198,14 +207,15 @@ func (cf *ConfigAccumulator) GetAccumulator() (*Accumulator, error) {
 	return ac, nil
 }
 
-func DecodeConfigString(inconf string) (*ConfigAccumulator, error) {
-	cf := new(ConfigAccumulator)
-	if _, err := toml.Decode(inconf, cf); err != nil {
+func DecodeConfigString(inconf string) (cf *ConfigAccumulator, err error) {
+
+	cf = new(ConfigAccumulator)
+	if _, err = toml.Decode(inconf, cf); err != nil {
 		log.Critical("Error decoding config string: %s", err)
 		return nil, err
 	}
 
-	err := cf.ParseDurations()
+	err = cf.ParseDurations()
 	if err != nil {
 		log.Critical("Error decoding config string: %s", err)
 		return nil, err
@@ -215,6 +225,7 @@ func DecodeConfigString(inconf string) (*ConfigAccumulator, error) {
 
 func ParseConfigString(inconf string) (*Accumulator, error) {
 	cf, err := DecodeConfigString(inconf)
+
 	if err != nil {
 		return nil, err
 	}
