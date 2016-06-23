@@ -1,0 +1,38 @@
+## Just the graphite UI
+
+FROM ubuntu:trusty
+
+MAINTAINER Bo Blanton <bblanton@underarmour.com>
+
+RUN sed -i.dist 's,universe$,universe multiverse,' /etc/apt/sources.list
+RUN sed -i.dist 's,trusty-backports main restricted$,trusty-backports main restricted universe multiverse,' /etc/apt/sources.list  && apt-get update
+
+RUN apt-get install -y software-properties-common python-software-properties
+RUN apt-get update --fix-missing
+RUN apt-get update
+RUN apt-get -q -y install build-essential libssl-dev libffi-dev python-setuptools python-pip python-dev python-virtualenv git libcairo2-dev
+
+ENV CONTENT_DIR /opt/
+ENV TERM xterm-256color
+
+RUN mkdir -p ${CONTENT_DIR} ${CONTENT_DIR}/logs ${CONTENT_DIR}/src
+WORKDIR ${CONTENT_DIR}
+RUN rm /bin/sh && ln -s /bin/bash /bin/sh
+
+RUN git clone https://github.com/graphite-project/graphite-web.git
+RUN pip install --upgrade -r graphite-web/requirements.txt
+
+# cadent
+RUN pip install --upgrade --use-wheel cadent --extra-index-url https://maven-devtools-repo-prod.mfpaws.com:8444/simple/
+
+ADD ./docker/settings.py /opt/graphite-web/webapp/graphite/settings.py
+
+RUN mkdir -p /opt/graphite-web/storage/log/webapp/
+
+# not quite ready for 1.9 due to some django-tagging dep issue
+RUN pip install --upgrade django==1.8
+
+RUN /opt/graphite-web/webapp/manage.py migrate
+CMD /opt/graphite-web/webapp/manage.py runserver 0.0.0.0:8080
+
+EXPOSE 8080
