@@ -3,7 +3,6 @@ package accumulator
 import (
 	. "github.com/smartystreets/goconvey/convey"
 	"testing"
-
 )
 
 func TestAccumualtorAggLoop(t *testing.T) {
@@ -66,6 +65,6 @@ func TestAccumualtorAggLoop(t *testing.T) {
 				So(err, ShouldEqual, nil)
 			})
 			agg.Stop()
-			})
+		})
 	})
 }

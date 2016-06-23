@@ -161,7 +161,6 @@ func (cf *ConfigAccumulator) GetAccumulator() (*Accumulator, error) {
 	// start flusher at "now" or at time % duration
 	ac.RandomTickerStart = cf.RandomTickerStart
 
-
 	if len(cf.durations) == 0 {
 		err = cf.ParseDurations()
 		if err != nil {
