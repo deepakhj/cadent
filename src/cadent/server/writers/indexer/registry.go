@@ -18,6 +18,8 @@ func NewIndexer(name string) (Indexer, error) {
 		return NewKafkaIndexer(), nil
 	case name == "mysql":
 		return NewMySQLIndexer(), nil
+	case name == "leveldb":
+		return NewLevelDBIndexer(), nil
 	case name == "noop":
 		return NewNoopIndexer(), nil
 	default:

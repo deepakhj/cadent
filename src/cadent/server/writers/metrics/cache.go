@@ -167,6 +167,14 @@ func (wc *Cacher) updateQueue() {
 	wc.Queue = newQueue
 }
 
+// add metric then update the sort queue
+// use this for more "direct" writing for very small caches
+func (wc *Cacher) AddAndUpdate(metric string, stat *repr.StatRepr) (err error) {
+	err = wc.Add(metric, stat)
+	wc.updateQueue()
+	return err
+}
+
 func (wc *Cacher) Add(metric string, stat *repr.StatRepr) error {
 	wc.mu.Lock()
 	defer wc.mu.Unlock()
@@ -236,6 +244,21 @@ func (wc *Cacher) GetNextMetric() string {
 		return item.metric
 	}
 	return ""
+}
+
+// just grab something from the list
+func (wc *Cacher) GetAnyStat() (string, []*repr.StatRepr) {
+	wc.mu.Lock()
+	defer wc.mu.Unlock()
+
+	for metric, stats := range wc.Cache {
+		for _, pt := range stats {
+			wc.curSize -= pt.ByteSize() // shrink the bytes
+		}
+		delete(wc.Cache, metric)
+		return metric, stats
+	}
+	return "", nil
 }
 
 func (wc *Cacher) Pop() (string, []*repr.StatRepr) {

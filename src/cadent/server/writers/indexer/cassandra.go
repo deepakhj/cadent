@@ -20,10 +20,6 @@
 package indexer
 
 import (
-	"regexp"
-)
-
-import (
 	"cadent/server/dispatch"
 	"cadent/server/lrucache"
 	"cadent/server/repr"
@@ -380,19 +376,6 @@ func (cass *CassandraIndexer) Write(skey string) error {
 
 /** reader methods **/
 
-func (cass *CassandraIndexer) regifyKey(metric string) (*regexp.Regexp, error) {
-	// convert the "graphite regex" into something golang understands (just the "."s really)
-	// need to replace things like "moo*" -> "moo.*" but careful not to do "..*"
-	// the "graphite" globs of {moo,goo} we can do with (moo|goo) so convert { -> (, , -> |, } -> )
-	regable := strings.Replace(metric, "..", ".", -1)
-	regable = strings.Replace(regable, "{", "(", -1)
-	regable = strings.Replace(regable, "}", ")", -1)
-	regable = strings.Replace(regable, ",", "|", -1)
-	regable = strings.Replace(regable, ".", "\\.", -1)
-	regable = strings.Replace(regable, "*", ".*", -1)
-	return regexp.Compile(regable)
-}
-
 func (cass *CassandraIndexer) ExpandNonRegex(metric string) (MetricExpandItem, error) {
 	paths := strings.Split(metric, ".")
 	m_len := len(paths)
@@ -422,7 +405,7 @@ func (cass *CassandraIndexer) Expand(metric string) (MetricExpandItem, error) {
 
 	defer stats.StatsdSlowNanoTimeFunc("indexer.cassandra.expand.get-time-ns", time.Now())
 
-	needs_regex := strings.IndexAny(metric, "*?[{") >= 0
+	needs_regex := needRegex(metric)
 	//cass.log.Debug("REGSS: %v, %s", needs_regex, metric)
 
 	if !needs_regex {
@@ -433,7 +416,7 @@ func (cass *CassandraIndexer) Expand(metric string) (MetricExpandItem, error) {
 
 	var me MetricExpandItem
 
-	the_reg, err := cass.regifyKey(metric)
+	the_reg, err := regifyKey(metric)
 
 	if err != nil {
 		return me, err
@@ -577,7 +560,7 @@ func (cass *CassandraIndexer) Find(metric string) (MetricFindItems, error) {
 	paths := strings.Split(metric, ".")
 	m_len := len(paths)
 
-	//if the last fragment is "*" then we realy mean just then next level, not another "." level
+	//if the last fragment is "*" then we really mean just then next level, not another "." level
 	// this is the graphite /find?query=consthash.zipperwork.local which will mean the same as
 	// /find?query=consthash.zipperwork.local.* for us
 	if paths[len(paths)-1] == "*" {
@@ -586,7 +569,7 @@ func (cass *CassandraIndexer) Find(metric string) (MetricFindItems, error) {
 		m_len = len(paths)
 	}
 
-	needs_regex := strings.IndexAny(metric, "*?[{") >= 0
+	needs_regex := needRegex(metric)
 
 	//cass.log.Debug("HasReg: %v Metric: %s", needs_regex, metric)
 	if !needs_regex {
@@ -596,7 +579,7 @@ func (cass *CassandraIndexer) Find(metric string) (MetricFindItems, error) {
 	// convert the "graphite regex" into something golang understands (just the "."s really)
 	// need to replace things like "moo*" -> "moo.*" but careful not to do "..*"
 	// the "graphite" globs of {moo,goo} we can do with (moo|goo) so convert { -> (, , -> |, } -> )
-	the_reg, err := cass.regifyKey(metric)
+	the_reg, err := regifyKey(metric)
 
 	if err != nil {
 		return nil, err

@@ -53,53 +53,17 @@ func (ws *WhisperIndexer) Write(skey string) error {
 }
 
 // change {xxx,yyy} -> * as that's all the go lang glob can handle
-// and so we turn it into t regex post
+// and so we turn it into a regex post
 func (ws *WhisperIndexer) toGlob(metric string) (string, string, []string) {
 
-	outgs := []string{}
-	got_first := false
-	p_glob := ""
-	out_str := ""
-	reg_str := ""
-	for _, _c := range metric {
-		c := string(_c)
-		switch c {
-		case "{":
-			got_first = true
-			reg_str += "("
-		case "}":
-			if got_first && len(p_glob) > 0 {
-				outgs = append(outgs, p_glob)
-				reg_str += ")" //end regex
-				out_str += "*" //glob
-				got_first = false
-			}
-		case ",":
-			if got_first {
-				reg_str += "|" // glob , -> regex |
-			} else {
-				out_str += c
-			}
-		default:
-			if !got_first {
-				out_str += c
-			} else {
-				p_glob += c
-			}
-			reg_str += c
+	base_reg, out_strs := toGlob(metric)
 
-		}
-	}
-	// make a proper regex
-	reg_str = strings.Replace(reg_str, "*", ".*", -1)
-	if !strings.HasSuffix(out_str, "*") {
-		out_str += "*"
-	}
-	glob_str := filepath.Join(ws.base_path, strings.Replace(out_str, ".", "/", -1))
-	reg_str = filepath.Join(ws.base_path, strings.Replace(reg_str, ".", "/", -1))
-	reg_str = strings.Replace(reg_str, "/", "\\/", -1) + "(.*|.wsp)"
+	// need to include our base paths as we really are globing the file system
+	glob_str := filepath.Join(ws.base_path, strings.Replace(base_reg, ".", "/", -1))
+	reg_str := filepath.Join(ws.base_path, strings.Replace(base_reg, ".", "/", -1))
+	reg_str = strings.Replace(base_reg, "/", "\\/", -1) + "(.*|.wsp)"
 
-	return glob_str, reg_str, outgs
+	return glob_str, reg_str, out_strs
 }
 
 /**** READER ***/
