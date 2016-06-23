@@ -46,6 +46,12 @@ func NewDB(dbtype string, dbkey string, config map[string]interface{}) (DB, erro
 		if err != nil {
 			return nil, err
 		}
+	case "leveldb":
+		db = NewLevelDB()
+		err := db.Config(config)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	DB_REGISTRY[hook_key] = db
