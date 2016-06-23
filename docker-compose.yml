@@ -1,21 +1,73 @@
-zookeeper:
-  image: wurstmeister/zookeeper
-  ports:
-    - "2181:2181"
+version: '2'
+volumes:
+    cadent-data:
+        driver: local
 
-kafka:
-  image: wurstmeister/kafka
-  ports:
-    - "9092:9092"
-  links:
-    - zookeeper:zk
-  environment:
-    KAFKA_ADVERTISED_HOST_NAME: 192.168.99.100
-    KAFKA_CREATE_TOPICS: "cadent:1:1"
-  volumes:
-    - /var/run/docker.sock:/var/run/docker.sock
+services:
+    graphite:
+        build:
+            context: .
+            dockerfile: docker/graphite.docker
+        working_dir: /opt/graphite
 
-cassandra:
-  image: cassandra
-  ports:
-    - "9042:9042"
+        environment:
+            CADENT_URL: http://cadent-dev:8083/graphite
+            # GRAPHITE_STORAGE_DIR: /tmp/graphite/
+
+        ports:
+            - "0.0.0.0:8080:8080"
+
+        volumes:
+            - cadent-data:/data
+
+
+    cadent:
+        build:
+            context: .
+            dockerfile: docker/cadent.docker
+
+        ports:
+            - "0.0.0.0:2003:2003"
+
+    # this just puts the current land in a container and snoozes
+    cadent-dev:
+        build:
+            context: .
+            dockerfile: docker/cadent.dev.docker
+
+        volumes:
+            - ./:/go/src
+            - cadent-data:/data
+
+        links:
+            - graphite
+        command: '/bin/bash -c "trap : TERM INT; sleep infinity & wait"'
+        ports:
+            - "0.0.0.0:2003:2003"
+
+
+    #####
+    ## External deps
+    #####
+
+    zookeeper:
+      image: wurstmeister/zookeeper
+      ports:
+        - "2181:2181"
+
+    kafka:
+      image: wurstmeister/kafka
+      ports:
+        - "9092:9092"
+      links:
+        - zookeeper:zk
+      environment:
+        KAFKA_ADVERTISED_HOST_NAME: 192.168.99.100
+        KAFKA_CREATE_TOPICS: "cadent:1:1"
+      volumes:
+        - /var/run/docker.sock:/var/run/docker.sock
+
+    cassandra:
+      image: cassandra
+      ports:
+        - "9042:9042"
