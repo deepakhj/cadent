@@ -42,6 +42,7 @@ The "path" DB
 package indexer
 
 import (
+	"bytes"
 	"cadent/server/dispatch"
 	"cadent/server/stats"
 	"cadent/server/writers/dbs"
@@ -89,6 +90,60 @@ type LevelDBSegment struct {
 	Segment     string
 	NextSegment string
 	Path        string
+}
+
+// given a path get all the various segment datas
+func ParsePath(stat_key string) (segments []LevelDBSegment) {
+
+	s_parts := strings.Split(stat_key, ".")
+	p_len := len(s_parts)
+
+	cur_part := ""
+	next_part := ""
+
+	segments = make([]LevelDBSegment, p_len)
+
+	if p_len > 0 {
+		next_part = s_parts[0]
+	}
+
+	// for each "segment" add in the path to do a segment to path(s) lookup
+	/*
+		for key consthash.zipperwork.local.writer.cassandra.write.metric-time-ns.upper_99
+
+		Segment -> NextSegment
+
+		consthash -> consthash.zipperwork
+		consthash.zipperwork -> consthash.zipperwork.local
+		consthash.zipperwork.local -> consthash.zipperwork.local.writer
+		consthash.zipperwork.local.writer -> consthash.zipperwork.local.writer.cassandra
+		consthash.zipperwork.local.writer.cassandra -> consthash.zipperwork.local.writer.cassandra.write
+		consthash.zipperwork.local.writer.cassandra.write -> consthash.zipperwork.local.writer.cassandra.write.metric-time-ns
+		consthash.zipperwork.local.writer.cassandra.write.metric-time-ns -> consthash.zipperwork.local.writer.cassandra.write.metric-time-ns.upper_99
+
+		Segment -> Path
+		consthash.zipperwork.local.writer.cassandra.write.metric-time-ns.upper_99 -> consthash.zipperwork.local.writer.cassandra.write.metric-time-ns.upper_99
+	*/
+	for idx, part := range s_parts {
+		if len(cur_part) > 1 {
+			cur_part += "."
+		}
+		cur_part += part
+		if idx < p_len && idx > 0 {
+			next_part += "."
+			next_part += part
+		}
+
+		segments[idx] = LevelDBSegment{
+			Segment:     cur_part,
+			NextSegment: next_part,
+			Path:        stat_key,
+			Length:      p_len - 1,
+			Pos:         idx, // starts at 0
+		}
+	}
+
+	return segments
 }
 
 func (ls *LevelDBSegment) SegmentKey(segment string, len int) []byte {
@@ -144,17 +199,64 @@ func (ls *LevelDBSegment) InsertAll(segdb *leveldb.DB) (err error) {
 	return
 }
 
-// TODO
 func (ls *LevelDBSegment) DeletePath(segdb *leveldb.DB) (err error) {
 	// first see if the path is there
 
-	val, err := segdb.Get([]byte(ls.Path), nil)
+	v_byte := []byte(ls.Path)
+	pos_byte := []byte(ls.Path + ":1") // rm has_data nodes only
+	path_key := ls.PathKey(ls.Path)
+
+	val, err := segdb.Get(path_key, nil)
 	if err != nil {
 		return err
 	}
 	if len(val) == 0 {
 		return fmt.Errorf("Path is not present")
 	}
+
+	// return val is {length}:{segment}
+	// log.Printf("DEL: GotPath: Path: %s :: data: %s", path_key, val)
+
+	// grab all the segments
+	segs := ParsePath(string(ls.Path))
+	l_segs := len(segs)
+	errs := make([]error, 0)
+	// remove all things that point to this path
+	for idx, seg := range segs {
+		// only the "last" segment has a value, the sub lines are "POS:..."
+		if l_segs == idx+1 {
+			// remove SEG:len:...
+			seg_key := seg.SegmentKey(seg.Segment, seg.Length)
+			// log.Printf("To DEL: Segment: %s", seg_key)
+			v, err := segdb.Get(seg_key, nil)
+			// log.Printf("To DEL: Segment: Error %v", err)
+			if err != nil {
+				errs = append(errs, err)
+			} else if bytes.EqualFold(v, v_byte) {
+				//EqualFold as these are strings at their core
+				// log.Printf("Deleting Segment: %s", v_byte)
+				segdb.Delete(seg_key, nil)
+			}
+		}
+
+		// remove the POS:len:... ones as well
+		pos_key := seg.PosSegmentKey(seg.Segment, seg.Pos)
+		v, err := segdb.Get(pos_key, nil)
+		// log.Printf("To DEL: Pos: %s: Error %v", pos_key, err)
+		if err != nil {
+			errs = append(errs, err)
+		} else if bytes.EqualFold(v, pos_byte) { // remove the path only if it is a "data" node ({path}:1)
+			// log.Printf("Deleting Pos: %s", pos_byte)
+			segdb.Delete(pos_key, nil)
+		}
+	}
+	if len(errs) == 0 {
+		// log.Printf("Deleting Path: %s", path_key)
+		segdb.Delete(path_key, nil)
+	} else {
+		return fmt.Errorf("Multiple errors trying to remove %s : %v", ls.Path, errs)
+	}
+
 	return nil
 }
 
@@ -333,65 +435,11 @@ func (lp *LevelDBIndexer) Write(skey string) error {
 	return lp.cache.Add(skey)
 }
 
-// given a path get all the various segment datas
-func (ls *LevelDBIndexer) ParsePath(stat_key string) (segments []LevelDBSegment) {
-
-	s_parts := strings.Split(stat_key, ".")
-	p_len := len(s_parts)
-
-	cur_part := ""
-	next_part := ""
-
-	segments = make([]LevelDBSegment, p_len)
-
-	if p_len > 0 {
-		next_part = s_parts[0]
-	}
-
-	// for each "segment" add in the path to do a segment to path(s) lookup
-	/*
-		for key consthash.zipperwork.local.writer.cassandra.write.metric-time-ns.upper_99
-
-		Segment -> NextSegment
-
-		consthash -> consthash.zipperwork
-		consthash.zipperwork -> consthash.zipperwork.local
-		consthash.zipperwork.local -> consthash.zipperwork.local.writer
-		consthash.zipperwork.local.writer -> consthash.zipperwork.local.writer.cassandra
-		consthash.zipperwork.local.writer.cassandra -> consthash.zipperwork.local.writer.cassandra.write
-		consthash.zipperwork.local.writer.cassandra.write -> consthash.zipperwork.local.writer.cassandra.write.metric-time-ns
-		consthash.zipperwork.local.writer.cassandra.write.metric-time-ns -> consthash.zipperwork.local.writer.cassandra.write.metric-time-ns.upper_99
-
-		Segment -> Path
-		consthash.zipperwork.local.writer.cassandra.write.metric-time-ns.upper_99 -> consthash.zipperwork.local.writer.cassandra.write.metric-time-ns.upper_99
-	*/
-	for idx, part := range s_parts {
-		if len(cur_part) > 1 {
-			cur_part += "."
-		}
-		cur_part += part
-		if idx < p_len && idx > 0 {
-			next_part += "."
-			next_part += part
-		}
-
-		segments[idx] = LevelDBSegment{
-			Segment:     cur_part,
-			NextSegment: next_part,
-			Path:        stat_key,
-			Length:      p_len - 1,
-			Pos:         idx, // starts at 0
-		}
-	}
-
-	return segments
-}
-
 func (lb *LevelDBIndexer) WriteOne(skey string) error {
 	defer stats.StatsdSlowNanoTimeFunc(fmt.Sprintf("indexer.leveldb.write.path-time-ns"), time.Now())
 	stats.StatsdClientSlow.Incr("indexer.leveldb.noncached-writes-path", 1)
 
-	segments := lb.ParsePath(skey)
+	segments := ParsePath(skey)
 
 	for _, seg := range segments {
 		err := seg.InsertAll(lb.db.SegmentConn())

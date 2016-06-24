@@ -17,6 +17,7 @@ import (
 	"strings"
 	"fmt"
 	"regexp"
+	"bytes"
 )
 
 
@@ -169,6 +170,68 @@ func (ls *LevelDBSegment) InsertAll(segdb *leveldb.DB) (err error){
 	return
 }
 
+func (ls *LevelDBSegment) DeletePath(segdb *leveldb.DB) (err error) {
+	// first see if the path is there
+
+	v_byte := []byte(ls.Path)
+	pos_byte := []byte(ls.Path +":1")
+	path_key := ls.PathKey(ls.Path)
+
+	val, err := segdb.Get(path_key, nil)
+	if err != nil {
+		return err
+	}
+	if len(val) == 0 {
+		return fmt.Errorf("Path is not present")
+	}
+
+	// return val is {length}:{segment}
+	log.Printf("DEL: GotPath: Path: %s :: data: %s", path_key, val)
+
+	// grab all the segments
+	segs := ParseKey(string(ls.Path))
+	l_segs := len(segs)
+	errs := make([]error, 0)
+	// remove all things that point to this path
+	for idx, seg := range segs{
+		// only the "last" segment has a value, the sub lines are "POS:..."
+		if l_segs == idx + 1 {
+			// remove SEG:len:...
+			seg_key := seg.SegmentKey(seg.Segment, seg.Length)
+			log.Printf("To DEL: Segment: %s", seg_key)
+			v, err := segdb.Get(seg_key, nil)
+			log.Printf("To DEL: Segment: Error %v", err)
+			if err != nil {
+				errs = append(errs, err)
+			} else if bytes.EqualFold(v, v_byte) {
+				//EqualFold as these are strings at their core
+				log.Printf("Deleting Segment: %s", v_byte)
+				segdb.Delete(seg_key, nil)
+			}
+		}
+
+		// remove the POS:len:... ones as well
+		pos_key := seg.PosSegmentKey(seg.Segment, seg.Pos)
+		v, err := segdb.Get(pos_key, nil)
+		log.Printf("To DEL: Pos: %s: Error %v", pos_key, err)
+		if err != nil{
+			errs = append(errs, err)
+		}else if bytes.EqualFold(v, pos_byte){
+			log.Printf("Deleting Pos: %s", pos_byte)
+			segdb.Delete(pos_key, nil)
+		}
+	}
+	if len(errs) == 0{
+		// remove the path
+		log.Printf("Deleting Path: %s", path_key)
+		segdb.Delete(path_key, nil)
+	}else{
+		return fmt.Errorf("Multiple errors trying to remove %s : %v", ls.Path, errs)
+	}
+
+	return nil
+}
+
 
 // convert the "graphite regex" into something golang understands (just the "."s really)
 // need to replace things like "moo*" -> "moo.*" but careful not to do "..*"
@@ -183,7 +246,7 @@ func regifyKey(metric string) (*regexp.Regexp, error) {
 	return regexp.Compile(regable)
 }
 
-func Find(metric string)(paths []string, err error){
+func Find(metric string, db *leveldb.DB)(paths []string, err error){
 
 	segs := strings.Split(metric, ".")
 	p_len := len(segs)
@@ -213,7 +276,7 @@ func Find(metric string)(paths []string, err error){
 
 	}
 	prefix := fmt.Sprintf("POS:%d:%s", use_key_len, use_key)
-	log.Printf("USE KEY: %s", prefix)
+	log.Printf("Find: USE KEY: %s", prefix)
 	paths = make([]string, 0)
 	iter := db.NewIterator(leveldb_util.BytesPrefix([]byte(prefix)), nil)
 	for iter.Next() {
@@ -241,6 +304,7 @@ func main() {
 	dbpth := flag.String("path", "/tmp", "db path")
 	n_items := flag.Int("words", 10, "stat key words")
 	find_str := flag.String("find", "now.test.here.cow.badline", "find this path")
+	del_str := flag.String("del", "", "delete this path")
 
 	flag.Parse()
 
@@ -274,10 +338,20 @@ func main() {
 		// only valid until the next call to Next.
 		key := iter.Key()
 		value := iter.Value()
-		log.Printf("%s: %s", key, value)
+		log.Printf("Dump: %s: %s", key, value)
 	}
 	iter.Release()
 	err = iter.Error()
 	strs, n_err := Find(*find_str, db)
 	log.Printf("FIND:: %v : %v", strs, n_err)
+
+	if len(*del_str) > 0{
+
+		segs := ParseKey(*del_str)
+		err := segs[0].DeletePath(db)
+		log.Printf("DELETE:: %v : %v", del_str, err)
+		strs, n_err := Find(*del_str, db)
+		log.Printf("Should not be found:: %v : %v", strs, n_err)
+
+	}
 }
