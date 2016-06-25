@@ -284,21 +284,13 @@ hasher_vnodes=100
 [[graphite-aux.servers]]
 servers=["tcp://192.168.12.200:2003","tcp://192.168.12.201:2003","tcp://192.168.12.202:2003"]
 
-# ==================== GRAPHITE -> Dev/null ====================
+# ==================== GRAPHITE -> /dev/null ====================
 
 [graphite-devnull-example]
-
-## msg_type = statsd | graphite | regex
-## <time> <key> <value>
 
 listen="tcp://127.0.0.1:2005"
 
 msg_type="graphite"
-
-# graphite style
-hasher_algo="md5"
-hasher_elter="graphite"
-hasher_vnodes=100
 
 # TCP connections need a smaller read buffer as there can be MANY connections
 read_buffer_size=8192
