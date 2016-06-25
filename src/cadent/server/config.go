@@ -86,7 +86,9 @@ type Config struct {
 	HealthServerPoints uint   `toml:"internal_health_server_points"`
 	HealthServerPath   string `toml:"internal_health_server_path"`
 
-	ListenURL   *url.URL
+	ListenURL  *url.URL
+	DevNullOut bool `toml:"out_dev_null"` // if set will NOT go to any outputs
+
 	ServerLists []*ParsedServerConfig //parsing up the ConfServerList after read
 
 	// the pre-reg object this is used only in the Default section
@@ -171,10 +173,11 @@ func SetUpStatsdClient(cfg *Config) {
 // make our map of servers to hosts
 func (self *Config) parseServerList(servers []string, checkservers []string, hashkeys []string) (*ParsedServerConfig, error) {
 
+	parsed := new(ParsedServerConfig)
+
 	if len(servers) == 0 {
 		return nil, fmt.Errorf("No 'servers' in config section, skipping")
 	}
-	parsed := new(ParsedServerConfig)
 
 	// need to set a defaults
 	if len(checkservers) == 0 {
@@ -277,26 +280,28 @@ func (self ConfigServers) ParseConfig(defaults *Config) (out ConfigServers, err 
 		}
 
 		//parse our list of servers
-		if len(cfg.ConfServerList) == 0 {
-			return nil, fmt.Errorf("No 'servers' in config section, skipping")
-		}
-		cfg.ServerLists = make([]*ParsedServerConfig, 0)
 		minServerCount := 0
-		for _, confSection := range cfg.ConfServerList {
-			parsed, err := cfg.parseServerList(confSection.Servers, confSection.CheckServers, confSection.HashKeys)
-			// no servers is ok for the defaults section
-			if err != nil {
-				return nil, err
+		if !cfg.DevNullOut {
+			if len(cfg.ConfServerList) == 0 {
+				return nil, fmt.Errorf("No 'servers' in config section, skipping")
 			}
+			cfg.ServerLists = make([]*ParsedServerConfig, 0)
+			for _, confSection := range cfg.ConfServerList {
 
-			if minServerCount == 0 {
-				minServerCount = len(parsed.ServerList)
-			} else {
-				minServerCount = int(math.Min(float64(len(parsed.ServerList)), float64(minServerCount)))
+				parsed, err := cfg.parseServerList(confSection.Servers, confSection.CheckServers, confSection.HashKeys)
+				// no servers is ok for the defaults section
+				if err != nil {
+					return nil, err
+				}
+
+				if minServerCount == 0 {
+					minServerCount = len(parsed.ServerList)
+				} else {
+					minServerCount = int(math.Min(float64(len(parsed.ServerList)), float64(minServerCount)))
+				}
+				cfg.ServerLists = append(cfg.ServerLists, parsed)
 			}
-			cfg.ServerLists = append(cfg.ServerLists, parsed)
 		}
-
 		if cfg.MaxServerHeartBeatFail == 0 {
 			cfg.MaxServerHeartBeatFail = DEFAULT_HEARTBEAT_COUNT
 			if defaults.MaxServerHeartBeatFail > 0 {
@@ -582,14 +587,17 @@ func (self *ConfigServers) DebugConfig() {
 			log.Debug("  Workers-Input Queue Size: %v ", cfg.Workers)
 			log.Debug("  Output workers: %v ", cfg.OutWorkers)
 
-			log.Debug("  Servers")
-			for idx, slist := range cfg.ServerLists {
-				log.Debug("   Replica Set %d", idx)
-				for idx, hosts := range slist.ServerList {
-					log.Debug("     %s Checked via %s", hosts, slist.CheckList[idx])
+			if cfg.DevNullOut {
+				log.Debug("  out -> dev/null")
+			} else {
+				log.Debug("  Servers")
+				for idx, slist := range cfg.ServerLists {
+					log.Debug("   Replica Set %d", idx)
+					for idx, hosts := range slist.ServerList {
+						log.Debug("     %s Checked via %s", hosts, slist.CheckList[idx])
+					}
 				}
 			}
-
 		} else {
 			log.Debug("  PID: %s", cfg.PIDfile)
 		}

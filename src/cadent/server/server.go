@@ -206,6 +206,10 @@ type Server struct {
 	//number of replicas to fire data to (i.e. dupes)
 	Replicas int
 
+	//if true, we DO NOT really send anything anywhere
+	// usefull for "writer only" backends not hashers proxies
+	DevNullOut bool
+
 	//pool the connections to the outgoing servers
 	poolmu  *sync.Mutex //when we make a new pool need to lock the hash below
 	Outpool map[string]netpool.NetpoolInterface
@@ -533,6 +537,11 @@ func (server *Server) HasherCheck(key string) ServerHashCheck {
 // the "main" hash chooser for a give line, the attaches it to a sender queue
 func (server *Server) PushLineToBackend(spl splitter.SplitItem) splitter.SplitItem {
 
+	// if the server(s) are /dev/null we just skip this stuff
+	if server.DevNullOut {
+		return spl
+	}
+
 	//replicate the data across our Lists
 	out_str := ""
 	for idx, hasher := range server.Hashers {
@@ -661,6 +670,12 @@ func NewServer(cfg *Config) (server *Server, err error) {
 	}
 
 	serv.ticker = time.Duration(5) * time.Second
+
+	serv.DevNullOut = false
+	if cfg.DevNullOut {
+		serv.DevNullOut = true
+	}
+
 	return serv, nil
 
 }
@@ -927,6 +942,10 @@ func (server *Server) AddStatusHandlers() {
 	status := func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "private, max-age=0, no-cache")
 		have_s := 0
+		if server.DevNullOut {
+			fmt.Fprintf(w, "ok (/dev/null)")
+			return
+		}
 		for _, hasher := range server.Hashers {
 			have_s += len(hasher.Members())
 		}
@@ -941,6 +960,11 @@ func (server *Server) AddStatusHandlers() {
 	// add a new hasher node to a server dynamically
 	addnode := func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "private, max-age=0, no-cache")
+
+		if server.DevNullOut {
+			http.Error(w, "This is a /dev/null server .. cannot add", http.StatusBadRequest)
+			return
+		}
 		r.ParseForm()
 		server_str := strings.TrimSpace(r.Form.Get("server"))
 		if len(server_str) == 0 {
@@ -997,6 +1021,11 @@ func (server *Server) AddStatusHandlers() {
 	// add a new hasher node to a server dynamically
 	purgenode := func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "private, max-age=0, no-cache")
+		if server.DevNullOut {
+			http.Error(w, "This is a /dev/null server .. cannot purge", http.StatusBadRequest)
+			return
+		}
+
 		r.ParseForm()
 		server_str := strings.TrimSpace(r.Form.Get("server"))
 		if len(server_str) == 0 {
