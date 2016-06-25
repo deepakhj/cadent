@@ -155,6 +155,14 @@ To use it properly you will need to specify a `timeLayout` in the regex options,
 
 Time really only matters for sending things to writer backends or another service that uses that time.
 
+*Please note::* certain backends (i.e. cassandra, mysql, etc) will "squish" old data points if times are sent in 
+funny order.  Meaning if you send data with times 1pm, 1pm, 1pm in one "flush period" then all the 3 of those "1pm times"
+will get aggregated and inserted in the DB.  However, if one tries to "re-add" the 1pm data sometime in the future 
+this will clobber the old data point with the new data.  Meaning that we don't aggregate the old value w/ a new one
+as this particular process is _very_ expensive (select if exists, merge, update) vs just upsert.  When attempting
+to write 200k/points sec, every milliseconds counts.  If this is something that's a requirement for you, please let
+me know and i can try to make it a writer option, but not as the default.  
+
 Unlike the generic `graphite` data format, which can have different time retentions and bin sizes for different metrics
 I have taken the approach that all metrics will have the same bin size(s).  Meaning that all metrics will get 
 binned into `times` buckets that are the same (you can have as many as you wish) and to keep the math simple and fast
@@ -216,6 +224,7 @@ useful for key space lookups
       `mean` float NOT NULL,
       `min` float NOT NULL,
       `max` float NOT NULL,
+      `last` float NOT NULL,
       `count` float NOT NULL,
       `resolution` int(11) NOT NULL,
       `time` datetime(6) NOT NULL,
@@ -307,7 +316,7 @@ If you want to allow 24h windows, simply raise `max_sstable_age_days` to â€˜1.0â
         'class': 'DateTieredCompactionStrategy',  
         'min_threshold': '12', 
         'max_threshold': '32', 
-        'max_sstable_age_days': '0.083', 
+        'max_sstable_age_days': '1', 
         'base_time_seconds': '50' 
     }
 
@@ -322,6 +331,7 @@ General Schema
         mean double,
         min double,
         sum double,
+        last double,
         count int
     );
 
@@ -457,18 +467,24 @@ then using `storage-aggregation.con` for now.
 
 Aggregation "guesses"  (these aggregation method also apply to the column chosen in the Cassandra/Mysql drivers)
 
-        endsin "mean":      "mean"
-        endsin "avg":       "mean"
-        endsin "average":   "mean"
-        endsin "count":     "sum"
-        endsin "errors":    "sum"
-        endsin "requests":  "sum"
-        endsin "max":       "max"
-        endsin "min":       "min"
-        endsin "upper_*":   "max"
-        endsin "lower_*":   "min"
-        endsin "std":       "mean"
-        default:            "mean"
+        endsin "mean":              "mean"
+        endsin "avg":               "mean"
+        endsin "average":           "mean"
+        endsin "count":             "sum"
+        startswith "stats.count":   "sum"
+        endsin "errors":            "sum"
+        endsin "error":             "sum"
+        endsin "requests":          "sum"
+        endsin "max":               "max"
+        endsin "min":               "min"
+        endsin "upper_\d+":         "max"
+        endsin "upper":             "max"
+        endsin "lower_\d+":         "min"
+        endsin "lower":             "min"
+        startswith "stats.gauge":   "last"
+        endsin "gauge":             "last"
+        endsin "std":               "mean"
+        default:                    "mean"
 
 
 An example config below

@@ -47,6 +47,55 @@ func (s *StatRepr) ByteSize() int64 {
 	return int64(len(s.Key)) + int64(len(s.StatKey)) + 104 // obtained from `reflect.TypeOf(StatRepr{}).Size()`
 }
 
+func (s *StatRepr) Copy() *StatRepr {
+	return &StatRepr{
+		Time:       s.Time,
+		StatKey:    s.StatKey,
+		Key:        s.Key,
+		Min:        s.Min,
+		Max:        s.Max,
+		Sum:        s.Sum,
+		First:      s.First,
+		Last:       s.Last,
+		Count:      s.Count,
+		Resolution: s.Resolution,
+		TTL:        s.TTL,
+	}
+}
+
+// merge a stat together,
+// the "time" is chosen as the most future time
+// And the First and Last according to that order
+func (s *StatRepr) Merge(stat *StatRepr) *StatRepr {
+	if stat.Time.UnixNano() <= s.Time.UnixNano() {
+		out := s.Copy()
+		out.First = stat.First
+		if out.Min > stat.Min {
+			out.Min = stat.Min
+		}
+		if out.Max < stat.Max {
+			out.Max = stat.Max
+		}
+		out.Count = stat.Count
+		out.Mean = (out.Mean + stat.Mean) / 2.0
+		out.Sum = out.Sum + stat.Sum
+		return out
+	}
+
+	out := stat.Copy()
+	out.First = s.First
+	if out.Min > s.Min {
+		out.Min = s.Min
+	}
+	if out.Max < s.Max {
+		out.Max = s.Max
+	}
+	out.Count = s.Count
+	out.Mean = (out.Mean + s.Mean) / 2.0
+	out.Sum = out.Sum + s.Sum
+	return out
+}
+
 // These two structure is to allow a list of stats in a large queue
 // That Queue (which has a LRU bounded size) can then get cycled through
 // and "Written" somewhere, or used as a temporary store in case a writing

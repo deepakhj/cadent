@@ -184,11 +184,11 @@ func (fi *FileMetrics) WriteLine(line string) (int, error) {
 
 func (fi *FileMetrics) Write(stat repr.StatRepr) error {
 
-	// stat\tsum\tmean\tmin\tmax\tcount\tresoltion\ttime\tttl
+	// stat\tsum\tmean\tmin\tmax\tlast\tcount\tresoltion\ttime\tttl
 
 	line := fmt.Sprintf(
-		"%s\t%0.6f\t%0.6f\t%0.6f\t%0.6f\t%d\t%0.2f\t%d\t%d\n",
-		stat.Key, stat.Sum, stat.Mean, stat.Min, stat.Max, stat.Count,
+		"%s\t%0.6f\t%0.6f\t%0.6f\t%0.6f\t%0.6f\t%d\t%0.2f\t%d\t%d\n",
+		stat.Key, stat.Sum, stat.Mean, stat.Min, stat.Max, stat.Last, stat.Count,
 		stat.Resolution, stat.Time.UnixNano(), stat.TTL,
 	)
 

@@ -60,6 +60,7 @@ const (
 	CASSANDRA_METRIC_WORKERS    = 32
 	CASSANDRA_METRIC_QUEUE_LEN  = 1024 * 100
 	CASSANDRA_WRITES_PER_SECOND = 5000
+	CASSANDRA_WRITE_UPSERT      = true
 )
 
 /** Being Cassandra we need some mappings to match the schemas **/
@@ -217,6 +218,16 @@ type CassandraWriter struct {
 	max_idle          time.Duration // either max_write_size will trigger a write or this time passing will
 	write_lock        sync.Mutex
 	log               *logging.Logger
+
+	// upsert (true) or select -> merge -> update (false)
+	// either squish metrics that have the same time windowe as a previious insert
+	// or try to "update" the data point if exists
+	// note upsert is WAY faster and should handle most of the cases
+	insert_mode bool
+
+	_insert_query      string //render once
+	_select_time_query string //render once
+	_get_query         string //render once
 }
 
 func NewCassandraWriter(conf map[string]interface{}) (*CassandraWriter, error) {
@@ -279,6 +290,27 @@ func NewCassandraWriter(conf map[string]interface{}) (*CassandraWriter, error) {
 	if _rs != nil {
 		cass.writes_per_second = int(_rs.(int64))
 	}
+
+	cass.insert_mode = CASSANDRA_WRITE_UPSERT
+	_up := conf["write_upsert"]
+	if _up != nil {
+		cass.insert_mode = _up.(bool)
+	}
+
+	cass._insert_query = fmt.Sprintf(
+		"INSERT INTO %s (id, time, point) VALUES  ({path: ?, resolution: ?}, ?, {sum: ?, mean: ?, min: ?, max: ?, last: ?, count: ?})",
+		cass.db.MetricTable(),
+	)
+
+	cass._select_time_query = fmt.Sprintf(
+		"SELECT point.mean, point.max, point.min, point.sum, point.last, point.count, time FROM %s WHERE id={path: ?, resolution: ?} AND time <= ? and time >= ?",
+		cass.db.MetricTable(),
+	)
+
+	cass._get_query = fmt.Sprintf(
+		"SELECT point.mean, point.max, point.min, point.sum, point.last, point.count, time FROM %s WHERE id={path: ?, resolution: ?} and time = ?",
+		cass.db.MetricTable(),
+	)
 
 	go cass.TrapExit()
 	return cass, nil
@@ -351,6 +383,39 @@ func (cass *CassandraWriter) TrapExit() {
 	return
 }
 
+// is not doing a straight upsert, we need to select then update
+func (cass *CassandraWriter) mergeWrite(stat *repr.StatRepr) *repr.StatRepr {
+	if cass.insert_mode { // true means upsert
+		return stat
+	}
+
+	time := stat.Time.UnixNano()
+
+	// grab ze data. (note data is already sorted by time asc va the cassandra schema)
+	iter := cass.conn.Query(
+		cass._select_time_query,
+		stat.Key, stat.Resolution, time,
+	).Iter()
+
+	var t, count int64
+	var mean, min, max, sum, last float64
+
+	for iter.Scan(&mean, &max, &min, &sum, &last, &count, &t) {
+		// only one here
+		n_stat := &repr.StatRepr{
+			Time:  stat.Time,
+			Last:  repr.JsonFloat64(last),
+			Count: count,
+			Mean:  repr.JsonFloat64(mean),
+			Sum:   repr.JsonFloat64(sum),
+			Min:   repr.JsonFloat64(min),
+			Max:   repr.JsonFloat64(max),
+		}
+		return stat.Merge(n_stat)
+	}
+	return stat
+}
+
 // we can use the batcher effectively for single metric multi point writes as they share the
 // the same token
 func (cass *CassandraWriter) InsertMulti(points []*repr.StatRepr) (int, error) {
@@ -366,13 +431,9 @@ func (cass *CassandraWriter) InsertMulti(points []*repr.StatRepr) (int, error) {
 	}*/
 
 	batch := cass.conn.NewBatch(gocql.LoggedBatch)
-	Q := fmt.Sprintf(
-		"INSERT INTO %s (id, time, point) VALUES  ({path: ?, resolution: ?}, ?, {sum: ?, mean: ?, min: ?, max: ?, count: ?})",
-		cass.db.MetricTable(),
-	)
 
 	for _, stat := range points {
-		DO_Q := Q
+		DO_Q := cass._insert_query
 		if stat.TTL > 0 {
 			DO_Q += fmt.Sprintf(" USING TTL %d", stat.TTL)
 		}
@@ -385,6 +446,7 @@ func (cass *CassandraWriter) InsertMulti(points []*repr.StatRepr) (int, error) {
 			float64(stat.Mean),
 			float64(stat.Min),
 			float64(stat.Max),
+			float64(stat.Last),
 			stat.Count,
 		)
 	}
@@ -409,25 +471,25 @@ func (cass *CassandraWriter) InsertOne(stat *repr.StatRepr) (int, error) {
 		ttl = stat.TTL
 	}
 
-	Q := fmt.Sprintf(
-		"INSERT INTO %s (id, time, point) VALUES  ({path: ?, resolution: ?}, ?, {sum: ?, mean: ?, min: ?, max: ?, count: ?})",
-		cass.db.MetricTable(),
-	)
+	Q := cass._insert_query
 	if ttl > 0 {
 		Q += " USING TTL ?"
 	}
 
+	write_stat := cass.mergeWrite(stat)
 	err := cass.conn.Query(Q,
 		stat.Key,
 		int64(stat.Resolution),
 		stat.Time.UnixNano(),
-		float64(stat.Sum),
-		float64(stat.Mean),
-		float64(stat.Min),
-		float64(stat.Max),
-		stat.Count,
+		float64(write_stat.Sum),
+		float64(write_stat.Mean),
+		float64(write_stat.Min),
+		float64(write_stat.Max),
+		float64(write_stat.Last),
+		write_stat.Count,
 		ttl,
 	).Exec()
+
 	//cass.log.Critical("METRICS WRITE %d: %v", ttl, stat)
 	if err != nil {
 		cass.log.Error("Cassandra Driver: insert failed, %v", err)
@@ -493,6 +555,7 @@ func (cass *CassandraWriter) sendToWriters() error {
 
 func (cass *CassandraWriter) Write(stat repr.StatRepr) error {
 
+	//cache keys needs metric + resolution
 	s_key := fmt.Sprintf("%s:%d", stat.Key, int(stat.Resolution))
 	// turning off
 	if !cass.shutitdown {
@@ -652,16 +715,13 @@ func (cass *CassandraMetric) RawRenderOne(metric indexer.MetricFindItem, from st
 	last_t := int(end)
 
 	// grab ze data. (note data is already sorted by time asc va the cassandra schema)
-	cass_Q := fmt.Sprintf(
-		"SELECT point.mean, point.max, point.min, point.sum, point.count, time FROM %s WHERE id={path: ?, resolution: ?} AND time <= ? and time >= ?",
-		cass.writer.db.MetricTable(),
-	)
-	iter := cass.writer.conn.Query(cass_Q,
+	iter := cass.writer.conn.Query(
+		cass.writer._select_time_query,
 		metric.Id, resolution, nano_end, nano_start,
 	).Iter()
 
 	var t, count int64
-	var mean, min, max, sum float64
+	var mean, min, max, sum, last float64
 
 	// use mins or maxes for the "upper_xxx, lower_xxx"
 	m_key := metric.Id
@@ -671,7 +731,7 @@ func (cass *CassandraMetric) RawRenderOne(metric indexer.MetricFindItem, from st
 	ct := 0
 	// sorting order for the table is time ASC (i.e. first_t == first entry)
 
-	for iter.Scan(&mean, &max, &min, &sum, &count, &t) {
+	for iter.Scan(&mean, &max, &min, &sum, &last, &count, &t) {
 		on_t := int(t / nano) // back convert to seconds
 
 		d_points = append(d_points, RawDataPoint{
@@ -680,6 +740,7 @@ func (cass *CassandraMetric) RawRenderOne(metric indexer.MetricFindItem, from st
 			Mean:  mean,
 			Max:   max,
 			Min:   min,
+			Last:  last,
 			Time:  on_t,
 		})
 		//cass.log.Critical("POINT %s time:%d data:%f", metric.Id, on_t, mean)
@@ -779,6 +840,9 @@ func (cass *CassandraMetric) RenderOne(metric indexer.MetricFindItem, from strin
 					case "max":
 						m := d.Max
 						interp_vec[i].Value = &m
+					case "last":
+						m := d.Last
+						interp_vec[i].Value = &m
 					default:
 						s := d.Sum
 						interp_vec[i].Value = &s
@@ -811,6 +875,9 @@ func (cass *CassandraMetric) RenderOne(metric indexer.MetricFindItem, from strin
 						case "max":
 							m := float64(d.Max)
 							interp_vec[i].Value = &m
+						case "last":
+							m := float64(d.Last)
+							interp_vec[i].Value = &m
 						default:
 							s := float64(d.Sum)
 							interp_vec[i].Value = &s
@@ -842,6 +909,9 @@ func (cass *CassandraMetric) RenderOne(metric indexer.MetricFindItem, from strin
 						interp_vec[i].Value = &m
 					case "max":
 						m := float64(d.Max)
+						interp_vec[i].Value = &m
+					case "last":
+						m := float64(d.Last)
 						interp_vec[i].Value = &m
 					default:
 						s := float64(d.Sum)

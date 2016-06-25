@@ -30,6 +30,8 @@ services:
             - "0.0.0.0:2003:2003"
 
     # this just puts the current land in a container and snoozes
+    # you probably will need to
+    # docker exec -ti $(docker ps | grep cadent-dev | cut -d" " -f1) bash
     cadent-dev:
         build:
             context: .

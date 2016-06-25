@@ -130,16 +130,16 @@ func (my *MySQLMetrics) Flush() (int, error) {
 	}
 
 	Q := fmt.Sprintf(
-		"INSERT INTO %s (stat, sum, mean, min, max, count, resolution, time) VALUES ",
+		"INSERT INTO %s (stat, sum, mean, min, max, last, count, resolution, time) VALUES ",
 		my.db.Tablename(),
 	)
 
 	vals := []interface{}{}
 
 	for _, stat := range my.write_list {
-		Q += "(?,?,?,?,?,?,?,?), "
+		Q += "(?,?,?,?,?,?,?,?,?), "
 		vals = append(
-			vals, stat.Key, stat.Sum, stat.Mean, stat.Min, stat.Max, stat.Count, stat.Resolution, stat.Time,
+			vals, stat.Key, stat.Sum, stat.Mean, stat.Min, stat.Max, stat.Last, stat.Count, stat.Resolution, stat.Time,
 		)
 
 	}

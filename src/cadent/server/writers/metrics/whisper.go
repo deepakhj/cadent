@@ -192,6 +192,8 @@ func (ws *WhisperWriter) getAggregateType(key string) whisper.AggregationMethod 
 		return whisper.Max
 	case "min":
 		return whisper.Min
+	case "last":
+		return whisper.Last
 	default:
 		return whisper.Average
 	}
@@ -206,6 +208,8 @@ func (ws *WhisperWriter) getxFileFactor(key string) float32 {
 	case "max":
 		return 0.1
 	case "min":
+		return 0.1
+	case "last":
 		return 0.1
 	default:
 		return ws.xFilesFactor
@@ -246,6 +250,8 @@ func (ws *WhisperWriter) guessValue(metric string, stat *repr.StatRepr) float64 
 		return float64(stat.Max)
 	case "min":
 		return float64(stat.Min)
+	case "last":
+		return float64(stat.Last)
 	default:
 		return float64(stat.Mean)
 	}
@@ -481,6 +487,15 @@ func (ws *WhisperMetrics) Write(stat repr.StatRepr) error {
 
 /**** READER ***/
 
+// convert moo.goo.og -> /basepath/moo/goo/og.wsp
+func (ws *WhisperMetrics) ToPath(metric string) string {
+	// asume done already
+	if strings.Contains(metric, "/") {
+		return metric
+	}
+	return filepath.Join(ws.writer.base_path, strings.Replace(metric, ".", "/", -1)+".wsp")
+}
+
 func (ws *WhisperMetrics) RawRenderOne(metric indexer.MetricFindItem, from string, to string) (*RawRenderItem, error) {
 	defer stats.StatsdSlowNanoTimeFunc("reader.whisper.renderraw.get-time-ns", time.Now())
 
@@ -505,7 +520,7 @@ func (ws *WhisperMetrics) RawRenderOne(metric indexer.MetricFindItem, from strin
 		start, end = end, start
 	}
 
-	whis, err := whisper.Open(metric.Id)
+	whis, err := whisper.Open(ws.ToPath(metric.Id))
 	if err != nil {
 		// try the cache
 		var d_points []RawDataPoint
