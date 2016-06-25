@@ -52,6 +52,7 @@ func (s *StatRepr) Copy() *StatRepr {
 		Time:       s.Time,
 		StatKey:    s.StatKey,
 		Key:        s.Key,
+		Mean: s.Mean,
 		Min:        s.Min,
 		Max:        s.Max,
 		Sum:        s.Sum,
@@ -94,6 +95,10 @@ func (s *StatRepr) Merge(stat *StatRepr) *StatRepr {
 	out.Mean = (out.Mean + s.Mean) / 2.0
 	out.Sum = out.Sum + s.Sum
 	return out
+}
+
+func (s *StatRepr) String() string {
+	return fmt.Sprintf("Stat: Mean: %f @ %s/%f/%d", s.Mean, s.Time, s.Resolution, s.TTL)
 }
 
 // These two structure is to allow a list of stats in a large queue
