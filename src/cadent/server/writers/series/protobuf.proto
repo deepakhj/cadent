@@ -1,0 +1,16 @@
+
+package series;
+
+message ProtStat {
+    required int64 time = 1;
+    required int64 count = 7;
+    required double min = 2;
+    required double max = 3;
+    required double sum = 4;
+    required double first = 5;
+    required double last = 6;
+}
+
+message ProtStats {
+    repeated ProtStat stats = 1;
+}

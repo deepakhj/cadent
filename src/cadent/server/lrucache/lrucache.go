@@ -75,7 +75,6 @@ func (lru *LRUCache) Get(key string) (v Value, ok bool) {
 func (lru *LRUCache) Set(key string, value Value) (rmkey string, rmelement Value) {
 	lru.mu.Lock()
 	defer lru.mu.Unlock()
-
 	if element := lru.table[key]; element != nil {
 		return lru.updateInplace(element, value)
 	} else {

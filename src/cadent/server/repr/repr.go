@@ -44,6 +44,9 @@ type StatRepr struct {
 
 // rough size of the object in bytes
 func (s *StatRepr) ByteSize() int64 {
+	if s == nil {
+		return 0
+	}
 	return int64(len(s.Key)) + int64(len(s.StatKey)) + 104 // obtained from `reflect.TypeOf(StatRepr{}).Size()`
 }
 
@@ -52,7 +55,7 @@ func (s *StatRepr) Copy() *StatRepr {
 		Time:       s.Time,
 		StatKey:    s.StatKey,
 		Key:        s.Key,
-		Mean: s.Mean,
+		Mean:       s.Mean,
 		Min:        s.Min,
 		Max:        s.Max,
 		Sum:        s.Sum,
@@ -77,8 +80,8 @@ func (s *StatRepr) Merge(stat *StatRepr) *StatRepr {
 		if out.Max < stat.Max {
 			out.Max = stat.Max
 		}
-		out.Count = stat.Count
-		out.Mean = (out.Mean + stat.Mean) / 2.0
+		out.Count = out.Count + stat.Count
+		out.Mean = (out.Sum + s.Sum) / JsonFloat64(out.Count)
 		out.Sum = out.Sum + stat.Sum
 		return out
 	}
@@ -91,14 +94,38 @@ func (s *StatRepr) Merge(stat *StatRepr) *StatRepr {
 	if out.Max < s.Max {
 		out.Max = s.Max
 	}
-	out.Count = s.Count
-	out.Mean = (out.Mean + s.Mean) / 2.0
+	out.Count = out.Count + s.Count
+	out.Mean = (out.Sum + s.Sum) / JsonFloat64(out.Count)
 	out.Sum = out.Sum + s.Sum
 	return out
 }
 
+// basically a "uniqueness" key for dedupe attempts in list
+func (s *StatRepr) UniqueKey() string {
+	return fmt.Sprintf("%s:%d:%f", s.Key, s.Time.UnixNano(), s.Resolution)
+}
+
+// will be "true" of the key + resolution + time are the same
+func (s *StatRepr) IsSameStat(stat *StatRepr) bool {
+	return s.Key == s.StatKey && s.Resolution == stat.Resolution && s.Time.Equal(stat.Time)
+}
+
+// if this stat is in a list
+func (s *StatRepr) ContainsSelf(stats []*StatRepr) bool {
+	for _, s2 := range stats {
+		if s.IsSameStat(s2) {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *StatRepr) String() string {
-	return fmt.Sprintf("Stat: Mean: %f @ %s/%f/%d", s.Mean, s.Time, s.Resolution, s.TTL)
+	m := float64(s.Mean)
+	if s.Count > 0 && m == 0 {
+		m = float64(s.Sum) / float64(s.Count)
+	}
+	return fmt.Sprintf("Stat: Mean: %f @ %s/%f/%d", m, s.Time, s.Resolution, s.TTL)
 }
 
 // These two structure is to allow a list of stats in a large queue

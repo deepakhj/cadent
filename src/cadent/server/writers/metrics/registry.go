@@ -16,6 +16,8 @@ func NewMetrics(name string) (Metrics, error) {
 		return NewFileMetrics(), nil
 	case name == "cassandra":
 		return NewCassandraMetrics(), nil
+	case name == "cassandra-flat":
+		return NewCassandraFlatMetrics(), nil
 	case name == "whisper" || name == "carbon" || name == "graphite":
 		return NewWhisperMetrics(), nil
 	case name == "kafka":
@@ -32,6 +34,8 @@ func ResolutionsNeeded(name string) (WritersNeeded, error) {
 	case name == "file":
 		return AllResolutions, nil
 	case name == "cassandra":
+		return AllResolutions, nil
+	case name == "cassandra-flat":
 		return AllResolutions, nil
 	case name == "kafka":
 		return AllResolutions, nil

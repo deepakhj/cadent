@@ -42,7 +42,6 @@ type StatsdBaseStatItem struct {
 	Min        float64
 	Max        float64
 	Sum        float64
-	Mean       float64
 	First      float64
 	Last       float64
 	InType     string
@@ -57,7 +56,6 @@ func (s *StatsdBaseStatItem) Repr() repr.StatRepr {
 		Min:   repr.CheckFloat(repr.JsonFloat64(s.Min)),
 		Max:   repr.CheckFloat(repr.JsonFloat64(s.Max)),
 		Count: s.Count,
-		Mean:  repr.CheckFloat(repr.JsonFloat64(s.Mean)),
 		Sum:   repr.CheckFloat(repr.JsonFloat64(s.Sum)),
 		First: repr.CheckFloat(repr.JsonFloat64(s.First)),
 		Last:  repr.CheckFloat(repr.JsonFloat64(s.Last)),
@@ -72,7 +70,6 @@ func (s *StatsdBaseStatItem) Key() string         { return s.InKey }
 func (s *StatsdBaseStatItem) ZeroOut() error {
 	// reset the values
 	s.Min = STATSD_ACC_MIN_FLAG
-	s.Mean = 0.0
 	s.Max = STATSD_ACC_MIN_FLAG
 	s.Sum = 0.0
 	s.Count = 0
@@ -204,7 +201,6 @@ func (s *StatsdBaseStatItem) Accumulate(val float64, sample float64, stattime ti
 	}
 	s.Last = val
 	s.Count += 1
-	s.Mean = s.Sum / float64(s.Count)
 	return nil
 }
 
@@ -217,7 +213,6 @@ type StatsdTimerStatItem struct {
 	Min       float64
 	Max       float64
 	Sum       float64
-	Mean      float64
 	First     float64
 	Last      float64
 	SampleSum float64 // sample rate sum
@@ -237,7 +232,6 @@ func (s *StatsdTimerStatItem) Repr() repr.StatRepr {
 		Min:   repr.CheckFloat(repr.JsonFloat64(s.Min)),
 		Max:   repr.CheckFloat(repr.JsonFloat64(s.Max)),
 		Count: s.Count,
-		Mean:  repr.CheckFloat(repr.JsonFloat64(s.Mean)),
 		Sum:   repr.CheckFloat(repr.JsonFloat64(s.Sum)),
 		First: repr.CheckFloat(repr.JsonFloat64(s.First)),
 		Last:  repr.CheckFloat(repr.JsonFloat64(s.Last)),
@@ -276,7 +270,6 @@ func (s *StatsdTimerStatItem) Accumulate(val float64, sample float64, stattime t
 
 	//log.Debug("SUM: %v VAL: %v COUNT %v", s.Sum, val, s.Count)
 	s.SampleSum += sample
-	s.Mean = s.Sum / float64(s.Count)
 	s.Values = append(s.Values, val)
 	return nil
 }
@@ -285,7 +278,6 @@ func (s *StatsdTimerStatItem) ZeroOut() error {
 	// reset the values
 	s.Values = statdFloat64arr{}
 	s.Min = STATSD_ACC_MIN_FLAG
-	s.Mean = 0.0
 	s.Max = STATSD_ACC_MIN_FLAG
 	s.Sum = 0.0
 	s.Count = 0

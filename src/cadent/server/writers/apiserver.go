@@ -2,6 +2,22 @@
    Fire up an HTTP server for an http interface to the
 
    metrics/indexer interfaces
+
+   example config
+   [graphite-proxy-map.accumulator.api]
+        base_path = "/graphite/"
+        listen = "0.0.0.0:8083"
+            [graphite-proxy-map.accumulator.api.metrics]
+            driver = "whisper"
+            dsn = "/data/graphite/whisper"
+
+            # this is the read cache that will keep the latest goods in ram
+            read_cache_max_items=102400
+            read_cache_max_items_per_metric=1024
+
+            [graphite-proxy-map.accumulator.api.indexer]
+            driver = "leveldb"
+            dsn = "/data/graphite/idx"
 */
 
 package writers
@@ -35,11 +51,13 @@ type ApiIndexerConfig struct {
 }
 
 type ApiConfig struct {
-	Listen            string           `toml:"listen"`
-	Logfile           string           `toml:"log_file"`
-	BasePath          string           `toml:"base_path"`
-	ApiMetricOptions  ApiMetricConfig  `toml:"metrics"`
-	ApiIndexerOptions ApiIndexerConfig `toml:"indexer"`
+	Listen                     string           `toml:"listen"`
+	Logfile                    string           `toml:"log_file"`
+	BasePath                   string           `toml:"base_path"`
+	ApiMetricOptions           ApiMetricConfig  `toml:"metrics"`
+	ApiIndexerOptions          ApiIndexerConfig `toml:"indexer"`
+	MaxReadCacheItems          int              `toml:"read_cache_max_items"`
+	MaxReadCacheItemsPerMetric int              `toml:"read_cache_max_items_per_metric"`
 }
 
 func (re *ApiConfig) GetMetrics(resolution float64) (metrics.Metrics, error) {
@@ -83,6 +101,8 @@ type ApiLoop struct {
 
 	shutdown chan bool
 	log      *logging.Logger
+
+	ReadCache *metrics.ReadCache
 }
 
 func ParseConfigString(inconf string) (rl *ApiLoop, err error) {
@@ -128,6 +148,19 @@ func (re *ApiLoop) Config(conf ApiConfig, resolution float64) (err error) {
 	if re.log == nil {
 		re.log = logging.MustGetLogger("reader.http")
 	}
+
+	// readcache
+	mx_metrics := metrics.READ_CACHER_METRICS_KEYS
+	mx_stats := metrics.READ_CACHER_NUMBER_POINTS
+	if conf.MaxReadCacheItems > 0 {
+		mx_metrics = conf.MaxReadCacheItems
+	}
+	if conf.MaxReadCacheItemsPerMetric > 0 {
+		mx_stats = conf.MaxReadCacheItemsPerMetric
+	}
+
+	re.ReadCache = metrics.InitReadCache(mx_metrics, mx_stats, metrics.READ_CACHER_MAX_LAST_ACCESS)
+
 	return nil
 }
 
@@ -262,12 +295,15 @@ func (re *ApiLoop) Render(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		re.OutError(w, fmt.Sprintf("%v", err), http.StatusBadRequest)
 	}
+
 	data, err := re.Metrics.Render(target, from, to)
 	if err != nil {
 		re.OutError(w, fmt.Sprintf("%v", err), http.StatusServiceUnavailable)
 		return
 	}
 
+	// register the stat for render caches
+	re.ReadCache.ActivateMetric(target, nil)
 	re.OutJson(w, data)
 	return
 }

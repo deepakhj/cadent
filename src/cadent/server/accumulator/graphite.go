@@ -90,7 +90,6 @@ type GraphiteBaseStatItem struct {
 
 	Min   float64
 	Max   float64
-	Mean  float64
 	Sum   float64
 	First float64
 	Last  float64
@@ -106,7 +105,6 @@ func (s *GraphiteBaseStatItem) Repr() repr.StatRepr {
 		Min:   repr.CheckFloat(repr.JsonFloat64(s.Min)),
 		Max:   repr.CheckFloat(repr.JsonFloat64(s.Max)),
 		Count: s.Count,
-		Mean:  repr.CheckFloat(repr.JsonFloat64(s.Mean)),
 		Sum:   repr.CheckFloat(repr.JsonFloat64(s.Sum)),
 		First: repr.CheckFloat(repr.JsonFloat64(s.First)),
 		Last:  repr.CheckFloat(repr.JsonFloat64(s.Last)),
@@ -121,7 +119,6 @@ func (s *GraphiteBaseStatItem) ZeroOut() error {
 	s.Time = time.Time{}
 	s.Values = graphiteFloat64{}
 	s.Min = GRAPHITE_ACC_MIN_FLAG
-	s.Mean = 0.0
 	s.Max = GRAPHITE_ACC_MIN_FLAG
 	s.Sum = 0.0
 	s.Count = 0
@@ -162,7 +159,6 @@ func (s *GraphiteBaseStatItem) Accumulate(val float64, sample float64, stattime 
 
 	s.Count += 1
 	s.Sum += val
-	s.Mean = s.Sum / float64(s.Count)
 	s.Last = val
 	if s.First == GRAPHITE_ACC_MIN_FLAG {
 		s.First = val

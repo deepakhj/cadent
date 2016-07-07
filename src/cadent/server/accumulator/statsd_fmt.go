@@ -43,3 +43,19 @@ func (g *StatsdFormatter) ToString(key string, val float64, tstamp int32, stats_
 
 	return fmt.Sprintf("%s:%f|%s", key, val, stats_type)
 }
+
+func (g *StatsdFormatter) Write(buf BinaryWriter, key string, val float64, tstamp int32, stats_type string, tags []AccumulatorTags) {
+
+	if stats_type == "" {
+		stats_type = "c"
+	}
+
+	//remove the "stats.(counters|gauges|timers)" prefix .. don't want weird recursion
+	key = strings.Replace(
+		strings.Replace(
+			strings.Replace(key, "stats.counters.", "", 1),
+			"stats.gauges.", "", 1),
+		"stats.timers.", "", 1)
+
+	fmt.Fprintf(buf, "%s:%f|%s", key, val, stats_type)
+}

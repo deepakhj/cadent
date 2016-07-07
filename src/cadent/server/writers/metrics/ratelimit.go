@@ -5,6 +5,9 @@
 // license that can be found in the LICENSE file.
 
 // Package ratelimiter implements rate limiting functionality.
+
+// XXX not really used yet
+
 package metrics
 
 import (

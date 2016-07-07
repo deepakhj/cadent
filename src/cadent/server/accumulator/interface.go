@@ -9,6 +9,12 @@ import (
 	"time"
 )
 
+// binary writer stub interface
+type BinaryWriter interface {
+	Write(p []byte) (n int, err error)
+	WriteByte(c byte) error
+}
+
 /****************** Interfaces *********************/
 type StatItem interface {
 	Key() string
@@ -38,6 +44,7 @@ type AccumulatorItem interface {
 
 type FormatterItem interface {
 	ToString(key string, val float64, tstamp int32, stats_type string, tags []AccumulatorTags) string
+	Write(buf BinaryWriter, key string, val float64, tstamp int32, stats_type string, tags []AccumulatorTags)
 	Type() string
 	Init(...string) error
 	SetAccumulator(AccumulatorItem)

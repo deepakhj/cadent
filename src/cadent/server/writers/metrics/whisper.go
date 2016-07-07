@@ -317,6 +317,12 @@ func (ws *WhisperWriter) Stop() {
 		did++
 	}
 
+	r_cache := GetReadCache()
+	if r_cache != nil {
+		ws.log.Warning("Whisper: shutdown read cache")
+		r_cache.Stop()
+	}
+
 	ws.log.Warning("Whisper: shutdown purge: written %d/%d...", did, mets_l)
 	ws.log.Warning("Whisper: Shutdown finished ... quiting whisper writer")
 	return
@@ -403,8 +409,14 @@ func (ws *WhisperWriter) Write(stat repr.StatRepr) error {
 		go ws.sendToWriters() // fireup queue puller
 	}
 
-	// add to the cache only
+	// add to the writeback cache only
 	ws.cache_queue.Add(stat.Key, &stat)
+
+	// and now add it to the readcache ifit's been activated
+	r_cache := GetReadCache()
+	if r_cache != nil {
+		r_cache.InsertQueue <- &stat
+	}
 	//ws.write_queue <- WhisperMetricsJob{Stat: stat, Whis: ws}
 	return nil
 }
@@ -482,6 +494,7 @@ func (ws *WhisperMetrics) SetResolutions(res [][]int) int {
 func (ws *WhisperMetrics) Write(stat repr.StatRepr) error {
 	ws.indexer.Write(stat.Key) // write an index for the key
 	err := ws.writer.Write(stat)
+
 	return err
 }
 
@@ -496,9 +509,57 @@ func (ws *WhisperMetrics) ToPath(metric string) string {
 	return filepath.Join(ws.writer.base_path, strings.Replace(metric, ".", "/", -1)+".wsp")
 }
 
+func (ws *WhisperMetrics) GetFromCache(metric string, start int64, end int64) (*RawRenderItem, bool) {
+	rawd := new(RawRenderItem)
+
+	// check read cache
+	r_cache := GetReadCache()
+	path := ws.ToPath(metric)
+	if r_cache == nil {
+		stats.StatsdClient.Incr("reader.whisper.render.cache.miss", 1)
+		return rawd, false
+	}
+
+	t_start := time.Unix(int64(start), 0)
+	t_end := time.Unix(int64(start), 0)
+	cached_stats := r_cache.Get(metric, t_start, t_end)
+	var d_points []RawDataPoint
+	if cached_stats != nil && len(cached_stats) > 0 {
+		stats.StatsdClient.Incr("reader.whisper.render.cache.hits", 1)
+
+		f_t := 0
+		step_t := 0
+		for _, stat := range cached_stats {
+			t := int(stat.Time.Unix())
+			d_points = append(d_points, RawDataPoint{
+				Mean: ws.writer.guessValue(metric, stat), //just a stub for the only value we know
+				Time: t,
+			})
+			if f_t <= 0 {
+				f_t = t
+			}
+			if step_t <= 0 && f_t >= 0 {
+				step_t = t - f_t
+			}
+		}
+
+		rawd.RealEnd = int(end)
+		rawd.RealStart = int(start)
+		rawd.Start = int(start)
+		rawd.End = int(end)
+		rawd.Metric = path
+		rawd.Step = int(step_t)
+		rawd.Data = d_points
+		return rawd, true
+	} else {
+		stats.StatsdClient.Incr("reader.whisper.render.cache.miss", 1)
+	}
+
+	return rawd, false
+}
+
 func (ws *WhisperMetrics) RawRenderOne(metric indexer.MetricFindItem, from string, to string) (*RawRenderItem, error) {
 	defer stats.StatsdSlowNanoTimeFunc("reader.whisper.renderraw.get-time-ns", time.Now())
-
 	rawd := new(RawRenderItem)
 
 	if metric.Leaf == 0 { //data only
@@ -518,6 +579,13 @@ func (ws *WhisperMetrics) RawRenderOne(metric indexer.MetricFindItem, from strin
 	}
 	if end < start {
 		start, end = end, start
+	}
+
+	//cache check
+
+	cached, got_cache := ws.GetFromCache(metric.Id, start, end)
+	if got_cache {
+		return cached, nil
 	}
 
 	whis, err := whisper.Open(ws.ToPath(metric.Id))

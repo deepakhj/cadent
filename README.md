@@ -224,6 +224,7 @@ useful for key space lookups
       `mean` float NOT NULL,
       `min` float NOT NULL,
       `max` float NOT NULL,
+      `first` float NOT NULL,
       `last` float NOT NULL,
       `count` float NOT NULL,
       `resolution` int(11) NOT NULL,
@@ -328,9 +329,9 @@ General Schema
 
     CREATE TYPE metric_point (
         max double,
-        mean double,
         min double,
         sum double,
+        first double,
         last double,
         count int
     );

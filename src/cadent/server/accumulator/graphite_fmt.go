@@ -33,3 +33,10 @@ func (g *GraphiteFormatter) ToString(key string, val float64, tstamp int32, stat
 	}
 	return fmt.Sprintf("%s %f %d", key, val, tstamp)
 }
+
+func (g *GraphiteFormatter) Write(buf BinaryWriter, key string, val float64, tstamp int32, stats_type string, tags []AccumulatorTags) {
+	if tstamp <= 0 {
+		tstamp = int32(time.Now().Unix())
+	}
+	fmt.Fprint(buf, "%s %f %d", key, val, tstamp)
+}

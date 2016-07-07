@@ -94,6 +94,7 @@ type RawDataPoint struct {
 	Mean  float64 `json:"mean"`
 	Min   float64 `json:"min"`
 	Max   float64 `json:"max"`
+	First float64 `json:"first"`
 	Last  float64 `json:"last"`
 	Count int64   `json:"count"`
 }
