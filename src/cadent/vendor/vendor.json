@@ -36,6 +36,12 @@
 			"revisionTime": "2016-01-19T02:12:13Z"
 		},
 		{
+			"checksumSHA1": "ADZfj+c4ny5T+Y3Mlw77sXaRNHw=",
+			"path": "github.com/dgryski/go-bits",
+			"revision": "2ad8d707cc05b1815ce6ff2543bb5e8d8f9298ef",
+			"revisionTime": "2016-06-01T07:36:36Z"
+		},
+		{
 			"checksumSHA1": "y2Kh4iPlgCPXSGTCcFpzePYdzzg=",
 			"path": "github.com/eapache/go-resiliency/breaker",
 			"revision": "b86b1ec0dd4209a588dc1285cdd471e73525c0b3",
@@ -82,6 +88,12 @@
 			"path": "github.com/gocql/gocql/internal/streams",
 			"revision": "b7b8a0e04b0cb0ca0b379421c58ec6fab9939b85",
 			"revisionTime": "2016-05-25T20:37:33Z"
+		},
+		{
+			"checksumSHA1": "M/1HiQFl2DyE+q3pFf8swvAQ3MY=",
+			"path": "github.com/golang/protobuf/proto",
+			"revision": "3852dcfda249c2097355a6aabb199a28d97b30df",
+			"revisionTime": "2016-06-29T21:10:53Z"
 		},
 		{
 			"checksumSHA1": "W+E/2xXcE1GmJ0Qb784ald0Fn6I=",
