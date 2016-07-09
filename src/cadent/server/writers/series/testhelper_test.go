@@ -188,7 +188,7 @@ func benchmarkSeriesReading(b *testing.B, stype string, n_stat int) {
 		}
 		runs++
 	}
-	b.Logf("Reads per run %v", reads/runs)
+	b.Logf("Reads per run %v (so basically multiple the ns/op by this number)", reads/runs )
 
 }
 
@@ -218,7 +218,7 @@ func benchmarkSeriesPut8k(b *testing.B, stype string) {
 		ser, _ := NewTimeSeries(stype, n.UnixNano())
 		for true {
 			stat_ct++
-			err := ser.AddStat(&stat)
+			_, _, err := addStats(ser, stat, 1, true)
 			if err != nil {
 				b.Logf("ERROR: %v", err)
 			}
