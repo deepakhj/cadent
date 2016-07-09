@@ -46,7 +46,7 @@ type jsonStat struct {
 type JsonStats []jsonStat
 
 // this can only handle "future pushing times" not random times
-type SimpleJsonTimeSeries struct {
+type JsonTimeSeries struct {
 	mu sync.Mutex
 
 	T0      int64
@@ -54,21 +54,21 @@ type SimpleJsonTimeSeries struct {
 	Stats   JsonStats
 }
 
-func NewSimpleJsonTimeSeries(t0 int64) *SimpleJsonTimeSeries {
-	ret := &SimpleJsonTimeSeries{
+func NewJsonTimeSeries(t0 int64) *JsonTimeSeries {
+	ret := &JsonTimeSeries{
 		T0:    t0,
 		Stats: make(JsonStats, 0),
 	}
 	return ret
 }
 
-func (s *SimpleJsonTimeSeries) UnmarshalBinary(data []byte) error {
+func (s *JsonTimeSeries) UnmarshalBinary(data []byte) error {
 	err := json.Unmarshal(data, s.Stats)
 	return err
 }
 
 // the t is the "time we want to add
-func (s *SimpleJsonTimeSeries) AddPoint(t int64, min float64, max float64, first float64, last float64, sum float64, count int64) error {
+func (s *JsonTimeSeries) AddPoint(t int64, min float64, max float64, first float64, last float64, sum float64, count int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.Stats = append(s.Stats, jsonStat{
@@ -84,40 +84,40 @@ func (s *SimpleJsonTimeSeries) AddPoint(t int64, min float64, max float64, first
 	return nil
 }
 
-func (s *SimpleJsonTimeSeries) AddStat(stat *repr.StatRepr) error {
+func (s *JsonTimeSeries) AddStat(stat *repr.StatRepr) error {
 	return s.AddPoint(stat.Time.UnixNano(), float64(stat.Min), float64(stat.Max), float64(stat.First), float64(stat.Last), float64(stat.Sum), stat.Count)
 }
 
-func (s *SimpleJsonTimeSeries) MarshalBinary() ([]byte, error) {
+func (s *JsonTimeSeries) MarshalBinary() ([]byte, error) {
 	return json.Marshal(s.Stats)
 }
 
-func (s *SimpleJsonTimeSeries) Len() int {
+func (s *JsonTimeSeries) Len() int {
 	b, _ := s.MarshalBinary()
 	return len(b)
 }
 
-func (s *SimpleJsonTimeSeries) Iter() (iter TimeSeriesIter, err error) {
+func (s *JsonTimeSeries) Iter() (iter TimeSeriesIter, err error) {
 	s.mu.Lock()
 	d := make(JsonStats, len(s.Stats))
 	copy(d, s.Stats)
 	s.mu.Unlock()
 
-	iter, err = NewSimpleJsonIter(d)
+	iter, err = NewJsonIter(d)
 	return iter, err
 }
 
-func (s *SimpleJsonTimeSeries) StartTime() int64 {
+func (s *JsonTimeSeries) StartTime() int64 {
 	return s.T0
 }
 
-func (s *SimpleJsonTimeSeries) LastTime() int64 {
+func (s *JsonTimeSeries) LastTime() int64 {
 	return s.curTime
 }
 
 // Iter lets you iterate over a series.  It is not concurrency-safe.
 // but you should give it a "copy" of any byte array
-type SimpleJsonIter struct {
+type JsonIter struct {
 	Stats   JsonStats
 	curIdx  int
 	statLen int
@@ -135,8 +135,8 @@ type SimpleJsonIter struct {
 	err      error
 }
 
-func NewSimpleJsonIter(stats JsonStats) (*SimpleJsonIter, error) {
-	it := &SimpleJsonIter{
+func NewJsonIter(stats JsonStats) (*JsonIter, error) {
+	it := &JsonIter{
 		Stats:   stats,
 		curIdx:  0,
 		statLen: len(stats),
@@ -144,7 +144,7 @@ func NewSimpleJsonIter(stats JsonStats) (*SimpleJsonIter, error) {
 	return it, nil
 }
 
-func (it *SimpleJsonIter) Next() bool {
+func (it *JsonIter) Next() bool {
 	if it.finished || it.curIdx >= it.statLen {
 		return false
 	}
@@ -153,11 +153,11 @@ func (it *SimpleJsonIter) Next() bool {
 	return true
 }
 
-func (it *SimpleJsonIter) Values() (int64, float64, float64, float64, float64, float64, int64) {
+func (it *JsonIter) Values() (int64, float64, float64, float64, float64, float64, int64) {
 	return it.curStat.Time, float64(it.curStat.Min), float64(it.curStat.Max), float64(it.curStat.First), float64(it.curStat.Last), float64(it.curStat.Sum), it.curStat.Count
 }
 
-func (it *SimpleJsonIter) ReprValue() *repr.StatRepr {
+func (it *JsonIter) ReprValue() *repr.StatRepr {
 	return &repr.StatRepr{
 		Time:  time.Unix(0, it.curStat.Time),
 		Min:   it.curStat.Min,
@@ -169,6 +169,6 @@ func (it *SimpleJsonIter) ReprValue() *repr.StatRepr {
 	}
 }
 
-func (it *SimpleJsonIter) Error() error {
+func (it *JsonIter) Error() error {
 	return it.err
 }

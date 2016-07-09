@@ -16,7 +16,7 @@ import (
 )
 
 // this can only handle "future pushing times" not random times
-type SimpleProtobufTimeSeries struct {
+type ProtobufTimeSeries struct {
 	mu sync.Mutex
 
 	T0      int64
@@ -24,22 +24,22 @@ type SimpleProtobufTimeSeries struct {
 	Stats   *ProtStats
 }
 
-func NewSimpleProtobufTimeSeries(t0 int64) *SimpleProtobufTimeSeries {
+func NewProtobufTimeSeries(t0 int64) *ProtobufTimeSeries {
 
-	ret := &SimpleProtobufTimeSeries{
+	ret := &ProtobufTimeSeries{
 		T0:    t0,
 		Stats: new(ProtStats),
 	}
 	return ret
 }
 
-func (s *SimpleProtobufTimeSeries) UnmarshalBinary(data []byte) error {
+func (s *ProtobufTimeSeries) UnmarshalBinary(data []byte) error {
 	err := proto.Unmarshal(data, s.Stats)
 	return err
 }
 
 // the t is the "time we want to add
-func (s *SimpleProtobufTimeSeries) AddPoint(t int64, min float64, max float64, first float64, last float64, sum float64, count int64) error {
+func (s *ProtobufTimeSeries) AddPoint(t int64, min float64, max float64, first float64, last float64, sum float64, count int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	tmp := &ProtStat{
@@ -56,40 +56,40 @@ func (s *SimpleProtobufTimeSeries) AddPoint(t int64, min float64, max float64, f
 	return nil
 }
 
-func (s *SimpleProtobufTimeSeries) AddStat(stat *repr.StatRepr) error {
+func (s *ProtobufTimeSeries) AddStat(stat *repr.StatRepr) error {
 	return s.AddPoint(stat.Time.UnixNano(), float64(stat.Min), float64(stat.Max), float64(stat.First), float64(stat.Last), float64(stat.Sum), stat.Count)
 }
 
-func (s *SimpleProtobufTimeSeries) MarshalBinary() ([]byte, error) {
+func (s *ProtobufTimeSeries) MarshalBinary() ([]byte, error) {
 	return proto.Marshal(s.Stats)
 }
 
-func (s *SimpleProtobufTimeSeries) Len() int {
+func (s *ProtobufTimeSeries) Len() int {
 	b, _ := s.MarshalBinary()
 	return len(b)
 }
 
-func (s *SimpleProtobufTimeSeries) Iter() (iter TimeSeriesIter, err error) {
+func (s *ProtobufTimeSeries) Iter() (iter TimeSeriesIter, err error) {
 	s.mu.Lock()
 	d := make([]*ProtStat, len(s.Stats.Stats))
 	copy(d, s.Stats.Stats)
 	s.mu.Unlock()
 
-	iter, err = NewSimpleProtobufIter(d)
+	iter, err = NewProtobufIter(d)
 	return iter, err
 }
 
-func (s *SimpleProtobufTimeSeries) StartTime() int64 {
+func (s *ProtobufTimeSeries) StartTime() int64 {
 	return s.T0
 }
 
-func (s *SimpleProtobufTimeSeries) LastTime() int64 {
+func (s *ProtobufTimeSeries) LastTime() int64 {
 	return s.curTime
 }
 
 // Iter lets you iterate over a series.  It is not concurrency-safe.
 // but you should give it a "copy" of any byte array
-type SimpleProtobufIter struct {
+type ProtobufIter struct {
 	Stats   []*ProtStat
 	curIdx  int
 	statLen int
@@ -103,8 +103,8 @@ type SimpleProtobufIter struct {
 	err      error
 }
 
-func NewSimpleProtobufIter(stats []*ProtStat) (*SimpleProtobufIter, error) {
-	it := &SimpleProtobufIter{
+func NewProtobufIter(stats []*ProtStat) (*ProtobufIter, error) {
+	it := &ProtobufIter{
 		Stats:   stats,
 		curIdx:  0,
 		statLen: len(stats),
@@ -112,7 +112,7 @@ func NewSimpleProtobufIter(stats []*ProtStat) (*SimpleProtobufIter, error) {
 	return it, nil
 }
 
-func (it *SimpleProtobufIter) Next() bool {
+func (it *ProtobufIter) Next() bool {
 	if it.finished || it.curIdx >= it.statLen {
 		return false
 	}
@@ -121,7 +121,7 @@ func (it *SimpleProtobufIter) Next() bool {
 	return true
 }
 
-func (it *SimpleProtobufIter) Values() (int64, float64, float64, float64, float64, float64, int64) {
+func (it *ProtobufIter) Values() (int64, float64, float64, float64, float64, float64, int64) {
 	return it.curStat.GetTime(),
 		float64(it.curStat.GetMin()),
 		float64(it.curStat.GetMax()),
@@ -131,7 +131,7 @@ func (it *SimpleProtobufIter) Values() (int64, float64, float64, float64, float6
 		it.curStat.GetCount()
 }
 
-func (it *SimpleProtobufIter) ReprValue() *repr.StatRepr {
+func (it *ProtobufIter) ReprValue() *repr.StatRepr {
 	return &repr.StatRepr{
 		Time:  time.Unix(0, it.curStat.GetTime()),
 		Min:   repr.JsonFloat64(it.curStat.GetMin()),
@@ -143,6 +143,6 @@ func (it *SimpleProtobufIter) ReprValue() *repr.StatRepr {
 	}
 }
 
-func (it *SimpleProtobufIter) Error() error {
+func (it *ProtobufIter) Error() error {
 	return it.err
 }

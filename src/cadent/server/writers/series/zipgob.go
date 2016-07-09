@@ -22,7 +22,7 @@ const (
 )
 
 // this can only handle "future pushing times" not random times
-type ZipSimpleBinaryTimeSeries struct {
+type ZipGobTimeSeries struct {
 	mu sync.Mutex
 
 	T0 int64
@@ -36,8 +36,8 @@ type ZipSimpleBinaryTimeSeries struct {
 	curBytes int
 }
 
-func NewZipSimpleBinaryTimeSeries(t0 int64) *ZipSimpleBinaryTimeSeries {
-	ret := &ZipSimpleBinaryTimeSeries{
+func NewZipGobTimeSeries(t0 int64) *ZipGobTimeSeries {
+	ret := &ZipGobTimeSeries{
 		T0:       t0,
 		curTime:  0,
 		curDelta: 0,
@@ -53,13 +53,13 @@ func NewZipSimpleBinaryTimeSeries(t0 int64) *ZipSimpleBinaryTimeSeries {
 	return ret
 }
 
-func (s *ZipSimpleBinaryTimeSeries) UnmarshalBinary(data []byte) error {
+func (s *ZipGobTimeSeries) UnmarshalBinary(data []byte) error {
 	s.buf = bytes.NewBuffer(data)
 	return nil
 }
 
 // the t is the "time we want to add
-func (s *ZipSimpleBinaryTimeSeries) AddPoint(t int64, min float64, max float64, first float64, last float64, sum float64, count int64) error {
+func (s *ZipGobTimeSeries) AddPoint(t int64, min float64, max float64, first float64, last float64, sum float64, count int64) error {
 	if s.curTime == 0 {
 		s.curDelta = t - s.T0
 	} else {
@@ -79,29 +79,29 @@ func (s *ZipSimpleBinaryTimeSeries) AddPoint(t int64, min float64, max float64, 
 	return nil
 }
 
-func (s *ZipSimpleBinaryTimeSeries) AddStat(stat *repr.StatRepr) error {
+func (s *ZipGobTimeSeries) AddStat(stat *repr.StatRepr) error {
 	return s.AddPoint(stat.Time.UnixNano(), float64(stat.Min), float64(stat.Max), float64(stat.First), float64(stat.Last), float64(stat.Sum), stat.Count)
 }
 
-func (s *ZipSimpleBinaryTimeSeries) MarshalBinary() ([]byte, error) {
+func (s *ZipGobTimeSeries) MarshalBinary() ([]byte, error) {
 	s.zip.Flush()
 	return s.buf.Bytes(), nil
 }
 
-func (s *ZipSimpleBinaryTimeSeries) Len() int {
+func (s *ZipGobTimeSeries) Len() int {
 	s.zip.Flush()
 	return s.buf.Len()
 }
 
-func (s *ZipSimpleBinaryTimeSeries) StartTime() int64 {
+func (s *ZipGobTimeSeries) StartTime() int64 {
 	return s.T0
 }
 
-func (s *ZipSimpleBinaryTimeSeries) LastTime() int64 {
+func (s *ZipGobTimeSeries) LastTime() int64 {
 	return s.curTime
 }
 
-func (s *ZipSimpleBinaryTimeSeries) Iter() (TimeSeriesIter, error) {
+func (s *ZipGobTimeSeries) Iter() (TimeSeriesIter, error) {
 	s.mu.Lock()
 
 	s.zip.Flush()
@@ -121,6 +121,6 @@ func (s *ZipSimpleBinaryTimeSeries) Iter() (TimeSeriesIter, error) {
 	io.Copy(out_buffer, reader)
 	reader.Close()
 
-	iter, err := NewSimpleBinaryIter(out_buffer, ZIP_SIMPLE_BIN_SERIES_TAG)
+	iter, err := NewGobIter(out_buffer, ZIP_SIMPLE_BIN_SERIES_TAG)
 	return iter, err
 }

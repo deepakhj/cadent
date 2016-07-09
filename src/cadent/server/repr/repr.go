@@ -54,7 +54,6 @@ func (s *StatRepr) Copy() *StatRepr {
 	obj := *s
 	return &obj
 
-
 }
 
 // merge a stat together,
