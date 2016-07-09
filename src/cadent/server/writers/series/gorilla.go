@@ -24,11 +24,21 @@
 
 	we use the golang time module to do the splitting and re-combo, as well, it's good at it
 
-	Format
+	Format ..
+
+	there are "2" modes Full resolution for "nanoseconds"
 
 	[4 byte header][BigEndian Ts uint32][BigEndian Tms uint32]
 	[DelTs][DelTms][v0][v1][v2][v3][v4][v5]
 	[NumBit][DoDTs][NumBit][DodTms][XorV0][XorV1][XorV2][XorV3][XorV4][XorV5]
+
+	Second resolution
+
+	[4 byte header][BigEndian Ts uint32]
+	[DelTs][v0][v1][v2][v3][v4][v5]
+	[NumBit][DoDTs][XorV0][XorV1][XorV2][XorV3][XorV4][XorV5]
+
+
 
 */
 
@@ -36,19 +46,20 @@ package series
 
 import (
 	"cadent/server/repr"
-	"encoding/binary"
 	"fmt"
 	"github.com/dgryski/go-bits"
 	"io"
-	"log"
 	"math"
 	"sync"
 	"time"
 )
 
 const (
-	GORILLA_BIN_SERIES_TAG = "vgor" // just a flag to note we are using this one at the start of each blob
+	GORILLA_BIN_SERIES_TAG_NANOSECOND = "gorn" // just a flag to note we are using this one at the start of each blob
+	GORILLA_BIN_SERIES_TAG_SECOND = "gors" // just a flag to note we are using this one at the start of each blob
 )
+
+
 
 // make the "second" and "nanosecond" parts
 func splitNano(t int64) (uint32, uint32) {
@@ -121,7 +132,7 @@ func (b *bstream) writeBit(bit bit) {
 func (b *bstream) writeBytes(bs []byte) int {
 	c := 0
 	for _, by := range bs {
-		b.stream = append(b.stream, by)
+		b.writeByte(by)
 		c++
 	}
 	return c
@@ -190,10 +201,16 @@ func (b *bstream) readBytes(n uint8) ([]byte, error) {
 		return nil, io.EOF
 	}
 
-	byt := b.stream[0:n]
-	b.stream = b.stream[n:]
+	byts := make([]byte, n)
+	var err error
+	for i:=uint8(0); i<n;i++{
+		byts[i], err = b.readByte()
+		if err != nil{
+			return nil, err
+		}
+	}
 
-	return byt, nil
+	return byts, nil
 
 }
 
@@ -264,8 +281,10 @@ func (b *bstream) readBits(nbits int) (uint64, error) {
 }
 
 // this can only handle "future pushing times" not random times
-type MultiGoriallaTimeSeries struct {
+type MultiGorillaTimeSeries struct {
 	sync.Mutex
+
+	fullResolution bool // true for nanosecond, false for just second
 
 	Ts  uint32
 	Tms uint32
@@ -283,13 +302,14 @@ type MultiGoriallaTimeSeries struct {
 	finished bool
 }
 
-func NewMultiGoriallaTimeSeries(t0 int64) *MultiGoriallaTimeSeries {
+func NewMultiGoriallaTimeSeries(t0 int64) *MultiGorillaTimeSeries {
 
 	ts, tms := splitNano(t0)
 
-	ret := &MultiGoriallaTimeSeries{
+	ret := &MultiGorillaTimeSeries{
 		Ts:         ts,
 		Tms:        tms,
+		fullResolution:  false, //change me
 		curDelta:   0,
 		curDeltaMs: 0,
 		curTime:    0,
@@ -300,24 +320,28 @@ func NewMultiGoriallaTimeSeries(t0 int64) *MultiGoriallaTimeSeries {
 	ret.leading = [6]uint8{t, t, t, t, t, t}
 	ret.trailing = [6]uint8{0, 0, 0, 0, 0, 0}
 	// block header
-	ret.bw.writeBytes([]byte(GORILLA_BIN_SERIES_TAG))
-	buf := make([]byte, 4)
-	binary.BigEndian.PutUint32(buf, ts)
-	ret.bw.writeBytes(buf)
-	binary.BigEndian.PutUint32(buf, tms)
-	ret.bw.writeBytes(buf)
+	if ret.fullResolution {
+		ret.bw.writeBytes([]byte(GORILLA_BIN_SERIES_TAG_NANOSECOND))
+	}else{
+		ret.bw.writeBytes([]byte(GORILLA_BIN_SERIES_TAG_SECOND))
+	}
+	ret.bw.writeBits(uint64(ts), 32)
+
+	if ret.fullResolution {
+		ret.bw.writeBits(uint64(tms), 32)
+	}
 
 	return ret
 }
 
-func (s *MultiGoriallaTimeSeries) setFinished() {
+func (s *MultiGorillaTimeSeries) setFinished() {
 	// write an end-of-stream record
 	s.bw.writeBits(0x0f, 4)
 	s.bw.writeBits(0xffffffff, 32)
 	s.bw.writeBit(zero)
 }
 
-func (s *MultiGoriallaTimeSeries) Finish() {
+func (s *MultiGorillaTimeSeries) Finish() {
 	s.Lock()
 	defer s.Unlock()
 	if !s.finished {
@@ -326,12 +350,12 @@ func (s *MultiGoriallaTimeSeries) Finish() {
 	}
 }
 
-func (s *MultiGoriallaTimeSeries) UnmarshalBinary(data []byte) error {
+func (s *MultiGorillaTimeSeries) UnmarshalBinary(data []byte) error {
 	s.bw.stream = data
 	return nil
 }
 
-func (s *MultiGoriallaTimeSeries) addValue(idx int, v float64, isfirst bool) {
+func (s *MultiGorillaTimeSeries) addValue(idx int, v float64, isfirst bool) {
 	if isfirst {
 		s.curVals[idx] = v
 		s.bw.writeBits(math.Float64bits(v), 64)
@@ -372,25 +396,27 @@ func (s *MultiGoriallaTimeSeries) addValue(idx int, v float64, isfirst bool) {
 			s.bw.writeBits(vDelta>>trailing, int(sigbits))
 		}
 	}
+	s.curVals[idx] = v
 }
 
-func (s *MultiGoriallaTimeSeries) AddTime(t int64) error {
+func (s *MultiGorillaTimeSeries) AddTime(t int64) error {
+
 	ut, utms := splitNano(t)
 	if s.curTime == 0 {
 		// first point
 		s.curTime = ut
 		s.curDelta = ut - s.Ts
 		s.bw.writeBits(uint64(s.curDelta), 14)
-
-		s.curTimeMs = utms
-		s.curDeltaMs = utms - s.Tms
-		s.bw.writeBits(uint64(s.curDeltaMs), 14)
-		log.Printf("Start Time: T0: %d, Tms:%d %d %d (%d, %d)", s.Ts, s.Tms, s.curTime, s.curTimeMs, s.curDelta, s.curDeltaMs)
+		if s.fullResolution {
+			s.curTimeMs = utms
+			s.curDeltaMs = utms - s.Tms
+			s.bw.writeBits(uint64(s.curDeltaMs), 14)
+		}
 		return nil
 	}
 
 	tDelta := ut - s.curTime
-	dod := int64(tDelta - s.curDelta)
+	dod := int32(tDelta - s.curDelta)
 
 	switch {
 	case dod == 0:
@@ -407,11 +433,18 @@ func (s *MultiGoriallaTimeSeries) AddTime(t int64) error {
 	default:
 		s.bw.writeBits(0x0f, 4) // '1111'
 		s.bw.writeBits(uint64(dod), 32)
+	}
+	s.curDelta = tDelta
+	s.curTime = ut
+
+	// quick exit
+	if !s.fullResolution{
+		return nil
 	}
 
 	// if second resolution, this will "0" most of the time for second resolutions
 	tDeltaMs := utms - s.curTimeMs
-	dod = int64(tDeltaMs - s.curDeltaMs)
+	dod = int32(tDeltaMs - s.curDeltaMs)
 
 	switch {
 	case dod == 0:
@@ -430,74 +463,66 @@ func (s *MultiGoriallaTimeSeries) AddTime(t int64) error {
 		s.bw.writeBits(uint64(dod), 32)
 	}
 
-	s.curDelta = tDelta
-	s.curTime = ut
 
 	s.curDeltaMs = tDeltaMs
 	s.curTimeMs = utms
 
-	log.Printf("Write Time: %d %d (%d, %d)", s.curTime, s.curTimeMs, s.curDelta, s.curDeltaMs)
+	//log.Printf("Write Time: %d %d (%d, %d)", s.curTime, s.curTimeMs, s.curDelta, s.curDeltaMs)
 
 	return nil
 }
 
 // The main Gorialla Algo in here
-func (s *MultiGoriallaTimeSeries) AddPoint(t int64, min float64, max float64, first float64, last float64, sum float64, count int64) error {
+func (s *MultiGorillaTimeSeries) AddPoint(t int64, min float64, max float64, first float64, last float64, sum float64, count int64) error {
 	s.Lock()
 	defer s.Unlock()
 
-	if s.curTime == 0 {
-		s.AddTime(t)
-		s.addValue(0, min, true)
-		s.addValue(1, max, true)
-		s.addValue(2, first, true)
-		s.addValue(3, last, true)
-		s.addValue(4, sum, true)
-		s.addValue(5, float64(count), true)
-		return nil
+	start := s.curTime == 0
+	err := s.AddTime(t)
+	if err != nil{
+		return err
 	}
-	s.AddTime(t)
-	s.addValue(0, min, false)
-	s.addValue(1, max, false)
-	s.addValue(2, first, false)
-	s.addValue(3, last, false)
-	s.addValue(4, sum, false)
-	s.addValue(5, float64(count), false)
+	s.addValue(0, min, start)
+	s.addValue(1, max, start)
+	s.addValue(2, first, start)
+	s.addValue(3, last, start)
+	s.addValue(4, sum, start)
+	s.addValue(5, float64(count), start)
 
 	return nil
 }
 
-func (s *MultiGoriallaTimeSeries) AddStat(stat *repr.StatRepr) error {
+func (s *MultiGorillaTimeSeries) AddStat(stat *repr.StatRepr) error {
 	return s.AddPoint(stat.Time.UnixNano(), float64(stat.Min), float64(stat.Max), float64(stat.First), float64(stat.Last), float64(stat.Sum), stat.Count)
 }
 
-func (s *MultiGoriallaTimeSeries) MarshalBinary() ([]byte, error) {
+func (s *MultiGorillaTimeSeries) MarshalBinary() ([]byte, error) {
 	s.Lock()
 	defer s.Unlock()
 	return s.bw.bytes(), nil
 }
 
-func (s *MultiGoriallaTimeSeries) Len() int {
+func (s *MultiGorillaTimeSeries) Len() int {
 	s.Lock()
 	defer s.Unlock()
 	return len(s.bw.bytes())
 }
 
-func (s *MultiGoriallaTimeSeries) StartTime() int64 {
+func (s *MultiGorillaTimeSeries) StartTime() int64 {
 	return combineSecNano(s.Ts, s.Tms)
 }
 
-func (s *MultiGoriallaTimeSeries) LastTime() int64 {
+func (s *MultiGorillaTimeSeries) LastTime() int64 {
 	return combineSecNano(s.curTime, s.curTimeMs)
 }
 
-func (s *MultiGoriallaTimeSeries) Iter() (TimeSeriesIter, error) {
+func (s *MultiGorillaTimeSeries) Iter() (TimeSeriesIter, error) {
+	s.Finish()
 
 	s.Lock()
 	w := s.bw.clone()
 	s.Unlock()
 
-	//s.setFinished()
 
 	iter, err := NewGorillaIterFromBStream(w)
 	return iter, err
@@ -507,9 +532,12 @@ type GorillaIter struct {
 	Ts  uint32
 	Tms uint32
 
+	fullResolution bool
+
 	curTime   uint32
 	curTimeMs uint32
 	curVals   [6]float64
+	numValues uint8
 
 	br       bstream
 	leading  [6]uint8
@@ -526,31 +554,46 @@ type GorillaIter struct {
 func NewGorillaIterFromBStream(br *bstream) (*GorillaIter, error) {
 
 	br.count = 8
-	// read the header to make sure
-	head, err := br.readBytes(uint8(len(GORILLA_BIN_SERIES_TAG)))
+
+	// read the header
+	// 4byte flag, 2 uint32s for TimeS and TimeMs
+	head, err := br.readBytes(uint8(len(GORILLA_BIN_SERIES_TAG_NANOSECOND)))
 	if err != nil {
 		return nil, err
 	}
-	if string(head) != GORILLA_BIN_SERIES_TAG {
+	hh :=  string(head)
+	if hh != GORILLA_BIN_SERIES_TAG_NANOSECOND && hh != GORILLA_BIN_SERIES_TAG_SECOND{
 		return nil, fmt.Errorf("Not a valid Gorilla Series")
 	}
 
-	buf, err := br.readBytes(4)
-	t0 := binary.BigEndian.Uint32(buf)
-	if err != nil {
-		return nil, err
+	//determine resolution
+	fullrez := true
+	if hh == GORILLA_BIN_SERIES_TAG_SECOND{
+		fullrez = false
 	}
-	buf, err = br.readBytes(4)
-	tms := binary.BigEndian.Uint32(buf)
+
+	t0, err := br.readBits(32)
 	if err != nil {
 		return nil, err
 	}
 
 	ret := &GorillaIter{
 		Ts:  uint32(t0),
-		Tms: uint32(tms),
+		Tms: uint32(0),
 		br:  *br,
+		numValues: 6, //XXX TODO testing things
+		fullResolution: fullrez,
+		start: true,
 	}
+
+	if ret.fullResolution {
+		tms, err := br.readBits(32)
+		if err != nil {
+			return nil, err
+		}
+		ret.Tms = uint32(tms)
+	}
+
 	ret.trailing = [6]uint8{0, 0, 0, 0, 0, 0}
 	ret.leading = [6]uint8{0, 0, 0, 0, 0, 0}
 	return ret, nil
@@ -562,8 +605,7 @@ func NewGorillaIter(b []byte) (*GorillaIter, error) {
 }
 
 func (it *GorillaIter) readTimeDelta() bool {
-	if it.curTime == 0 {
-		it.start = true
+	if it.start{
 		// read first t
 		tDelta, err := it.br.readBits(14)
 		if err != nil {
@@ -573,14 +615,16 @@ func (it *GorillaIter) readTimeDelta() bool {
 		it.tDelta = uint32(tDelta)
 		it.curTime = it.Ts + it.tDelta
 
-		// read first t
-		tDeltaMs, err := it.br.readBits(14)
-		if err != nil {
-			it.err = err
-			return false
+		if it.fullResolution {
+			// read first t
+			tDeltaMs, err := it.br.readBits(14)
+			if err != nil {
+				it.err = err
+				return false
+			}
+			it.tDeltaMs = uint32(tDeltaMs)
+			it.curTimeMs = it.Tms + it.tDeltaMs
 		}
-		it.tDeltaMs = uint32(tDeltaMs)
-		it.curTimeMs = it.Tms + it.tDeltaMs
 		return true
 	}
 
@@ -617,7 +661,6 @@ func (it *GorillaIter) readTimeDelta() bool {
 			it.err = err
 			return false
 		}
-
 		// end of stream
 		if bits == 0xffffffff {
 			it.finished = true
@@ -644,6 +687,12 @@ func (it *GorillaIter) readTimeDelta() bool {
 
 	it.tDelta = tDelta
 	it.curTime = it.curTime + it.tDelta
+
+	//log.Printf("Read TIME: %v Delta: %v DoD: %v", it.curTime, it.tDelta, dod)
+	// quick exit
+	if !it.fullResolution{
+		return true
+	}
 
 	// nano second part
 	// read delta-of-delta
@@ -718,8 +767,8 @@ func (it *GorillaIter) readValue(idx uint8) bool {
 			it.err = err
 			return false
 		}
-
 		it.curVals[idx] = math.Float64frombits(v)
+		return true
 	}
 
 	// read compressed value
@@ -731,7 +780,6 @@ func (it *GorillaIter) readValue(idx uint8) bool {
 
 	// no value change
 	if bit == zero {
-		// it.val = it.val
 		return true
 	}
 
@@ -787,16 +835,15 @@ func (it *GorillaIter) Next() bool {
 	if !ok {
 		return false
 	}
-	for i := uint8(0); i < 6; i++ {
+	for i := uint8(0); i < it.numValues; i++ {
 		ok = it.readValue(i)
+		//log.Printf("Read Data %d: %v", i, it.curVals[i])
 		if !ok {
 			return false
 		}
 	}
 
-	if it.start {
-		it.start = false
-	}
+	it.start = false
 	return true
 }
 

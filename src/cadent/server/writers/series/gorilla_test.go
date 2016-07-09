@@ -15,36 +15,45 @@ import (
 func TestGorillaTimeSeries(t *testing.T) {
 
 	Convey("GorillaSeries", t, func() {
-		stat := repr.StatRepr{
-			Key:        "goo",
-			StatKey:    "goo",
-			Sum:        5,
-			Min:        1,
-			Max:        repr.JsonFloat64(rand.Float64()),
-			Last:       repr.JsonFloat64(rand.Float64()),
-			Count:      4123123123123,
-			Resolution: 2,
-		}
-		n := time.Now()
-		stat.Time = n
+		stat, n := dummyStat()
+
 
 		ser := NewMultiGoriallaTimeSeries(n.UnixNano())
 		var err error
-		n_stats := 10
+		n_stats := 256
 		times, stats, err := addStats(ser, stat, n_stats)
 
 		So(err, ShouldEqual, nil)
-		So(ser.StartTime(), ShouldEqual, n.UnixNano())
-		So(ser.LastTime(), ShouldEqual, times[len(times)-1])
-
-		it, err := ser.Iter()
-		if err != nil {
-			t.Logf("ERROR: %v", err)
+		if ser.fullResolution {
+			So(ser.StartTime(), ShouldEqual, n.UnixNano())
+			So(ser.LastTime(), ShouldEqual, times[len(times) - 1])
+		}else{
+			tt := time.Unix(0, ser.StartTime())
+			So(tt.Unix(), ShouldEqual, n.Unix())
+			lt := time.Unix(0, ser.LastTime())
+			test_lt := time.Unix(0, times[len(times) - 1])
+			So(lt.Unix(), ShouldEqual, test_lt.Unix())
 		}
+		it, err := ser.Iter()
+		So(err, ShouldEqual, nil)
 		idx := 0
 		for it.Next() {
+
+			/*to, mi,_,_,_,_,_:= it.Values()
+			t_second := time.Unix(0, times[idx]).Unix()
+			t_o_second := time.Unix(0, to).Unix()
+			t.Logf("%d: Data Comp: init: %v, diff: %v, init: %v, diff: %v", idx, t_second, t_o_second - t_second, stats[idx].Min, mi - float64(stats[idx].Min))
+			idx++
+			continue*/
+
 			to, mi, mx, fi, ls, su, ct := it.Values()
-			So(times[idx], ShouldEqual, to)
+			t_orig := times[idx]
+			if !ser.fullResolution {
+				t_orig = time.Unix(0, times[idx]).Unix()
+				to = time.Unix(0, to).Unix()
+
+			}
+			So(t_orig, ShouldEqual, to)
 			So(stats[idx].Max, ShouldEqual, mx)
 			So(stats[idx].Last, ShouldEqual, ls)
 			So(stats[idx].Count, ShouldEqual, ct)
@@ -62,10 +71,10 @@ func TestGorillaTimeSeries(t *testing.T) {
 			//t.Logf("BIT Repr: %v", r)
 			idx++
 		}
-		So(idx, ShouldEqual, n_stats)
 
 		t.Logf("Error: %v", it.Error())
 		t.Logf("Data Len: %v", ser.Len())
+		So(idx, ShouldEqual, n_stats)
 
 		// see how much a 8kb blob holds
 		max_size := 8 * 1024
@@ -94,34 +103,53 @@ func TestGorillaTimeSeries(t *testing.T) {
 
 func BenchmarkGorillaSeriesPut(b *testing.B) {
 	b.ResetTimer()
-	stat := repr.StatRepr{
-		Sum:        5,
-		Min:        1,
-		Max:        repr.JsonFloat64(rand.Float64()),
-		Last:       repr.JsonFloat64(rand.Float64()),
-		Count:      4123123123123,
-		Resolution: 2,
-	}
-	n := time.Now()
-	stat.Time = n
+	stat, n := dummyStat()
 
+	b.SetBytes(stat.ByteSize())
 	for i := 0; i < b.N; i++ {
 		ser := NewMultiGoriallaTimeSeries(n.UnixNano())
 		ser.AddStat(&stat)
 	}
 }
 
+func BenchmarkGorillaSeriesBaseCompress(b *testing.B) {
+	b.ResetTimer()
+	stat, n := dummyStat()
+
+
+	n_stat := 1024
+	for i := 0; i < b.N; i++ {
+		ser := NewMultiGoriallaTimeSeries(n.UnixNano())
+		addStats(ser, stat, n_stat)
+		data, _ := ser.MarshalBinary()
+		pre_l := len(data)
+		b.Logf("Base Data Len: Pre: %v bytes per stat %v", pre_l, pre_l/n_stat)
+	}
+}
+
+func BenchmarkGorillaSeriesRead(b *testing.B) {
+	stat, n := dummyStat()
+
+	n_stat := 2048
+	ser := NewMultiGoriallaTimeSeries(n.UnixNano())
+	addStats(ser, stat, n_stat)
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		b.Logf("Bytes: %d", ser.Len())
+		it, _ := ser.Iter()
+		var j int
+		for it.Next() {
+			j++
+		}
+		b.Logf("Reads: %d", j)
+		b.Logf("Error: %v", it.Error())
+	}
+}
 func BenchmarkGorillaSeriesSnappyCompress(b *testing.B) {
 	b.ResetTimer()
-	stat := repr.StatRepr{
-		Sum:   repr.JsonFloat64(rand.Float64()),
-		Min:   repr.JsonFloat64(rand.Float64()),
-		Max:   repr.JsonFloat64(rand.Float64()),
-		Last:  repr.JsonFloat64(rand.Float64()),
-		Count: 4123123123123,
-	}
-	n := time.Now()
-	stat.Time = n
+	stat, n := dummyStat()
+
 
 	n_stat := 1024
 	for i := 0; i < b.N; i++ {
@@ -136,17 +164,11 @@ func BenchmarkGorillaSeriesSnappyCompress(b *testing.B) {
 
 func BenchmarkGorillaSeriesFlateCompress(b *testing.B) {
 	b.ResetTimer()
-	stat := repr.StatRepr{
-		Sum:   repr.JsonFloat64(rand.Float64()),
-		Min:   repr.JsonFloat64(rand.Float64()),
-		Max:   repr.JsonFloat64(rand.Float64()),
-		Last:  repr.JsonFloat64(rand.Float64()),
-		Count: 4123123123123,
-	}
-	n := time.Now()
-	stat.Time = n
+	stat, n := dummyStat()
+
 
 	n_stat := 1024
+
 	for i := 0; i < b.N; i++ {
 		ser := NewMultiGoriallaTimeSeries(n.UnixNano())
 		addStats(ser, stat, n_stat)
