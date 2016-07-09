@@ -51,20 +51,10 @@ func (s *StatRepr) ByteSize() int64 {
 }
 
 func (s *StatRepr) Copy() *StatRepr {
-	return &StatRepr{
-		Time:       s.Time,
-		StatKey:    s.StatKey,
-		Key:        s.Key,
-		Mean:       s.Mean,
-		Min:        s.Min,
-		Max:        s.Max,
-		Sum:        s.Sum,
-		First:      s.First,
-		Last:       s.Last,
-		Count:      s.Count,
-		Resolution: s.Resolution,
-		TTL:        s.TTL,
-	}
+	obj := *s
+	return &obj
+
+
 }
 
 // merge a stat together,
