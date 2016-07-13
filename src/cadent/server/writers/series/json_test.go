@@ -12,7 +12,7 @@ func Benchmark_JsonSeriesPut(b *testing.B) {
 	benchmarkSeriesPut(b, "json", 1024)
 }
 func Benchmark_JsonSeries8k(b *testing.B) {
-	benchmarkSeriesPut8k(b, "json")
+	benchmarkSeriesPut8kRandom(b, "json")
 }
 func Benchmark_JsonSeriesRawSize(b *testing.B) {
 	benchmarkRawSize(b, "json", 1024)

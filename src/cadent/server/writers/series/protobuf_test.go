@@ -13,7 +13,7 @@ func Benchmark_ProtoBufPut(b *testing.B) {
 }
 
 func Benchmark_ProtoBuf8k(b *testing.B) {
-	benchmarkSeriesPut8k(b, "protobuf")
+	benchmarkSeriesPut8kRandom(b, "protobuf")
 }
 
 func Benchmark_ProtoBufRawSize(b *testing.B) {

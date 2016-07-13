@@ -54,7 +54,7 @@ type JsonTimeSeries struct {
 	Stats   JsonStats
 }
 
-func NewJsonTimeSeries(t0 int64) *JsonTimeSeries {
+func NewJsonTimeSeries(t0 int64, options *Options) *JsonTimeSeries {
 	ret := &JsonTimeSeries{
 		T0:    t0,
 		Stats: make(JsonStats, 0),
@@ -65,6 +65,42 @@ func NewJsonTimeSeries(t0 int64) *JsonTimeSeries {
 func (s *JsonTimeSeries) UnmarshalBinary(data []byte) error {
 	err := json.Unmarshal(data, s.Stats)
 	return err
+}
+
+func (s *JsonTimeSeries) MarshalBinary() ([]byte, error) {
+	return json.Marshal(s.Stats)
+}
+
+// this does not "finish" the series
+func (s *JsonTimeSeries) ByteClone() ([]byte, error) {
+	return s.MarshalBinary()
+}
+
+func (s *JsonTimeSeries) Len() int {
+	b, _ := s.MarshalBinary()
+	return len(b)
+}
+
+func (s *JsonTimeSeries) Iter() (iter TimeSeriesIter, err error) {
+	s.mu.Lock()
+	d := make(JsonStats, len(s.Stats))
+	copy(d, s.Stats)
+	s.mu.Unlock()
+
+	iter, err = NewJsonIter(d)
+	return iter, err
+}
+
+func (s *JsonTimeSeries) IterClone() (iter TimeSeriesIter, err error) {
+	return s.Iter()
+}
+
+func (s *JsonTimeSeries) StartTime() int64 {
+	return s.T0
+}
+
+func (s *JsonTimeSeries) LastTime() int64 {
+	return s.curTime
 }
 
 // the t is the "time we want to add
@@ -86,33 +122,6 @@ func (s *JsonTimeSeries) AddPoint(t int64, min float64, max float64, first float
 
 func (s *JsonTimeSeries) AddStat(stat *repr.StatRepr) error {
 	return s.AddPoint(stat.Time.UnixNano(), float64(stat.Min), float64(stat.Max), float64(stat.First), float64(stat.Last), float64(stat.Sum), stat.Count)
-}
-
-func (s *JsonTimeSeries) MarshalBinary() ([]byte, error) {
-	return json.Marshal(s.Stats)
-}
-
-func (s *JsonTimeSeries) Len() int {
-	b, _ := s.MarshalBinary()
-	return len(b)
-}
-
-func (s *JsonTimeSeries) Iter() (iter TimeSeriesIter, err error) {
-	s.mu.Lock()
-	d := make(JsonStats, len(s.Stats))
-	copy(d, s.Stats)
-	s.mu.Unlock()
-
-	iter, err = NewJsonIter(d)
-	return iter, err
-}
-
-func (s *JsonTimeSeries) StartTime() int64 {
-	return s.T0
-}
-
-func (s *JsonTimeSeries) LastTime() int64 {
-	return s.curTime
 }
 
 // Iter lets you iterate over a series.  It is not concurrency-safe.
@@ -142,6 +151,15 @@ func NewJsonIter(stats JsonStats) (*JsonIter, error) {
 		statLen: len(stats),
 	}
 	return it, nil
+}
+
+func NewJsonIterFromBytes(data []byte) (iter TimeSeriesIter, err error) {
+	stats := new(JsonStats)
+	err = json.Unmarshal(data, stats)
+	if err != nil {
+		return nil, err
+	}
+	return NewJsonIter(*stats)
 }
 
 func (it *JsonIter) Next() bool {

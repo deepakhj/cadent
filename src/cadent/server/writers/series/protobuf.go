@@ -19,16 +19,19 @@ import (
 type ProtobufTimeSeries struct {
 	mu sync.Mutex
 
+	high_res_time bool
+
 	T0      int64
 	curTime int64
 	Stats   *ProtStats
 }
 
-func NewProtobufTimeSeries(t0 int64) *ProtobufTimeSeries {
+func NewProtobufTimeSeries(t0 int64, options *Options) *ProtobufTimeSeries {
 
 	ret := &ProtobufTimeSeries{
-		T0:    t0,
-		Stats: new(ProtStats),
+		T0:            t0,
+		high_res_time: options.HighTimeResolution,
+		Stats:         new(ProtStats),
 	}
 	return ret
 }
@@ -36,6 +39,40 @@ func NewProtobufTimeSeries(t0 int64) *ProtobufTimeSeries {
 func (s *ProtobufTimeSeries) UnmarshalBinary(data []byte) error {
 	err := proto.Unmarshal(data, s.Stats)
 	return err
+}
+
+func (s *ProtobufTimeSeries) MarshalBinary() ([]byte, error) {
+	return proto.Marshal(s.Stats)
+}
+
+func (s *ProtobufTimeSeries) ByteClone() ([]byte, error) {
+	return s.MarshalBinary()
+}
+
+func (s *ProtobufTimeSeries) Len() int {
+	b, _ := s.MarshalBinary()
+	return len(b)
+}
+
+func (s *ProtobufTimeSeries) Iter() (iter TimeSeriesIter, err error) {
+	s.mu.Lock()
+	d := make([]*ProtStat, len(s.Stats.Stats))
+	copy(d, s.Stats.Stats)
+	s.mu.Unlock()
+
+	iter, err = NewProtobufIter(d)
+	return iter, err
+}
+func (s *ProtobufTimeSeries) IterClone() (iter TimeSeriesIter, err error) {
+	return s.Iter()
+}
+
+func (s *ProtobufTimeSeries) StartTime() int64 {
+	return s.T0
+}
+
+func (s *ProtobufTimeSeries) LastTime() int64 {
+	return s.curTime
 }
 
 // the t is the "time we want to add
@@ -60,33 +97,6 @@ func (s *ProtobufTimeSeries) AddStat(stat *repr.StatRepr) error {
 	return s.AddPoint(stat.Time.UnixNano(), float64(stat.Min), float64(stat.Max), float64(stat.First), float64(stat.Last), float64(stat.Sum), stat.Count)
 }
 
-func (s *ProtobufTimeSeries) MarshalBinary() ([]byte, error) {
-	return proto.Marshal(s.Stats)
-}
-
-func (s *ProtobufTimeSeries) Len() int {
-	b, _ := s.MarshalBinary()
-	return len(b)
-}
-
-func (s *ProtobufTimeSeries) Iter() (iter TimeSeriesIter, err error) {
-	s.mu.Lock()
-	d := make([]*ProtStat, len(s.Stats.Stats))
-	copy(d, s.Stats.Stats)
-	s.mu.Unlock()
-
-	iter, err = NewProtobufIter(d)
-	return iter, err
-}
-
-func (s *ProtobufTimeSeries) StartTime() int64 {
-	return s.T0
-}
-
-func (s *ProtobufTimeSeries) LastTime() int64 {
-	return s.curTime
-}
-
 // Iter lets you iterate over a series.  It is not concurrency-safe.
 // but you should give it a "copy" of any byte array
 type ProtobufIter struct {
@@ -101,6 +111,15 @@ type ProtobufIter struct {
 
 	finished bool
 	err      error
+}
+
+func NewProtobufIterFromBytes(data []byte) (iter TimeSeriesIter, err error) {
+	stats := new(ProtStats)
+	err = proto.Unmarshal(data, stats)
+	if err != nil {
+		return nil, err
+	}
+	return NewProtobufIter(stats.Stats)
 }
 
 func NewProtobufIter(stats []*ProtStat) (*ProtobufIter, error) {

@@ -24,19 +24,23 @@
 
 	we use the golang time module to do the splitting and re-combo, as well, it's good at it
 
+	Since the "nanosecond" part of the time stamps is highly fluctuating, and not going to be "in order"
+	(the deltas will be negative many times)
+	we treat that part like a "value" as apposed to a "timestamp" and compress it like a normal float64
+
 	Format ..
 
 	there are "2" modes Full resolution for "nanoseconds"
 
-	[4 byte header][1byte numvals][BigEndian Ts uint32][BigEndian Tms uint32]
-	[DelTs][DelTms][v0][v1][...]
-	[NumBit][DoDTs][NumBit][DodTms][XorV0][XorV1][...]
+	[4 byte header][1byte numvals][32 bit T0][32 bit Tms]
+	[DelTs][XorTms0][v0][v1][...]
+	[NumBit][DoDTs][XorTms0][XorV0][XorV1][...]
 	...
 
 	"Second" resolution
 
-	[4 byte header][1byte numvals][BigEndian Ts uint32]
-	[DelTs][DelTms][v0][v1][...]
+	[4 byte header][1byte numvals][32 bit T0]
+	[DelTs][v0][v1][...]
 	[NumBit][DoDTs][XorV0][XorV1][...]
 
 
@@ -60,22 +64,6 @@ const (
 	GORILLA_BIN_SERIES_TAG_SECOND     = "gors" // just a flag to note we are using this one at the start of each blob
 )
 
-// make the "second" and "nanosecond" parts
-func splitNano(t int64) (uint32, uint32) {
-	// not "good way" of splitting a Nano-time is available so we need to
-	// convert things to "time" and grab the resulting bits
-	tt := time.Unix(0, t)
-	return uint32(tt.Unix()), uint32(tt.Nanosecond())
-}
-
-// remake a "nano-time"
-func combineSecNano(ts uint32, tns uint32) int64 {
-	// not "good way" of splitting a Nano-time is available so we need to
-	// convert things to "time" and grab the resulting bits
-	tt := time.Unix(int64(ts), int64(tns))
-	return tt.UnixNano()
-}
-
 /** shamelessly taken from https://github.com/dgryski/go-tsz/blob/master/bstream.go */
 
 type bit bool
@@ -92,6 +80,9 @@ type bstream struct {
 
 	// how many bits are valid in current byte
 	count uint8
+
+	bitsWritten int64
+	bitsRead    int64
 }
 
 func newBReader(b []byte) *bstream {
@@ -124,7 +115,7 @@ func (b *bstream) writeBit(bit bit) {
 	if bit {
 		b.stream[i] |= 1 << (b.count - 1)
 	}
-
+	b.bitsWritten++
 	b.count--
 }
 
@@ -152,6 +143,7 @@ func (b *bstream) writeByte(byt byte) {
 	b.stream = append(b.stream, 0)
 	i++
 	b.stream[i] = byt << b.count
+	b.bitsWritten += 8
 }
 
 func (b *bstream) writeBits(u uint64, nbits int) {
@@ -168,6 +160,7 @@ func (b *bstream) writeBits(u uint64, nbits int) {
 		u <<= 1
 		nbits--
 	}
+	b.bitsWritten += int64(nbits)
 }
 
 func (b *bstream) readBit() (bit, error) {
@@ -188,6 +181,7 @@ func (b *bstream) readBit() (bit, error) {
 	b.count--
 	d := b.stream[0] & 0x80
 	b.stream[0] <<= 1
+	b.bitsRead++
 	return d != 0, nil
 }
 
@@ -208,7 +202,6 @@ func (b *bstream) readBytes(n uint8) ([]byte, error) {
 			return nil, err
 		}
 	}
-
 	return byts, nil
 
 }
@@ -231,6 +224,7 @@ func (b *bstream) readByte() (byte, error) {
 
 	if b.count == 8 {
 		b.count = 0
+		b.bitsRead += 8
 		return b.stream[0], nil
 		//b.stream = b.stream[1:]
 		//return byt, nil
@@ -246,6 +240,7 @@ func (b *bstream) readByte() (byte, error) {
 	byt |= b.stream[0] >> b.count
 	b.stream[0] <<= (8 - b.count)
 
+	b.bitsRead += 8
 	return byt, nil
 }
 
@@ -275,6 +270,7 @@ func (b *bstream) readBits(nbits int) (uint64, error) {
 		}
 		nbits--
 	}
+	b.bitsRead += int64(nbits)
 
 	return u, nil
 }
@@ -288,81 +284,178 @@ type GorillaTimeSeries struct {
 	Ts  uint32
 	Tms uint32
 
-	curTime    uint32
-	curTimeMs  uint32
-	curDelta   uint32
-	curDeltaMs uint32
+	curTime  uint32
+	curDelta uint32
+
+	curTimeMs  float64
+	leadingMs  uint8
+	trailingMs uint8
 
 	numValues uint8
 	curVals   []float64 //want 6 vals, min, max, sum, first, last, count
 	leading   []uint8
 	trailing  []uint8
 
-	bw       bstream
-	finished bool
+	bw bstream
 }
 
-func NewGoriallaTimeSeries(t0 int64) *GorillaTimeSeries {
+func NewGoriallaTimeSeries(t0 int64, options *Options) *GorillaTimeSeries {
 
 	ts, tms := splitNano(t0)
 
 	ret := &GorillaTimeSeries{
 		Ts:             ts,
 		Tms:            tms,
-		fullResolution: false, //change me
+		fullResolution: options.HighTimeResolution,
 		curDelta:       0,
-		curDeltaMs:     0,
 		curTime:        0,
 		curTimeMs:      0,
-		numValues:      6,
-		finished:       false,
-	}
-	t := ^uint8(0)
-	ret.leading = make([]uint8, ret.numValues)
-	ret.trailing = make([]uint8, ret.numValues)
-	ret.curVals = make([]float64, ret.numValues)
-	for i := uint8(0); i < ret.numValues; i++ {
-		ret.leading[i] = t
-		ret.trailing[i] = 0
-	}
-	// block header
-	if ret.fullResolution {
-		ret.bw.writeBytes([]byte(GORILLA_BIN_SERIES_TAG_NANOSECOND))
-	} else {
-		ret.bw.writeBytes([]byte(GORILLA_BIN_SERIES_TAG_SECOND))
+		trailingMs:     0,
+		numValues:      uint8(options.NumValues),
 	}
 
-	//num values
-	ret.bw.writeBits(uint64(ret.numValues), 8)
-
-	ret.bw.writeBits(uint64(ts), 32)
-
-	if ret.fullResolution {
-		ret.bw.writeBits(uint64(tms), 32)
-	}
-
+	ret.writeHeader()
 	return ret
 }
 
-func (s *GorillaTimeSeries) setFinished() {
-	// write an end-of-stream record
-	if !s.finished {
-		s.bw.writeBits(0x0f, 4)
-		s.bw.writeBits(0xffffffff, 32)
-		s.bw.writeBit(zero)
-		s.finished = true
+func (s *GorillaTimeSeries) writeHeader() {
+	t := ^uint8(0)
+	s.leadingMs = t
+	s.trailingMs = 0
+	s.leading = make([]uint8, s.numValues, s.numValues)
+	s.trailing = make([]uint8, s.numValues, s.numValues)
+	s.curVals = make([]float64, s.numValues, s.numValues)
+	for i := uint8(0); i < s.numValues; i++ {
+		s.leading[i] = t
+		s.trailing[i] = 0
 	}
+	// block header
+	if s.fullResolution {
+		s.bw.writeBytes([]byte(GORILLA_BIN_SERIES_TAG_NANOSECOND))
+	} else {
+		s.bw.writeBytes([]byte(GORILLA_BIN_SERIES_TAG_SECOND))
+	}
+
+	//num values
+	s.bw.writeBits(uint64(s.numValues), 8)
+
+	s.bw.writeBits(uint64(s.Ts), 32)
+
+	if s.fullResolution {
+		s.bw.writeBits(uint64(s.Tms), 32)
+		s.curTimeMs = float64(s.Tms)
+		//log.Printf("Write Tstart: %v : %v", ts, ret.curTimeMs)
+	}
+	//log.Printf("Start Byte Write: %v ", ret.bw.bitsWritten)
+
+}
+
+func setFinished(bw *bstream) {
+	// write an end-of-stream record
+	bw.writeBits(0x0f, 4)
+	bw.writeBits(0xffffffff, 32)
+	bw.writeBit(zero)
 }
 
 func (s *GorillaTimeSeries) Finish() {
 	s.Lock()
 	defer s.Unlock()
-	s.setFinished()
+	setFinished(&s.bw)
+}
+
+func (s *GorillaTimeSeries) MarshalBinary() ([]byte, error) {
+	s.Lock()
+	defer s.Unlock()
+	setFinished(&s.bw)
+	return s.bw.bytes(), nil
+}
+
+func (s *GorillaTimeSeries) ByteClone() ([]byte, error) {
+	s.Lock()
+	defer s.Unlock()
+
+	bb := s.bw.clone()
+	setFinished(bb)
+
+	return bb.bytes(), nil
+}
+
+func (s *GorillaTimeSeries) Len() int {
+	s.Lock()
+	defer s.Unlock()
+	return len(s.bw.bytes())
+}
+
+func (s *GorillaTimeSeries) StartTime() int64 {
+	return combineSecNano(s.Ts, uint32(s.Tms))
+}
+
+func (s *GorillaTimeSeries) LastTime() int64 {
+	return combineSecNano(s.curTime, uint32(s.curTimeMs))
+}
+
+func (s *GorillaTimeSeries) Iter() (TimeSeriesIter, error) {
+	s.Lock()
+	w := s.bw.clone()
+	s.Unlock()
+	setFinished(w)
+
+	return NewGorillaIterFromBStream(w)
+}
+
+func (s *GorillaTimeSeries) IterClone() (TimeSeriesIter, error) {
+	b_cln, err := s.ByteClone()
+	if err != nil {
+		return nil, err
+	}
+	return NewGorillaIterFromBytes(b_cln)
 }
 
 func (s *GorillaTimeSeries) UnmarshalBinary(data []byte) error {
 	s.bw.stream = data
 	return nil
+}
+
+// compress a float64 based on the last value added
+func (s *GorillaTimeSeries) compressValue(curV float64, newV float64, leading uint8, trailing uint8) (n_leading uint8, n_trailing uint8) {
+
+	vDelta := math.Float64bits(newV) ^ math.Float64bits(curV)
+
+	if vDelta == 0 {
+		s.bw.writeBit(zero)
+		return leading, trailing
+	}
+
+	s.bw.writeBit(one)
+
+	n_leading = uint8(bits.Clz(vDelta))
+	n_trailing = uint8(bits.Ctz(vDelta))
+
+	// clamp number of leading zeros to avoid overflow when encoding
+	if n_leading >= 32 {
+		n_leading = 31
+	}
+
+	// TODO(dgryski): check if it's 'cheaper' to reset the leading/trailing bits instead
+	if leading != ^uint8(0) && n_leading >= leading && n_trailing >= trailing {
+		s.bw.writeBit(zero)
+		s.bw.writeBits(vDelta>>trailing, 64-int(leading)-int(trailing))
+		n_leading = leading
+		n_trailing = trailing
+	} else {
+
+		s.bw.writeBit(one)
+		s.bw.writeBits(uint64(n_leading), 5)
+
+		// Note that if leading == trailing == 0, then sigbits == 64.  But that value doesn't actually fit into the 6 bits we have.
+		// Luckily, we never need to encode 0 significant bits, since that would put us in the other case (vdelta == 0).
+		// So instead we write out a 0 and adjust it back to 64 on unpacking.
+		sigbits := 64 - n_leading - n_trailing
+		s.bw.writeBits(uint64(sigbits), 6)
+		s.bw.writeBits(vDelta>>n_trailing, int(sigbits))
+	}
+
+	return n_leading, n_trailing
 }
 
 func (s *GorillaTimeSeries) addValue(idx int, v float64, isfirst bool) {
@@ -371,41 +464,7 @@ func (s *GorillaTimeSeries) addValue(idx int, v float64, isfirst bool) {
 		s.bw.writeBits(math.Float64bits(v), 64)
 		return
 	}
-
-	val := s.curVals[idx]
-	vDelta := math.Float64bits(v) ^ math.Float64bits(val)
-
-	if vDelta == 0 {
-		s.bw.writeBit(zero)
-	} else {
-		s.bw.writeBit(one)
-
-		leading := uint8(bits.Clz(vDelta))
-		trailing := uint8(bits.Ctz(vDelta))
-
-		// clamp number of leading zeros to avoid overflow when encoding
-		if leading >= 32 {
-			leading = 31
-		}
-
-		// TODO(dgryski): check if it's 'cheaper' to reset the leading/trailing bits instead
-		if s.leading[idx] != ^uint8(0) && leading >= s.leading[idx] && trailing >= s.trailing[idx] {
-			s.bw.writeBit(zero)
-			s.bw.writeBits(vDelta>>s.trailing[idx], 64-int(s.leading[idx])-int(s.trailing[idx]))
-		} else {
-			s.leading[idx], s.trailing[idx] = leading, trailing
-
-			s.bw.writeBit(one)
-			s.bw.writeBits(uint64(leading), 5)
-
-			// Note that if leading == trailing == 0, then sigbits == 64.  But that value doesn't actually fit into the 6 bits we have.
-			// Luckily, we never need to encode 0 significant bits, since that would put us in the other case (vdelta == 0).
-			// So instead we write out a 0 and adjust it back to 64 on unpacking.
-			sigbits := 64 - leading - trailing
-			s.bw.writeBits(uint64(sigbits), 6)
-			s.bw.writeBits(vDelta>>trailing, int(sigbits))
-		}
-	}
+	s.leading[idx], s.trailing[idx] = s.compressValue(s.curVals[idx], v, s.leading[idx], s.trailing[idx])
 	s.curVals[idx] = v
 }
 
@@ -417,11 +476,14 @@ func (s *GorillaTimeSeries) AddTime(t int64) error {
 		s.curTime = ut
 		s.curDelta = ut - s.Ts
 		s.bw.writeBits(uint64(s.curDelta), 14)
+
+		// ns part needs to be a float, so compress against the "0th" ns time marker
 		if s.fullResolution {
-			s.curTimeMs = utms
-			s.curDeltaMs = utms - s.Tms
-			s.bw.writeBits(uint64(s.curDeltaMs), 14)
+			s.leadingMs, s.trailingMs = s.compressValue(s.curTimeMs, float64(utms), s.leadingMs, s.trailingMs)
+			s.curTimeMs = float64(utms)
 		}
+		//log.Printf("WT0: T0: %v, (%v:%v) : %v", s.curTime, uint32(s.curTimeMs), uint32(utms), s.curDelta)
+		//log.Printf("ByteWRIte: %v ", s.bw.bitsWritten)
 		return nil
 	}
 
@@ -453,28 +515,11 @@ func (s *GorillaTimeSeries) AddTime(t int64) error {
 	}
 
 	// if second resolution, this will "0" most of the time for second resolutions
-	tDeltaMs := utms - s.curTimeMs
-	dod = int32(tDeltaMs - s.curDeltaMs)
-
-	switch {
-	case dod == 0:
-		s.bw.writeBit(zero)
-	case -63 <= dod && dod <= 64:
-		s.bw.writeBits(0x02, 2) // '10'
-		s.bw.writeBits(uint64(dod), 7)
-	case -255 <= dod && dod <= 256:
-		s.bw.writeBits(0x06, 3) // '110'
-		s.bw.writeBits(uint64(dod), 9)
-	case -2047 <= dod && dod <= 2048:
-		s.bw.writeBits(0x0e, 4) // '1110'
-		s.bw.writeBits(uint64(dod), 12)
-	default:
-		s.bw.writeBits(0x0f, 4) // '1111'
-		s.bw.writeBits(uint64(dod), 32)
-	}
-
-	s.curDeltaMs = tDeltaMs
-	s.curTimeMs = utms
+	// due to the nature of the this part, we need to compress it via the Float64 compressor
+	// as the deltas can produce negatives here as well as be wildly fluctuating
+	s.leadingMs, s.trailingMs = s.compressValue(s.curTimeMs, float64(utms), s.leadingMs, s.trailingMs)
+	s.curTimeMs = float64(utms)
+	//log.Printf("WTN: T0: %v, %v : %v", s.curTime, uint32(s.curTimeMs), s.curDelta)
 
 	//log.Printf("Write Time: %d %d (%d, %d)", s.curTime, s.curTimeMs, s.curDelta, s.curDeltaMs)
 
@@ -490,18 +535,36 @@ func (s *GorillaTimeSeries) AddPoint(t int64, min float64, max float64, first fl
 	if err != nil {
 		return err
 	}
-	if s.numValues == 6 {
+	switch s.numValues {
+	case 6:
 		s.addValue(0, min, start)
 		s.addValue(1, max, start)
 		s.addValue(2, first, start)
 		s.addValue(3, last, start)
 		s.addValue(4, sum, start)
 		s.addValue(5, float64(count), start)
-	} else {
-		// just one
+	case 5:
+		s.addValue(0, min, start)
+		s.addValue(1, max, start)
+		s.addValue(2, first, start)
+		s.addValue(3, last, start)
+		s.addValue(4, sum, start)
+	case 4:
+		s.addValue(0, min, start)
+		s.addValue(1, max, start)
+		s.addValue(2, first, start)
+		s.addValue(3, last, start)
+	case 3:
+		s.addValue(0, min, start)
+		s.addValue(1, max, start)
+		s.addValue(2, first, start)
+	case 2:
+		s.addValue(0, min, start)
+		s.addValue(1, max, start)
+	default:
 		s.addValue(0, min, start)
 	}
-
+	//log.Printf("Bytes Write: %v", s.bw.bitsWritten)
 	return nil
 }
 
@@ -509,47 +572,18 @@ func (s *GorillaTimeSeries) AddStat(stat *repr.StatRepr) error {
 	return s.AddPoint(stat.Time.UnixNano(), float64(stat.Min), float64(stat.Max), float64(stat.First), float64(stat.Last), float64(stat.Sum), stat.Count)
 }
 
-func (s *GorillaTimeSeries) MarshalBinary() ([]byte, error) {
-	s.Lock()
-	defer s.Unlock()
-	return s.bw.bytes(), nil
-}
-
-func (s *GorillaTimeSeries) Len() int {
-	s.Lock()
-	defer s.Unlock()
-	return len(s.bw.bytes())
-}
-
-func (s *GorillaTimeSeries) StartTime() int64 {
-	return combineSecNano(s.Ts, s.Tms)
-}
-
-func (s *GorillaTimeSeries) LastTime() int64 {
-	return combineSecNano(s.curTime, s.curTimeMs)
-}
-
-func (s *GorillaTimeSeries) Iter() (TimeSeriesIter, error) {
-	s.Lock()
-
-	s.setFinished()
-	w := s.bw.clone()
-	s.Unlock()
-
-	iter, err := NewGorillaIterFromBStream(w)
-	return iter, err
-}
-
 type GorillaIter struct {
-	Ts  uint32
-	Tms uint32
+	Ts uint32
 
 	fullResolution bool
 
 	curTime   uint32
-	curTimeMs uint32
 	curVals   []float64
 	numValues uint8
+
+	curTimeMs  float64
+	leadingMs  uint8
+	trailingMs uint8
 
 	br       bstream
 	leading  []uint8
@@ -573,6 +607,7 @@ func NewGorillaIterFromBStream(br *bstream) (*GorillaIter, error) {
 	if err != nil {
 		return nil, err
 	}
+	//log.Printf("Start Byte Read: %v ", br.bitsRead)
 	hh := string(head)
 	if hh != GORILLA_BIN_SERIES_TAG_NANOSECOND && hh != GORILLA_BIN_SERIES_TAG_SECOND {
 		return nil, fmt.Errorf("Not a valid Gorilla Series")
@@ -589,37 +624,42 @@ func NewGorillaIterFromBStream(br *bstream) (*GorillaIter, error) {
 	if err != nil {
 		return nil, err
 	}
+	//log.Printf("Start Byte Read: %v ", br.bitsRead)
 
 	t0, err := br.readBits(32)
 	if err != nil {
 		return nil, err
 	}
+	//log.Printf("Start Byte Read: %v ", br.bitsRead)
 
 	ret := &GorillaIter{
 		Ts:             uint32(t0),
-		Tms:            uint32(0),
 		br:             *br,
 		numValues:      uint8(numvals),
 		fullResolution: fullrez,
 		start:          true,
 	}
 
+	// first nanosecond part stored as uint32
 	if ret.fullResolution {
-		tms, err := br.readBits(32)
+
+		v, err := ret.br.readBits(32)
 		if err != nil {
 			return nil, err
 		}
-		ret.Tms = uint32(tms)
-	}
 
-	ret.trailing = make([]uint8, ret.numValues)
-	ret.leading = make([]uint8, ret.numValues)
-	ret.curVals = make([]float64, ret.numValues)
+		ret.curTimeMs = float64(v)
+	}
+	//log.Printf("ReadStart: %v : : %v", ret.Ts, ret.curTimeMs)
+	//log.Printf("Start Byte Read: %v ", ret.br.bitsRead)
+	ret.trailing = make([]uint8, ret.numValues, ret.numValues)
+	ret.leading = make([]uint8, ret.numValues, ret.numValues)
+	ret.curVals = make([]float64, ret.numValues, ret.numValues)
 	return ret, nil
 
 }
 
-func NewGorillaIter(b []byte) (*GorillaIter, error) {
+func NewGorillaIterFromBytes(b []byte) (*GorillaIter, error) {
 	return NewGorillaIterFromBStream(newBReader(b))
 }
 
@@ -634,17 +674,18 @@ func (it *GorillaIter) readTimeDelta() bool {
 		it.tDelta = uint32(tDelta)
 		it.curTime = it.Ts + it.tDelta
 
+		ok := true
+
+		// first val is compressed against the start Tms
 		if it.fullResolution {
-			// read first t
-			tDeltaMs, err := it.br.readBits(14)
-			if err != nil {
-				it.err = err
-				return false
-			}
-			it.tDeltaMs = uint32(tDeltaMs)
-			it.curTimeMs = it.Tms + it.tDeltaMs
+			// note: we already read the "main" bits (yes a bit cludgy, but the reading is not thread safe)
+			it.start = false
+			ok, it.curTimeMs, it.leadingMs, it.trailingMs = it.uncompressValue(it.curTimeMs, it.leadingMs, it.trailingMs)
+			it.start = true
 		}
-		return true
+		//log.Printf("RTT0 : %v, %v :: %v: %v", it.Ts,  it.curTime, it.tDelta, it.curTimeMs)
+		//log.Printf("ByteRead: %v ", it.br.bitsRead)
+		return ok
 	}
 
 	// read delta-of-delta
@@ -713,71 +754,81 @@ func (it *GorillaIter) readTimeDelta() bool {
 		return true
 	}
 
-	// nano second part
-	// read delta-of-delta
-	var dms byte
-	for i := 0; i < 4; i++ {
-		dms <<= 1
-		bit, err := it.br.readBit()
+	// nano time is treated like a float64 value
+	var ok bool
+	ok, it.curTimeMs, it.leadingMs, it.trailingMs = it.uncompressValue(it.curTimeMs, it.leadingMs, it.trailingMs)
+	//log.Printf("Read TT %v: %v : %v", it.curTime, it.curTimeMs, it.tDelta)
+	return ok
+}
+
+func (it *GorillaIter) uncompressValue(curV float64, o_leading uint8, o_trailing uint8) (ok bool, v float64, leading uint8, trailing uint8) {
+	if it.start {
+		tbits, err := it.br.readBits(64)
 		if err != nil {
 			it.err = err
-			return false
+			return false, 0.0, o_leading, o_trailing
 		}
-		if bit == zero {
-			break
-		}
-		dms |= 1
+		return true, math.Float64frombits(tbits), o_leading, o_trailing
 	}
 
-	var dodms int32
-	var szms uint
-	switch dms {
-	case 0x00:
-	// dod == 0
-	case 0x02:
-		szms = 7
-	case 0x06:
-		szms = 9
-	case 0x0e:
-		szms = 12
-	case 0x0f:
-		bits, err := it.br.readBits(32)
+	// compressed float value
+	bit, err := it.br.readBit()
+	if err != nil {
+		it.err = err
+		return false, curV, o_leading, o_trailing
+	}
+
+	// no value change
+	if bit == zero {
+		return true, curV, o_leading, o_trailing
+	}
+
+	bit, err = it.br.readBit()
+	if err != nil {
+		it.err = err
+		return false, curV, o_leading, o_trailing
+	}
+	if bit == zero {
+		// reuse leading/trailing zero bits
+		leading = o_leading
+		trailing = o_trailing
+	} else {
+		bits, err := it.br.readBits(5)
 		if err != nil {
 			it.err = err
-			return false
+			return false, v, o_leading, o_trailing
 		}
+		leading = uint8(bits)
 
-		// end of stream
-		if bits == 0xffffffff {
-			it.finished = true
-			return false
-		}
-
-		dodms = int32(bits)
-	}
-
-	if szms != 0 {
-		bits, err := it.br.readBits(int(sz))
+		bits, err = it.br.readBits(6)
 		if err != nil {
 			it.err = err
-			return false
+			return false, v, o_leading, o_trailing
 		}
-		if bits > (1 << (szms - 1)) {
-			// or something
-			bits = bits - (1 << sz)
+		mbits := uint8(bits)
+		// 0 significant bits here means we overflowed and we actually need 64; see comment in encoder
+		if mbits == 0 {
+			mbits = 64
 		}
-		dodms = int32(bits)
+		trailing = 64 - leading - mbits
 	}
 
-	tDeltaMs := it.tDeltaMs + uint32(dodms)
-
-	it.tDeltaMs = tDeltaMs
-	it.curTimeMs = it.curTimeMs + it.tDeltaMs
-
-	return true
+	nbits := int(64 - leading - trailing)
+	bits, err := it.br.readBits(nbits)
+	if err != nil {
+		it.err = err
+		return false, curV, leading, trailing
+	}
+	vbits := math.Float64bits(curV)
+	vbits ^= (bits << trailing)
+	return true, math.Float64frombits(vbits), leading, trailing
 }
 
 func (it *GorillaIter) readValue(idx uint8) bool {
+
+	var ok bool
+	ok, it.curVals[idx], it.leading[idx], it.trailing[idx] = it.uncompressValue(it.curVals[idx], it.leading[idx], it.trailing[idx])
+	return ok
 
 	if it.start {
 
@@ -856,18 +907,19 @@ func (it *GorillaIter) Next() bool {
 	}
 	for i := uint8(0); i < it.numValues; i++ {
 		ok = it.readValue(i)
-		//log.Printf("Read Data %d: %v", i, it.curVals[i])
 		if !ok {
 			return false
 		}
 	}
+	//log.Printf("Bytes Read: %v", it.br.bitsRead)
 
 	it.start = false
 	return true
 }
 
 func (it *GorillaIter) Values() (int64, float64, float64, float64, float64, float64, int64) {
-	return combineSecNano(it.curTime, it.curTimeMs), it.curVals[0], it.curVals[1], it.curVals[2], it.curVals[3], it.curVals[4], int64(it.curVals[5])
+	//log.Printf("Values Time: %v : %v", it.curTime, it.curTimeMs)
+	return combineSecNano(it.curTime, uint32(it.curTimeMs)), it.curVals[0], it.curVals[1], it.curVals[2], it.curVals[3], it.curVals[4], int64(it.curVals[5])
 }
 
 func (it *GorillaIter) ReprValue() *repr.StatRepr {

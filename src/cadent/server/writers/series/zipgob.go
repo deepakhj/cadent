@@ -36,7 +36,7 @@ type ZipGobTimeSeries struct {
 	curBytes int
 }
 
-func NewZipGobTimeSeries(t0 int64) *ZipGobTimeSeries {
+func NewZipGobTimeSeries(t0 int64, options *Options) *ZipGobTimeSeries {
 	ret := &ZipGobTimeSeries{
 		T0:       t0,
 		curTime:  0,
@@ -83,6 +83,17 @@ func (s *ZipGobTimeSeries) AddStat(stat *repr.StatRepr) error {
 	return s.AddPoint(stat.Time.UnixNano(), float64(stat.Min), float64(stat.Max), float64(stat.First), float64(stat.Last), float64(stat.Sum), stat.Count)
 }
 
+func (s *ZipGobTimeSeries) ByteClone() ([]byte, error) {
+	s.zip.Flush()
+	byts := s.buf.Bytes()
+	s.buf.Reset()
+
+	// need to "readd" the bits to the current buffer as Bytes
+	// wipes out the read pointer
+	s.buf.Write(byts)
+	return byts, nil
+}
+
 func (s *ZipGobTimeSeries) MarshalBinary() ([]byte, error) {
 	s.zip.Flush()
 	return s.buf.Bytes(), nil
@@ -102,25 +113,38 @@ func (s *ZipGobTimeSeries) LastTime() int64 {
 }
 
 func (s *ZipGobTimeSeries) Iter() (TimeSeriesIter, error) {
-	s.mu.Lock()
-
 	s.zip.Flush()
+	return NewZipGobIter(s.buf)
+}
 
-	buf := getSyncBufferPool.Get().(*bytes.Buffer)
-	defer getSyncBufferPool.Put(buf)
+func (s *ZipGobTimeSeries) IterClone() (TimeSeriesIter, error) {
+	btys, err := s.ByteClone()
+	if err != nil {
+		return nil, err
+	}
+	return NewZipGobIter(bytes.NewBuffer(btys))
+}
 
-	io.Copy(buf, s.buf)
-	s.mu.Unlock()
-
+func NewZipGobIter(buf *bytes.Buffer) (TimeSeriesIter, error) {
 	// need to defalte it
 	reader := flate.NewReader(buf)
 
-	out_buffer := getSyncBufferPool.Get().(*bytes.Buffer)
-	defer getSyncBufferPool.Put(out_buffer)
+	out_buffer := &bytes.Buffer{}
 
 	io.Copy(out_buffer, reader)
 	reader.Close()
 
-	iter, err := NewGobIter(out_buffer, ZIP_SIMPLE_BIN_SERIES_TAG)
-	return iter, err
+	return NewGobIter(out_buffer, ZIP_SIMPLE_BIN_SERIES_TAG)
+}
+
+func NewZipGobIterFromBytes(data []byte) (TimeSeriesIter, error) {
+	// need to defalte it
+	reader := flate.NewReader(bytes.NewBuffer(data))
+
+	out_buffer := &bytes.Buffer{}
+
+	io.Copy(out_buffer, reader)
+	reader.Close()
+
+	return NewGobIter(out_buffer, ZIP_SIMPLE_BIN_SERIES_TAG)
 }

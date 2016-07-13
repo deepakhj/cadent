@@ -13,7 +13,7 @@ func Benchmark_ZipGobPut(b *testing.B) {
 }
 
 func Benchmark_ZipGob8k(b *testing.B) {
-	benchmarkSeriesPut8k(b, "zipgob")
+	benchmarkSeriesPut8kRandom(b, "zipgob")
 }
 
 func Benchmark_ZipGobRawSize(b *testing.B) {

@@ -33,13 +33,6 @@ const (
 	SIMPLE_BIN_SERIES_TAG = "gobn" // just a flag to note we are using this one at the begining of each blob
 )
 
-// for dealing w/ read buffer copies
-var getSyncBufferPool = sync.Pool{
-	New: func() interface{} {
-		return bytes.NewBuffer([]byte{})
-	},
-}
-
 // this can only handle "future pushing times" not random times
 type GobTimeSeries struct {
 	mu sync.Mutex
@@ -54,7 +47,7 @@ type GobTimeSeries struct {
 	curBytes int
 }
 
-func NewGobTimeSeries(t0 int64) *GobTimeSeries {
+func NewGobTimeSeries(t0 int64, options *Options) *GobTimeSeries {
 	ret := &GobTimeSeries{
 		T0:       t0,
 		curTime:  0,
@@ -73,6 +66,46 @@ func NewGobTimeSeries(t0 int64) *GobTimeSeries {
 func (s *GobTimeSeries) UnmarshalBinary(data []byte) error {
 	s.buf = bytes.NewBuffer(data)
 	return nil
+}
+
+func (s *GobTimeSeries) ByteClone() ([]byte, error) {
+	s.mu.Lock()
+	byts := s.buf.Bytes()
+	s.buf.Reset()
+	// need to "re-add" the bits to the current buffer as Bytes
+	// wipes out the read pointer
+	s.buf.Write(byts)
+	s.mu.Unlock()
+
+	return byts, nil
+}
+
+func (s *GobTimeSeries) MarshalBinary() ([]byte, error) {
+	return s.buf.Bytes(), nil
+}
+
+func (s *GobTimeSeries) Len() int {
+	return s.buf.Len()
+}
+
+func (s *GobTimeSeries) StartTime() int64 {
+	return s.T0
+}
+
+func (s *GobTimeSeries) LastTime() int64 {
+	return s.curTime
+}
+
+func (s *GobTimeSeries) Iter() (TimeSeriesIter, error) {
+	return NewGobIter(s.buf, SIMPLE_BIN_SERIES_TAG)
+}
+
+func (s *GobTimeSeries) IterClone() (TimeSeriesIter, error) {
+	byts, err := s.ByteClone()
+	if err != nil {
+		return nil, err
+	}
+	return NewGobIter(bytes.NewBuffer(byts), SIMPLE_BIN_SERIES_TAG)
 }
 
 // the t is the "time we want to add
@@ -99,37 +132,6 @@ func (s *GobTimeSeries) AddPoint(t int64, min float64, max float64, first float6
 
 func (s *GobTimeSeries) AddStat(stat *repr.StatRepr) error {
 	return s.AddPoint(stat.Time.UnixNano(), float64(stat.Min), float64(stat.Max), float64(stat.First), float64(stat.Last), float64(stat.Sum), stat.Count)
-}
-
-func (s *GobTimeSeries) MarshalBinary() ([]byte, error) {
-	return s.buf.Bytes(), nil
-}
-
-func (s *GobTimeSeries) Len() int {
-	return s.buf.Len()
-}
-
-func (s *GobTimeSeries) StartTime() int64 {
-	return s.T0
-}
-
-func (s *GobTimeSeries) LastTime() int64 {
-	return s.curTime
-}
-
-func (s *GobTimeSeries) Iter() (TimeSeriesIter, error) {
-	s.mu.Lock()
-	buf := getSyncBufferPool.Get().(*bytes.Buffer)
-	defer getSyncBufferPool.Put(buf)
-
-	io.Copy(buf, s.buf)
-	s.mu.Unlock()
-
-	//out_data := getSyncBufferPool.Get().(*bytes.Buffer)
-	//defer getSyncBufferPool.Put(out_data)
-
-	iter, err := NewGobIter(buf, SIMPLE_BIN_SERIES_TAG)
-	return iter, err
 }
 
 // Iter lets you iterate over a series.  It is not concurrency-safe.
@@ -170,8 +172,12 @@ func NewGobIter(buf *bytes.Buffer, tag string) (*GobIter, error) {
 	return it, err
 }
 
+func NewGobIterFromBytes(data []byte) (*GobIter, error) {
+	return NewGobIter(bytes.NewBuffer(data), SIMPLE_BIN_SERIES_TAG)
+}
+
 func (it *GobIter) Next() bool {
-	if it.finished {
+	if it == nil || it.finished {
 		return false
 	}
 	var err error
