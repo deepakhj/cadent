@@ -192,10 +192,11 @@ func (cass *CassandraIndexer) Config(conf map[string]interface{}) (err error) {
 	return nil
 }
 
-func (cass *CassandraIndexer) WriteOne(skey string) error {
+func (cass *CassandraIndexer) WriteOne(inname repr.StatName) error {
 	defer stats.StatsdSlowNanoTimeFunc(fmt.Sprintf("indexer.cassandra.write.path-time-ns"), time.Now())
 	stats.StatsdClientSlow.Incr("indexer.cassandra.noncached-writes-path", 1)
 
+	skey := inname.Key
 	s_parts := strings.Split(skey, ".")
 	p_len := len(s_parts)
 
@@ -340,8 +341,8 @@ func (cass *CassandraIndexer) sendToWriters() error {
 				return nil
 			}
 			skey := cass.cache.Pop()
-			switch skey {
-			case "":
+			switch skey.IsBlank() {
+			case true:
 				time.Sleep(time.Second)
 			default:
 				stats.StatsdClient.Incr(fmt.Sprintf("indexer.cassandra.write.send-to-writers"), 1)
@@ -357,8 +358,8 @@ func (cass *CassandraIndexer) sendToWriters() error {
 				return nil
 			}
 			skey := cass.cache.Pop()
-			switch skey {
-			case "":
+			switch skey.IsBlank() {
+			case true:
 				time.Sleep(time.Second)
 			default:
 				stats.StatsdClient.Incr(fmt.Sprintf("indexer.cassandra.write.send-to-writers"), 1)
@@ -370,7 +371,7 @@ func (cass *CassandraIndexer) sendToWriters() error {
 }
 
 // keep an index of the stat keys and their fragments so we can look up
-func (cass *CassandraIndexer) Write(skey string) error {
+func (cass *CassandraIndexer) Write(skey repr.StatName) error {
 	return cass.cache.Add(skey)
 }
 
@@ -628,7 +629,7 @@ func (cass *CassandraIndexer) Find(metric string) (MetricFindItems, error) {
 // insert job queue workers
 type CassandraIndexerJob struct {
 	Cass  *CassandraIndexer
-	Stat  string
+	Stat  repr.StatName
 	retry int
 }
 

@@ -279,6 +279,7 @@ func (b *bstream) readBits(nbits int) (uint64, error) {
 type GorillaTimeSeries struct {
 	sync.Mutex
 
+	curCount       int
 	fullResolution bool // true for nanosecond, false for just second
 
 	Ts  uint32
@@ -311,6 +312,7 @@ func NewGoriallaTimeSeries(t0 int64, options *Options) *GorillaTimeSeries {
 		curTime:        0,
 		curTimeMs:      0,
 		trailingMs:     0,
+		curCount:       0,
 		numValues:      uint8(options.NumValues),
 	}
 
@@ -363,21 +365,21 @@ func (s *GorillaTimeSeries) Finish() {
 	setFinished(&s.bw)
 }
 
+func (s *GorillaTimeSeries) Count() int {
+	return s.curCount
+}
 func (s *GorillaTimeSeries) MarshalBinary() ([]byte, error) {
-	s.Lock()
-	defer s.Unlock()
-	setFinished(&s.bw)
-	return s.bw.bytes(), nil
+	return s.Bytes(), nil
 }
 
-func (s *GorillaTimeSeries) ByteClone() ([]byte, error) {
+func (s *GorillaTimeSeries) Bytes() []byte {
 	s.Lock()
 	defer s.Unlock()
 
 	bb := s.bw.clone()
 	setFinished(bb)
 
-	return bb.bytes(), nil
+	return bb.bytes()
 }
 
 func (s *GorillaTimeSeries) Len() int {
@@ -395,20 +397,7 @@ func (s *GorillaTimeSeries) LastTime() int64 {
 }
 
 func (s *GorillaTimeSeries) Iter() (TimeSeriesIter, error) {
-	s.Lock()
-	w := s.bw.clone()
-	s.Unlock()
-	setFinished(w)
-
-	return NewGorillaIterFromBStream(w)
-}
-
-func (s *GorillaTimeSeries) IterClone() (TimeSeriesIter, error) {
-	b_cln, err := s.ByteClone()
-	if err != nil {
-		return nil, err
-	}
-	return NewGorillaIterFromBytes(b_cln)
+	return NewGorillaIterFromBytes(s.Bytes())
 }
 
 func (s *GorillaTimeSeries) UnmarshalBinary(data []byte) error {
@@ -565,6 +554,7 @@ func (s *GorillaTimeSeries) AddPoint(t int64, min float64, max float64, first fl
 		s.addValue(0, min, start)
 	}
 	//log.Printf("Bytes Write: %v", s.bw.bitsWritten)
+	s.curCount++
 	return nil
 }
 

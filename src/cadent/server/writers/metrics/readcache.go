@@ -13,36 +13,34 @@
 	[acc.agg.writer.metrics.options]
 		...
 		read_cache_metrics_points=102400  # number of metric strings to keep
-		read_cache_metrics_points=1024 # number of points per metric to cache above to keep before we drop (this * cache_metric_size * 32 * 128 bytes == your better have that ram)
+		read_cache_metrics_series_bytes=1024 # number of bytes per metric to keep around
 		...
+
+	We use the "protobuf" series as
+		a) it's pretty small, and
+		b) we can do array slicing to keep a walking cache in order
+		(gorrilla is more compressed, but much harder to deal w/ the byte size issue as it's highly variable)
+		and w/ gorilla is NOT ok to be out-of-time
+
 */
 
 package metrics
 
 import (
-	"cadent/server/repr"
-
-	"sort"
-
 	"cadent/server/lrucache"
+	"cadent/server/repr"
+	"cadent/server/writers/series"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 )
 
 const (
-	READ_CACHER_NUMBER_POINTS   = 1024
-	READ_CACHER_METRICS_KEYS    = 102400
-	READ_CACHER_MAX_LAST_ACCESS = time.Minute * time.Duration(60) // if an item is not accesed in 60 min purge it
+	READ_CACHER_MAX_SERIES_BYTES = 1024
+	READ_CACHER_METRICS_KEYS     = 102400
+	READ_CACHER_MAX_LAST_ACCESS  = time.Minute * time.Duration(60) // if an item is not accesed in 60 min purge it
 )
-
-type SortedStats []*repr.StatRepr
-
-func (v SortedStats) Len() int      { return len(v) }
-func (v SortedStats) Swap(i, j int) { v[i], v[j] = v[j], v[i] }
-func (v SortedStats) Less(i, j int) bool {
-	return v[i] != nil && v[j] != nil && v[i].Time.UnixNano() < v[j].Time.UnixNano()
-}
 
 // basic cached item treat it kinda like a round-robin array
 type ReadCacheItem struct {
@@ -50,30 +48,28 @@ type ReadCacheItem struct {
 	StartTime  time.Time
 	EndTime    time.Time
 	LastAccess int64
-	Data       SortedStats
+	Data       *series.ProtobufTimeSeries
 
-	MaxPoints int
-
-	curindex int
+	MaxBytes int
 
 	mu sync.RWMutex
 }
 
-func NewReadCacheItem(max_items int) *ReadCacheItem {
+func NewReadCacheItem(max_bytes int) *ReadCacheItem {
+	ts, _ := series.NewTimeSeries("protobuf", 0, nil)
+
 	return &ReadCacheItem{
-		MaxPoints: max_items,
-		Data:      make(SortedStats, max_items, max_items), //preallocate
-		curindex:  0,
+		MaxBytes: max_bytes,
+		Data:     ts.(*series.ProtobufTimeSeries),
 	}
 }
 
 func (rc *ReadCacheItem) Add(stat *repr.StatRepr) {
-	if rc.curindex+1 >= rc.MaxPoints {
-		rc.curindex = 0
-	} else {
-		rc.curindex++
+
+	if rc.Data.Len() > rc.MaxBytes {
+		rc.Data.Stats.Stats = rc.Data.Stats.Stats[1:]
 	}
-	rc.Data[rc.curindex] = stat
+	rc.Data.AddStat(stat)
 	if stat.Time.After(rc.EndTime) {
 		rc.EndTime = stat.Time
 	}
@@ -84,94 +80,91 @@ func (rc *ReadCacheItem) Add(stat *repr.StatRepr) {
 }
 
 // put a chunk o data
-func (rc *ReadCacheItem) PutSeries(stats []*repr.StatRepr) {
+func (rc *ReadCacheItem) PutSeries(stats repr.StatReprSlice) {
+	sort.Sort(stats)
 	for _, s := range stats {
 		rc.Add(s)
 	}
 }
 
 // Get out a sorted list of stats by time
-// note we only sort the list on a "get" so the current Data list can easily be
-// out of order
-func (rc *ReadCacheItem) Get(start time.Time, end time.Time) []*repr.StatRepr {
+//
+func (rc *ReadCacheItem) Get(start time.Time, end time.Time) (stats repr.StatReprSlice, firsttime time.Time, lasttime time.Time) {
 
-	// sort the land
-	sort.Sort(rc.Data)
-	set_idx := false
-	out_arr := make([]*repr.StatRepr, 0)
+	stats = make(repr.StatReprSlice, 0)
 	var last_added *repr.StatRepr
-	// our dedupe map
-	rc.mu.RLock()
-	for idx, stat := range rc.Data {
 
+	it, err := rc.Data.Iter()
+
+	if err != nil {
+		log.Error("Cache Get Itterator Error: %v", err)
+		return stats, time.Time{}, time.Time{}
+	}
+	s_int := start.UnixNano()
+	e_int := end.UnixNano()
+
+	for it.Next() {
+		stat := it.ReprValue()
 		if stat == nil || stat.Time.IsZero() {
 			continue
 		}
-		// set the current index to the "start" of real data
-		if !set_idx {
-			rc.curindex = idx
-		}
-		// some dedupeing as we are sorted ...
+
+		// some de-dupeing
 		if last_added != nil && last_added.IsSameStat(stat) {
 			continue
 		}
-		if stat.Time.After(start) && stat.Time.Before(end) {
+		t_int := stat.Time.UnixNano()
+		if s_int <= t_int && e_int >= t_int {
+			if firsttime.IsZero() {
+				firsttime = stat.Time
+			} else if stat.Time.After(firsttime) {
+				firsttime = stat.Time
+			}
+			if lasttime.IsZero() {
+				lasttime = stat.Time
+			} else if stat.Time.Before(lasttime) {
+				lasttime = stat.Time
+			}
+
 			last_added = stat
-			out_arr = append(out_arr, stat)
+			stats = append(stats, stat)
 		}
 	}
-
-	rc.mu.RUnlock()
-
+	sort.Sort(stats)
 	rc.LastAccess = time.Now().UnixNano()
-	return out_arr
+	return stats, firsttime, lasttime
 }
 
-func (rc *ReadCacheItem) GetAll() []*repr.StatRepr {
-	sort.Sort(rc.Data)
-	set_idx := false
+func (rc *ReadCacheItem) GetAll() repr.StatReprSlice {
 	out_arr := make([]*repr.StatRepr, 0)
 	var last_added *repr.StatRepr
-	rc.mu.RLock()
-	for idx, stat := range rc.Data {
-
+	it, err := rc.Data.Iter()
+	if err != nil {
+		return out_arr
+	}
+	for it.Next() {
+		stat := it.ReprValue()
 		if stat == nil || stat.Time.IsZero() {
 			continue
 		}
-		// set the current index to the "start" of real data
-		if !set_idx {
-			rc.curindex = idx
-		}
-		//dedupe
+		// some dedupeing
 		if last_added != nil && last_added.IsSameStat(stat) {
 			continue
 		}
 		last_added = stat
 		out_arr = append(out_arr, stat)
 	}
-	rc.mu.RUnlock()
-
 	rc.LastAccess = time.Now().UnixNano()
 	return out_arr
 }
 
 // match the "value" interface for LRUcache
 func (rc *ReadCacheItem) Size() int {
-	sz := 0
-	for _, s := range rc.Data {
-		if s == nil {
-			continue
-		}
-		if s.Time.IsZero() {
-			continue
-		}
-		sz += int(s.ByteSize())
-	}
-	return sz
+	return rc.Data.Len()
 }
 
 func (rc *ReadCacheItem) ToString() string {
-	return fmt.Sprintf("ReadCacheItem: max: %d", rc.MaxPoints)
+	return fmt.Sprintf("ReadCacheItem: max: %d", rc.MaxBytes)
 }
 
 // LRU read cache
@@ -180,7 +173,7 @@ type ReadCache struct {
 	lru *lrucache.LRUCache
 
 	MaxItems          int
-	MaxItemsPerMetric int
+	MaxBytesPerMetric int
 	MaxLastAccess     time.Duration // we periodically prune the cache or things that have not been accessed in ths duration
 
 	shutdown    chan bool
@@ -190,21 +183,16 @@ type ReadCache struct {
 // this will estimate the bytes needed for the cache, since the key names
 // are dynamic, there is no way to "really know" much one "stat" ram will take up
 // so we use a 100 char string as a rough guess
-func NewReadCache(max_items int, max_items_per_metric int, maxback time.Duration) *ReadCache {
+func NewReadCache(max_items int, max_bytes_per_metric int, maxback time.Duration) *ReadCache {
 	rc := &ReadCache{
 		MaxItems:          max_items,
-		MaxItemsPerMetric: max_items_per_metric,
+		MaxBytesPerMetric: max_bytes_per_metric,
 		shutdown:          make(chan bool),
 		InsertQueue:       make(chan *repr.StatRepr, 512), // a little buffer, just more to make "adding async"
 	}
 
-	_long_tmp_key := "iiiiiiiiii.aaaaaaaaaaa.mmmmmmmmm.aaaaaaaaa.looooog.sssssttttaaattttt.tooooobeee.esssttiiiimmmaatted"
-	dummy_stat := repr.StatRepr{
-		Key:     _long_tmp_key,
-		StatKey: _long_tmp_key,
-	}
 	// lru capacity is the size of a stat object * MaxItemsPerMetric * MaxItems
-	rc.lru = lrucache.NewLRUCache(uint64(int(dummy_stat.ByteSize()) * max_items * max_items_per_metric))
+	rc.lru = lrucache.NewLRUCache(uint64(max_bytes_per_metric * max_items))
 
 	go rc.Start()
 
@@ -216,7 +204,7 @@ func (rc *ReadCache) Start() {
 	for {
 		select {
 		case stat := <-rc.InsertQueue:
-			rc.Put(stat.Key, stat)
+			rc.Put(stat.Name.Key, stat)
 		case <-rc.shutdown:
 			break
 		}
@@ -234,7 +222,7 @@ func (rc *ReadCache) ActivateMetric(metric string, stats []*repr.StatRepr) bool 
 
 	_, ok := rc.lru.Get(metric)
 	if !ok {
-		rc_item := NewReadCacheItem(rc.MaxItemsPerMetric)
+		rc_item := NewReadCacheItem(rc.MaxBytesPerMetric)
 		// blank ones are ok, just to activate it
 		if stats != nil {
 			rc_item.PutSeries(stats)
@@ -251,10 +239,10 @@ func (rc *ReadCache) ActivateMetric(metric string, stats []*repr.StatRepr) bool 
 // future
 func (rc *ReadCache) Put(metric string, stat *repr.StatRepr) bool {
 	if len(metric) == 0 {
-		metric = stat.StatKey
+		metric = stat.Name.StatKey
 	}
 	if len(metric) == 0 {
-		metric = stat.Key
+		metric = stat.Name.Key
 	}
 
 	gots, ok := rc.lru.Get(metric)
@@ -268,15 +256,15 @@ func (rc *ReadCache) Put(metric string, stat *repr.StatRepr) bool {
 	return true
 }
 
-func (rc *ReadCache) Get(metric string, start time.Time, end time.Time) (stats []*repr.StatRepr) {
+func (rc *ReadCache) Get(metric string, start time.Time, end time.Time) (stats repr.StatReprSlice, first time.Time, last time.Time) {
 	gots, ok := rc.lru.Get(metric)
 	if !ok {
-		return stats
+		return stats, time.Time{}, time.Time{}
 	}
 	return gots.(*ReadCacheItem).Get(start, end)
 }
 
-func (rc *ReadCache) GetAll(metric string) (stats []*repr.StatRepr) {
+func (rc *ReadCache) GetAll(metric string) (stats repr.StatReprSlice) {
 	gots, ok := rc.lru.Get(metric)
 	if !ok {
 		return stats
@@ -312,11 +300,11 @@ func GetReadCache() *ReadCache {
 	return _READ_CACHE_SINGLETON
 }
 
-func Get(metric string, start time.Time, end time.Time) (stats []*repr.StatRepr) {
+func Get(metric string, start time.Time, end time.Time) (stats []*repr.StatRepr, first time.Time, last time.Time) {
 	if _READ_CACHE_SINGLETON != nil {
 		return _READ_CACHE_SINGLETON.Get(metric, start, end)
 	}
-	return nil
+	return nil, time.Time{}, time.Time{}
 }
 
 func Put(metric string, stat *repr.StatRepr) bool {

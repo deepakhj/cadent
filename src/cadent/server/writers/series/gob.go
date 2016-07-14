@@ -33,6 +33,46 @@ const (
 	SIMPLE_BIN_SERIES_TAG = "gobn" // just a flag to note we are using this one at the begining of each blob
 )
 
+// from
+// https://github.com/golang/go/blob/0da4dbe2322eb3b6224df35ce3e9fc83f104762b/src/encoding/gob/encode.go
+// encBuffer is an extremely simple, fast implementation of a write-only byte buffer.
+// It never returns a non-nil error, but Write returns an error value so it matches io.Writer.
+const tooBig = 1 << 30
+
+type gobBuffer struct {
+	data    []byte
+	scratch [64]byte
+}
+
+var gobBufferPool = sync.Pool{
+	New: func() interface{} {
+		e := new(gobBuffer)
+		e.data = e.scratch[0:0]
+		return e
+	},
+}
+
+func (e *gobBuffer) WriteByte(c byte) {
+	e.data = append(e.data, c)
+}
+
+func (e *gobBuffer) Write(p []byte) (int, error) {
+	e.data = append(e.data, p...)
+	return len(p), nil
+}
+
+func (e *gobBuffer) Len() int {
+	return len(e.data)
+}
+
+func (e *gobBuffer) Bytes() []byte {
+	return e.data
+}
+
+func (e *gobBuffer) Reset() {
+	e.data = e.data[0:0]
+}
+
 // this can only handle "future pushing times" not random times
 type GobTimeSeries struct {
 	mu sync.Mutex
@@ -42,9 +82,10 @@ type GobTimeSeries struct {
 	curDelta int64
 	curTime  int64
 
-	buf      *bytes.Buffer
+	buf      *gobBuffer
 	encoder  *gob.Encoder
 	curBytes int
+	curCount int
 }
 
 func NewGobTimeSeries(t0 int64, options *Options) *GobTimeSeries {
@@ -53,7 +94,8 @@ func NewGobTimeSeries(t0 int64, options *Options) *GobTimeSeries {
 		curTime:  0,
 		curDelta: 0,
 		curBytes: 0,
-		buf:      new(bytes.Buffer),
+		curCount: 0,
+		buf:      new(gobBuffer),
 	}
 	ret.encoder = gob.NewEncoder(ret.buf)
 	// tag it
@@ -64,24 +106,33 @@ func NewGobTimeSeries(t0 int64, options *Options) *GobTimeSeries {
 }
 
 func (s *GobTimeSeries) UnmarshalBinary(data []byte) error {
-	s.buf = bytes.NewBuffer(data)
+	n_buf := new(gobBuffer)
+	n_buf.data = data
+	s.buf = n_buf
 	return nil
 }
 
-func (s *GobTimeSeries) ByteClone() ([]byte, error) {
+func (s *GobTimeSeries) Bytes() []byte {
 	s.mu.Lock()
 	byts := s.buf.Bytes()
 	s.buf.Reset()
+
 	// need to "re-add" the bits to the current buffer as Bytes
 	// wipes out the read pointer
-	s.buf.Write(byts)
+	n_buf := new(gobBuffer)
+	n_buf.data = byts
+	s.buf = n_buf
 	s.mu.Unlock()
 
-	return byts, nil
+	return byts
+}
+
+func (s *GobTimeSeries) Count() int {
+	return s.curCount
 }
 
 func (s *GobTimeSeries) MarshalBinary() ([]byte, error) {
-	return s.buf.Bytes(), nil
+	return s.Bytes(), nil
 }
 
 func (s *GobTimeSeries) Len() int {
@@ -97,14 +148,7 @@ func (s *GobTimeSeries) LastTime() int64 {
 }
 
 func (s *GobTimeSeries) Iter() (TimeSeriesIter, error) {
-	return NewGobIter(s.buf, SIMPLE_BIN_SERIES_TAG)
-}
-
-func (s *GobTimeSeries) IterClone() (TimeSeriesIter, error) {
-	byts, err := s.ByteClone()
-	if err != nil {
-		return nil, err
-	}
+	byts := s.Bytes()
 	return NewGobIter(bytes.NewBuffer(byts), SIMPLE_BIN_SERIES_TAG)
 }
 
@@ -126,6 +170,7 @@ func (s *GobTimeSeries) AddPoint(t int64, min float64, max float64, first float6
 	s.encoder.Encode(sum)
 	s.encoder.Encode(count)
 	s.curBytes += 64 * 7
+	s.curCount += 1
 	s.mu.Unlock()
 	return nil
 }

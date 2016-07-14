@@ -159,7 +159,7 @@ func (loop *WriterLoop) indexLoop() {
 		case stat := <-loop.indexer_chan:
 			// indexing can be very expensive (at least for cassandra)
 			// and should have their own internal queues and smarts for handleing a massive influx of metric names
-			loop.indexer.Write(stat.Key)
+			loop.indexer.Write(stat.Name)
 		case <-shut.Ch:
 			shut.Close()
 			return

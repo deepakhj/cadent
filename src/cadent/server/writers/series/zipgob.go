@@ -25,12 +25,13 @@ const (
 type ZipGobTimeSeries struct {
 	mu sync.Mutex
 
-	T0 int64
+	T0       int64
+	curCount int
 
 	curDelta int64
 	curTime  int64
 
-	buf      *bytes.Buffer
+	buf      *gobBuffer
 	zip      *flate.Writer
 	encoder  *gob.Encoder
 	curBytes int
@@ -42,7 +43,8 @@ func NewZipGobTimeSeries(t0 int64, options *Options) *ZipGobTimeSeries {
 		curTime:  0,
 		curDelta: 0,
 		curBytes: 0,
-		buf:      new(bytes.Buffer),
+		curCount: 0,
+		buf:      new(gobBuffer),
 	}
 	ret.zip, _ = flate.NewWriter(ret.buf, flate.BestSpeed)
 	ret.encoder = gob.NewEncoder(ret.zip)
@@ -53,8 +55,14 @@ func NewZipGobTimeSeries(t0 int64, options *Options) *ZipGobTimeSeries {
 	return ret
 }
 
+func (s *ZipGobTimeSeries) Count() int {
+	return s.curCount
+}
+
 func (s *ZipGobTimeSeries) UnmarshalBinary(data []byte) error {
-	s.buf = bytes.NewBuffer(data)
+	n_buf := new(gobBuffer)
+	n_buf.data = data
+	s.buf = n_buf
 	return nil
 }
 
@@ -76,6 +84,7 @@ func (s *ZipGobTimeSeries) AddPoint(t int64, min float64, max float64, first flo
 	s.encoder.Encode(sum)
 	s.encoder.Encode(count)
 	s.mu.Unlock()
+	s.curCount++
 	return nil
 }
 
@@ -83,7 +92,7 @@ func (s *ZipGobTimeSeries) AddStat(stat *repr.StatRepr) error {
 	return s.AddPoint(stat.Time.UnixNano(), float64(stat.Min), float64(stat.Max), float64(stat.First), float64(stat.Last), float64(stat.Sum), stat.Count)
 }
 
-func (s *ZipGobTimeSeries) ByteClone() ([]byte, error) {
+func (s *ZipGobTimeSeries) Bytes() []byte {
 	s.zip.Flush()
 	byts := s.buf.Bytes()
 	s.buf.Reset()
@@ -91,7 +100,7 @@ func (s *ZipGobTimeSeries) ByteClone() ([]byte, error) {
 	// need to "readd" the bits to the current buffer as Bytes
 	// wipes out the read pointer
 	s.buf.Write(byts)
-	return byts, nil
+	return byts
 }
 
 func (s *ZipGobTimeSeries) MarshalBinary() ([]byte, error) {
@@ -113,16 +122,7 @@ func (s *ZipGobTimeSeries) LastTime() int64 {
 }
 
 func (s *ZipGobTimeSeries) Iter() (TimeSeriesIter, error) {
-	s.zip.Flush()
-	return NewZipGobIter(s.buf)
-}
-
-func (s *ZipGobTimeSeries) IterClone() (TimeSeriesIter, error) {
-	btys, err := s.ByteClone()
-	if err != nil {
-		return nil, err
-	}
-	return NewZipGobIter(bytes.NewBuffer(btys))
+	return NewZipGobIter(bytes.NewBuffer(s.Bytes()))
 }
 
 func NewZipGobIter(buf *bytes.Buffer) (TimeSeriesIter, error) {

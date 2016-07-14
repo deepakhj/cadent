@@ -62,6 +62,10 @@ func NewJsonTimeSeries(t0 int64, options *Options) *JsonTimeSeries {
 	return ret
 }
 
+func (s *JsonTimeSeries) Count() int {
+	return len(s.Stats)
+}
+
 func (s *JsonTimeSeries) UnmarshalBinary(data []byte) error {
 	err := json.Unmarshal(data, s.Stats)
 	return err
@@ -72,8 +76,9 @@ func (s *JsonTimeSeries) MarshalBinary() ([]byte, error) {
 }
 
 // this does not "finish" the series
-func (s *JsonTimeSeries) ByteClone() ([]byte, error) {
-	return s.MarshalBinary()
+func (s *JsonTimeSeries) Bytes() []byte {
+	d, _ := s.MarshalBinary()
+	return d
 }
 
 func (s *JsonTimeSeries) Len() int {
@@ -89,10 +94,6 @@ func (s *JsonTimeSeries) Iter() (iter TimeSeriesIter, err error) {
 
 	iter, err = NewJsonIter(d)
 	return iter, err
-}
-
-func (s *JsonTimeSeries) IterClone() (iter TimeSeriesIter, err error) {
-	return s.Iter()
 }
 
 func (s *JsonTimeSeries) StartTime() int64 {

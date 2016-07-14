@@ -6,11 +6,13 @@
 
 package indexer
 
+import "cadent/server/repr"
+
 /****************** Data writers *********************/
 type Indexer interface {
 	Config(map[string]interface{}) error
 
-	Write(metric string) error // write a metric key
+	Write(metric repr.StatName) error // write a metric key
 
 	// reader methods
 	// /metrics/find/?query=stats.counters.consthash-graphite.all-1-stats-infra-integ.mfpaws.com.*

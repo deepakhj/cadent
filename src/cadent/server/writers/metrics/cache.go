@@ -15,8 +15,14 @@
 	[acc.agg.writer.metrics.options]
 		...
 		cache_metric_size=102400  # number of metric strings to keep
-		cache_points_size=1024 # number of points per metric to cache above to keep before we drop (this * cache_metric_size * 32 * 128 bytes == your better have that ram)
+		cache_byte_size=1024 # number of bytes to keep in caches per metric
+		cache_series_type="protobuf" # gob, protobuf, json, gorilla
 		...
+
+	We use the default "protobuf" series as
+		a) it's pretty small, and
+		b) we can "sort it" by time (i.e. the format is NOT timeordered)
+		(note: gorilla would be ideal for space, but REQUIRES time ordered inputs)
 */
 
 package metrics
@@ -24,6 +30,7 @@ package metrics
 import (
 	"cadent/server/repr"
 	"cadent/server/stats"
+	"cadent/server/writers/series"
 	"fmt"
 	"math/rand"
 	"sort"
@@ -34,8 +41,9 @@ import (
 )
 
 const (
-	CACHER_NUMBER_POINTS = 1024
-	CACHER_METRICS_KEYS  = 102400
+	CACHER_NUMBER_BYTES = 1024
+	CACHER_SERIES_TYPE  = "protobuf"
+	CACHER_METRICS_KEYS = 102400
 )
 
 /*
@@ -75,7 +83,8 @@ type Cacher struct {
 	mu           sync.RWMutex
 	qmu          sync.Mutex
 	maxKeys      int // max num of keys to keep before we have to drop
-	maxPoints    int // max num of points per key to keep before we have to drop
+	maxBytes     int // max num of points per key to keep before we have to drop
+	seriesType   string
 	curSize      int64
 	numCurPoint  int
 	numCurKeys   int
@@ -84,16 +93,17 @@ type Cacher struct {
 	_accept      bool      // flag to stop
 	log          *logging.Logger
 	Queue        CacheQueue
-	Cache        map[string][]*repr.StatRepr
+	Cache        map[string]series.TimeSeries
 }
 
 func NewCacher() *Cacher {
 	wc := new(Cacher)
 	wc.maxKeys = CACHER_METRICS_KEYS
-	wc.maxPoints = CACHER_NUMBER_POINTS
+	wc.maxBytes = CACHER_NUMBER_BYTES
+	wc.seriesType = CACHER_SERIES_TYPE
 	wc.curSize = 0
 	wc.log = logging.MustGetLogger("cacher.metrics")
-	wc.Cache = make(map[string][]*repr.StatRepr)
+	wc.Cache = make(map[string]series.TimeSeries)
 	wc.shutdown = make(chan bool)
 	wc._accept = true
 	wc.lowFruitRate = 0.25
@@ -107,7 +117,7 @@ func (wc *Cacher) Stop() {
 
 func (wc *Cacher) DumpPoints(pts []*repr.StatRepr) {
 	for idx, pt := range pts {
-		wc.log.Notice("TimerSeries: %d Time: %d Mean: %f", idx, pt.Time.Unix(), pt.Mean)
+		wc.log.Notice("TimerSeries: %d Time: %d Sum: %f", idx, pt.Time.Unix(), pt.Sum)
 	}
 }
 
@@ -135,9 +145,9 @@ func (wc *Cacher) updateQueue() {
 	wc.mu.RLock() // need both locks
 	f_len := 0
 	for key, values := range wc.Cache {
-		p_len := len(values)
+		p_len := values.Len()
 		newQueue = append(newQueue, &CacheQueueItem{key, p_len})
-		f_len += p_len
+		f_len += values.Count()
 	}
 	wc.mu.RUnlock()
 	wc.numCurPoint = f_len
@@ -198,33 +208,64 @@ func (wc *Cacher) Add(metric string, stat *repr.StatRepr) error {
 	*/
 
 	if gots, ok := wc.Cache[metric]; ok {
-		if len(gots) > wc.maxPoints {
-			wc.log.Error("Too Many points for %s (max points: %d)... have to drop this one", metric, wc.maxPoints)
+		cur_size := gots.Len()
+		if gots.Len() > wc.maxBytes {
+			wc.log.Error("Too Many Bytes for %s (max points: %d)... have to drop this one", metric, wc.maxBytes)
 			return fmt.Errorf("Cacher: too many points in cache, dropping metric")
 			stats.StatsdClientSlow.Incr("cacher.points.overflow", 1)
 		}
-		wc.curSize += stat.ByteSize()
-		wc.Cache[metric] = append(gots, stat)
-		stats.StatsdClient.GaugeAvg("cacher.add.ave-points-per-metric", int64(len(wc.Cache[metric])))
+		wc.Cache[metric].AddStat(stat)
+		now_len := wc.Cache[metric].Len()
+		wc.curSize += int64(now_len - cur_size)
+		stats.StatsdClient.GaugeAvg("cacher.add.ave-points-per-metric", int64(gots.Count()))
 		return nil
 	}
-	tp := make([]*repr.StatRepr, 1)
-	tp[0] = stat
+	tp, err := series.NewTimeSeries(wc.seriesType, stat.Time.UnixNano(), nil)
+	if err != nil {
+		return err
+	}
+	tp.AddStat(stat)
 	wc.Cache[metric] = tp
-	wc.curSize += stat.ByteSize()
+	wc.curSize += int64(tp.Len())
 	stats.StatsdClient.GaugeAvg("cacher.add.ave-points-per-metric", 1)
 
 	return nil
 }
 
-func (wc *Cacher) Get(metric string) ([]*repr.StatRepr, error) {
+func (wc *Cacher) getStatsStream(metric string, ts series.TimeSeries) (repr.StatReprSlice, error) {
+	it, err := ts.Iter()
+	if err != nil {
+		wc.log.Error("Failed to get series itterator: %v", err)
+		stats.StatsdClientSlow.Incr("cacher.read.cache-gets.error", 1)
+		return nil, err
+	}
+	stats := make(repr.StatReprSlice, 0)
+	for it.Next() {
+		st := it.ReprValue()
+		if st == nil {
+			continue
+		}
+		st.Name.Key = metric
+		stats = append(stats, st)
+	}
+	if it.Error() != nil {
+		wc.log.Error("Iterator error: %v", err)
+		return stats, it.Error()
+	}
+	if stats != nil {
+		sort.Sort(stats)
+	}
+	return stats, nil
+}
+
+func (wc *Cacher) Get(metric string) (repr.StatReprSlice, error) {
 	wc.mu.RLock()
 	defer wc.mu.RUnlock()
 	stats.StatsdClientSlow.Incr("cacher.read.cache-gets", 1)
 
 	if gots, ok := wc.Cache[metric]; ok {
 		stats.StatsdClientSlow.Incr("cacher.read.cache-gets.values", 1)
-		return gots, nil
+		return wc.getStatsStream(metric, gots)
 	}
 	stats.StatsdClientSlow.Incr("cacher.read.cache-gets.empty", 1)
 	return nil, nil
@@ -247,39 +288,45 @@ func (wc *Cacher) GetNextMetric() string {
 }
 
 // just grab something from the list
-func (wc *Cacher) GetAnyStat() (string, []*repr.StatRepr) {
+func (wc *Cacher) GetAnyStat() (string, repr.StatReprSlice) {
 	wc.mu.Lock()
 	defer wc.mu.Unlock()
 
 	for metric, stats := range wc.Cache {
-		for _, pt := range stats {
-			wc.curSize -= pt.ByteSize() // shrink the bytes
-		}
-		delete(wc.Cache, metric)
-		return metric, stats
+		out, _ := wc.getStatsStream(metric, stats)
+		wc.curSize -= int64(stats.Len()) // shrink the bytes
+		delete(wc.Cache, metric)         // need to purge if error as things are corrupted somehow
+		return metric, out
 	}
 	return "", nil
 }
 
-func (wc *Cacher) Pop() (string, []*repr.StatRepr) {
+func (wc *Cacher) Pop() (string, repr.StatReprSlice) {
+	metric, ts := wc.PopSeries()
+	if ts == nil {
+		return "", nil
+	}
+	out, _ := wc.getStatsStream(metric, ts)
+	return metric, out
+}
+
+func (wc *Cacher) PopSeries() (string, series.TimeSeries) {
 	metric := wc.GetNextMetric()
 	if len(metric) != 0 {
 		wc.mu.Lock()
 		defer wc.mu.Unlock()
 
-		if value, exists := wc.Cache[metric]; exists {
-			for _, pt := range value {
-				wc.curSize -= pt.ByteSize() // shrink the bytes
-			}
-			delete(wc.Cache, metric)
-			return metric, value
+		if stats, exists := wc.Cache[metric]; exists {
+			wc.curSize -= int64(stats.Len()) // shrink the bytes
+			delete(wc.Cache, metric)         // need to delete regardless as we have byte errors and things are corrupted
+			return metric, stats
 		}
 	}
 	return "", nil
 }
 
 // add a metrics/point list back on the queue as it either "failed" or was ratelimited
-func (wc *Cacher) AddBack(metric string, points []*repr.StatRepr) {
+func (wc *Cacher) AddBack(metric string, points repr.StatReprSlice) {
 	for _, pt := range points {
 		wc.Add(metric, pt)
 	}

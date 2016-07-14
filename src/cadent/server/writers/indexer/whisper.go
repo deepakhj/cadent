@@ -8,6 +8,7 @@
 package indexer
 
 import (
+	"cadent/server/repr"
 	"cadent/server/stats"
 	"fmt"
 	logging "gopkg.in/op/go-logging.v1"
@@ -48,7 +49,7 @@ func (ws *WhisperIndexer) Stop() {
 }
 
 //noop
-func (ws *WhisperIndexer) Write(skey string) error {
+func (ws *WhisperIndexer) Write(skey repr.StatName) error {
 	return nil
 }
 

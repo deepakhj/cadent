@@ -13,7 +13,7 @@
 
             # this is the read cache that will keep the latest goods in ram
             read_cache_max_items=102400
-            read_cache_max_items_per_metric=1024
+            read_cache_max_bytes_per_metric=1024
 
             [graphite-proxy-map.accumulator.api.indexer]
             driver = "leveldb"
@@ -57,7 +57,7 @@ type ApiConfig struct {
 	ApiMetricOptions           ApiMetricConfig  `toml:"metrics"`
 	ApiIndexerOptions          ApiIndexerConfig `toml:"indexer"`
 	MaxReadCacheItems          int              `toml:"read_cache_max_items"`
-	MaxReadCacheItemsPerMetric int              `toml:"read_cache_max_items_per_metric"`
+	MaxReadCacheItemsPerMetric int              `toml:"read_cache_max_bytes_per_metric"`
 }
 
 func (re *ApiConfig) GetMetrics(resolution float64) (metrics.Metrics, error) {
@@ -151,7 +151,7 @@ func (re *ApiLoop) Config(conf ApiConfig, resolution float64) (err error) {
 
 	// readcache
 	mx_metrics := metrics.READ_CACHER_METRICS_KEYS
-	mx_stats := metrics.READ_CACHER_NUMBER_POINTS
+	mx_stats := metrics.READ_CACHER_MAX_SERIES_BYTES
 	if conf.MaxReadCacheItems > 0 {
 		mx_metrics = conf.MaxReadCacheItems
 	}
@@ -303,7 +303,12 @@ func (re *ApiLoop) Render(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// register the stat for render caches
-	re.ReadCache.ActivateMetric(target, nil)
+	for _, targ := range strings.Split(target, ",") {
+		targ := strings.Trim(targ, " \n\t")
+		if len(targ) > 0 {
+			re.ReadCache.ActivateMetric(targ, nil)
+		}
+	}
 	re.OutJson(w, data)
 	return
 }

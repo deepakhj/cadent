@@ -44,6 +44,7 @@ package indexer
 import (
 	"bytes"
 	"cadent/server/dispatch"
+	"cadent/server/repr"
 	"cadent/server/stats"
 	"cadent/server/writers/dbs"
 	"fmt"
@@ -401,12 +402,12 @@ func (lp *LevelDBIndexer) sendToWriters() error {
 				return nil
 			}
 			skey := lp.cache.Pop()
-			switch skey {
-			case "":
+			switch skey.IsBlank() {
+			case true:
 				time.Sleep(time.Second)
 			default:
 				stats.StatsdClient.Incr(fmt.Sprintf("indexer.leveldb.write.send-to-writers"), 1)
-				lp.write_queue <- LevelDBIndexerJob{LD: lp, Stat: skey}
+				lp.write_queue <- LevelDBIndexerJob{LD: lp, Name: skey}
 			}
 		}
 	} else {
@@ -418,12 +419,12 @@ func (lp *LevelDBIndexer) sendToWriters() error {
 				return nil
 			}
 			skey := lp.cache.Pop()
-			switch skey {
-			case "":
+			switch skey.IsBlank() {
+			case true:
 				time.Sleep(time.Second)
 			default:
 				stats.StatsdClient.Incr(fmt.Sprintf("indexer.leveldb.write.send-to-writers"), 1)
-				lp.write_queue <- LevelDBIndexerJob{LD: lp, Stat: skey}
+				lp.write_queue <- LevelDBIndexerJob{LD: lp, Name: skey}
 				time.Sleep(dur)
 			}
 		}
@@ -431,14 +432,15 @@ func (lp *LevelDBIndexer) sendToWriters() error {
 }
 
 // keep an index of the stat keys and their fragments so we can look up
-func (lp *LevelDBIndexer) Write(skey string) error {
+func (lp *LevelDBIndexer) Write(skey repr.StatName) error {
 	return lp.cache.Add(skey)
 }
 
-func (lb *LevelDBIndexer) WriteOne(skey string) error {
+func (lb *LevelDBIndexer) WriteOne(name repr.StatName) error {
 	defer stats.StatsdSlowNanoTimeFunc(fmt.Sprintf("indexer.leveldb.write.path-time-ns"), time.Now())
 	stats.StatsdClientSlow.Incr("indexer.leveldb.noncached-writes-path", 1)
 
+	skey := name.Key
 	segments := ParsePath(skey)
 
 	for _, seg := range segments {
@@ -617,7 +619,7 @@ func (lp *LevelDBIndexer) Expand(metric string) (me MetricExpandItem, err error)
 // insert job queue workers
 type LevelDBIndexerJob struct {
 	LD    *LevelDBIndexer
-	Stat  string
+	Name  repr.StatName
 	retry int
 }
 
@@ -630,9 +632,9 @@ func (j LevelDBIndexerJob) OnRetry() int {
 }
 
 func (j LevelDBIndexerJob) DoWork() error {
-	err := j.LD.WriteOne(j.Stat)
+	err := j.LD.WriteOne(j.Name)
 	if err != nil {
-		j.LD.log.Error("Insert failed for Index: %v retrying ...", j.Stat)
+		j.LD.log.Error("Insert failed for Index: %v retrying ...", j.Name.Key)
 	}
 	return err
 }

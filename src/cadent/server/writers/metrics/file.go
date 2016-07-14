@@ -188,11 +188,11 @@ func (fi *FileMetrics) Write(stat repr.StatRepr) error {
 
 	line := fmt.Sprintf(
 		"%s\t%0.6f\t%0.6f\t%0.6f\t%0.6f\t%d\t%0.2f\t%0.2f\t%d\t%d\n",
-		stat.Key, stat.Sum, stat.Min, stat.Max, stat.First, stat.Last, stat.Count,
+		stat.Name.Key, stat.Sum, stat.Min, stat.Max, stat.First, stat.Last, stat.Count,
 		stat.Resolution, stat.Time.UnixNano(), stat.TTL,
 	)
 
-	fi.indexer.Write(stat.Key) // index me
+	fi.indexer.Write(stat.Name) // index me
 	_, err := fi.WriteLine(line)
 
 	return err

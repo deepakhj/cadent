@@ -21,8 +21,10 @@ type TimeSeries interface {
 
 	// grab the current buffer, which has the side effect of having to "re-write" a new buffer
 	// in the internal object from the clone, so there is a penalty for this
-	IterClone() (TimeSeriesIter, error)
-	ByteClone() ([]byte, error)
+	Bytes() []byte
+
+	// num points in the mix
+	Count() int
 
 	Len() int
 	StartTime() int64

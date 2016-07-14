@@ -281,7 +281,7 @@ func benchmarkSeriesPut8kRandom(b *testing.B, stype string) {
 		}
 		runs++
 	}
-	b.Logf("Random Max Stats in Buffer for %d bytes is %d", max_size, stat_ct/runs)
+	b.Logf("Random Max Stats in Buffer for %d bytes is %d (%d per stat)", max_size, stat_ct/runs, int64(max_size)*runs/stat_ct)
 
 }
 
@@ -309,7 +309,7 @@ func benchmarkSeriesPut8kNonRandom(b *testing.B, stype string) {
 		}
 		runs++
 	}
-	b.Logf("Incremental Max Stats in Buffer for %d bytes is %d", max_size, stat_ct/runs)
+	b.Logf("Incremental Max Stats in Buffer for %d bytes is %d (%d per stat)", max_size, stat_ct/runs, int64(max_size)*runs/stat_ct)
 
 }
 
@@ -337,7 +337,7 @@ func benchmarkSeriesPut8kRandomInt(b *testing.B, stype string) {
 		}
 		runs++
 	}
-	b.Logf("Incremental Max Stats in Buffer for %d bytes is %d", max_size, stat_ct/runs)
+	b.Logf("Incremental Max Stats in Buffer for %d bytes is %d (%d per stat)", max_size, stat_ct/runs, int64(max_size)*runs/stat_ct)
 
 }
 
@@ -354,7 +354,7 @@ func genericTestSeries(t *testing.T, stype string) {
 		So(ser.StartTime(), ShouldEqual, n.UnixNano())
 		So(ser.LastTime(), ShouldEqual, times[len(times)-1])
 
-		it, err := ser.IterClone()
+		it, err := ser.Iter()
 		idx := 0
 		for it.Next() {
 			to, mi, mx, fi, ls, su, ct := it.Values()
@@ -382,7 +382,7 @@ func genericTestSeries(t *testing.T, stype string) {
 		}
 
 		// compression, iterator R/W test
-		bss, _ := ser.ByteClone()
+		bss := ser.Bytes()
 		if err != nil {
 			t.Fatalf("ERROR: %v", err)
 		}
@@ -416,6 +416,7 @@ func genericTestSeries(t *testing.T, stype string) {
 				idx++
 			}
 		})
+		bss = ser.Bytes()
 
 		Convey("Series Type: "+stype+" - Zip/Iterator", func() {
 			// zip tests

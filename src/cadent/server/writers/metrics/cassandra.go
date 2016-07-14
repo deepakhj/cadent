@@ -36,11 +36,11 @@
 		read_consistency="one"
 		port=9042
 		cache_metric_size=102400  # the "internal carbon-like-cache" size (ram is your friend)
-		cache_points_size=1024 # number of points per metric to cache above to keep before we drop (this * cache_metric_size * 32 * 128 bytes == your better have that ram)
+		cache_byte_size=1024 # number of points per metric to cache above to keep before we drop (this * cache_metric_size * 32 * 128 bytes == your better have that ram)
 		cache_low_fruit_rate=0.25 # every 1/4 of the time write "low count" metrics to at least persist them
 		writes_per_second=5000 # allowed insert queries per second
 
-		blob_type="simplebinary" # zipsimplebinary, simplebinary, json, protobuf
+		blob_type="protobuf" # gob, gorilla, json, protobuf .. the data binary blob type
 
 		numcons=5  # cassandra connection pool size
 		timeout="30s" # query timeout
@@ -260,23 +260,23 @@ func NewCassandraWriter(conf map[string]interface{}) (*CassandraWriter, error) {
 	}
 
 	cass.blob_series_type = CASSANDRA_DEFAULT_SERIES_TYPE
-	_bt := conf["writes_per_second"]
+	_bt := conf["blob_type"]
 	if _bt != nil {
-		cass.writes_per_second = int(_rs.(int64))
+		cass.blob_series_type = _bt.(string)
 	}
 
 	cass._insert_query = fmt.Sprintf(
-		"INSERT INTO %s (id, time, point) VALUES  ({path: ?, resolution: ?}, ?, {sum: ?, ?, min: ?, max: ?, first: ?, last: ?, count: ?})",
+		"INSERT INTO %s (id, stime, etime, point) VALUES  ({path: ?, resolution: ?}, ?, ?, ?)",
 		cass.db.MetricTable(),
 	)
 
 	cass._select_time_query = fmt.Sprintf(
-		"SELECT point.max, point.min, point.sum, point.first, point.last, point.count, time FROM %s WHERE id={path: ?, resolution: ?} AND time <= ? and time >= ?",
+		"SELECT data, stime, etime FROM %s WHERE id={path: ?, resolution: ?} AND etime <= ? and stime >= ?",
 		cass.db.MetricTable(),
 	)
 
 	cass._get_query = fmt.Sprintf(
-		"SELECT point.max, point.min, point.sum, point.first, point.last, point.count, time FROM %s WHERE id={path: ?, resolution: ?} and time = ?",
+		"SELECT data, stime, etime FROM %s WHERE id={path: ?, resolution: ?} and stime >= ? and etime <= ?",
 		cass.db.MetricTable(),
 	)
 
@@ -374,7 +374,7 @@ func (cass *CassandraWriter) InsertMulti(points []*repr.StatRepr) (int, error) {
 		}
 		batch.Query(
 			DO_Q,
-			stat.Key,
+			stat.Name.Key,
 			int64(stat.Resolution),
 			stat.Time.UnixNano(),
 			float64(stat.Sum),
@@ -412,7 +412,7 @@ func (cass *CassandraWriter) InsertOne(stat *repr.StatRepr) (int, error) {
 	}
 
 	err := cass.conn.Query(Q,
-		stat.Key,
+		stat.Name.Key,
 		int64(stat.Resolution),
 		stat.Time.UnixNano(),
 		float64(stat.Sum),
@@ -490,7 +490,7 @@ func (cass *CassandraWriter) sendToWriters() error {
 func (cass *CassandraWriter) Write(stat repr.StatRepr) error {
 
 	//cache keys needs metric + resolution
-	s_key := fmt.Sprintf("%s:%d", stat.Key, int(stat.Resolution))
+	s_key := fmt.Sprintf("%s:%d", stat.Name.Key, int(stat.Resolution))
 	// turning off
 	if !cass.shutitdown {
 		cass.cacher.Add(s_key, &stat)
@@ -543,7 +543,8 @@ func (cass *CassandraMetric) Config(conf map[string]interface{}) (err error) {
 	if resolution == nil {
 		return fmt.Errorf("Resulotuion needed for cassandra writer")
 	}
-	gots.cacher, err = _get_cacher_signelton(conf["dsn"].(string))
+	cache_str := conf["dsn"].(string) + gots.blob_series_type
+	gots.cacher, err = _get_cacher_signelton(cache_str)
 	if err != nil {
 		return err
 	}
@@ -554,15 +555,18 @@ func (cass *CassandraMetric) Config(conf map[string]interface{}) (err error) {
 		gots.cacher.maxKeys = int(_ms.(int64))
 	}
 
-	_ps := conf["cache_points_size"]
+	_ps := conf["cache_byte_size"]
 	if _ps != nil {
-		gots.cacher.maxPoints = int(_ps.(int64))
+		gots.cacher.maxBytes = int(_ps.(int64))
 	}
 
 	_lf := conf["cache_low_fruit_rate"]
 	if _lf != nil {
 		gots.cacher.lowFruitRate = _lf.(float64)
 	}
+
+	// match blob types
+	gots.cacher.seriesType = gots.blob_series_type
 
 	cass.writer.Start() //start up
 
@@ -575,7 +579,7 @@ func (cass *CassandraMetric) Write(stat repr.StatRepr) error {
 	// keep note of this, when things are not yet "warm" (the indexer should
 	// keep tabs on what it's already indexed for speed sake,
 	// the push "push" of stats will cause things to get pretty slow for a while
-	cass.indexer.Write(stat.Key)
+	cass.indexer.Write(stat.Name)
 	return cass.writer.Write(stat)
 }
 

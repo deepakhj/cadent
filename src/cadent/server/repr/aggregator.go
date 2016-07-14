@@ -62,7 +62,7 @@ func (sa *Aggregator) Add(stat StatRepr) error {
 	defer sa.mu.Unlock()
 
 	res_time := sa.ResolutionTime(stat.Time)
-	m_k := sa.MapKey(stat.Key, stat.Time)
+	m_k := sa.MapKey(stat.Name.Key, stat.Time)
 	element, ok := sa.Items[m_k]
 	if !ok {
 		sa.Items[m_k] = stat

@@ -12,7 +12,7 @@
 		write_workers=8
 		write_queue_length=102400
 		cache_metric_size=102400  # the "internal carbon-like-cache" size (ram is your friend)
-		cache_points_size=1024 # number of points per metric to cache above to keep before we drop (this * cache_metric_size * 32 * 128 bytes == your better have that ram)
+		cache_byte_size=1024 # number of points per metric to cache above to keep before we drop (this * cache_metric_size * 32 * 128 bytes == your better have that ram)
 		cache_low_fruit_rate=0.25 # every 1/4 of the time write "low count" metrics to at least persist them
 		writes_per_second=1000 # allowed physical writes per second
 
@@ -146,9 +146,9 @@ func NewWhisperWriter(conf map[string]interface{}) (*WhisperWriter, error) {
 		ws.cache_queue.maxKeys = int(_ms.(int64))
 	}
 
-	_ps := conf["cache_points_size"]
+	_ps := conf["cache_byte_size"]
 	if _ps != nil {
-		ws.cache_queue.maxPoints = int(_ps.(int64))
+		ws.cache_queue.maxBytes = int(_ps.(int64))
 	}
 
 	_lf := conf["cache_low_fruit_rate"]
@@ -253,7 +253,7 @@ func (ws *WhisperWriter) guessValue(metric string, stat *repr.StatRepr) float64 
 	case "last":
 		return float64(stat.Last)
 	default:
-		return float64(stat.Mean)
+		return float64(stat.Sum) / float64(stat.Count)
 	}
 }
 
@@ -376,7 +376,7 @@ func (ws *WhisperWriter) InsertNext() (int, error) {
 // the "simple" insert one metric at a time model
 func (ws *WhisperWriter) InsertOne(stat repr.StatRepr) (int, error) {
 
-	whis, err := ws.getFile(stat.Key)
+	whis, err := ws.getFile(stat.Name.Key)
 	if err != nil {
 		ws.log.Error("Whisper write error: %s", err)
 		stats.StatsdClientSlow.Incr("writer.whisper.metric-errors", 1)
@@ -410,7 +410,7 @@ func (ws *WhisperWriter) Write(stat repr.StatRepr) error {
 	}
 
 	// add to the writeback cache only
-	ws.cache_queue.Add(stat.Key, &stat)
+	ws.cache_queue.Add(stat.Name.Key, &stat)
 
 	// and now add it to the readcache ifit's been activated
 	r_cache := GetReadCache()
@@ -492,7 +492,7 @@ func (ws *WhisperMetrics) SetResolutions(res [][]int) int {
 }
 
 func (ws *WhisperMetrics) Write(stat repr.StatRepr) error {
-	ws.indexer.Write(stat.Key) // write an index for the key
+	ws.indexer.Write(stat.Name) // write an index for the key
 	err := ws.writer.Write(stat)
 
 	return err
@@ -521,8 +521,8 @@ func (ws *WhisperMetrics) GetFromCache(metric string, start int64, end int64) (*
 	}
 
 	t_start := time.Unix(int64(start), 0)
-	t_end := time.Unix(int64(start), 0)
-	cached_stats := r_cache.Get(metric, t_start, t_end)
+	t_end := time.Unix(int64(end), 0)
+	cached_stats, _, _ := r_cache.Get(metric, t_start, t_end)
 	var d_points []RawDataPoint
 	if cached_stats != nil && len(cached_stats) > 0 {
 		stats.StatsdClient.Incr("reader.whisper.render.cache.hits", 1)
@@ -550,6 +550,8 @@ func (ws *WhisperMetrics) GetFromCache(metric string, start int64, end int64) (*
 		rawd.Metric = path
 		rawd.Step = int(step_t)
 		rawd.Data = d_points
+		ws.log.Critical("Cached MOO: %v", rawd)
+
 		return rawd, true
 	} else {
 		stats.StatsdClient.Incr("reader.whisper.render.cache.miss", 1)

@@ -52,7 +52,7 @@ type StatsdBaseStatItem struct {
 
 func (s *StatsdBaseStatItem) Repr() repr.StatRepr {
 	return repr.StatRepr{
-		Key:   s.InKey,
+		Name:  repr.StatName{Key: s.InKey},
 		Min:   repr.CheckFloat(repr.JsonFloat64(s.Min)),
 		Max:   repr.CheckFloat(repr.JsonFloat64(s.Max)),
 		Count: s.Count,
@@ -228,7 +228,7 @@ type StatsdTimerStatItem struct {
 func (s *StatsdTimerStatItem) Repr() repr.StatRepr {
 	return repr.StatRepr{
 		Time:  time.Now(),
-		Key:   s.InKey,
+		Name:  repr.StatName{Key: s.InKey},
 		Min:   repr.CheckFloat(repr.JsonFloat64(s.Min)),
 		Max:   repr.CheckFloat(repr.JsonFloat64(s.Max)),
 		Count: s.Count,

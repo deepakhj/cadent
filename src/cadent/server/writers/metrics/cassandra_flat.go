@@ -25,7 +25,7 @@
 		read_consistency="one"
 		port=9042
 		cache_metric_size=102400  # the "internal carbon-like-cache" size (ram is your friend)
-		cache_points_size=1024 # number of points per metric to cache above to keep before we drop (this * cache_metric_size * 32 * 128 bytes == your better have that ram)
+		cache_byte_size=1024 # number of bytes
 		cache_low_fruit_rate=0.25 # every 1/4 of the time write "low count" metrics to at least persist them
 		writes_per_second=5000 # allowed insert queries per second
 
@@ -404,7 +404,7 @@ func (cass *CassandraFlatWriter) mergeWrite(stat *repr.StatRepr) *repr.StatRepr 
 	// grab ze data. (note data is already sorted by time asc va the cassandra schema)
 	iter := cass.conn.Query(
 		cass._select_time_query,
-		stat.Key, stat.Resolution, time,
+		stat.Name.Key, stat.Resolution, time,
 	).Iter()
 
 	var t, count int64
@@ -450,7 +450,7 @@ func (cass *CassandraFlatWriter) InsertMulti(points []*repr.StatRepr) (int, erro
 		}
 		batch.Query(
 			DO_Q,
-			stat.Key,
+			stat.Name.Key,
 			int64(stat.Resolution),
 			stat.Time.UnixNano(),
 			float64(stat.Sum),
@@ -489,7 +489,7 @@ func (cass *CassandraFlatWriter) InsertOne(stat *repr.StatRepr) (int, error) {
 
 	write_stat := cass.mergeWrite(stat)
 	err := cass.conn.Query(Q,
-		stat.Key,
+		stat.Name.Key,
 		int64(stat.Resolution),
 		stat.Time.UnixNano(),
 		float64(write_stat.Sum),
@@ -567,7 +567,7 @@ func (cass *CassandraFlatWriter) sendToWriters() error {
 func (cass *CassandraFlatWriter) Write(stat repr.StatRepr) error {
 
 	//cache keys needs metric + resolution
-	s_key := fmt.Sprintf("%s:%d", stat.Key, int(stat.Resolution))
+	s_key := fmt.Sprintf("%s:%d", stat.Name.Key, int(stat.Resolution))
 	// turning off
 	if !cass.shutitdown {
 		cass.cacher.Add(s_key, &stat)
@@ -631,9 +631,9 @@ func (cass *CassandraFlatMetric) Config(conf map[string]interface{}) (err error)
 		gots.cacher.maxKeys = int(_ms.(int64))
 	}
 
-	_ps := conf["cache_points_size"]
+	_ps := conf["cache_byte_size"]
 	if _ps != nil {
-		gots.cacher.maxPoints = int(_ps.(int64))
+		gots.cacher.maxBytes = int(_ps.(int64))
 	}
 
 	_lf := conf["cache_low_fruit_rate"]
@@ -652,7 +652,7 @@ func (cass *CassandraFlatMetric) Write(stat repr.StatRepr) error {
 	// keep note of this, when things are not yet "warm" (the indexer should
 	// keep tabs on what it's already indexed for speed sake,
 	// the push "push" of stats will cause things to get pretty slow for a while
-	cass.indexer.Write(stat.Key)
+	cass.indexer.Write(stat.Name)
 	return cass.writer.Write(stat)
 }
 

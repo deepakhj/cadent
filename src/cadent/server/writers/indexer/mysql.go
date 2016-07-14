@@ -24,6 +24,7 @@ CREATE TABLE `{path_table}` (
 package indexer
 
 import (
+	"cadent/server/repr"
 	"cadent/server/writers/dbs"
 	"database/sql"
 	"fmt"
@@ -45,9 +46,9 @@ type MySQLIndexer struct {
 	conn        *sql.DB
 	resolutions [][]int
 
-	write_list     []string      // buffer the writes so as to do "multi" inserts per query
-	max_write_size int           // size of that buffer before a flush
-	max_idle       time.Duration // either max_write_size will trigger a write or this time passing will
+	write_list     []repr.StatName // buffer the writes so as to do "multi" inserts per query
+	max_write_size int             // size of that buffer before a flush
+	max_idle       time.Duration   // either max_write_size will trigger a write or this time passing will
 	write_lock     sync.Mutex
 
 	log *logging.Logger
@@ -127,7 +128,7 @@ func (my *MySQLIndexer) Flush() (int, error) {
 
 	for _, stat := range my.write_list {
 		pthQ += "(?, ?), "
-		pvals = append(pvals, stat, len(strings.Split(stat, ".")))
+		pvals = append(pvals, stat.Key, len(strings.Split(stat.Key, ".")))
 
 	}
 	//trim the last ", "
@@ -151,7 +152,7 @@ func (my *MySQLIndexer) Flush() (int, error) {
 	return l, nil
 }
 
-func (my *MySQLIndexer) Write(skey string) error {
+func (my *MySQLIndexer) Write(skey repr.StatName) error {
 
 	if len(my.write_list) > my.max_write_size {
 		_, err := my.Flush()

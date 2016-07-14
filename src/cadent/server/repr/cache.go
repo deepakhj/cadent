@@ -80,7 +80,7 @@ func (s *ReprCache) Add(stat StatRepr) *ReprList {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	k := stat.StatKey
+	k := stat.Name.StatKey
 	gots := s.cache[k]
 	if gots == nil {
 		old := s.checkSize()

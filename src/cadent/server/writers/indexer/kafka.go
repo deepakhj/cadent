@@ -8,6 +8,7 @@
 package indexer
 
 import (
+	"cadent/server/repr"
 	"cadent/server/stats"
 	"cadent/server/writers/dbs"
 	"encoding/json"
@@ -90,7 +91,7 @@ func (kf *KafkaIndexer) Config(conf map[string]interface{}) error {
 	return nil
 }
 
-func (kf *KafkaIndexer) Write(skey string) error {
+func (kf *KafkaIndexer) Write(skey repr.StatName) error {
 	// noop if not writing indexes
 	if !kf.write_index {
 		return nil
@@ -98,8 +99,8 @@ func (kf *KafkaIndexer) Write(skey string) error {
 
 	item := &KafkaPath{
 		Type:     "index",
-		Path:     skey,
-		Segments: strings.Split(skey, "."),
+		Path:     skey.Key,
+		Segments: strings.Split(skey.Key, "."),
 		Time:     time.Now().UnixNano(),
 	}
 
@@ -107,7 +108,7 @@ func (kf *KafkaIndexer) Write(skey string) error {
 
 	kf.conn.Input() <- &sarama.ProducerMessage{
 		Topic: kf.db.IndexTopic(),
-		Key:   sarama.StringEncoder(skey), // hash on metric key
+		Key:   sarama.StringEncoder(skey.Key), // hash on metric key
 		Value: item,
 	}
 

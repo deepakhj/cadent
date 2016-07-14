@@ -5,8 +5,12 @@
 package repr
 
 import (
+	"bytes"
 	"fmt"
+	"hash/fnv"
 	"math"
+	"sort"
+	"strings"
 	"time"
 )
 
@@ -27,9 +31,47 @@ func (s JsonFloat64) MarshalJSON() ([]byte, error) {
 	return []byte(fmt.Sprintf("%v", float64(s))), nil
 }
 
+type SortingTags [][]string
+
+func (p SortingTags) Len() int           { return len(p) }
+func (p SortingTags) Less(i, j int) bool { return strings.Compare(p[i][0], p[j][0]) > 0 }
+func (p SortingTags) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
+
+type StatId uint64
+
+type StatName struct {
+	Key     string      `json:"key"`
+	StatKey string      `json:"stat_key"`
+	Tags    SortingTags `json:"tags"`
+}
+
+// take the various "parts" (keys, resolution, tags) and return a basic md5 hash of things
+func (s *StatName) UniqueId() StatId {
+	buf := fnv.New64a()
+	fmt.Fprintf(buf, "%s:%s:%v", s.Key, s.StatKey, s.SortedTags())
+	return StatId(buf.Sum64())
+}
+
+// return an array of [ [name, val] ...] sorted by name
+func (s *StatName) SortedTags() SortingTags {
+	sort.Sort(s.Tags)
+	return s.Tags
+}
+
+// return an array of [ [name, val] ...] sorted by name
+func (s *StatName) ByteSize() int {
+	buf := new(bytes.Buffer)
+	fmt.Fprintf(buf, "%s%s%v", s.Key, s.StatKey, s.SortedTags())
+	return buf.Len()
+}
+
+func (s *StatName) IsBlank() bool {
+	return len(s.Key) == 0
+}
+
 type StatRepr struct {
-	Key        string      `json:"key"`
-	StatKey    string      `json:"stat_key"`
+	Name StatName
+
 	Min        JsonFloat64 `json:"min"`
 	Max        JsonFloat64 `json:"max"`
 	Sum        JsonFloat64 `json:"sum"`
@@ -42,12 +84,19 @@ type StatRepr struct {
 	TTL        int64       `json:"ttl"`
 }
 
+// take the various "parts" (keys, resolution, tags) and return a basic md5 hash of things
+func (s *StatRepr) UniqueId() uint64 {
+	buf := fnv.New64a()
+	fmt.Fprintf(buf, "%s:%s:%f:%v", s.Name.Key, s.Name.StatKey, s.Resolution, s.Name.SortedTags())
+	return buf.Sum64()
+}
+
 // rough size of the object in bytes
 func (s *StatRepr) ByteSize() int64 {
 	if s == nil {
 		return 0
 	}
-	return int64(len(s.Key)) + int64(len(s.StatKey)) + 104 // obtained from `reflect.TypeOf(StatRepr{}).Size()`
+	return int64(len(s.Name.Key)) + int64(len(s.Name.StatKey)) + 104 // obtained from `reflect.TypeOf(StatRepr{}).Size()`
 }
 
 func (s *StatRepr) Copy() *StatRepr {
@@ -91,12 +140,12 @@ func (s *StatRepr) Merge(stat *StatRepr) *StatRepr {
 
 // basically a "uniqueness" key for dedupe attempts in list
 func (s *StatRepr) UniqueKey() string {
-	return fmt.Sprintf("%s:%d:%f", s.Key, s.Time.UnixNano(), s.Resolution)
+	return fmt.Sprintf("%s:%d:%f", s.Name.Key, s.Time.UnixNano(), s.Resolution)
 }
 
 // will be "true" of the key + resolution + time are the same
 func (s *StatRepr) IsSameStat(stat *StatRepr) bool {
-	return s.Key == s.StatKey && s.Resolution == stat.Resolution && s.Time.Equal(stat.Time)
+	return s.Name.Key == s.Name.StatKey && s.Resolution == stat.Resolution && s.Time.Equal(stat.Time)
 }
 
 // if this stat is in a list
@@ -116,6 +165,15 @@ func (s *StatRepr) String() string {
 	}
 	return fmt.Sprintf("Stat: Mean: %f @ %s/%f/%d", m, s.Time, s.Resolution, s.TTL)
 }
+
+// time sort
+type StatReprSlice []*StatRepr
+
+func (p StatReprSlice) Len() int { return len(p) }
+func (p StatReprSlice) Less(i, j int) bool {
+	return p[i] != nil && p[j] != nil && p[i].Time.Before(p[j].Time)
+}
+func (p StatReprSlice) Swap(i, j int) { p[i], p[j] = p[j], p[i] }
 
 // These two structure is to allow a list of stats in a large queue
 // That Queue (which has a LRU bounded size) can then get cycled through

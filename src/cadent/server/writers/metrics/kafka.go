@@ -118,10 +118,10 @@ func (kf *KafkaMetrics) SetResolutions(res [][]int) int {
 
 func (kf *KafkaMetrics) Write(stat repr.StatRepr) error {
 
-	kf.indexer.Write(stat.Key) // to the indexer
+	kf.indexer.Write(stat.Name) // to the indexer
 	item := &KafkaMetric{
 		Type:       "metric",
-		Metric:     stat.Key,
+		Metric:     stat.Name.Key,
 		Time:       time.Now().UnixNano(),
 		Sum:        stat.Sum,
 		First:      stat.First,
@@ -139,7 +139,7 @@ func (kf *KafkaMetrics) Write(stat repr.StatRepr) error {
 
 	kf.conn.Input() <- &sarama.ProducerMessage{
 		Topic: kf.db.IndexTopic(),
-		Key:   sarama.StringEncoder(stat.Key), // hash on metric key
+		Key:   sarama.StringEncoder(stat.UniqueId()), // hash on unique id
 		Value: item,
 	}
 	return nil

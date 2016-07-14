@@ -15,6 +15,8 @@ import (
 	"time"
 )
 
+// add sorting option for ProtStats
+
 // this can only handle "future pushing times" not random times
 type ProtobufTimeSeries struct {
 	mu sync.Mutex
@@ -36,6 +38,10 @@ func NewProtobufTimeSeries(t0 int64, options *Options) *ProtobufTimeSeries {
 	return ret
 }
 
+func (s *ProtobufTimeSeries) Count() int {
+	return len(s.Stats.Stats)
+}
+
 func (s *ProtobufTimeSeries) UnmarshalBinary(data []byte) error {
 	err := proto.Unmarshal(data, s.Stats)
 	return err
@@ -45,8 +51,9 @@ func (s *ProtobufTimeSeries) MarshalBinary() ([]byte, error) {
 	return proto.Marshal(s.Stats)
 }
 
-func (s *ProtobufTimeSeries) ByteClone() ([]byte, error) {
-	return s.MarshalBinary()
+func (s *ProtobufTimeSeries) Bytes() []byte {
+	d, _ := s.MarshalBinary()
+	return d
 }
 
 func (s *ProtobufTimeSeries) Len() int {
@@ -62,9 +69,6 @@ func (s *ProtobufTimeSeries) Iter() (iter TimeSeriesIter, err error) {
 
 	iter, err = NewProtobufIter(d)
 	return iter, err
-}
-func (s *ProtobufTimeSeries) IterClone() (iter TimeSeriesIter, err error) {
-	return s.Iter()
 }
 
 func (s *ProtobufTimeSeries) StartTime() int64 {

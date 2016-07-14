@@ -101,7 +101,7 @@ type GraphiteBaseStatItem struct {
 func (s *GraphiteBaseStatItem) Repr() repr.StatRepr {
 	return repr.StatRepr{
 		Time:  s.Time,
-		Key:   s.InKey,
+		Name:  repr.StatName{Key: s.InKey},
 		Min:   repr.CheckFloat(repr.JsonFloat64(s.Min)),
 		Max:   repr.CheckFloat(repr.JsonFloat64(s.Max)),
 		Count: s.Count,

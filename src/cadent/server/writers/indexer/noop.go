@@ -5,6 +5,7 @@
 package indexer
 
 import (
+	"cadent/server/repr"
 	"fmt"
 )
 
@@ -20,7 +21,7 @@ func (my *NoopIndexer) Config(conf map[string]interface{}) error {
 
 func (my *NoopIndexer) Stop() {}
 
-func (my *NoopIndexer) Write(metric string) error {
+func (my *NoopIndexer) Write(metric repr.StatName) error {
 	return nil
 }
 func (my *NoopIndexer) Find(metric string) (MetricFindItems, error) {

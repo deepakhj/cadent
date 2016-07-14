@@ -4,7 +4,6 @@ import (
 	"cadent/server/repr"
 	. "github.com/smartystreets/goconvey/convey"
 	"math/rand"
-	"sort"
 	"testing"
 	"time"
 )
@@ -26,33 +25,29 @@ func TestWriterReadCache(t *testing.T) {
 	r_list := []string{"moo", "goo", "loo", "hoo", "loo", "noo", "too", "elo", "houses", "trains", "acrs", "and", "other", "things"}
 	Convey("ReadCacheItem", t, func() {
 
-		m_items := 10
-		c_item := NewReadCacheItem(m_items)
+		m_bytes := 512
+		c_item := NewReadCacheItem(m_bytes)
 
 		t_start := time.Now()
 
-		for i := 0; i < m_items+100; i++ {
+		for i := 0; i < 1000; i++ {
 			s := stat.Copy()
 			s.Mean = repr.JsonFloat64(rand.Float64())
 			// a random time testing the sorts
 			s.Time = t_start.Add(time.Duration(time.Second * time.Duration(rand.Int63n(1000))))
 			c_item.Add(s)
 		}
-		Convey("ReadCacheItems should be 10 long", func() {
-			So(c_item.Data.Len(), ShouldEqual, 10)
+		Convey("ReadCacheItems have proper time order", func() {
 			So(c_item.StartTime.Before(c_item.EndTime), ShouldEqual, true)
 		})
 		t.Logf("CacheItems: Start: %s", c_item.StartTime)
 		t.Logf("CacheItems: End: %s", c_item.EndTime)
 
 		data := c_item.Get(time.Time{}, time.Now().Add(time.Duration(time.Second*time.Duration(10000))))
-		Convey("ReadCacheItems Get should be in order", func() {
-			So(sort.IsSorted(SortedStats(data)), ShouldEqual, true)
-		})
 		t.Logf("Cache Get: %v", data)
 
 		Convey("ReadCacheItems Small cache", func() {
-			small_cache := NewReadCacheItem(m_items)
+			small_cache := NewReadCacheItem(m_bytes)
 			for i := 0; i < 5; i++ {
 				s := stat.Copy()
 				s.Mean = repr.JsonFloat64(rand.Float64())
@@ -62,7 +57,6 @@ func TestWriterReadCache(t *testing.T) {
 			}
 			So(len(small_cache.GetAll()), ShouldEqual, 5)
 			data := small_cache.Get(time.Time{}, time.Now().Add(time.Duration(time.Second*time.Duration(10000))))
-			So(sort.IsSorted(SortedStats(data)), ShouldEqual, true)
 			So(len(data), ShouldEqual, 5)
 
 		})
@@ -70,14 +64,14 @@ func TestWriterReadCache(t *testing.T) {
 
 	Convey("ReadCache", t, func() {
 
-		m_items := 10
+		m_bytes := 512
 		m_keys := 5
 		max_back := time.Second * 20
-		c_item := NewReadCache(m_keys, m_items, max_back)
+		c_item := NewReadCache(m_keys, m_bytes, max_back)
 
 		t_start := time.Now()
 
-		for i := 0; i < m_items+100; i++ {
+		for i := 0; i < 1000; i++ {
 			s := stat.Copy()
 			m_idx := i % len(r_list)
 			r_prefix := r_list[m_idx]
@@ -108,15 +102,15 @@ func TestWriterReadCache(t *testing.T) {
 
 	Convey("ReadCache Singleton", t, func() {
 
-		m_items := 10
+		m_bytes := 512
 		m_keys := 5
 		max_back := time.Second * 20
 		// activate the singleton
-		gots := InitReadCache(m_keys, m_items, max_back)
+		gots := InitReadCache(m_keys, m_bytes, max_back)
 		So(gots, ShouldNotEqual, nil)
 		t_start := time.Now()
 
-		for i := 0; i < m_items+100; i++ {
+		for i := 0; i < 1000; i++ {
 			s := stat.Copy()
 			m_idx := i % len(r_list)
 			r_prefix := r_list[m_idx]
