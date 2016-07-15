@@ -20,7 +20,7 @@ func TestWriterObjects(t *testing.T) {
 	step_1 := 10
 	t_start := int(time.Now().Unix())
 
-	for idx,_ := range t_list1 {
+	for idx := range t_list1 {
 		t_list1[idx] = RawDataPoint{
 			Time: t_start + idx*step_1,
 			Mean: rand.Float64(),
@@ -29,7 +29,7 @@ func TestWriterObjects(t *testing.T) {
 
 	t_end1 := t_list1[len(t_list1)-1].Time + step_1
 
-	for idx,_ := range t_list2 {
+	for idx := range t_list2 {
 		t_list2[idx] = RawDataPoint{
 			Time: t_start + idx*step_1,
 			Mean: rand.Float64(),
@@ -38,26 +38,26 @@ func TestWriterObjects(t *testing.T) {
 	t_end2 := t_list2[len(t_list2)-1].Time + step_1
 
 	// random steps
-	for idx, _ := range t_list3 {
+	for idx := range t_list3 {
 		t_list3[idx] = RawDataPoint{
 			Time: t_start + idx,
 			Mean: float64(rand.Int63n(100)),
-			Min: float64(idx),
-			Max: float64(idx+100),
+			Min:  float64(idx),
+			Max:  float64(idx + 100),
 		}
 	}
-	t_end3:= t_list3[len(t_list3)-1].Time + 1
+	t_end3 := t_list3[len(t_list3)-1].Time + 1
 
 	// random steps
-	for idx,_ := range t_list4 {
+	for idx := range t_list4 {
 		t_list4[idx] = RawDataPoint{
-			Time: t_start + 10 * idx + int(rand.Int63n(2) + 1.0),
+			Time: t_start + 10*idx + int(rand.Int63n(2)+1.0),
 			Mean: float64(rand.Int63n(100)),
-			Min: float64(idx),
-			Max: float64(idx+100),
+			Min:  float64(idx),
+			Max:  float64(idx + 100),
 		}
 	}
-	t_end4:= t_list4[len(t_list4)-1].Time + 10
+	t_end4 := t_list4[len(t_list4)-1].Time + 10
 
 	Convey("Raw Data Item Quantize", t, func() {
 
@@ -88,14 +88,14 @@ func TestWriterObjects(t *testing.T) {
 			End:   t_end3,
 		}
 
-		for _, d := range rl.Data{
+		for _, d := range rl.Data {
 			t.Logf("Pre Data: %v", d)
 		}
 		rl.Resample(2)
-		for _, d := range rl.Data{
+		for _, d := range rl.Data {
 			t.Logf("Data: %v", d)
 		}
-		So(rl.Len(), ShouldEqual, len(t_list3) / 2)
+		So(rl.Len(), ShouldEqual, len(t_list3)/2)
 
 		rl = &RawRenderItem{
 			Data:  t_list4,
@@ -103,14 +103,14 @@ func TestWriterObjects(t *testing.T) {
 			End:   t_end4,
 		}
 
-		for _, d := range rl.Data{
+		for _, d := range rl.Data {
 			t.Logf("Pre Data: %v", d)
 		}
 		rl.Resample(1)
-		for _, d := range rl.Data{
+		for _, d := range rl.Data {
 			t.Logf("Data: %v", d)
 		}
-		So(rl.Len(), ShouldEqual, len(t_list4) / 2)
+		So(rl.Len(), ShouldEqual, len(t_list4)/2)
 	})
 
 	Convey("Raw Data item tests", t, func() {

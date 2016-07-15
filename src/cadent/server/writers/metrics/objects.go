@@ -89,7 +89,7 @@ func (r *RawDataPoint) String() string {
 // merge two data points into one .. this is a nice merge that will add counts, etc to the pieces
 // the "time" is then the greater of the two
 func (r *RawDataPoint) Merge(d *RawDataPoint) {
-	if  math.IsNaN(r.Max) || r.Max < d.Max {
+	if math.IsNaN(r.Max) || r.Max < d.Max {
 		r.Max = d.Max
 	}
 	if math.IsNaN(r.Min) || r.Min > d.Min {
@@ -116,14 +116,14 @@ func (r *RawDataPoint) Merge(d *RawDataPoint) {
 		r.Count += d.Count
 	}
 
-	if !math.IsNaN(r.Sum) && r.Count != math.MinInt64 && r.Count > 0{
+	if !math.IsNaN(r.Sum) && r.Count != math.MinInt64 && r.Count > 0 {
 		r.Mean = r.Sum / float64(r.Count)
-	}else if !math.IsNaN(r.Mean) && !math.IsNaN(d.Mean){
+	} else if !math.IsNaN(r.Mean) && !math.IsNaN(d.Mean) {
 		// if no sum/count .. need to do a crude time weighted mean of the two points
 		// this is probably not anywhere near "statistically" accurate
 		// but it's kinda like a linear interoplation
-		r.Mean =  (float64(r.Time) * r.Mean + float64(d.Time) * d.Mean) / float64(r.Time + d.Time)
-	}else if math.IsNaN(r.Mean) && !math.IsNaN(d.Mean){
+		r.Mean = (float64(r.Time)*r.Mean + float64(d.Time)*d.Mean) / float64(r.Time+d.Time)
+	} else if math.IsNaN(r.Mean) && !math.IsNaN(d.Mean) {
 		r.Mean = d.Mean // can only use this one
 	}
 
@@ -183,7 +183,7 @@ func (r *RawRenderItem) Resample(step int) {
 
 	cur_len := len(r.Data)
 	// nothing we can do here
-	if cur_len <= 1{
+	if cur_len <= 1 {
 		return
 	}
 
@@ -218,7 +218,7 @@ func (r *RawRenderItem) Resample(step int) {
 		}
 
 		// past any valid points
-		if i >= cur_len{
+		if i >= cur_len {
 			data[o] = NullRawDataPoint(t)
 			continue
 		}
@@ -226,14 +226,14 @@ func (r *RawRenderItem) Resample(step int) {
 		// remembering that the "first" bin may include points "behind" it (by a step) from the original list
 		// list
 		p := r.Data[i]
-		log.Errorf("Resample: %d: cur T: %d to T: %d -- DataP: %v", i,t, (t + step), r.Data[i])
+		log.Errorf("Resample: %d: cur T: %d to T: %d -- DataP: %v", i, t, (t + step), r.Data[i])
 
 		// if the point is w/i [start-step, start)
 		// then these belong to the current Bin
-		if p.Time < start && p.Time >= (t - step) && p.Time < t{
-			if data[o].IsNull(){
+		if p.Time < start && p.Time >= (t-step) && p.Time < t {
+			if data[o].IsNull() {
 				data[o] = p
-			}else{
+			} else {
 				data[o].Merge(&p)
 			}
 			data[o].Time = t
@@ -243,19 +243,19 @@ func (r *RawRenderItem) Resample(step int) {
 
 		// if the points is w/i [t, t+step)
 		// grab all the points in the step range and "merge"
-		if p.Time >= t && p.Time < (t + step){
-			log.Errorf("Start Merge FP: cur T: %d to T: %d -- DataP: %v :: [t, t+step): %v [t-step, t): %v ", t, (t + step), p, p.Time >= t && p.Time < (t + step), p.Time >= (t - step) && p.Time < t)
+		if p.Time >= t && p.Time < (t+step) {
+			log.Errorf("Start Merge FP: cur T: %d to T: %d -- DataP: %v :: [t, t+step): %v [t-step, t): %v ", t, (t + step), p, p.Time >= t && p.Time < (t+step), p.Time >= (t-step) && p.Time < t)
 			// start at current point and merge up
-			if data[o].IsNull(){
+			if data[o].IsNull() {
 				data[o] = p
-			}else{
+			} else {
 				data[o].Merge(&p)
 			}
 
 			log.Errorf("Start Merge FP: cur T: %d to T: %d -- DataP: %v", t, (t + step), p)
 			for {
 				i++
-				if i >= cur_len{
+				if i >= cur_len {
 					break
 				}
 				np := r.Data[i]
@@ -331,7 +331,7 @@ func (r *RawRenderItem) QuantizeToStep(step int) {
 			// but may need a merge w/ another point(s) in the parent list
 			// so we advance "i"
 			p.Time = t
-			if data[o].Time != 0 && !data[0].IsNull(){
+			if data[o].Time != 0 && !data[0].IsNull() {
 				data[o].Merge(&p)
 			} else {
 				data[o] = p
