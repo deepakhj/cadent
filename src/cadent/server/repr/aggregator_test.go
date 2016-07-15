@@ -10,8 +10,7 @@ func TestStatReprAggregator(t *testing.T) {
 	// Only pass t into top-level Convey calls
 	t_time := time.Now()
 	ss := StatRepr{
-		StatKey:    "moo",
-		Key:        "moo",
+		Name:       StatName{Key: "moo", StatKey: "moo"},
 		Sum:        5,
 		Min:        1,
 		Max:        3,
@@ -20,8 +19,8 @@ func TestStatReprAggregator(t *testing.T) {
 		Resolution: 1,
 	}
 	ssM := StatRepr{
-		StatKey:    "moo",
-		Key:        "moo",
+		Name: StatName{Key: "moo", StatKey: "moo"},
+
 		Sum:        5,
 		Min:        0,
 		Max:        8,
@@ -30,8 +29,8 @@ func TestStatReprAggregator(t *testing.T) {
 		Resolution: 1,
 	}
 	ss2 := StatRepr{
-		Key:        "goo",
-		StatKey:    "goo",
+		Name: StatName{Key: "goo", StatKey: "goo"},
+
 		Sum:        5,
 		Min:        1,
 		Max:        3,
@@ -53,7 +52,7 @@ func TestStatReprAggregator(t *testing.T) {
 		})
 
 		sc.Add(ss)
-		m_key := sc.MapKey(ss.Key, t_time)
+		m_key := sc.MapKey(ss.Name.Key, t_time)
 		Convey("Should have been aggrigated", func() {
 			gots := sc.Items[m_key]
 			So(gots.Sum, ShouldEqual, 10)

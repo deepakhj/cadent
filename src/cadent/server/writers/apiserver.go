@@ -13,7 +13,7 @@
 
             # this is the read cache that will keep the latest goods in ram
             read_cache_max_items=102400
-            read_cache_max_bytes_per_metric=1024
+            read_cache_max_bytes_per_metric=8192
 
             [graphite-proxy-map.accumulator.api.indexer]
             driver = "leveldb"
@@ -102,7 +102,8 @@ type ApiLoop struct {
 	shutdown chan bool
 	log      *logging.Logger
 
-	ReadCache *metrics.ReadCache
+	ReadCache           *metrics.ReadCache
+	activate_cache_chan chan *metrics.RawRenderItem
 }
 
 func ParseConfigString(inconf string) (rl *ApiLoop, err error) {
@@ -124,7 +125,7 @@ func ParseConfigString(inconf string) (rl *ApiLoop, err error) {
 	rl.Metrics.SetIndexer(rl.Indexer)
 	rl.SetBasePath(rl.Conf.BasePath)
 	rl.log = logging.MustGetLogger("reader.http")
-	rl.shutdown = make(chan bool, 10)
+
 	return rl, nil
 }
 
@@ -166,6 +167,15 @@ func (re *ApiLoop) Config(conf ApiConfig, resolution float64) (err error) {
 
 func (re *ApiLoop) Stop() {
 	re.shutdown <- true
+}
+
+func (re *ApiLoop) activateCacheLoop() {
+	for {
+		select {
+		case data := <-re.activate_cache_chan:
+			re.ReadCache.ActivateMetricFromRenderData(data)
+		}
+	}
 }
 
 func (re *ApiLoop) SetBasePath(pth string) {
@@ -287,6 +297,27 @@ func (re *ApiLoop) parseForRender(w http.ResponseWriter, r *http.Request) (strin
 	return target, from, to, nil
 }
 
+// take a rawrender and make it a graphite api json format
+func (re *ApiLoop) ToGraphiteRender(raw_data []*metrics.RawRenderItem) *metrics.WhisperRenderItem {
+	whis := new(metrics.WhisperRenderItem)
+	whis.Series = make(map[string][]metrics.DataPoint)
+	for _, data := range raw_data {
+		whis.End = data.End
+		whis.Start = data.Start
+		whis.Step = data.Step
+		whis.RealEnd = data.RealEnd
+		whis.RealStart = data.RealStart
+
+		d_points := make([]metrics.DataPoint, data.Len(), data.Len())
+		for idx, d := range data.Data {
+			v := d.Mean
+			d_points[idx] = metrics.DataPoint{Time: d.Time, Value: &v}
+		}
+		whis.Series[data.Metric] = d_points
+	}
+	return whis
+}
+
 func (re *ApiLoop) Render(w http.ResponseWriter, r *http.Request) {
 
 	defer stats.StatsdNanoTimeFunc("reader.http.render.get-time-ns", time.Now())
@@ -296,20 +327,18 @@ func (re *ApiLoop) Render(w http.ResponseWriter, r *http.Request) {
 		re.OutError(w, fmt.Sprintf("%v", err), http.StatusBadRequest)
 	}
 
-	data, err := re.Metrics.Render(target, from, to)
+	data, err := re.Metrics.RawRender(target, from, to)
 	if err != nil {
 		re.OutError(w, fmt.Sprintf("%v", err), http.StatusServiceUnavailable)
 		return
 	}
 
-	// register the stat for render caches
-	for _, targ := range strings.Split(target, ",") {
-		targ := strings.Trim(targ, " \n\t")
-		if len(targ) > 0 {
-			re.ReadCache.ActivateMetric(targ, nil)
-		}
+	for _, d := range data {
+		// send to activator
+		re.activate_cache_chan <- d
 	}
-	re.OutJson(w, data)
+
+	re.OutJson(w, re.ToGraphiteRender(data))
 	return
 }
 
@@ -326,6 +355,11 @@ func (re *ApiLoop) RawRender(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		re.OutError(w, fmt.Sprintf("%v", err), http.StatusServiceUnavailable)
 		return
+	}
+
+	// send to activator
+	for _, d := range data {
+		re.activate_cache_chan <- d
 	}
 
 	re.OutJson(w, data)
@@ -386,6 +420,12 @@ func (re *ApiLoop) Start() error {
 	if err != nil {
 		return fmt.Errorf("Could not make http socket: %s", err)
 	}
+
+	re.shutdown = make(chan bool, 10)
+	re.activate_cache_chan = make(chan *metrics.RawRenderItem, 256)
+
+	// start up the activateCacheLoop
+	go re.activateCacheLoop()
 
 	go http.Serve(conn, WriteLog(mux, outlog))
 

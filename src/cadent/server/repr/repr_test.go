@@ -12,7 +12,7 @@ func TestStatAccumulatorRepr(t *testing.T) {
 	// Only pass t into top-level Convey calls
 
 	ss := StatRepr{
-		StatKey:    "moo",
+		Name:       StatName{StatKey: "moo"},
 		Sum:        5,
 		Min:        1,
 		Max:        JsonFloat64(math.Inf(1)),
@@ -21,7 +21,7 @@ func TestStatAccumulatorRepr(t *testing.T) {
 		Resolution: 1,
 	}
 	ss2 := StatRepr{
-		StatKey:    "goo",
+		Name:       StatName{StatKey: "goo"},
 		Sum:        5,
 		Min:        1,
 		Max:        3,
@@ -87,14 +87,14 @@ func TestStatAccumulatorRepr(t *testing.T) {
 		g_st := sc.Get("goo")
 		Convey("Gotten element should have 2 items", func() {
 			So(g_st.Len(), ShouldEqual, 2)
-			So(g_st.Reprs[0].StatKey, ShouldEqual, "goo")
+			So(g_st.Reprs[0].Name.StatKey, ShouldEqual, "goo")
 		})
 
 		g_st = sc.Pop()
 		Convey("Pop Gotten element should have 2 items", func() {
 			So(sc.Len(), ShouldEqual, 1)
 			So(g_st.Len(), ShouldEqual, 2)
-			So(g_st.Reprs[0].StatKey, ShouldEqual, "moo")
+			So(g_st.Reprs[0].Name.StatKey, ShouldEqual, "moo")
 		})
 		g_st = sc.Delete("moo")
 		Convey("Delete missing element", func() {
@@ -104,7 +104,7 @@ func TestStatAccumulatorRepr(t *testing.T) {
 		Convey("Delete Gotten element should have 2 items", func() {
 			So(sc.Len(), ShouldEqual, 0)
 			So(g_st.Len(), ShouldEqual, 2)
-			So(g_st.Reprs[0].StatKey, ShouldEqual, "goo")
+			So(g_st.Reprs[0].Name.StatKey, ShouldEqual, "goo")
 		})
 	})
 }

@@ -1,19 +1,20 @@
 /*
 	ReadCacher
 
-	For every "metric" read , we add an entry here that's basically a bound list (read_cache_metrics_points)
+	For every "metric" read in the API, we add an entry here that's basically a bound list (read_cache_metrics_points)
 	of time -> data elements.
 
-	The "writer" will then add points to these items so that (if the time span is in range) the reader
-	will simply use this internall cache buffer
+	A Writer has the option to, upon receiving of new point, to add it to this read cache
+	such that the read cache is always "hot" even if things are stuck in the writing buffer caches
 
 	[acc.agg.writer.metrics]
 	driver="blaa"
 	dsn="blaa"
 	[acc.agg.writer.metrics.options]
 		...
-		read_cache_metrics_points=102400  # number of metric strings to keep
-		read_cache_metrics_series_bytes=1024 # number of bytes per metric to keep around
+		# ram requirements are  (read_cache_metrics_points * read_cache_max_bytes_per_metric) + some overhead
+		read_cache_metrics_points=10240  # number of metric strings to keep
+		read_cache_max_bytes_per_metric=8192 # number of bytes per metric to keep around
 		...
 
 	We use the "protobuf" series as
@@ -37,8 +38,8 @@ import (
 )
 
 const (
-	READ_CACHER_MAX_SERIES_BYTES = 1024
-	READ_CACHER_METRICS_KEYS     = 102400
+	READ_CACHER_MAX_SERIES_BYTES = 8192
+	READ_CACHER_METRICS_KEYS     = 10240
 	READ_CACHER_MAX_LAST_ACCESS  = time.Minute * time.Duration(60) // if an item is not accesed in 60 min purge it
 )
 
@@ -76,7 +77,22 @@ func (rc *ReadCacheItem) Add(stat *repr.StatRepr) {
 	if stat.Time.Before(rc.StartTime) || rc.StartTime.IsZero() {
 		rc.StartTime = stat.Time
 	}
+}
 
+func (rc *ReadCacheItem) AddValues(t time.Time, min float64, max float64, first float64, last float64, sum float64, count int64) {
+
+	if rc.Data.Len() > rc.MaxBytes {
+		rc.Data.Stats.Stats = rc.Data.Stats.Stats[1:]
+	}
+
+	rc.Data.AddPoint(t.UnixNano(), min, max, first, last, sum, count)
+
+	if t.After(rc.EndTime) {
+		rc.EndTime = t
+	}
+	if t.Before(rc.StartTime) || rc.StartTime.IsZero() {
+		rc.StartTime = t
+	}
 }
 
 // put a chunk o data
@@ -84,6 +100,15 @@ func (rc *ReadCacheItem) PutSeries(stats repr.StatReprSlice) {
 	sort.Sort(stats)
 	for _, s := range stats {
 		rc.Add(s)
+	}
+}
+
+//out a "render" item
+
+// put a chunk o data
+func (rc *ReadCacheItem) PutRenderedSeries(data []RawDataPoint) {
+	for _, s := range data {
+		rc.AddValues(time.Unix(int64(s.Time), 0), s.Min, s.Max, s.First, s.Last, s.Sum, s.Count)
 	}
 }
 
@@ -97,7 +122,7 @@ func (rc *ReadCacheItem) Get(start time.Time, end time.Time) (stats repr.StatRep
 	it, err := rc.Data.Iter()
 
 	if err != nil {
-		log.Error("Cache Get Itterator Error: %v", err)
+		log.Error("Cache Get Iterator Error: %v", err)
 		return stats, time.Time{}, time.Time{}
 	}
 	s_int := start.UnixNano()
@@ -233,6 +258,39 @@ func (rc *ReadCache) ActivateMetric(metric string, stats []*repr.StatRepr) bool 
 	return false // already activated
 }
 
+func (rc *ReadCache) ActivateMetricFromRenderData(data *RawRenderItem) bool {
+	_, ok := rc.lru.Get(data.Metric)
+	if !ok {
+		rc_item := NewReadCacheItem(rc.MaxBytesPerMetric)
+		// blank ones are ok, just to activate it
+		if data != nil {
+			rc_item.PutRenderedSeries(data.Data)
+		}
+		rc.lru.Set(data.Metric, rc_item)
+		return true
+	}
+
+	return false // already activated
+}
+
+func (rc *ReadCache) PutSeries(metric string, stats []*repr.StatRepr) bool {
+	item, ok := rc.lru.Get(metric)
+	if !ok {
+		return false
+	}
+	item.(*ReadCacheItem).PutSeries(stats)
+	return true
+}
+
+func (rc *ReadCache) PutRenderedSeries(metric string, data []RawDataPoint) bool {
+	item, ok := rc.lru.Get(metric)
+	if !ok {
+		return false
+	}
+	item.(*ReadCacheItem).PutRenderedSeries(data)
+	return true
+}
+
 // if we DON'T have the metric yet, DO NOT put it, the reader api
 // will put a "block" of points and basically tag the metric as "active"
 // so the writers will add metrics to the cache as it's assumed to be used in the
@@ -310,6 +368,13 @@ func Get(metric string, start time.Time, end time.Time) (stats []*repr.StatRepr,
 func Put(metric string, stat *repr.StatRepr) bool {
 	if _READ_CACHE_SINGLETON != nil {
 		return _READ_CACHE_SINGLETON.Put(metric, stat)
+	}
+	return false
+}
+
+func PutRenderedSeries(metric string, data []RawDataPoint) bool {
+	if _READ_CACHE_SINGLETON != nil {
+		return _READ_CACHE_SINGLETON.PutRenderedSeries(metric, data)
 	}
 	return false
 }

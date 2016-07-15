@@ -387,6 +387,26 @@ func genericTestSeries(t *testing.T, stype string) {
 			t.Fatalf("ERROR: %v", err)
 		}
 		t.Logf("Data size: %v", len(bss))
+
+		Convey("Series Type: "+stype+" - Multi Iterator", func() {
+			run := 0
+			max_run := 10
+			dd, _ := dummyStat()
+			for {
+				ser.AddStat(dd)
+				it, _ := ser.Iter()
+				idx := 0
+				for it.Next() {
+					idx++
+				}
+				So(idx, ShouldEqual, n_stats+run+1)
+				run++
+				if run > max_run {
+					break
+				}
+			}
+		})
+
 		Convey("Series Type: "+stype+" - Snappy/Iterator", func() {
 			// Snappy tests
 			c_bss := snappy.Encode(nil, bss)

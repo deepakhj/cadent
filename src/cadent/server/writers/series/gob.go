@@ -37,19 +37,8 @@ const (
 // https://github.com/golang/go/blob/0da4dbe2322eb3b6224df35ce3e9fc83f104762b/src/encoding/gob/encode.go
 // encBuffer is an extremely simple, fast implementation of a write-only byte buffer.
 // It never returns a non-nil error, but Write returns an error value so it matches io.Writer.
-const tooBig = 1 << 30
-
 type gobBuffer struct {
-	data    []byte
-	scratch [64]byte
-}
-
-var gobBufferPool = sync.Pool{
-	New: func() interface{} {
-		e := new(gobBuffer)
-		e.data = e.scratch[0:0]
-		return e
-	},
+	data []byte
 }
 
 func (e *gobBuffer) WriteByte(c byte) {
@@ -98,11 +87,15 @@ func NewGobTimeSeries(t0 int64, options *Options) *GobTimeSeries {
 		buf:      new(gobBuffer),
 	}
 	ret.encoder = gob.NewEncoder(ret.buf)
-	// tag it
-	ret.encoder.Encode(SIMPLE_BIN_SERIES_TAG)
-	// need the start time
-	ret.encoder.Encode(t0)
+	ret.writeHeader()
 	return ret
+}
+
+func (s *GobTimeSeries) writeHeader() {
+	// tag it
+	s.encoder.Encode(SIMPLE_BIN_SERIES_TAG)
+	// need the start time
+	s.encoder.Encode(s.T0)
 }
 
 func (s *GobTimeSeries) UnmarshalBinary(data []byte) error {
@@ -115,15 +108,7 @@ func (s *GobTimeSeries) UnmarshalBinary(data []byte) error {
 func (s *GobTimeSeries) Bytes() []byte {
 	s.mu.Lock()
 	byts := s.buf.Bytes()
-	s.buf.Reset()
-
-	// need to "re-add" the bits to the current buffer as Bytes
-	// wipes out the read pointer
-	n_buf := new(gobBuffer)
-	n_buf.data = byts
-	s.buf = n_buf
 	s.mu.Unlock()
-
 	return byts
 }
 
@@ -154,6 +139,8 @@ func (s *GobTimeSeries) Iter() (TimeSeriesIter, error) {
 
 // the t is the "time we want to add
 func (s *GobTimeSeries) AddPoint(t int64, min float64, max float64, first float64, last float64, sum float64, count int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.curTime == 0 {
 		s.curDelta = t - s.T0
 	} else {
@@ -161,7 +148,6 @@ func (s *GobTimeSeries) AddPoint(t int64, min float64, max float64, first float6
 	}
 
 	s.curTime = t
-	s.mu.Lock()
 	s.encoder.Encode(s.curDelta)
 	s.encoder.Encode(min)
 	s.encoder.Encode(max)
@@ -171,7 +157,6 @@ func (s *GobTimeSeries) AddPoint(t int64, min float64, max float64, first float6
 	s.encoder.Encode(count)
 	s.curBytes += 64 * 7
 	s.curCount += 1
-	s.mu.Unlock()
 	return nil
 }
 

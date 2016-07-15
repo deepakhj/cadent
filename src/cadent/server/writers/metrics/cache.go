@@ -16,10 +16,10 @@
 		...
 		cache_metric_size=102400  # number of metric strings to keep
 		cache_byte_size=1024 # number of bytes to keep in caches per metric
-		cache_series_type="protobuf" # gob, protobuf, json, gorilla
+		cache_series_type="gob" # gob, protobuf, json, gorilla, zipgob
 		...
 
-	We use the default "protobuf" series as
+	We use the default "gob" series as
 		a) it's pretty small, and
 		b) we can "sort it" by time (i.e. the format is NOT timeordered)
 		(note: gorilla would be ideal for space, but REQUIRES time ordered inputs)
@@ -41,8 +41,8 @@ import (
 )
 
 const (
-	CACHER_NUMBER_BYTES = 1024
-	CACHER_SERIES_TYPE  = "protobuf"
+	CACHER_NUMBER_BYTES = 8192
+	CACHER_SERIES_TYPE  = "gob"
 	CACHER_METRICS_KEYS = 102400
 )
 
@@ -210,7 +210,7 @@ func (wc *Cacher) Add(metric string, stat *repr.StatRepr) error {
 	if gots, ok := wc.Cache[metric]; ok {
 		cur_size := gots.Len()
 		if gots.Len() > wc.maxBytes {
-			wc.log.Error("Too Many Bytes for %s (max points: %d)... have to drop this one", metric, wc.maxBytes)
+			wc.log.Error("Too Many Bytes for %s (max bytes: %d current metrics: %v)... have to drop this one", metric, wc.maxBytes, gots.Count())
 			return fmt.Errorf("Cacher: too many points in cache, dropping metric")
 			stats.StatsdClientSlow.Incr("cacher.points.overflow", 1)
 		}
@@ -259,9 +259,10 @@ func (wc *Cacher) getStatsStream(metric string, ts series.TimeSeries) (repr.Stat
 }
 
 func (wc *Cacher) Get(metric string) (repr.StatReprSlice, error) {
+	stats.StatsdClientSlow.Incr("cacher.read.cache-gets", 1)
+
 	wc.mu.RLock()
 	defer wc.mu.RUnlock()
-	stats.StatsdClientSlow.Incr("cacher.read.cache-gets", 1)
 
 	if gots, ok := wc.Cache[metric]; ok {
 		stats.StatsdClientSlow.Incr("cacher.read.cache-gets.values", 1)

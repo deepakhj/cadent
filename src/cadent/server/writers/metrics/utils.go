@@ -14,6 +14,7 @@ package metrics
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -89,4 +90,13 @@ func ParseTime(st string) (int64, error) {
 
 	return 0, fmt.Errorf("Time `%s` could not be parsed :: %v", st, err)
 
+}
+
+// based on a start/end int and a step, determine just how many points we
+// should be returning
+func PointsInInterval(start int64, end int64, step int64) int64 {
+	if step <= 0 {
+		return math.MaxInt64 // basically "way too many"
+	}
+	return (end - start) / step
 }
