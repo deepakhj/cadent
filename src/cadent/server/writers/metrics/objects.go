@@ -205,7 +205,7 @@ func (r *RawRenderItem) Resample(step int) {
 	// data length of the new data array
 	data := make([]RawDataPoint, (endTime-start)/step+1)
 
-	log.Error("RESAMPLE\n\n")
+	//log.Error("RESAMPLE\n\n")
 	// 'i' iterates Original Data.
 	// 'o' iterates OutGoing Data.
 	// t is the current time we need to merge
@@ -226,7 +226,7 @@ func (r *RawRenderItem) Resample(step int) {
 		// remembering that the "first" bin may include points "behind" it (by a step) from the original list
 		// list
 		p := r.Data[i]
-		log.Errorf("Resample: %d: cur T: %d to T: %d -- DataP: %v", i, t, (t + step), r.Data[i])
+		//log.Errorf("Resample: %d: cur T: %d to T: %d -- DataP: %v", i, t, (t + step), r.Data[i])
 
 		// if the point is w/i [start-step, start)
 		// then these belong to the current Bin
@@ -244,7 +244,7 @@ func (r *RawRenderItem) Resample(step int) {
 		// if the points is w/i [t, t+step)
 		// grab all the points in the step range and "merge"
 		if p.Time >= t && p.Time < (t+step) {
-			log.Errorf("Start Merge FP: cur T: %d to T: %d -- DataP: %v :: [t, t+step): %v [t-step, t): %v ", t, (t + step), p, p.Time >= t && p.Time < (t+step), p.Time >= (t-step) && p.Time < t)
+			//log.Errorf("Start Merge FP: cur T: %d to T: %d -- DataP: %v :: [t, t+step): %v [t-step, t): %v ", t, (t + step), p, p.Time >= t && p.Time < (t+step), p.Time >= (t-step) && p.Time < t)
 			// start at current point and merge up
 			if data[o].IsNull() {
 				data[o] = p
@@ -252,7 +252,7 @@ func (r *RawRenderItem) Resample(step int) {
 				data[o].Merge(&p)
 			}
 
-			log.Errorf("Start Merge FP: cur T: %d to T: %d -- DataP: %v", t, (t + step), p)
+			//log.Errorf("Start Merge FP: cur T: %d to T: %d -- DataP: %v", t, (t + step), p)
 			for {
 				i++
 				if i >= cur_len {
@@ -262,7 +262,7 @@ func (r *RawRenderItem) Resample(step int) {
 				if np.Time >= (t + step) {
 					break
 				}
-				log.Errorf("Merging: cur T: %d to T: %d -- DataP: %v", t, (t + step), np)
+				//log.Errorf("Merging: cur T: %d to T: %d -- DataP: %v", t, (t + step), np)
 				data[o].Merge(&np)
 			}
 			data[o].Time = t
