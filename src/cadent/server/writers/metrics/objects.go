@@ -179,6 +179,10 @@ func (r *RawRenderItem) TrunctateTo(start int, end int) int {
 // counts, sums, etc are easily just added together, we just do that, the "Mean" is
 // more trouble (if no Sum and Counts are given) as we then need to do a time weighted
 // mean (see Merge above)
+//
+// If moving from a "large" time step to a "smaller" one you WILL GET NULL values for
+// time slots that do not match anything .. we cannot (will not) interpolate data like that
+// as it's 99% statistically "wrong"
 func (r *RawRenderItem) Resample(step int) {
 
 	cur_len := len(r.Data)

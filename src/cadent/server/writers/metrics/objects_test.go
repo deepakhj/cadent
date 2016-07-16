@@ -106,11 +106,18 @@ func TestWriterObjects(t *testing.T) {
 		for _, d := range rl.Data {
 			t.Logf("Pre Data: %v", d)
 		}
-		rl.Resample(1)
+		rl.Resample(20)
 		for _, d := range rl.Data {
 			t.Logf("Data: %v", d)
 		}
-		So(rl.Len(), ShouldEqual, len(t_list4)/2)
+		// can be the same or +/-1 depending on the start time and time divisor
+		t_l := len(t_list4)
+		So(rl.Len(), ShouldBeIn, []int{t_l/2 -1, t_l/2, t_l/2 + 1})
+
+		rl.Resample(5)
+		for _, d := range rl.Data {
+			t.Logf("RE2 Data: %v", d)
+		}
 	})
 
 	Convey("Raw Data item tests", t, func() {

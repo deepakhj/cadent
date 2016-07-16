@@ -37,32 +37,12 @@ Installation
 
     Well, first you need to install go .. https://golang.org  >= 1.5.1
     And a kernel that supports SO_REUSEPORT (linux 3.9 or higher and bsd like kernels)
+    And make sure to use VENDOR support (in golang 1.6, this is the default)
     
 
     git clone git@scm-main-01.dc.myfitnesspal.com:Metrics/cadent.git
-    export GOPATH=$(pwd)/src
-    
-    cd src/
-    
-    # because things are "private" we need to "hack around" go's usual pulling/get mechanism
-    #pull in more git repos you'll need
-    git clone git@scm-main-01.dc.myfitnesspal.com:Metrics/statsd.git
-    git clone git@scm-main-01.dc.myfitnesspal.com:Metrics/consistent.git
-    
-    
-    #get the deps
-    go get github.com/BurntSushi/toml
-    go get github.com/davecheney/profile
-    go get github.com/reusee/mmh3
-    go get gopkg.in/op/go-logging.v1
-    go get github.com/smartystreets/goconvey/convey
-    go get github.com/go-sql-driver/mysql
-    go get github.com/gocql/gocql
-    go get github.com/robyoung/go-whisper
-    go get github.com/jbenet/go-reuseport
-    go get github.com/Shopify/sarama
+    export GOPATH=$(pwd)
 
-    cd ../
     make
    
 
@@ -85,19 +65,33 @@ be consitently hashed, or "rejected" if so desired, as well as "accumulated" (al
 What I do
 ---------
 
+Once upon a time, our statsd servers had __waaaayyyy__ to many UDP errors (a common problem i've been told). 
+Like many projects, necessity, breeds, well, more necessity, but that's another conversation.
+So a Statsd Consistent Hashing Proxy in Golang was written to be alot faster and not drop any packets.
+ 
+And then ...
+
 This was designed to be an arbitrary proxy for any "line" that has a representative Key that needs to be forwarded to
 another server consistently (think carbon-relay.py in graphite and proxy.js in statsd) but it's able to handle
 any other "line" that can be regex out a Key.  
+
+And then ...
 
 It Supports health checking to remove nodes from the hash ring should the go out, and uses a pooling for
 outgoing connections.  It also supports various hashing algorithms to attempt to imitate other
 proxies to be transparent to them.
 
+And then ...
+
 Replication is supported as well to other places, there is "alot" of polling and line buffereing so we don't 
 waste sockets and time sending one line at a time for things that can support multiline inputs (i.e. statsd/graphite)
 
+And then ...
+
 A "PreRegex" filter on all incoming lines to either shift them to other backends (defined in the config) or
 simply reject the incoming line
+
+And then ...
 
 Finally an Accumulator, which initially "accumulates" lines that can be (thing statsd or carbon-aggrigate) then 
 emits them to a designated backend, which then can be "PreRegex" to other backends if nessesary
@@ -196,10 +190,10 @@ and the line "ends" with the Accumulator stage.
     
 Writers should hold more then just the "aggregated data point" but a few useful things like 
 
-    Min, Max, Sum, Mean, and Count
-    
+    Min, Max, Sum, and Count
+ 
 because who's to say what you really want from aggregated values.
-`Count` is just actually how many data points arrived in the aggregation window
+`Count` is just actually how many data points arrived in the aggregation window (for those wanting `Mean` (Sum / Count))
    
 Some example Configs for the current "3" writer backends
 
@@ -290,6 +284,13 @@ Config Options
         max_file_size = "104857600"  # max size in bytes of the before rotated (default 100Mb = 104857600)
 
 #### Cassandra
+
+NOTE: there are 2 cassandra "modes" .. Flat and Blob i call them
+
+Flat: store every "time, min, mas, sun, count, first, last" in a single row
+Blob: store a "chunk" of time (1hour) in a bit packed compressed blob
+
+Regardless of choice ...
 
 This is probably the best one for massive stat volume. It expects the schema like the MySQL version, 
 and you should certainly use 2.2 versions of cassandra.  Unlike the others, due to Cassandra's type goodness
