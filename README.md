@@ -190,7 +190,7 @@ and the line "ends" with the Accumulator stage.
     
 Writers should hold more then just the "aggregated data point" but a few useful things like 
 
-    Min, Max, Sum, and Count
+    Min, Max, Sum, First, Last and Count
  
 because who's to say what you really want from aggregated values.
 `Count` is just actually how many data points arrived in the aggregation window (for those wanting `Mean` (Sum / Count))
@@ -419,7 +419,7 @@ Some notes from the field::
 
 Write Speed:: Cassandra Protocol v3 (cassandra <= 2.1) is MUCH slower then Protocol v4 (cassandra 2.2 -> 3.X). 
 
-Given that we tend to need to write ~100-200 THOUSANDs metric points in our flush window (typically 10s)
+Given that we tend to need to write ~100-200 THOUSANDs metric points in our flush window (typically 5s-10s)
 if we cannot fully write all the stats in the flush window beteen flush times, the app will have to SKIP a flush write
 in order to basically not die a horrible death of RAM consumption and deadlocks.
 
@@ -429,7 +429,7 @@ Time Drift :: Golang's concurency and timers are not "realtime" meaning over tim
 move (i.e. 10s -> 10.00001s -> 10.00003s -> 10.0002s ...) as a result the metrics that get written will start to not be exactly
 10s appart, but start to drift from each other.  In Graphite this will cause some "holes" as it expect "exact" 10s offsets, but we need
 to interpolate the approximate bin shift windows for graphite to consume.  Golang's `Tickers` do attempt to compensate for drift
-but nothing is perfect.
+but nothing is perfect.  Graphite uses only Seconds for TimeStamps, so all should be pretty well contained in that time bound.
 
 To help with this, the tickers here attempt to try to flush things on proper mod internals 
 The ticker will try to start on `time % duration == 0` this is not exact, but it usually hits within a few milliseconds of the correct mode.
@@ -605,7 +605,7 @@ This may mean that you will see some random interspersed `nils` in the data on s
 
 #### Cassandra
 
-Currently the only reader, configured in the PreReg `Accumulator` section as follows
+Whisper and Cassandra are currently the only "readers" available, configured in the PreReg `Accumulator` section as follows
 
     [statsd-regex-map]
     listen_server="statsd-proxy" # which listener to sit in front of  (must be in the main config)
