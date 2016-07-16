@@ -215,7 +215,6 @@ useful for key space lookups
       `id` int(11) unsigned NOT NULL AUTO_INCREMENT,
       `stat` varchar(255) NOT NULL DEFAULT '',
       `sum` float NOT NULL,
-      `mean` float NOT NULL,
       `min` float NOT NULL,
       `max` float NOT NULL,
       `first` float NOT NULL,
