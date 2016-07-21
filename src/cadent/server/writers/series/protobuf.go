@@ -83,16 +83,37 @@ func (s *ProtobufTimeSeries) LastTime() int64 {
 func (s *ProtobufTimeSeries) AddPoint(t int64, min float64, max float64, first float64, last float64, sum float64, count int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	tmp := &ProtStat{
-		Time:  proto.Int64(t),
-		Min:   proto.Float64(min),
-		Max:   proto.Float64(max),
-		First: proto.Float64(first),
-		Last:  proto.Float64(last),
-		Sum:   proto.Float64(sum),
-		Count: proto.Int64(count),
+
+	// if the count is 1, then we only have "one" value that makes any sense .. the sum
+	if count == 1 || sameFloatVals(min, max, first, last, sum) {
+		t_s, _ := splitNano(t)
+		tmp := &ProtStatSmall{
+			Time: proto.Uint32(t_s),
+			Val:  proto.Float64(sum),
+		}
+		p_stat := &ProtStat{
+			StatType:  proto.Bool(false),
+			SmallStat: tmp,
+		}
+		s.Stats.Stats = append(s.Stats.Stats, p_stat)
+
+	} else {
+
+		tmp := &ProtStatFull{
+			Time:  proto.Int64(t),
+			Min:   proto.Float64(min),
+			Max:   proto.Float64(max),
+			First: proto.Float64(first),
+			Last:  proto.Float64(last),
+			Sum:   proto.Float64(sum),
+			Count: proto.Int64(count),
+		}
+		p_stat := &ProtStat{
+			StatType: proto.Bool(true),
+			Stat:     tmp,
+		}
+		s.Stats.Stats = append(s.Stats.Stats, p_stat)
 	}
-	s.Stats.Stats = append(s.Stats.Stats, tmp)
 	s.curTime = t
 	return nil
 }
@@ -145,24 +166,47 @@ func (it *ProtobufIter) Next() bool {
 }
 
 func (it *ProtobufIter) Values() (int64, float64, float64, float64, float64, float64, int64) {
-	return it.curStat.GetTime(),
-		float64(it.curStat.GetMin()),
-		float64(it.curStat.GetMax()),
-		float64(it.curStat.GetFirst()),
-		float64(it.curStat.GetLast()),
-		float64(it.curStat.GetSum()),
-		it.curStat.GetCount()
+	if it.curStat.GetStatType() {
+		return it.curStat.GetStat().GetTime(),
+			float64(it.curStat.GetStat().GetMin()),
+			float64(it.curStat.GetStat().GetMax()),
+			float64(it.curStat.GetStat().GetFirst()),
+			float64(it.curStat.GetStat().GetLast()),
+			float64(it.curStat.GetStat().GetSum()),
+			it.curStat.GetStat().GetCount()
+	}
+
+	v := float64(it.curStat.GetSmallStat().GetVal())
+	return combineSecNano(it.curStat.GetSmallStat().GetTime(), 0),
+		v,
+		v,
+		v,
+		v,
+		v,
+		1
 }
 
 func (it *ProtobufIter) ReprValue() *repr.StatRepr {
+	if it.curStat.GetStatType() {
+		return &repr.StatRepr{
+			Time:  time.Unix(0, it.curStat.GetStat().GetTime()),
+			Min:   repr.JsonFloat64(it.curStat.GetStat().GetMin()),
+			Max:   repr.JsonFloat64(it.curStat.GetStat().GetMax()),
+			Last:  repr.JsonFloat64(it.curStat.GetStat().GetLast()),
+			First: repr.JsonFloat64(it.curStat.GetStat().GetFirst()),
+			Sum:   repr.JsonFloat64(it.curStat.GetStat().GetSum()),
+			Count: it.curStat.GetStat().GetCount(),
+		}
+	}
+	v := repr.JsonFloat64(it.curStat.GetSmallStat().GetVal())
 	return &repr.StatRepr{
-		Time:  time.Unix(0, it.curStat.GetTime()),
-		Min:   repr.JsonFloat64(it.curStat.GetMin()),
-		Max:   repr.JsonFloat64(it.curStat.GetMax()),
-		Last:  repr.JsonFloat64(it.curStat.GetLast()),
-		First: repr.JsonFloat64(it.curStat.GetFirst()),
-		Sum:   repr.JsonFloat64(it.curStat.GetSum()),
-		Count: it.curStat.GetCount(),
+		Time:  time.Unix(int64(it.curStat.GetSmallStat().GetTime()), 0),
+		Min:   v,
+		Max:   v,
+		Last:  v,
+		First: v,
+		Sum:   v,
+		Count: 1,
 	}
 }
 

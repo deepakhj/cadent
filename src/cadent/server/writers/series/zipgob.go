@@ -113,12 +113,20 @@ func (s *ZipGobTimeSeries) AddPoint(t int64, min float64, max float64, first flo
 	s.curTime = t
 	s.mu.Lock()
 	s.encoder.Encode(s.curDelta)
-	s.encoder.Encode(min)
-	s.encoder.Encode(max)
-	s.encoder.Encode(first)
-	s.encoder.Encode(last)
-	s.encoder.Encode(sum)
-	s.encoder.Encode(count)
+	if count == 1 || sameFloatVals(min, max, first, last, sum) {
+		s.encoder.Encode(false)
+		s.encoder.Encode(sum) // just the sum
+		s.curBytes += 64 + 1
+	} else {
+		s.encoder.Encode(true)
+		s.encoder.Encode(min)
+		s.encoder.Encode(max)
+		s.encoder.Encode(first)
+		s.encoder.Encode(last)
+		s.encoder.Encode(sum)
+		s.encoder.Encode(count)
+		s.curBytes += 64*7 + 1
+	}
 	s.mu.Unlock()
 	s.curCount++
 	return nil

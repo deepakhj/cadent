@@ -34,7 +34,6 @@
     		segment frozen<segment_pos>,
     		path text,
     		length int,
-    		id varint,
     		has_data boolean,
  		id varint,  # repr.StatName.UniqueID()
   		PRIMARY KEY (segment, path, has_data)
@@ -42,13 +41,22 @@
 
 	CREATE INDEX ON metric.path (id);
 
-	CREATE TABLE tag (
-    		id text,  # see repr.StatName
+	CREATE TABLE metric.tag (
+    		id varint,  # see repr.StatName.UniqueId()
     		tags list<text>  # this will be a [ "name=val", "name=val", ...] so we can do `IN "moo=goo" in tag`
     		PRIMARY KEY (id)
 	);
+	CREATE INDEX ON metric.tag (tags);
 
-	CREATE INDEX ON tag (tags);
+	# an index of tags basically to do name="{regex}" things
+	# get a list of name=values and then Q the metric.tag for id lists
+	CREATE TABLE metric.tag_list (
+		name text
+    		value text
+    		PRIMARY KEY (name)
+	);
+	CREATE INDEX ON metric.tag_list (value);
+
 
 */
 
@@ -80,11 +88,10 @@ const (
 /** Being Cassandra we need some mappings to match the schemas **/
 
 /*
- 	metric.segment (
-       		pos int,
-       		segment text,
-   	PRIMARY KEY (pos, segment)
-    	)
+ 	CREATE TYPE metric.segment_pos (
+    		pos int,
+    		segment text
+	);
 */
 type CassSegment struct {
 	Pos     int
@@ -92,13 +99,13 @@ type CassSegment struct {
 }
 
 /*
- 	metric.path (
-		segment frozen<segment_pos>,
-		path text,
-		length int,
-		id varint, # repr.StatName.UniqueId()
-		has_data bool,
-		PRIMARY KEY (segment, path, has_data)
+ 	CREATE TABLE metric.path (
+    		segment frozen<segment_pos>,
+    		path text,
+    		length int,
+    		id varint,  # see repr.StatName.UniqueId()
+    		has_data boolean,
+  		PRIMARY KEY (segment, path, has_data)
 	)
 */
 type CassPath struct {

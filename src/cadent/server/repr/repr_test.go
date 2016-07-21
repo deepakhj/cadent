@@ -12,22 +12,40 @@ func TestStatAccumulatorRepr(t *testing.T) {
 	// Only pass t into top-level Convey calls
 	moo_nm := StatName{Key: "moo", Resolution: 1}
 	ss := StatRepr{
-		Name:       moo_nm,
-		Sum:        5,
-		Min:        1,
-		Max:        JsonFloat64(math.Inf(1)),
-		Count:      4,
-		Time:       time.Now(),
+		Name:  moo_nm,
+		Sum:   5,
+		Min:   1,
+		Max:   JsonFloat64(math.Inf(1)),
+		Count: 4,
+		Time:  time.Now(),
 	}
-	goo_nm := StatName{Key: "goo", Resolution: 2}
+
+	goo_nm := StatName{Key: "goo", Resolution: 2, Tags: [][]string{{"nameZ", "value1"}, {"nameA", "value2"}}}
 	ss2 := StatRepr{
-		Name:       goo_nm,
-		Sum:        5,
-		Min:        1,
-		Max:        3,
-		Count:      4,
-		Time:       time.Now(),
+		Name:  goo_nm,
+		Sum:   5,
+		Min:   1,
+		Max:   3,
+		Count: 4,
+		Time:  time.Now(),
 	}
+
+	Convey("Stat Names", t, func() {
+		Convey("tags should sort", func() {
+			org := goo_nm.Tags.String()
+			So(org, ShouldEqual, "nameZ=value1,nameA=value2")
+			tags_str := goo_nm.SortedTags().String()
+			So(tags_str, ShouldEqual, "nameA=value2,nameZ=value1")
+		})
+		Convey("unique IDs should be correct", func() {
+			So(goo_nm.UniqueId(), ShouldEqual, 1174965185175832276) // fnv64a(key+:+sortedNames(tags))
+			So(moo_nm.UniqueId(), ShouldEqual, 962860623706201084)
+		})
+		Convey("Graphite names should be correct", func() {
+			So(goo_nm.Name(), ShouldEqual, "goo.nameA=value2.nameZ=value1")
+			So(moo_nm.Name(), ShouldEqual, "moo")
+		})
+	})
 
 	STAT_REPR_CACHE.Add(ss)
 	Convey("Global Cacher", t, func() {

@@ -27,6 +27,10 @@ func Benchmark_GobSeries_Raw_Size(b *testing.B) {
 	benchmarkRawSize(b, "binary", 1024)
 }
 
+func Benchmark_GobSeries_SingleVal_Raw_Size(b *testing.B) {
+	benchmarkRawSizeSingleStat(b, "binary", 1024)
+}
+
 func Benchmark_GobSeries_Snappy_Compress(b *testing.B) {
 	benchmarkSnappyCompress(b, "binary", 1024)
 }

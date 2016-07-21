@@ -34,8 +34,16 @@ func (s JsonFloat64) MarshalJSON() ([]byte, error) {
 type SortingTags [][]string
 
 func (p SortingTags) Len() int           { return len(p) }
-func (p SortingTags) Less(i, j int) bool { return strings.Compare(p[i][0], p[j][0]) > 0 }
+func (p SortingTags) Less(i, j int) bool { return strings.Compare(p[i][0], p[j][0]) < 0 }
 func (p SortingTags) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
+
+func (s SortingTags) String() string {
+	str := make([]string, len(s))
+	for idx, tag := range s {
+		str[idx] = strings.Join(tag, "=")
+	}
+	return strings.Join(str, ",")
+}
 
 type StatId uint64
 
@@ -49,7 +57,7 @@ type StatName struct {
 // take the various "parts" (keys, resolution, tags) and return a basic md5 hash of things
 func (s *StatName) UniqueId() StatId {
 	buf := fnv.New64a()
-	fmt.Fprintf(buf, "%s:%v", s.Key, s.SortedTags())
+	fmt.Fprintf(buf, "%s:%s", s.Key, s.SortedTags())
 	return StatId(buf.Sum64())
 }
 
@@ -80,14 +88,26 @@ func (s *StatName) MergeTags(tags SortingTags) SortingTags {
 }
 
 // return an array of [ [name, val] ...] sorted by name
-func (s *StatName) ByteSize() int {
+func (s *StatName) ByteSize() int64 {
 	buf := new(bytes.Buffer)
 	fmt.Fprintf(buf, "%s%v", s.Key, s.SortedTags())
-	return buf.Len()
+	return int64(buf.Len())
 }
 
 func (s *StatName) IsBlank() bool {
 	return len(s.Key) == 0
+}
+
+// this is a "graphite" compatible name of {key}.{name=value}.{name=value}
+// with Names of the tags SORTED
+func (s *StatName) Name() string {
+	s_tags := s.SortedTags()
+	str := make([]string, 1+len(s_tags))
+	str[0] = s.Key
+	for idx, tg := range s_tags {
+		str[idx+1] = strings.Join(tg, "=")
+	}
+	return strings.Join(str, ".")
 }
 
 type StatRepr struct {
@@ -115,7 +135,7 @@ func (s *StatRepr) ByteSize() int64 {
 	if s == nil {
 		return 0
 	}
-	return int64(len(s.Name.Key)) + 32 + 32 + 104 // obtained from `reflect.TypeOf(StatRepr{}).Size()`
+	return s.Name.ByteSize() + int64(8*64)
 }
 
 func (s *StatRepr) Copy() *StatRepr {

@@ -62,9 +62,9 @@ func TestWriterReadCache(t *testing.T) {
 	Convey("ReadCache", t, func() {
 
 		m_bytes := 512
-		m_keys := 5
+		mx_bytes := 5 * m_bytes
 		max_back := time.Second * 20
-		c_item := NewReadCache(m_keys, m_bytes, max_back)
+		c_item := NewReadCache(mx_bytes, m_bytes, max_back)
 
 		t_start := time.Now()
 
@@ -100,10 +100,10 @@ func TestWriterReadCache(t *testing.T) {
 	Convey("ReadCache Singleton", t, func() {
 
 		m_bytes := 512
-		m_keys := 5
+		mx_bytes := 5 * m_bytes
 		max_back := time.Second * 20
 		// activate the singleton
-		gots := InitReadCache(m_keys, m_bytes, max_back)
+		gots := InitReadCache(mx_bytes, m_bytes, max_back)
 		So(gots, ShouldNotEqual, nil)
 		t_start := time.Now()
 

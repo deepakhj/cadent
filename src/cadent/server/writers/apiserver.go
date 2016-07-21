@@ -56,8 +56,8 @@ type ApiConfig struct {
 	BasePath                   string           `toml:"base_path"`
 	ApiMetricOptions           ApiMetricConfig  `toml:"metrics"`
 	ApiIndexerOptions          ApiIndexerConfig `toml:"indexer"`
-	MaxReadCacheItems          int              `toml:"read_cache_max_items"`
-	MaxReadCacheItemsPerMetric int              `toml:"read_cache_max_bytes_per_metric"`
+	MaxReadCacheBytes          int              `toml:"read_cache_total_bytes"`
+	MaxReadCacheBytesPerMetric int              `toml:"read_cache_max_bytes_per_metric"`
 }
 
 func (re *ApiConfig) GetMetrics(resolution float64) (metrics.Metrics, error) {
@@ -151,16 +151,16 @@ func (re *ApiLoop) Config(conf ApiConfig, resolution float64) (err error) {
 	}
 
 	// readcache
-	mx_metrics := metrics.READ_CACHER_METRICS_KEYS
+	mx_ram := metrics.READ_CACHER_TOTAL_RAM
 	mx_stats := metrics.READ_CACHER_MAX_SERIES_BYTES
-	if conf.MaxReadCacheItems > 0 {
-		mx_metrics = conf.MaxReadCacheItems
+	if conf.MaxReadCacheBytes > 0 {
+		mx_ram = conf.MaxReadCacheBytes
 	}
-	if conf.MaxReadCacheItemsPerMetric > 0 {
-		mx_stats = conf.MaxReadCacheItemsPerMetric
+	if conf.MaxReadCacheBytesPerMetric > 0 {
+		mx_stats = conf.MaxReadCacheBytesPerMetric
 	}
 
-	re.ReadCache = metrics.InitReadCache(mx_metrics, mx_stats, metrics.READ_CACHER_MAX_LAST_ACCESS)
+	re.ReadCache = metrics.InitReadCache(mx_ram, mx_stats, metrics.READ_CACHER_MAX_LAST_ACCESS)
 
 	return nil
 }

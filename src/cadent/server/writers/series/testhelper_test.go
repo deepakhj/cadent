@@ -36,6 +36,16 @@ func dummyStat() (*repr.StatRepr, time.Time) {
 	return stat, n
 }
 
+func dummyStatSingleVal() (*repr.StatRepr, time.Time) {
+	stat := &repr.StatRepr{
+		Sum:   repr.JsonFloat64(rand.Float64()),
+		Count: 1,
+	}
+	n := time.Now()
+	stat.Time = n
+	return stat, n
+}
+
 func dummyStatInt() (*repr.StatRepr, time.Time) {
 	stat := &repr.StatRepr{
 		Sum:   repr.JsonFloat64(rand.Int63n(100)),
@@ -116,6 +126,31 @@ func addStats(ser TimeSeries, stat *repr.StatRepr, num_s int, randomize bool) ([
 	return times, stats, nil
 }
 
+func addSingleValStat(ser TimeSeries, stat *repr.StatRepr, num_s int, randomize bool) ([]int64, []*repr.StatRepr, error) {
+	times := make([]int64, 0)
+	stats := make([]*repr.StatRepr, 0)
+	var err error
+	for i := 0; i < num_s; i++ {
+
+		if randomize {
+			dd, _ := time.ParseDuration(fmt.Sprintf("%ds", rand.Int31n(10)+1))
+			stat.Time = stat.Time.Add(dd)
+			stat.Sum = repr.JsonFloat64(float64(stat.Sum) + float64(i))
+		} else {
+			dd, _ := time.ParseDuration(fmt.Sprintf("%ds", 1+i))
+			stat.Time = stat.Time.Add(dd)
+			stat.Sum += repr.JsonFloat64(1 + i)
+		}
+		times = append(times, stat.Time.UnixNano())
+		stats = append(stats, stat.Copy())
+		err = ser.AddStat(stat)
+		if err != nil {
+			return times, stats, err
+		}
+	}
+	return times, stats, nil
+}
+
 func benchmarkRawSize(b *testing.B, stype string, n_stat int) {
 	b.ResetTimer()
 	stat, n := dummyStat()
@@ -133,6 +168,26 @@ func benchmarkRawSize(b *testing.B, stype string, n_stat int) {
 		runs++
 	}
 	b.Logf("Raw Size for %v stats: %v Bytes per stat: %v", n_stat, pre_len/runs, b_per_stat/runs)
+
+}
+
+func benchmarkRawSizeSingleStat(b *testing.B, stype string, n_stat int) {
+	b.ResetTimer()
+	stat, n := dummyStatSingleVal()
+	b.SetBytes(int64(8 * 8 * n_stat)) //8 64bit numbers
+	runs := int64(0)
+	b_per_stat := int64(0)
+	pre_len := int64(0)
+
+	for i := 0; i < b.N; i++ {
+		ser, _ := NewTimeSeries(stype, n.UnixNano(), NewDefaultOptions())
+		addSingleValStat(ser, stat, n_stat, true)
+		bss, _ := ser.MarshalBinary()
+		pre_len += int64(len(bss))
+		b_per_stat += int64(int64(len(bss)) / int64(n_stat))
+		runs++
+	}
+	b.Logf("Single Val: Raw Size for %v stats: %v Bytes per stat: %v", n_stat, pre_len/runs, b_per_stat/runs)
 
 }
 

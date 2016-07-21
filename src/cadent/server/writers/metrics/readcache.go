@@ -13,7 +13,7 @@
 	[acc.agg.writer.metrics.options]
 		...
 		# ram requirements are  (read_cache_metrics_points * read_cache_max_bytes_per_metric) + some overhead
-		read_cache_metrics_points=10240  # number of metric strings to keep
+		read_cache_total_bytes=10485760  #(bytes: default 10Mb) max amount of ram to cache .. the number stored metrics is ~read_cache_max_bytes_per_metric/read_cache_total_ram
 		read_cache_max_bytes_per_metric=8192 # number of bytes per metric to keep around
 		...
 
@@ -39,7 +39,7 @@ import (
 
 const (
 	READ_CACHER_MAX_SERIES_BYTES = 8192
-	READ_CACHER_METRICS_KEYS     = 10240
+	READ_CACHER_TOTAL_RAM        = 10485760
 	READ_CACHER_MAX_LAST_ACCESS  = time.Minute * time.Duration(60) // if an item is not accesed in 60 min purge it
 )
 
@@ -192,7 +192,7 @@ func (rc *ReadCacheItem) ToString() string {
 type ReadCache struct {
 	lru *lrucache.LRUCache
 
-	MaxItems          int
+	MaxBytes          int
 	MaxBytesPerMetric int
 	MaxLastAccess     time.Duration // we periodically prune the cache or things that have not been accessed in ths duration
 
@@ -203,16 +203,16 @@ type ReadCache struct {
 // this will estimate the bytes needed for the cache, since the key names
 // are dynamic, there is no way to "really know" much one "stat" ram will take up
 // so we use a 100 char string as a rough guess
-func NewReadCache(max_items int, max_bytes_per_metric int, maxback time.Duration) *ReadCache {
+func NewReadCache(max_bytes int, max_bytes_per_metric int, maxback time.Duration) *ReadCache {
 	rc := &ReadCache{
-		MaxItems:          max_items,
+		MaxBytes:          max_bytes,
 		MaxBytesPerMetric: max_bytes_per_metric,
 		shutdown:          make(chan bool),
 		InsertQueue:       make(chan *repr.StatRepr, 512), // a little buffer, just more to make "adding async"
 	}
 
 	// lru capacity is the size of a stat object * MaxItemsPerMetric * MaxItems
-	rc.lru = lrucache.NewLRUCache(uint64(max_bytes_per_metric * max_items))
+	rc.lru = lrucache.NewLRUCache(uint64(max_bytes))
 
 	go rc.Start()
 
@@ -341,11 +341,11 @@ func (rc *ReadCache) Size() uint64 {
 
 var _READ_CACHE_SINGLETON *ReadCache
 
-func InitReadCache(max_items int, max_items_per_metric int, maxback time.Duration) *ReadCache {
+func InitReadCache(max_bytes int, max_bytes_per_metric int, maxback time.Duration) *ReadCache {
 	if _READ_CACHE_SINGLETON != nil {
 		return _READ_CACHE_SINGLETON
 	}
-	_READ_CACHE_SINGLETON = NewReadCache(max_items, max_items_per_metric, maxback)
+	_READ_CACHE_SINGLETON = NewReadCache(max_bytes, max_bytes_per_metric, maxback)
 	return _READ_CACHE_SINGLETON
 }
 

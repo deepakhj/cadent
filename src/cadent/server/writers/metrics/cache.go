@@ -65,6 +65,7 @@ the "render" step will then attempt to backfill those points
 type CacheQueueItem struct {
 	metric repr.StatId
 	count  int // number of stats in it
+	bytes  int // byte number
 }
 
 func (wqi *CacheQueueItem) ToString() string {
@@ -77,6 +78,13 @@ type CacheQueue []*CacheQueueItem
 func (v CacheQueue) Len() int           { return len(v) }
 func (v CacheQueue) Swap(i, j int)      { v[i], v[j] = v[j], v[i] }
 func (v CacheQueue) Less(i, j int) bool { return v[i].count < v[j].count }
+
+// we pop the "most" biggest item
+type CacheQueueBytes []*CacheQueueItem
+
+func (v CacheQueueBytes) Len() int           { return len(v) }
+func (v CacheQueueBytes) Swap(i, j int)      { v[i], v[j] = v[j], v[i] }
+func (v CacheQueueBytes) Less(i, j int) bool { return v[i].bytes < v[j].bytes }
 
 // The "cache" item for points
 type Cacher struct {
@@ -148,7 +156,7 @@ func (wc *Cacher) updateQueue() {
 	f_len := 0
 	for key, values := range wc.Cache {
 		p_len := values.Len()
-		newQueue = append(newQueue, &CacheQueueItem{key, p_len})
+		newQueue = append(newQueue, &CacheQueueItem{key, p_len, values.Len()})
 		f_len += values.Count()
 	}
 	wc.mu.RUnlock()

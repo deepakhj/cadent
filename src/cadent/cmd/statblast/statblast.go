@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math"
 	"math/rand"
 	"net"
 	"net/url"
@@ -16,6 +17,13 @@ import (
 	"syscall"
 	"time"
 )
+
+var t_now time.Time
+
+func init() {
+	rand.Seed(time.Now().Unix())
+	t_now = time.Now()
+}
 
 var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 var randWords = []string{"test", "house", "here", "badline", "cow", "now"}
@@ -43,11 +51,15 @@ func RandItem(strs []string) string {
 }
 
 func GraphiteStr(ct int) string {
+	// use the key string to determine "int scale" of things
+	key := sprinter(numWords)
+	tn := int(time.Now().Hour())
+	offset := 5000*len(key) - 1000*int(math.Sin(float64(tn/24)))
 	return fmt.Sprintf(
 		"graphitetest.%s %d %d\n",
-		sprinter(numWords),
-		ct,
-		int32(time.Now().Unix()),
+		key,
+		offset+ct,
+		time.Now().Unix(),
 	)
 }
 

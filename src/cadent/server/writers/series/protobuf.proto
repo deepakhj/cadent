@@ -1,7 +1,7 @@
 
 package series;
 
-message ProtStat {
+message ProtStatFull {
     required int64 time = 1;
     required int64 count = 7;
     required double min = 2;
@@ -11,6 +11,18 @@ message ProtStat {
     required double last = 6;
 }
 
+// object for just int32 time and one value
+message ProtStatSmall {
+    required uint32 time = 1;
+    required double val = 2;
+}
+
+message ProtStat {
+    required bool stat_type = 1; // false == small true == full
+    optional ProtStatFull stat = 2;
+    optional ProtStatSmall small_stat = 3;
+}
+
 message ProtStats {
-    repeated ProtStat stats = 1;
+    repeated ProtStat stats = 2;
 }

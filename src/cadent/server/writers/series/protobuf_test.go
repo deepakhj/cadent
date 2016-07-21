@@ -8,16 +8,20 @@ func TestProtbufArrayTimeSeries(t *testing.T) {
 	genericTestSeries(t, "protobuf")
 }
 
-func Benchmark_ProtoBufPut(b *testing.B) {
+func Benchmark_ProtoBuf_Put(b *testing.B) {
 	benchmarkSeriesPut(b, "protobuf", 1024)
 }
 
-func Benchmark_ProtoBuf8k(b *testing.B) {
+func Benchmark_ProtoBuf_8k(b *testing.B) {
 	benchmarkSeriesPut8kRandom(b, "protobuf")
 }
 
-func Benchmark_ProtoBufRawSize(b *testing.B) {
+func Benchmark_ProtoBuf_Raw_Size(b *testing.B) {
 	benchmarkRawSize(b, "protobuf", 1024)
+}
+
+func Benchmark_ProtoVuf_SingleVal_Raw_Size(b *testing.B) {
+	benchmarkRawSizeSingleStat(b, "binary", 1024)
 }
 
 func Benchmark_ProtoBufSnappyCompress(b *testing.B) {

@@ -11,9 +11,15 @@
 
 	format is
 
-	[tag][T0][deltaT, min, max, first, last, sum, count ....]
+	[tag][T0][fullbit, deltaT, min, max, first, last, sum, count],[ ....]
+
+	if fullbit == false/1
+
+	[tag][T0][fullbit, deltaT, sum],[ ....]
 
 
+	the fullbit is basically used for "lowres" things (or all values are the same) and if the count of
+	the incomeing stat is "1" only one value makes any sense
 
 */
 
@@ -149,13 +155,20 @@ func (s *GobTimeSeries) AddPoint(t int64, min float64, max float64, first float6
 
 	s.curTime = t
 	s.encoder.Encode(s.curDelta)
-	s.encoder.Encode(min)
-	s.encoder.Encode(max)
-	s.encoder.Encode(first)
-	s.encoder.Encode(last)
-	s.encoder.Encode(sum)
-	s.encoder.Encode(count)
-	s.curBytes += 64 * 7
+	if count == 1 || sameFloatVals(min, max, first, last, sum) {
+		s.encoder.Encode(false)
+		s.encoder.Encode(sum) // just the sum
+		s.curBytes += 64 + 1
+	} else {
+		s.encoder.Encode(true)
+		s.encoder.Encode(min)
+		s.encoder.Encode(max)
+		s.encoder.Encode(first)
+		s.encoder.Encode(last)
+		s.encoder.Encode(sum)
+		s.encoder.Encode(count)
+		s.curBytes += 64*7 + 1
+	}
 	s.curCount += 1
 	return nil
 }
@@ -223,6 +236,33 @@ func (it *GobIter) Next() bool {
 	it.curTime = it.T0 + it.tDelta
 
 	//log.Printf("Delta Read: %d: %d: %d", t_delta, it.tDelta, it.curTime)
+
+	// check the full/small bit
+	var f_bit bool
+	err = it.decoder.Decode(&f_bit)
+	if err != nil {
+		it.finished = true
+		it.err = err
+		return false
+	}
+
+	// if the full.small bit is false, just one val to decode
+	if !f_bit {
+		var val float64
+		err = it.decoder.Decode(&val)
+		if err != nil {
+			it.finished = true
+			it.err = err
+			return false
+		}
+		it.min = val
+		it.max = val
+		it.first = val
+		it.last = val
+		it.count = 1
+		it.sum = val
+		return true
+	}
 
 	err = it.decoder.Decode(&it.min)
 	if err != nil {

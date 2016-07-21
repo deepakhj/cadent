@@ -1,7 +1,13 @@
 /*
   Indexer Reader/Writer
 
-  just Read/Write the metric key
+  just Read/Write the StatName object
+
+  StatNames have 4 writable indexes: key, uniqueId, tags
+
+  The Unique ID is basically a hash of the key:sortedByName(tags)
+
+
 */
 
 package indexer
@@ -14,7 +20,7 @@ type Indexer interface {
 
 	Write(metric repr.StatName) error // write a metric key
 
-	// reader methods
+	// reader methods this is an "extra" graphite based entity
 	// /metrics/find/?query=stats.counters.consthash-graphite.all-1-stats-infra-integ.mfpaws.com.*
 	/*
 		[
@@ -22,6 +28,7 @@ type Indexer interface {
 			text: "accumulator",
 			expandable: 1,
 			leaf: 0,
+			key: "stats.counters.consthash-graphite.all-1-stats-infra-integ.mfpaws.com.accumulator"
 			id: "stats.counters.consthash-graphite.all-1-stats-infra-integ.mfpaws.com.accumulator",
 			allowChildren: 1
 			}
