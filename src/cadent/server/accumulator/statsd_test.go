@@ -144,8 +144,8 @@ func TestStatsdAccumulator(t *testing.T) {
 		got_timer = ""
 		for _, item := range b_arr.Stats {
 			t.Logf("Flush Stats Statsd Line: %v", item)
-			if strings.Contains(item.Key, "stats.timers") {
-				got_timer = item.Key
+			if strings.Contains(item.Name.Key, "stats.timers") {
+				got_timer = item.Name.Key
 			}
 
 		}

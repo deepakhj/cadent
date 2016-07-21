@@ -339,9 +339,9 @@ func (acc *Accumulator) CurrentStats() *repr.ReprList {
 
 	for idx, stat := range stats {
 		rr := stat.Repr()
-		rr.Name.StatKey = idx
+		rr.Name.Key = idx
 		rr.Time = t
-		rr.Resolution = acc.FlushTimes[0].Seconds()
+		rr.Name.Resolution = uint32(acc.FlushTimes[0].Seconds())
 		s_rep.Add(rr)
 	}
 	return s_rep

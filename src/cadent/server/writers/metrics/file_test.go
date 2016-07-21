@@ -39,13 +39,12 @@ func TestFileWriterAccumulator(t *testing.T) {
 		})
 
 		st := repr.StatRepr{
-			Time:       time.Now(),
-			Name:       repr.StatName{StatKey: "goo"},
-			Sum:        5,
-			Min:        1,
-			Max:        3,
-			Count:      4,
-			Resolution: 2,
+			Time:  time.Now(),
+			Name:  repr.StatName{Key: "goo", Resolution: 2},
+			Sum:   5,
+			Min:   1,
+			Max:   3,
+			Count: 4,
 		}
 
 		Convey("Should write", func() {

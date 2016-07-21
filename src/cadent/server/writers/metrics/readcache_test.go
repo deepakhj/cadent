@@ -9,16 +9,14 @@ import (
 )
 
 func TestWriterReadCache(t *testing.T) {
-	return
 	stat := repr.StatRepr{
-		Name:       repr.StatName{Key: "goo", StatKey: "goo"},
-		Sum:        5,
-		Mean:       10,
-		Min:        1,
-		Max:        3,
-		Last:       2,
-		Count:      4,
-		Resolution: 2,
+		Name:  repr.StatName{Key: "goo", Resolution: 2},
+		Sum:   5,
+		Mean:  10,
+		Min:   1,
+		Max:   3,
+		Last:  2,
+		Count: 4,
 	}
 
 	r_list := []string{"moo", "goo", "loo", "hoo", "loo", "noo", "too", "elo", "houses", "trains", "acrs", "and", "other", "things"}
@@ -82,7 +80,7 @@ func TestWriterReadCache(t *testing.T) {
 			c_item.Put(s.Name.Key, s)
 		}
 		t.Logf("ReadCache: Size: %d, Keys: %d", c_item.Size(), c_item.NumKeys())
-		t.Logf("ReadCache: %v", c_item.lru.Items())
+		//t.Logf("ReadCache: %v", c_item.lru.Items())
 		Convey("ReadCache should have some space left", func() {
 			So(c_item.Size(), ShouldNotEqual, 0)
 		})
@@ -109,6 +107,10 @@ func TestWriterReadCache(t *testing.T) {
 		So(gots, ShouldNotEqual, nil)
 		t_start := time.Now()
 
+		var t_series RawRenderItem
+		raw_nm := "moo.goo.org"
+		t_series.Metric = raw_nm
+
 		for i := 0; i < 1000; i++ {
 			s := stat.Copy()
 			m_idx := i % len(r_list)
@@ -119,10 +121,14 @@ func TestWriterReadCache(t *testing.T) {
 			s.Time = t_start.Add(time.Duration(time.Second * time.Duration(rand.Int63n(1000))))
 			GetReadCache().ActivateMetric(s.Name.Key, nil)
 			GetReadCache().Put(s.Name.Key, s)
+
+			s2 := s.Copy()
+			s.Name.Key = raw_nm
+			t_series.Data = append(t_series.Data, RawDataPoint{Mean: float64(s2.Mean), Time: uint32(s2.Time.Unix())})
 		}
 		t.Logf("ReadCache Singleton: Size: %d, Keys: %d Capacity: %d", GetReadCache().Size(), GetReadCache().NumKeys(), GetReadCache().lru.GetCapacity())
-		t.Logf("ReadCache Singleton: %v", GetReadCache().lru.Items())
-		Convey("ReadCache Singleton should space consumed", func() {
+		//t.Logf("ReadCache Singleton: %v", GetReadCache().lru.Items())
+		Convey("ReadCache Singleton should have some space", func() {
 			So(GetReadCache().Size(), ShouldNotEqual, 0)
 		})
 
@@ -133,6 +139,20 @@ func TestWriterReadCache(t *testing.T) {
 				gots := GetReadCache().GetAll(i.Key)
 				t_gots, _, _ := GetReadCache().Get(i.Key, t_start, t_end)
 				So(len(gots), ShouldEqual, len(t_gots))
+
+			}
+		})
+		Convey("ReadCache Singleton Activate From rendered", func() {
+
+			GetReadCache().ActivateMetricFromRenderData(&t_series)
+			dd := GetReadCache().GetAll(raw_nm)
+			t.Logf("Orig Data: %d .. Cached Data: %d", len(t_series.Data), len(dd))
+			o_data := t_series.Data[len(t_series.Data)-len(dd):]
+			for idx, stat := range dd {
+				So(o_data[idx].Time, ShouldEqual, stat.Time.Unix())
+				So(o_data[idx].Mean, ShouldEqual, float64(stat.Sum)/float64(stat.Count))
+				t.Logf("Orig Data: %v:%v", o_data[idx].Time, o_data[idx].Mean)
+				t.Logf("Cache Data: %v:%v", stat.Time.Unix(), float64(stat.Sum)/float64(stat.Count))
 
 			}
 		})

@@ -5,6 +5,7 @@ Dump the line graphite expects to get
 package accumulator
 
 import (
+	"cadent/server/repr"
 	"fmt"
 	"time"
 )
@@ -27,16 +28,16 @@ func (g *GraphiteFormatter) SetAccumulator(acc AccumulatorItem) {
 }
 
 func (g *GraphiteFormatter) Type() string { return GRAPHITE_FMT_NAME }
-func (g *GraphiteFormatter) ToString(key string, val float64, tstamp int32, stats_type string, tags []AccumulatorTags) string {
+func (g *GraphiteFormatter) ToString(name repr.StatName, val float64, tstamp int32, stats_type string, tags []AccumulatorTags) string {
 	if tstamp <= 0 {
 		tstamp = int32(time.Now().Unix())
 	}
-	return fmt.Sprintf("%s %f %d", key, val, tstamp)
+	return fmt.Sprintf("%s %f %d", name.Key, val, tstamp)
 }
 
-func (g *GraphiteFormatter) Write(buf BinaryWriter, key string, val float64, tstamp int32, stats_type string, tags []AccumulatorTags) {
+func (g *GraphiteFormatter) Write(buf BinaryWriter, name repr.StatName, val float64, tstamp int32, stats_type string, tags []AccumulatorTags) {
 	if tstamp <= 0 {
 		tstamp = int32(time.Now().Unix())
 	}
-	fmt.Fprint(buf, "%s %f %d", key, val, tstamp)
+	fmt.Fprint(buf, "%s %f %d", name.Key, val, tstamp)
 }

@@ -32,9 +32,10 @@ type KafkaMetric struct {
 	Count      int64            `json:"count"`
 	Last       repr.JsonFloat64 `json:"last"`
 	First      repr.JsonFloat64 `json:"first"`
-	Resolution float64          `json:"resolution"`
-	TTL        int64            `json:"ttl"`
-	Tags       []string         `json:"tags"` // key1=value1,key2=value2...
+	Resolution uint32           `json:"resolution"`
+	Id         repr.StatId      `json:"id"`
+	TTL        uint32           `json:"ttl"`
+	Tags       repr.SortingTags `json:"tags"` // key1=value1,key2=value2...
 
 	encoded []byte
 	err     error
@@ -62,7 +63,7 @@ type KafkaMetrics struct {
 	conn        sarama.AsyncProducer
 	indexer     indexer.Indexer
 	resolutions [][]int
-	static_tags []string
+	static_tags repr.SortingTags
 
 	batches int // number of stats to "batch" per message (default 0)
 	log     *logging.Logger
@@ -91,7 +92,13 @@ func (kf *KafkaMetrics) Config(conf map[string]interface{}) error {
 
 	g_tag, ok := conf["tags"]
 	if ok {
-		kf.static_tags = strings.Split(g_tag.(string), ",")
+		t_tags := strings.Split(g_tag.(string), ",")
+		for _, tag := range t_tags {
+			spl := strings.Split(tag, "=")
+			if len(spl) == 2 {
+				kf.static_tags = append(kf.static_tags, spl)
+			}
+		}
 	}
 	return nil
 }
@@ -119,6 +126,7 @@ func (kf *KafkaMetrics) SetResolutions(res [][]int) int {
 func (kf *KafkaMetrics) Write(stat repr.StatRepr) error {
 
 	kf.indexer.Write(stat.Name) // to the indexer
+	stat.Name.MergeTags(kf.static_tags)
 	item := &KafkaMetric{
 		Type:       "metric",
 		Metric:     stat.Name.Key,
@@ -130,9 +138,10 @@ func (kf *KafkaMetrics) Write(stat repr.StatRepr) error {
 		Count:      stat.Count,
 		Max:        stat.Max,
 		Min:        stat.Min,
-		Resolution: stat.Resolution,
-		TTL:        stat.TTL,
-		Tags:       kf.static_tags,
+		Resolution: stat.Name.Resolution,
+		TTL:        stat.Name.TTL,
+		Id:         stat.Name.UniqueId(),
+		Tags:       stat.Name.SortedTags(),
 	}
 
 	stats.StatsdClientSlow.Incr("writer.kafka.metrics.writes", 1)

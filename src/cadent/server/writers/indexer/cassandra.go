@@ -15,6 +15,41 @@
 		pass: ""
 
 
+
+	a "brief" schema ..
+
+	CREATE TYPE metric.segment_pos (
+    		pos int,
+    		segment text
+	);
+
+	CREATE TABLE metric.segment (
+   		pos int,
+   		segment text,
+   		PRIMARY KEY (pos, segment)
+	) WITH COMPACT STORAGE AND CLUSTERING ORDER BY (segment ASC)
+
+
+	CREATE TABLE metric.path (
+    		segment frozen<segment_pos>,
+    		path text,
+    		length int,
+    		id varint,
+    		has_data boolean,
+ 		id varint,  # repr.StatName.UniqueID()
+  		PRIMARY KEY (segment, path, has_data)
+	) WITH CLUSTERING ORDER BY (path ASC)
+
+	CREATE INDEX ON metric.path (id);
+
+	CREATE TABLE tag (
+    		id text,  # see repr.StatName
+    		tags list<text>  # this will be a [ "name=val", "name=val", ...] so we can do `IN "moo=goo" in tag`
+    		PRIMARY KEY (id)
+	);
+
+	CREATE INDEX ON tag (tags);
+
 */
 
 package indexer
@@ -46,10 +81,10 @@ const (
 
 /*
  	metric.segment (
-       pos int,
-       segment text,
-   	   PRIMARY KEY (pos, segment)
-    )
+       		pos int,
+       		segment text,
+   	PRIMARY KEY (pos, segment)
+    	)
 */
 type CassSegment struct {
 	Pos     int
@@ -61,12 +96,15 @@ type CassSegment struct {
 		segment frozen<segment_pos>,
 		path text,
 		length int,
+		id varint, # repr.StatName.UniqueId()
 		has_data bool,
 		PRIMARY KEY (segment, path, has_data)
+	)
 */
 type CassPath struct {
 	Segment CassSegment
 	Path    string
+	Id      repr.StatId
 	Length  int
 	Hasdata bool
 }
@@ -224,6 +262,7 @@ func (cass *CassandraIndexer) WriteOne(inname repr.StatName) error {
 	cur_part := ""
 	segments := []CassSegment{}
 	paths := []CassPath{}
+	unique_ID := inname.UniqueId()
 
 	for idx, part := range s_parts {
 		if len(cur_part) > 1 {
@@ -237,6 +276,7 @@ func (cass *CassandraIndexer) WriteOne(inname repr.StatName) error {
 		segments = append(segments, on_segment)
 
 		on_path := CassPath{
+			Id:      unique_ID,
 			Segment: on_segment,
 			Path:    skey,
 			Length:  p_len - 1, // starts at 0
@@ -281,11 +321,11 @@ func (cass *CassandraIndexer) WriteOne(inname repr.StatName) error {
 		*/
 		if skey != seg.Segment && idx < len(paths)-2 {
 			Q = fmt.Sprintf(
-				"INSERT INTO %s (segment, path, length, has_data) VALUES  ({pos: ?, segment: ?}, ?, ?, ?)",
+				"INSERT INTO %s (segment, path, id, length, has_data) VALUES  ({pos: ?, segment: ?}, ?, ?, ?, ?)",
 				cass.db.PathTable(),
 			)
 			err = cass.conn.Query(Q,
-				seg.Pos, seg.Segment, seg.Segment+"."+s_parts[idx+1], seg.Pos+1, false,
+				seg.Pos, seg.Segment, seg.Segment+"."+s_parts[idx+1], unique_ID, seg.Pos+1, false,
 			).Exec()
 			//cass.log.Critical("NODATA:: Seg INS: %s PATH: %s Len: %d", seg.Segment, seg.Segment+"."+s_parts[idx+1], seg.Pos)
 		}
@@ -304,7 +344,7 @@ func (cass *CassandraIndexer) WriteOne(inname repr.StatName) error {
 
 		*/
 		Q = fmt.Sprintf(
-			"INSERT INTO %s (segment, path, length, has_data) VALUES  ({pos: ?, segment: ?}, ?, ?, ?)",
+			"INSERT INTO %s (segment, path, id, length, has_data) VALUES  ({pos: ?, segment: ?}, ?, ?, ?, ?)",
 			cass.db.PathTable(),
 		)
 
@@ -314,12 +354,12 @@ func (cass *CassandraIndexer) WriteOne(inname repr.StatName) error {
 			length int
 		*/
 		err = cass.conn.Query(Q,
-			seg.Pos, seg.Segment, skey, p_len-1, true,
+			seg.Pos, seg.Segment, skey, unique_ID, p_len-1, true,
 		).Exec()
 		//cass.log.Critical("DATA:: Seg INS: %s PATH: %s Len: %d", seg.Segment, skey, p_len-1)
 
 		if err != nil {
-			cass.log.Error("Could not insert path %v :: %v", last_path, err)
+			cass.log.Error("Could not insert path %v (%v) :: %v", last_path, unique_ID, err)
 			stats.StatsdClientSlow.Incr("indexer.cassandra.path-failures", 1)
 		} else {
 			stats.StatsdClientSlow.Incr("indexer.cassandra.path-writes", 1)

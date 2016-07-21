@@ -26,7 +26,7 @@ type cacherItem struct {
 type ReprCache struct {
 	MaxSize  int
 	itemList *list.List
-	cache    map[string]*cacherItem
+	cache    map[StatId]*cacherItem
 
 	mu sync.Mutex
 }
@@ -37,7 +37,7 @@ func NewReprCache(size int) *ReprCache {
 	}
 	return &ReprCache{
 		MaxSize:  size,
-		cache:    make(map[string]*cacherItem),
+		cache:    make(map[StatId]*cacherItem),
 		itemList: list.New(),
 	}
 }
@@ -46,7 +46,7 @@ func (s *ReprCache) Len() int {
 	return s.itemList.Len()
 }
 
-func (s *ReprCache) Delete(key string) *ReprList {
+func (s *ReprCache) Delete(key StatId) *ReprList {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	element := s.cache[key]
@@ -64,7 +64,7 @@ func (s *ReprCache) Pop() *ReprList {
 	defer s.mu.Unlock()
 
 	k := s.itemList.Front()
-	kk := k.Value.(string)
+	kk := k.Value.(StatId)
 
 	if k != nil {
 		element := s.cache[kk]
@@ -80,7 +80,7 @@ func (s *ReprCache) Add(stat StatRepr) *ReprList {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	k := stat.Name.StatKey
+	k := stat.Name.UniqueId()
 	gots := s.cache[k]
 	if gots == nil {
 		old := s.checkSize()
@@ -99,7 +99,7 @@ func (s *ReprCache) Add(stat StatRepr) *ReprList {
 	return nil
 }
 
-func (s *ReprCache) Get(key string) *ReprList {
+func (s *ReprCache) Get(key StatId) *ReprList {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	element := s.cache[key]
@@ -113,7 +113,7 @@ func (s *ReprCache) checkSize() *ReprList {
 	//locking outside this function please
 	if s.itemList.Len() >= s.MaxSize {
 		k := s.itemList.Front()
-		key := k.Value.(string)
+		key := k.Value.(StatId)
 		element := s.cache[key]
 		s.itemList.Remove(element.keyele)
 		element.keyele = nil

@@ -17,12 +17,12 @@ func TestWriterObjects(t *testing.T) {
 	t_list3 := make([]RawDataPoint, n_sts2)
 	t_list4 := make([]RawDataPoint, n_sts2)
 
-	step_1 := 10
-	t_start := int(time.Now().Unix())
+	step_1 := uint32(10)
+	t_start := uint32(time.Now().Unix())
 
 	for idx := range t_list1 {
 		t_list1[idx] = RawDataPoint{
-			Time: t_start + idx*step_1,
+			Time: t_start + uint32(idx)*step_1,
 			Mean: rand.Float64(),
 		}
 	}
@@ -31,7 +31,7 @@ func TestWriterObjects(t *testing.T) {
 
 	for idx := range t_list2 {
 		t_list2[idx] = RawDataPoint{
-			Time: t_start + idx*step_1,
+			Time: t_start + uint32(idx)*step_1,
 			Mean: rand.Float64(),
 		}
 	}
@@ -40,7 +40,7 @@ func TestWriterObjects(t *testing.T) {
 	// random steps
 	for idx := range t_list3 {
 		t_list3[idx] = RawDataPoint{
-			Time: t_start + idx,
+			Time: t_start + uint32(idx),
 			Mean: float64(rand.Int63n(100)),
 			Min:  float64(idx),
 			Max:  float64(idx + 100),
@@ -51,7 +51,7 @@ func TestWriterObjects(t *testing.T) {
 	// random steps
 	for idx := range t_list4 {
 		t_list4[idx] = RawDataPoint{
-			Time: t_start + 10*idx + int(rand.Int63n(2)+1.0),
+			Time: t_start + 10*uint32(idx) + uint32(rand.Int63n(2)+1.0),
 			Mean: float64(rand.Int63n(100)),
 			Min:  float64(idx),
 			Max:  float64(idx + 100),
@@ -112,7 +112,7 @@ func TestWriterObjects(t *testing.T) {
 		}
 		// can be the same or +/-1 depending on the start time and time divisor
 		t_l := len(t_list4)
-		So(rl.Len(), ShouldBeIn, []int{t_l/2 -1, t_l/2, t_l/2 + 1})
+		So(rl.Len(), ShouldBeIn, []int{t_l/2 - 1, t_l / 2, t_l/2 + 1})
 
 		rl.Resample(5)
 		for _, d := range rl.Data {

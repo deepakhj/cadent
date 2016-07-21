@@ -303,8 +303,8 @@ func (ws *WhisperWriter) Stop() {
 	// full tilt write out
 	did := 0
 	for {
-		met, pts := ws.cache_queue.Pop()
-		if met == "" {
+		name, pts := ws.cache_queue.Pop()
+		if name == nil {
 			break
 		}
 		if did%100 == 0 {
@@ -312,7 +312,7 @@ func (ws *WhisperWriter) Stop() {
 		}
 		if pts != nil {
 			stats.StatsdClient.Incr("writer.whisper.write.send-to-writers", 1)
-			ws.InsertMulti(met, pts)
+			ws.InsertMulti(name, pts)
 		}
 		did++
 	}
@@ -328,8 +328,8 @@ func (ws *WhisperWriter) Stop() {
 	return
 }
 
-func (ws *WhisperWriter) InsertMulti(metric string, points []*repr.StatRepr) (int, error) {
-	whis, err := ws.getFile(metric)
+func (ws *WhisperWriter) InsertMulti(metric *repr.StatName, points repr.StatReprSlice) (int, error) {
+	whis, err := ws.getFile(metric.Key)
 	if err != nil {
 		ws.log.Error("Whisper:InsertMetric write error: %s", err)
 		stats.StatsdClientSlow.Incr("writer.whisper.update-metric-errors", 1)
@@ -347,7 +347,7 @@ func (ws *WhisperWriter) InsertMulti(metric string, points []*repr.StatRepr) (in
 
 		whisp_points = append(whisp_points,
 			&whisper.TimeSeriesPoint{
-				Time: int(pt.Time.Unix()), Value: ws.guessValue(metric, pt),
+				Time: int(pt.Time.Unix()), Value: ws.guessValue(metric.Key, pt),
 			},
 		)
 	}
@@ -410,7 +410,7 @@ func (ws *WhisperWriter) Write(stat repr.StatRepr) error {
 	}
 
 	// add to the writeback cache only
-	ws.cache_queue.Add(stat.Name.Key, &stat)
+	ws.cache_queue.Add(&stat.Name, &stat)
 
 	// and now add it to the readcache ifit's been activated
 	r_cache := GetReadCache()
@@ -523,13 +523,13 @@ func (ws *WhisperMetrics) GetFromCache(metric string, start int64, end int64) (r
 	t_end := time.Unix(int64(end), 0)
 	cached_stats, _, _ := r_cache.Get(metric, t_start, t_end)
 	var d_points []RawDataPoint
-	step := 0
+	step := uint32(0)
 	if cached_stats != nil && len(cached_stats) > 0 {
 		stats.StatsdClient.Incr("reader.whisper.render.cache.hits", 1)
 
-		f_t := 0
+		f_t := uint32(0)
 		for _, stat := range cached_stats {
-			t := int(stat.Time.Unix())
+			t := uint32(stat.Time.Unix())
 			d_points = append(d_points, RawDataPoint{
 				Mean: ws.writer.guessValue(metric, stat), //just a stub for the only value we know in whisper
 				Time: t,
@@ -547,7 +547,7 @@ func (ws *WhisperMetrics) GetFromCache(metric string, start int64, end int64) (r
 		rawd.Start = rawd.RealStart
 		rawd.End = rawd.RealEnd + step
 		rawd.Metric = metric
-		rawd.Step = int(step)
+		rawd.Step = step
 		rawd.Data = d_points
 		return rawd, len(d_points) > 0
 	} else {
@@ -583,33 +583,33 @@ func (ws *WhisperMetrics) RawRenderOne(metric indexer.MetricFindItem, from strin
 	//cache check
 	// the read cache should have "all" the points from a "start" to "end" if the read cache has been activated for
 	// a while.  If not, then it's a partial list (basically the read cache just started)
-
-	cached, got_cache := ws.GetFromCache(metric.Id, start, end)
+	stat_name := metric.StatName()
+	cached, got_cache := ws.GetFromCache(stat_name.Key, start, end)
 	// we assume the "cache" is hot data (by design) so if the num points is "lacking"
 	// we know we need to get to the data store (or at least the inflight) for the rest
 	// add the "step" here as typically we have the "forward" step of data
-	if got_cache && cached.StartInRange(int(start)+cached.Step) {
+	if got_cache && cached.StartInRange(uint32(start)+cached.Step) {
 		stats.StatsdClient.Incr("reader.whisper.render.read.cache.hit", 1)
 		ws.log.Debug("Read Cache Hit: %s [%d, %d)", metric.Id, start, end)
 		// need to set the start end to the ones requested before quantization to create the proper
 		// spanning range
-		cached.Start = int(start)
-		cached.End = int(end)
+		cached.Start = uint32(start)
+		cached.End = uint32(end)
 		cached.Quantize()
 		return cached, nil
 	}
-	path := ws.ToPath(metric.Id)
+	path := ws.ToPath(stat_name.Key)
 	whis, err := whisper.Open(path)
 	if err != nil {
 		// try the cache
 		var d_points []RawDataPoint
-		inflight, err := ws.writer.cache_queue.Get(metric.Id)
+		inflight, err := ws.writer.cache_queue.Get(stat_name)
 		if inflight != nil && err == nil && len(inflight) > 0 {
-			f_t := 0
-			step_t := 0
+			f_t := uint32(0)
+			step_t := uint32(0)
 
 			for _, pt := range inflight {
-				t := int(pt.Time.Unix())
+				t := uint32(pt.Time.Unix())
 				d_points = append(d_points, RawDataPoint{
 					Mean: ws.writer.guessValue(metric.Id, pt), //just a stub for the only value we know
 					Time: t,
@@ -622,11 +622,11 @@ func (ws *WhisperMetrics) RawRenderOne(metric indexer.MetricFindItem, from strin
 				}
 			}
 
-			rawd.RealEnd = int(end)
-			rawd.RealStart = int(start)
-			rawd.Start = int(start)
-			rawd.End = int(end)
-			rawd.Step = int(step_t)
+			rawd.RealEnd = uint32(end)
+			rawd.RealStart = uint32(start)
+			rawd.Start = rawd.RealStart
+			rawd.End = rawd.RealEnd
+			rawd.Step = step_t
 			rawd.Metric = metric.Id
 			rawd.Data = d_points
 			return rawd, nil
@@ -646,59 +646,59 @@ func (ws *WhisperMetrics) RawRenderOne(metric indexer.MetricFindItem, from strin
 	}
 
 	var d_points []RawDataPoint
-	f_t := 0
-	step_t := 0
+	f_t := uint32(0)
+	step_t := uint32(0)
 
 	for _, point := range series.Points() {
 		d_points = append(d_points, RawDataPoint{
 			Mean: point.Value, //just a stub for the only value we know
-			Time: point.Time,
+			Time: uint32(point.Time),
 		})
 		if f_t <= 0 {
-			f_t = point.Time
+			f_t = uint32(point.Time)
 		}
 		if step_t <= 0 && f_t >= 0 {
-			step_t = point.Time - f_t
+			step_t = uint32(point.Time) - f_t
 		}
 	}
 
 	// grab the "current inflight" from the cache
-	inflight, err := ws.writer.cache_queue.Get(metric.Id)
+	inflight, err := ws.writer.cache_queue.Get(stat_name)
 	if inflight != nil && err == nil && len(inflight) > 0 && len(d_points) > 0 {
 		//ws.writer.cache_queue.DumpPoints(inflight)
-		inflight_l := len(inflight)
+		inflight_l := uint32(len(inflight))
 
 		// since inflight is to have later data then the file itself, we go "backwards" down the
 		// inflight list
 
 		first_inflight := inflight[0]
 		first_dpoint := d_points[0]
-		start_d_point := 0
-		start_inf_point := 0
+		start_d_point := uint32(0)
+		start_inf_point := uint32(0)
 
 		// find the start index in the data points if we've more then inflight
-		if int(first_inflight.Time.Unix()) > first_dpoint.Time {
+		if uint32(first_inflight.Time.Unix()) > first_dpoint.Time {
 			for idx, pt := range d_points {
-				if pt.Time >= int(first_inflight.Time.Unix()) {
-					start_d_point = idx
+				if pt.Time >= uint32(first_inflight.Time.Unix()) {
+					start_d_point = uint32(idx)
 					break
 				}
 			}
 		} else {
 			// otherwise the inflight has more data then the file read
 			for idx, pt := range inflight {
-				if int(pt.Time.Unix()) >= first_dpoint.Time {
-					start_inf_point = idx
+				if uint32(pt.Time.Unix()) >= first_dpoint.Time {
+					start_inf_point = uint32(idx)
 					break
 				}
 			}
 		}
 
-		for i := start_d_point; i < len(d_points); i++ {
+		for i := start_d_point; i < uint32(len(d_points)); i++ {
 			for j := start_inf_point; j < inflight_l; j++ {
 				//ws.writer.log.Critical("MM: onT: %d, inflight T: %d", d_points[i].Time, inflight[j].Time)
 
-				if int(inflight[j].Time.Unix()) == d_points[i].Time {
+				if uint32(inflight[j].Time.Unix()) == d_points[i].Time {
 					d_points[i].Mean = ws.writer.guessValue(metric.Id, inflight[j])
 					start_inf_point++
 					break
@@ -709,11 +709,11 @@ func (ws *WhisperMetrics) RawRenderOne(metric indexer.MetricFindItem, from strin
 	}
 	// if the first/last fit w/i the timewindow we can backfill
 
-	rawd.RealEnd = int(end)
-	rawd.RealStart = int(start)
-	rawd.Start = int(start)
-	rawd.End = int(end)
-	rawd.Step = int(step_t)
+	rawd.RealEnd = uint32(end)
+	rawd.RealStart = uint32(start)
+	rawd.Start = rawd.RealStart
+	rawd.End = rawd.RealEnd
+	rawd.Step = step_t
 	rawd.Metric = metric.Id
 	rawd.Data = d_points
 

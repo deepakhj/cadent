@@ -71,12 +71,12 @@ Segment index
 level DB keys
 
 This one is for "finds"
-i.e.  consthash.zipperwork.local.writer.cassandra.write.metric-time-ns.upper_99 -> consthash.zipperwork.local.writer.cassandra.write.metric-time-ns.upper_99
+i.e.  cadent.zipperwork.local.writer.cassandra.write.metric-time-ns.upper_99 -> cadent.zipperwork.local.writer.cassandra.write.metric-time-ns.upper_99
 - SEG:{length}:{segment} -> {path}
 
 This is used for "expands"
 "has data" is when  segment+1 == path
-i.e consthash.zipperwork.local.writer -> consthash.zipperwork.local.writer.cassandra
+i.e cadent.zipperwork.local.writer -> cadent.zipperwork.local.writer.cassandra
 - POS:{pos}:{segment} -> {segment+1}:{has_data} used for expand
 
 for reverse lookups basically for deletion purposes

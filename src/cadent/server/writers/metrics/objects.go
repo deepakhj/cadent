@@ -12,11 +12,11 @@ import (
 /****************** Output structs *********************/
 
 type DataPoint struct {
-	Time  int
+	Time  uint32
 	Value *float64 // need nils for proper "json none"
 }
 
-func NewDataPoint(time int, val float64) DataPoint {
+func NewDataPoint(time uint32, val float64) DataPoint {
 	d := DataPoint{Time: time, Value: new(float64)}
 	d.SetValue(&val)
 	return d
@@ -44,18 +44,18 @@ type RenderItems []RenderItem
 // the basic whisper metric json blob for find
 
 type WhisperRenderItem struct {
-	RealStart int                    `json:"data_from"`
-	RealEnd   int                    `json:"data_end"`
-	Start     int                    `json:"from"`
-	End       int                    `json:"to"`
-	Step      int                    `json:"step"`
+	RealStart uint32                 `json:"data_from"`
+	RealEnd   uint32                 `json:"data_end"`
+	Start     uint32                 `json:"from"`
+	End       uint32                 `json:"to"`
+	Step      uint32                 `json:"step"`
 	Series    map[string][]DataPoint `json:"series"`
 }
 
 /*** Raw renderer **/
 
 type RawDataPoint struct {
-	Time  int     `json:"time"`
+	Time  uint32  `json:"time"`
 	Sum   float64 `json:"sum"`
 	Mean  float64 `json:"mean"`
 	Min   float64 `json:"min"`
@@ -65,7 +65,7 @@ type RawDataPoint struct {
 	Count int64   `json:"count"`
 }
 
-func NullRawDataPoint(time int) RawDataPoint {
+func NullRawDataPoint(time uint32) RawDataPoint {
 	return RawDataPoint{
 		Time:  time,
 		Sum:   math.NaN(),
@@ -135,11 +135,11 @@ func (r *RawDataPoint) Merge(d *RawDataPoint) {
 
 type RawRenderItem struct {
 	Metric    string         `json:"metric"`
-	RealStart int            `json:"data_from"`
-	RealEnd   int            `json:"data_end"`
-	Start     int            `json:"from"`
-	End       int            `json:"to"`
-	Step      int            `json:"step"`
+	RealStart uint32         `json:"data_from"`
+	RealEnd   uint32         `json:"data_end"`
+	Start     uint32         `json:"from"`
+	End       uint32         `json:"to"`
+	Step      uint32         `json:"step"`
 	Data      []RawDataPoint `json:"data"`
 }
 
@@ -152,18 +152,18 @@ func (r *RawRenderItem) String() string {
 }
 
 // is True if the start and end times are contained in this data blob
-func (r *RawRenderItem) DataInRange(start int, end int) bool {
+func (r *RawRenderItem) DataInRange(start uint32, end uint32) bool {
 	return start >= r.RealStart && end <= r.RealEnd
 }
 
 // somethings like read caches, are hot data we most of the time
 // only need to make sure the "start" is in range as the end may not have happened yet
-func (r *RawRenderItem) StartInRange(start int) bool {
+func (r *RawRenderItem) StartInRange(start uint32) bool {
 	return start >= r.RealStart
 }
 
 // trim the data array so that it fit's w/i the start and end times
-func (r *RawRenderItem) TrunctateTo(start int, end int) int {
+func (r *RawRenderItem) TrunctateTo(start uint32, end uint32) int {
 	data := make([]RawDataPoint, 0)
 	for _, d := range r.Data {
 		if d.Time >= start && d.Time <= end {
@@ -183,9 +183,9 @@ func (r *RawRenderItem) TrunctateTo(start int, end int) int {
 // If moving from a "large" time step to a "smaller" one you WILL GET NULL values for
 // time slots that do not match anything .. we cannot (will not) interpolate data like that
 // as it's 99% statistically "wrong"
-func (r *RawRenderItem) Resample(step int) {
+func (r *RawRenderItem) Resample(step uint32) {
 
-	cur_len := len(r.Data)
+	cur_len := uint32(len(r.Data))
 	// nothing we can do here
 	if cur_len <= 1 {
 		return
@@ -213,7 +213,7 @@ func (r *RawRenderItem) Resample(step int) {
 	// 'i' iterates Original Data.
 	// 'o' iterates OutGoing Data.
 	// t is the current time we need to merge
-	for t, i, o := start, 0, -1; t <= endTime; t += step {
+	for t, i, o := start, uint32(0), -1; t <= endTime; t += step {
 		o++
 
 		// start at null
@@ -288,7 +288,7 @@ func (r *RawRenderItem) Quantize() {
 // length over the entire interval)
 // You should Put in an "End" time of "ReadData + Step" to avoid loosing the last point as things
 // are  [Start, End) not [Start, End]
-func (r *RawRenderItem) QuantizeToStep(step int) {
+func (r *RawRenderItem) QuantizeToStep(step uint32) {
 
 	// make sure the start/ends are nicely divisible by the Step
 	start := r.Start
@@ -306,11 +306,11 @@ func (r *RawRenderItem) QuantizeToStep(step int) {
 
 	// data length of the new data array
 	data := make([]RawDataPoint, (endTime-start)/step+1)
-	cur_len := len(r.Data)
+	cur_len := uint32(len(r.Data))
 
 	// 'i' iterates Original Data. 'o' iterates OutGoing Data.
 	// t is the current time we need to fill/merge
-	for t, i, o := start, 0, -1; t <= endTime; t += step {
+	for t, i, o := start, uint32(0), -1; t <= endTime; t += step {
 		o += 1
 
 		// No more data in the original list

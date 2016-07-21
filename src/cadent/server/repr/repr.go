@@ -40,15 +40,16 @@ func (p SortingTags) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 type StatId uint64
 
 type StatName struct {
-	Key     string      `json:"key"`
-	StatKey string      `json:"stat_key"`
-	Tags    SortingTags `json:"tags"`
+	Key        string      `json:"key"`
+	Tags       SortingTags `json:"tags"`
+	Resolution uint32      `json:"resolution"`
+	TTL        uint32      `json:"ttl"`
 }
 
 // take the various "parts" (keys, resolution, tags) and return a basic md5 hash of things
 func (s *StatName) UniqueId() StatId {
 	buf := fnv.New64a()
-	fmt.Fprintf(buf, "%s:%s:%v", s.Key, s.StatKey, s.SortedTags())
+	fmt.Fprintf(buf, "%s:%v", s.Key, s.SortedTags())
 	return StatId(buf.Sum64())
 }
 
@@ -59,9 +60,29 @@ func (s *StatName) SortedTags() SortingTags {
 }
 
 // return an array of [ [name, val] ...] sorted by name
+func (s *StatName) MergeTags(tags SortingTags) SortingTags {
+	n_tags := make(SortingTags, 0)
+	for _, tag := range tags {
+		got := false
+		for _, o_tag := range s.Tags {
+			if tag[0] == o_tag[0] {
+				n_tags = append(n_tags, []string{tag[0], tag[1]})
+				got = true
+				break
+			}
+		}
+		if !got {
+			n_tags = append(n_tags, []string{tag[0], tag[1]})
+		}
+	}
+	s.Tags = n_tags
+	return n_tags
+}
+
+// return an array of [ [name, val] ...] sorted by name
 func (s *StatName) ByteSize() int {
 	buf := new(bytes.Buffer)
-	fmt.Fprintf(buf, "%s%s%v", s.Key, s.StatKey, s.SortedTags())
+	fmt.Fprintf(buf, "%s%v", s.Key, s.SortedTags())
 	return buf.Len()
 }
 
@@ -72,22 +93,20 @@ func (s *StatName) IsBlank() bool {
 type StatRepr struct {
 	Name StatName
 
-	Min        JsonFloat64 `json:"min"`
-	Max        JsonFloat64 `json:"max"`
-	Sum        JsonFloat64 `json:"sum"`
-	Mean       JsonFloat64 `json:"mean"`
-	First      JsonFloat64 `json:"first"`
-	Last       JsonFloat64 `json:"last"`
-	Count      int64       `json:"count"`
-	Time       time.Time   `json:"time_ns"`
-	Resolution float64     `json:"resolution"`
-	TTL        int64       `json:"ttl"`
+	Time  time.Time   `json:"time_ns"`
+	Min   JsonFloat64 `json:"min"`
+	Max   JsonFloat64 `json:"max"`
+	Sum   JsonFloat64 `json:"sum"`
+	Mean  JsonFloat64 `json:"mean"`
+	First JsonFloat64 `json:"first"`
+	Last  JsonFloat64 `json:"last"`
+	Count int64       `json:"count"`
 }
 
 // take the various "parts" (keys, resolution, tags) and return a basic md5 hash of things
 func (s *StatRepr) UniqueId() uint64 {
 	buf := fnv.New64a()
-	fmt.Fprintf(buf, "%s:%s:%f:%v", s.Name.Key, s.Name.StatKey, s.Resolution, s.Name.SortedTags())
+	fmt.Fprintf(buf, "%s:%d:%v", s.Name.Key, s.Name.Resolution, s.Name.SortedTags())
 	return buf.Sum64()
 }
 
@@ -96,7 +115,7 @@ func (s *StatRepr) ByteSize() int64 {
 	if s == nil {
 		return 0
 	}
-	return int64(len(s.Name.Key)) + int64(len(s.Name.StatKey)) + 104 // obtained from `reflect.TypeOf(StatRepr{}).Size()`
+	return int64(len(s.Name.Key)) + 32 + 32 + 104 // obtained from `reflect.TypeOf(StatRepr{}).Size()`
 }
 
 func (s *StatRepr) Copy() *StatRepr {
@@ -140,12 +159,12 @@ func (s *StatRepr) Merge(stat *StatRepr) *StatRepr {
 
 // basically a "uniqueness" key for dedupe attempts in list
 func (s *StatRepr) UniqueKey() string {
-	return fmt.Sprintf("%s:%d:%f", s.Name.Key, s.Time.UnixNano(), s.Resolution)
+	return fmt.Sprintf("%d:%d", s.Name.UniqueId(), s.Time.UnixNano())
 }
 
-// will be "true" of the key + resolution + time are the same
+// will be "true" of the Id + time are the same
 func (s *StatRepr) IsSameStat(stat *StatRepr) bool {
-	return s.Name.Key == s.Name.StatKey && s.Resolution == stat.Resolution && s.Time.Equal(stat.Time)
+	return s.Name.UniqueId() == stat.Name.UniqueId() && s.Time.Equal(stat.Time)
 }
 
 // if this stat is in a list
@@ -163,7 +182,7 @@ func (s *StatRepr) String() string {
 	if s.Count > 0 && m == 0 {
 		m = float64(s.Sum) / float64(s.Count)
 	}
-	return fmt.Sprintf("Stat: Mean: %f @ %s/%f/%d", m, s.Time, s.Resolution, s.TTL)
+	return fmt.Sprintf("Stat: Mean: %f @ %s/%d/%d", m, s.Time, s.Name.Resolution, s.Name.TTL)
 }
 
 // time sort

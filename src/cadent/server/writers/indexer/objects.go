@@ -5,6 +5,7 @@
 package indexer
 
 import (
+	"cadent/server/repr"
 	"regexp"
 	"strings"
 )
@@ -94,6 +95,9 @@ func (m *MetricFindItem) SelectValue() string {
 		return "sum" // not data
 	}
 	return GuessAggregateType(m.Id)
+}
+func (m *MetricFindItem) StatName() *repr.StatName {
+	return &repr.StatName{Key: m.Id}
 }
 
 type MetricFindItems []MetricFindItem

@@ -47,8 +47,8 @@ const (
 )
 
 /*
-To save disk writes, the way carbon-cache does things is that it maintains an internal Queue of points
-map[metric][]points
+To save disk writes, the way carbon-cache does things is that it maintains an internal timseries
+map[metric]timesereis
 once a "worker" gets to the writing of that queue it dumps all the points at once not
 one write per point.  The trick is that since graphite "queries" the cache it can backfill all the
 not-written points into the return that are still waiting to be written, just from some initial testing
@@ -63,12 +63,12 @@ the "render" step will then attempt to backfill those points
 
 // struct to pull the next thing to "write"
 type CacheQueueItem struct {
-	metric string
+	metric repr.StatId
 	count  int // number of stats in it
 }
 
 func (wqi *CacheQueueItem) ToString() string {
-	return fmt.Sprintf("Metric: %s Count: %d", wqi.metric, wqi.count)
+	return fmt.Sprintf("Metric Id: %s Count: %d", wqi.metric, wqi.count)
 }
 
 // we pop the "most" populated item
@@ -93,7 +93,8 @@ type Cacher struct {
 	_accept      bool      // flag to stop
 	log          *logging.Logger
 	Queue        CacheQueue
-	Cache        map[string]series.TimeSeries
+	NameCache    map[repr.StatId]*repr.StatName
+	Cache        map[repr.StatId]series.TimeSeries
 }
 
 func NewCacher() *Cacher {
@@ -103,7 +104,8 @@ func NewCacher() *Cacher {
 	wc.seriesType = CACHER_SERIES_TYPE
 	wc.curSize = 0
 	wc.log = logging.MustGetLogger("cacher.metrics")
-	wc.Cache = make(map[string]series.TimeSeries)
+	wc.Cache = make(map[repr.StatId]series.TimeSeries)
+	wc.NameCache = make(map[repr.StatId]*repr.StatName)
 	wc.shutdown = make(chan bool)
 	wc._accept = true
 	wc.lowFruitRate = 0.25
@@ -179,13 +181,13 @@ func (wc *Cacher) updateQueue() {
 
 // add metric then update the sort queue
 // use this for more "direct" writing for very small caches
-func (wc *Cacher) AddAndUpdate(metric string, stat *repr.StatRepr) (err error) {
+func (wc *Cacher) AddAndUpdate(metric *repr.StatName, stat *repr.StatRepr) (err error) {
 	err = wc.Add(metric, stat)
 	wc.updateQueue()
 	return err
 }
 
-func (wc *Cacher) Add(metric string, stat *repr.StatRepr) error {
+func (wc *Cacher) Add(name *repr.StatName, stat *repr.StatRepr) error {
 	wc.mu.Lock()
 	defer wc.mu.Unlock()
 	//wc.log.Critical("STAT: %s, %v", metric, stat)
@@ -206,16 +208,17 @@ func (wc *Cacher) Add(metric string, stat *repr.StatRepr) error {
 		wc.log.Critical("ADDING: %s Time: %d, Val: %f", metric, time, value)
 	}
 	*/
-
-	if gots, ok := wc.Cache[metric]; ok {
+	unique_id := name.UniqueId()
+	if gots, ok := wc.Cache[unique_id]; ok {
 		cur_size := gots.Len()
 		if gots.Len() > wc.maxBytes {
-			wc.log.Error("Too Many Bytes for %s (max bytes: %d current metrics: %v)... have to drop this one", metric, wc.maxBytes, gots.Count())
+			wc.log.Error("Too Many Bytes for %s (max bytes: %d current metrics: %v)... have to drop this one", unique_id, wc.maxBytes, gots.Count())
 			return fmt.Errorf("Cacher: too many points in cache, dropping metric")
 			stats.StatsdClientSlow.Incr("cacher.points.overflow", 1)
 		}
-		wc.Cache[metric].AddStat(stat)
-		now_len := wc.Cache[metric].Len()
+		wc.Cache[unique_id].AddStat(stat)
+		wc.NameCache[unique_id] = name
+		now_len := wc.Cache[unique_id].Len()
 		wc.curSize += int64(now_len - cur_size)
 		stats.StatsdClient.GaugeAvg("cacher.add.ave-points-per-metric", int64(gots.Count()))
 		return nil
@@ -225,14 +228,14 @@ func (wc *Cacher) Add(metric string, stat *repr.StatRepr) error {
 		return err
 	}
 	tp.AddStat(stat)
-	wc.Cache[metric] = tp
+	wc.Cache[unique_id] = tp
 	wc.curSize += int64(tp.Len())
 	stats.StatsdClient.GaugeAvg("cacher.add.ave-points-per-metric", 1)
 
 	return nil
 }
 
-func (wc *Cacher) getStatsStream(metric string, ts series.TimeSeries) (repr.StatReprSlice, error) {
+func (wc *Cacher) getStatsStream(name *repr.StatName, ts series.TimeSeries) (repr.StatReprSlice, error) {
 	it, err := ts.Iter()
 	if err != nil {
 		wc.log.Error("Failed to get series itterator: %v", err)
@@ -245,7 +248,7 @@ func (wc *Cacher) getStatsStream(metric string, ts series.TimeSeries) (repr.Stat
 		if st == nil {
 			continue
 		}
-		st.Name.Key = metric
+		st.Name = *name
 		stats = append(stats, st)
 	}
 	if it.Error() != nil {
@@ -258,77 +261,129 @@ func (wc *Cacher) getStatsStream(metric string, ts series.TimeSeries) (repr.Stat
 	return stats, nil
 }
 
-func (wc *Cacher) Get(metric string) (repr.StatReprSlice, error) {
+func (wc *Cacher) Get(name *repr.StatName) (repr.StatReprSlice, error) {
 	stats.StatsdClientSlow.Incr("cacher.read.cache-gets", 1)
 
 	wc.mu.RLock()
 	defer wc.mu.RUnlock()
 
-	if gots, ok := wc.Cache[metric]; ok {
+	if gots, ok := wc.Cache[name.UniqueId()]; ok {
 		stats.StatsdClientSlow.Incr("cacher.read.cache-gets.values", 1)
-		return wc.getStatsStream(metric, gots)
+		return wc.getStatsStream(name, gots)
 	}
 	stats.StatsdClientSlow.Incr("cacher.read.cache-gets.empty", 1)
 	return nil, nil
 }
 
-func (wc *Cacher) GetNextMetric() string {
-	wc.qmu.Lock()
-	defer wc.qmu.Unlock()
+func (wc *Cacher) GetById(metric_id repr.StatId) (*repr.StatName, repr.StatReprSlice, error) {
+	stats.StatsdClientSlow.Incr("cacher.read.cache-gets", 1)
+
+	wc.mu.RLock()
+	defer wc.mu.RUnlock()
+
+	if gots, ok := wc.Cache[metric_id]; ok {
+		stats.StatsdClientSlow.Incr("cacher.read.cache-gets.values", 1)
+		nm := wc.NameCache[metric_id]
+		tseries, err := wc.getStatsStream(nm, gots)
+		return nm, tseries, err
+	}
+	stats.StatsdClientSlow.Incr("cacher.read.cache-gets.empty", 1)
+	return nil, nil, nil
+}
+
+func (wc *Cacher) GetSeries(name *repr.StatName) (series.TimeSeries, error) {
+	stats.StatsdClientSlow.Incr("cacher.read.cache-series-gets", 1)
+
+	wc.mu.RLock()
+	defer wc.mu.RUnlock()
+
+	if gots, ok := wc.Cache[name.UniqueId()]; ok {
+		stats.StatsdClientSlow.Incr("cacher.read.cache-series-gets.values", 1)
+		return gots, nil
+	}
+	stats.StatsdClientSlow.Incr("cacher.read.cache-series-gets.empty", 1)
+	return nil, nil
+}
+
+func (wc *Cacher) GetSeriesById(metric_id repr.StatId) (*repr.StatName, series.TimeSeries, error) {
+	stats.StatsdClientSlow.Incr("cacher.read.cache-series-by-idgets", 1)
+
+	wc.mu.RLock()
+	defer wc.mu.RUnlock()
+
+	if gots, ok := wc.Cache[metric_id]; ok {
+		stats.StatsdClientSlow.Incr("cacher.read.cache-series-by-idgets.values", 1)
+		return wc.NameCache[metric_id], gots, nil
+	}
+	stats.StatsdClientSlow.Incr("cacher.read.cache-series-by-idgets.empty", 1)
+	return nil, nil, nil
+}
+
+func (wc *Cacher) GetNextMetric() *repr.StatName {
 
 	for {
+		wc.qmu.Lock()
 		size := len(wc.Queue)
 		if size == 0 {
+			wc.qmu.Unlock()
 			break
 		}
 		item := wc.Queue[size-1]
 		wc.Queue = wc.Queue[:size-1]
-		return item.metric
+		wc.qmu.Unlock()
+
+		wc.mu.RLock()
+		v := wc.NameCache[item.metric]
+		wc.mu.RUnlock()
+		return v
 	}
-	return ""
+	return nil
 }
 
 // just grab something from the list
-func (wc *Cacher) GetAnyStat() (string, repr.StatReprSlice) {
+func (wc *Cacher) GetAnyStat() (name *repr.StatName, stats repr.StatReprSlice) {
 	wc.mu.Lock()
 	defer wc.mu.Unlock()
 
-	for metric, stats := range wc.Cache {
-		out, _ := wc.getStatsStream(metric, stats)
+	for uid, stats := range wc.Cache {
+		name = wc.NameCache[uid]
+		out, _ := wc.getStatsStream(name, stats)
 		wc.curSize -= int64(stats.Len()) // shrink the bytes
-		delete(wc.Cache, metric)         // need to purge if error as things are corrupted somehow
-		return metric, out
+		delete(wc.Cache, uid)            // need to purge if error as things are corrupted somehow
+		delete(wc.NameCache, uid)
+		return name, out
 	}
-	return "", nil
+	return nil, nil
 }
 
-func (wc *Cacher) Pop() (string, repr.StatReprSlice) {
+func (wc *Cacher) Pop() (*repr.StatName, repr.StatReprSlice) {
 	metric, ts := wc.PopSeries()
 	if ts == nil {
-		return "", nil
+		return nil, nil
 	}
 	out, _ := wc.getStatsStream(metric, ts)
 	return metric, out
 }
 
-func (wc *Cacher) PopSeries() (string, series.TimeSeries) {
+func (wc *Cacher) PopSeries() (*repr.StatName, series.TimeSeries) {
 	metric := wc.GetNextMetric()
-	if len(metric) != 0 {
+	if metric != nil {
 		wc.mu.Lock()
 		defer wc.mu.Unlock()
-
-		if stats, exists := wc.Cache[metric]; exists {
+		unique_id := metric.UniqueId()
+		if stats, exists := wc.Cache[unique_id]; exists {
 			wc.curSize -= int64(stats.Len()) // shrink the bytes
-			delete(wc.Cache, metric)         // need to delete regardless as we have byte errors and things are corrupted
+			delete(wc.Cache, unique_id)      // need to delete regardless as we have byte errors and things are corrupted
+			delete(wc.NameCache, unique_id)
 			return metric, stats
 		}
 	}
-	return "", nil
+	return nil, nil
 }
 
 // add a metrics/point list back on the queue as it either "failed" or was ratelimited
-func (wc *Cacher) AddBack(metric string, points repr.StatReprSlice) {
+func (wc *Cacher) AddBack(name *repr.StatName, points repr.StatReprSlice) {
 	for _, pt := range points {
-		wc.Add(metric, pt)
+		wc.Add(name, pt)
 	}
 }

@@ -191,7 +191,7 @@ func init() {
 // insert job queue workers
 type CassandraFlatMetricJob struct {
 	Cass  *CassandraFlatWriter
-	Stats []*repr.StatRepr // where the point list live
+	Stats repr.StatReprSlice // where the point list live
 	retry int
 }
 
@@ -344,7 +344,7 @@ func (cass *CassandraFlatWriter) Stop() {
 		if did%100 == 0 {
 			cass.log.Warning("shutdown purge: written %d/%d...", did, mets_l)
 		}
-		points, _ := cass.cacher.Get(queueitem.metric)
+		_, points, _ := cass.cacher.GetById(queueitem.metric)
 		if points != nil {
 			stats.StatsdClient.Incr(fmt.Sprintf("writer.cassandraflat.write.send-to-writers"), 1)
 			cass.InsertMulti(points)
@@ -404,7 +404,7 @@ func (cass *CassandraFlatWriter) mergeWrite(stat *repr.StatRepr) *repr.StatRepr 
 	// grab ze data. (note data is already sorted by time asc va the cassandra schema)
 	iter := cass.conn.Query(
 		cass._select_time_query,
-		stat.Name.Key, stat.Resolution, time,
+		stat.Name.Key, stat.Name.Resolution, time,
 	).Iter()
 
 	var t, count int64
@@ -429,7 +429,7 @@ func (cass *CassandraFlatWriter) mergeWrite(stat *repr.StatRepr) *repr.StatRepr 
 
 // we can use the batcher effectively for single metric multi point writes as they share the
 // the same token
-func (cass *CassandraFlatWriter) InsertMulti(points []*repr.StatRepr) (int, error) {
+func (cass *CassandraFlatWriter) InsertMulti(points repr.StatReprSlice) (int, error) {
 
 	defer stats.StatsdNanoTimeFunc(fmt.Sprintf("writer.cassandraflat.batch.metric-time-ns"), time.Now())
 
@@ -445,13 +445,13 @@ func (cass *CassandraFlatWriter) InsertMulti(points []*repr.StatRepr) (int, erro
 
 	for _, stat := range points {
 		DO_Q := cass._insert_query
-		if stat.TTL > 0 {
-			DO_Q += fmt.Sprintf(" USING TTL %d", stat.TTL)
+		if stat.Name.TTL > 0 {
+			DO_Q += fmt.Sprintf(" USING TTL %d", stat.Name.TTL)
 		}
 		batch.Query(
 			DO_Q,
 			stat.Name.Key,
-			int64(stat.Resolution),
+			int64(stat.Name.Resolution),
 			stat.Time.UnixNano(),
 			float64(stat.Sum),
 			float64(stat.Min),
@@ -477,9 +477,9 @@ func (cass *CassandraFlatWriter) InsertOne(stat *repr.StatRepr) (int, error) {
 
 	defer stats.StatsdNanoTimeFunc(fmt.Sprintf("writer.cassandraflat.write.metric-time-ns"), time.Now())
 
-	ttl := int64(0)
-	if stat.TTL > 0 {
-		ttl = stat.TTL
+	ttl := uint32(0)
+	if stat.Name.TTL > 0 {
+		ttl = stat.Name.TTL
 	}
 
 	Q := cass._insert_query
@@ -490,7 +490,7 @@ func (cass *CassandraFlatWriter) InsertOne(stat *repr.StatRepr) (int, error) {
 	write_stat := cass.mergeWrite(stat)
 	err := cass.conn.Query(Q,
 		stat.Name.Key,
-		int64(stat.Resolution),
+		int64(stat.Name.Resolution),
 		stat.Time.UnixNano(),
 		float64(write_stat.Sum),
 		float64(write_stat.Min),
@@ -567,10 +567,9 @@ func (cass *CassandraFlatWriter) sendToWriters() error {
 func (cass *CassandraFlatWriter) Write(stat repr.StatRepr) error {
 
 	//cache keys needs metric + resolution
-	s_key := fmt.Sprintf("%s:%d", stat.Name.Key, int(stat.Resolution))
 	// turning off
 	if !cass.shutitdown {
-		cass.cacher.Add(s_key, &stat)
+		cass.cacher.Add(&stat.Name, &stat)
 	}
 
 	return nil
@@ -661,22 +660,22 @@ func (cass *CassandraFlatMetric) Write(stat repr.StatRepr) error {
 // based on the from/to in seconds get the best resolution
 // from and to should be SECONDS not nano-seconds
 // from and to needs to be > then the TTL as well
-func (cass *CassandraFlatMetric) getResolution(from int64, to int64) int {
+func (cass *CassandraFlatMetric) getResolution(from int64, to int64) uint32 {
 	diff := int(math.Abs(float64(to - from)))
 	n := int(time.Now().Unix())
 	back_f := n - int(from)
 	back_t := n - int(to)
 	for _, res := range cass.resolutions {
 		if diff < res[1] && back_f < res[1] && back_t < res[1] {
-			return res[0]
+			return uint32(res[0])
 		}
 	}
-	return cass.resolutions[len(cass.resolutions)-1][0]
+	return uint32(cass.resolutions[len(cass.resolutions)-1][0])
 }
 
 // based on the resolution attempt to round start/end nicely by the resolutions
-func (cass *CassandraFlatMetric) truncateTo(num int64, mod int) int64 {
-	_mods := int(math.Mod(float64(num), float64(mod)))
+func (cass *CassandraFlatMetric) truncateTo(num int64, mod uint32) int64 {
+	_mods := uint32(math.Mod(float64(num), float64(mod)))
 	if _mods < mod/2 {
 		return num - int64(_mods)
 	}
@@ -712,7 +711,7 @@ func (cass *CassandraFlatMetric) RawRenderOne(metric indexer.MetricFindItem, fro
 	start = cass.truncateTo(start, resolution)
 	end = cass.truncateTo(end, resolution)
 
-	b_len := int(end-start) / resolution //just to be safe
+	b_len := uint32(end-start) / resolution //just to be safe
 	if b_len <= 0 {
 		return rawd, fmt.Errorf("Cassandra: RawRenderOne: time too narrow")
 	}
@@ -722,8 +721,8 @@ func (cass *CassandraFlatMetric) RawRenderOne(metric indexer.MetricFindItem, fro
 	nano_end := end * nano
 	nano_start := start * nano
 
-	first_t := int(start)
-	last_t := int(end)
+	first_t := uint32(start)
+	last_t := uint32(end)
 
 	// grab ze data. (note data is already sorted by time asc va the cassandra schema)
 	iter := cass.writer.conn.Query(
@@ -739,11 +738,11 @@ func (cass *CassandraFlatMetric) RawRenderOne(metric indexer.MetricFindItem, fro
 
 	var d_points []RawDataPoint
 
-	ct := 0
+	ct := uint32(0)
 	// sorting order for the table is time ASC (i.e. first_t == first entry)
 
 	for iter.Scan(&max, &min, &sum, &first, &last, &count, &t) {
-		on_t := int(t / nano) // back convert to seconds
+		on_t := uint32(t / nano) // back convert to seconds
 
 		d_points = append(d_points, RawDataPoint{
 			Count: count,
@@ -770,10 +769,10 @@ func (cass *CassandraFlatMetric) RawRenderOne(metric indexer.MetricFindItem, fro
 
 	//cass.log.Critical("METR: %s Start: %d END: %d LEN: %d GotLen: %d", metric.Id, first_t, last_t, len(d_points), ct)
 
-	rawd.RealEnd = int(last_t)
-	rawd.RealStart = int(first_t)
-	rawd.Start = int(start)
-	rawd.End = int(end)
+	rawd.RealEnd = uint32(last_t)
+	rawd.RealStart = uint32(first_t)
+	rawd.Start = uint32(start)
+	rawd.End = uint32(end)
 	rawd.Step = resolution
 	rawd.Metric = m_key
 	rawd.Data = d_points
@@ -803,6 +802,8 @@ func (cass *CassandraFlatMetric) RenderOne(metric indexer.MetricFindItem, from s
 	use_metric := metric.SelectValue()
 
 	m_key := metric.Id
+	stat_name := metric.StatName()
+	stat_name.Resolution = rawd.Step
 	b_len := (rawd.End - rawd.Start) / rawd.Step //"proper" length of the metric
 
 	// Since graphite does not care about the actual time stamp, but assumes
@@ -817,21 +818,20 @@ func (cass *CassandraFlatMetric) RenderOne(metric indexer.MetricFindItem, from s
 	interp_vec := make([]DataPoint, b_len)
 	cur_step_time := rawd.Start
 	d_points := rawd.Data
-	ct := len(d_points)
-	var last_got_t int
-	var last_got_index int
+	ct := uint32(len(d_points))
+	var last_got_t uint32
+	var last_got_index uint32
 
 	// grab from cache too if not yet written
-	s_key := fmt.Sprintf("%s:%d", m_key, rawd.Step)
-	inflight, err := cass.writer.cacher.Get(s_key)
+	_, inflight, err := cass.writer.cacher.GetById(stat_name.UniqueId())
 	// debuggers
 	//cass.writer.log.Critical("%s", s_key)
 	//cass.writer.cacher.DumpPoints(inflight)
-	inflight_len := len(inflight)
+	inflight_len := uint32(len(inflight))
 
 	if ct > 0 { // got something from cassandra, make sure to fill any "missing times" w/ nils
-		j := 0
-		for i := 0; i < b_len; i++ {
+		j := uint32(0)
+		for i := uint32(0); i < b_len; i++ {
 
 			interp_vec[i] = DataPoint{Time: cur_step_time, Value: nil}
 
@@ -874,11 +874,11 @@ func (cass *CassandraFlatMetric) RenderOne(metric indexer.MetricFindItem, from s
 
 		// now attempt to merge the inflight data
 		if len(inflight) > 0 && err == nil && last_got_t <= cur_step_time {
-			j := 0
+			j := uint32(0)
 			for i := last_got_index; i < b_len; i++ {
 				for ; j < inflight_len; j++ {
 					d := inflight[j]
-					if int(d.Time.Unix()) <= interp_vec[i].Time {
+					if uint32(d.Time.Unix()) <= interp_vec[i].Time {
 						// the weird setters here are to get the pointers properly (a weird golang thing)
 						switch use_metric {
 						case "mean":
@@ -908,12 +908,12 @@ func (cass *CassandraFlatMetric) RenderOne(metric indexer.MetricFindItem, from s
 		}
 	} else if len(inflight) > 0 && err == nil { // no data in cassandra yet, use inflight
 		//fill it up
-		j := 0
-		for i := 0; i < b_len; i++ {
+		j := uint32(0)
+		for i := uint32(0); i < b_len; i++ {
 			interp_vec[i] = DataPoint{Time: cur_step_time, Value: nil}
 			for ; j < inflight_len; j++ {
 				d := inflight[j]
-				if int(d.Time.Unix()) <= cur_step_time {
+				if uint32(d.Time.Unix()) <= cur_step_time {
 
 					// cass.writer.log.Critical("ONPS %v : %v Len %d :I %d, j %d, iLen: %v SUM: %v", d_points[j], interp_vec[i], ct, i, j, b_len, d_points[j].Sum,)
 
@@ -938,7 +938,7 @@ func (cass *CassandraFlatMetric) RenderOne(metric indexer.MetricFindItem, from s
 						s := float64(d.Sum)
 						interp_vec[i].Value = &s
 					}
-					interp_vec[i].Time = int(d.Time.Unix()) //this is the "real" time, graphite does not care, but something might
+					interp_vec[i].Time = uint32(d.Time.Unix()) //this is the "real" time, graphite does not care, but something might
 					j++
 				}
 				break

@@ -37,7 +37,7 @@ func round(a float64) float64 {
 }
 
 type StatsdBaseStatItem struct {
-	InKey      string
+	InKey      repr.StatName
 	Count      int64
 	Min        float64
 	Max        float64
@@ -52,7 +52,7 @@ type StatsdBaseStatItem struct {
 
 func (s *StatsdBaseStatItem) Repr() repr.StatRepr {
 	return repr.StatRepr{
-		Name:  repr.StatName{Key: s.InKey},
+		Name:  s.InKey,
 		Min:   repr.CheckFloat(repr.JsonFloat64(s.Min)),
 		Max:   repr.CheckFloat(repr.JsonFloat64(s.Max)),
 		Count: s.Count,
@@ -65,7 +65,7 @@ func (s *StatsdBaseStatItem) Repr() repr.StatRepr {
 // statsd has no time in the format other then "now"
 func (s *StatsdBaseStatItem) StatTime() time.Time { return time.Now() }
 func (s *StatsdBaseStatItem) Type() string        { return s.InType }
-func (s *StatsdBaseStatItem) Key() string         { return s.InKey }
+func (s *StatsdBaseStatItem) Key() repr.StatName  { return s.InKey }
 
 func (s *StatsdBaseStatItem) ZeroOut() error {
 	// reset the values
@@ -115,6 +115,7 @@ func (s *StatsdBaseStatItem) Out(fmatter FormatterItem, acc AccumulatorItem) []s
 
 	// reset the ticker
 	s.start_time = time.Now().Unix()
+	in_key := s.InKey.Key
 	if c_type == "c" {
 		val_p_s := val / float64(tick)
 		if acc.GetOption("LegacyStatsd", true).(bool) {
@@ -123,15 +124,16 @@ func (s *StatsdBaseStatItem) Out(fmatter FormatterItem, acc AccumulatorItem) []s
 				rate_pref = rate_pref + sufix + "."
 			}
 			return []string{
+
 				fmatter.ToString(
-					f_key+s.InKey,
+					repr.StatName{Key: f_key + in_key},
 					val_p_s,
 					0, // let formatter handle the time,
 					c_type,
 					acc.Tags(),
 				),
 				fmatter.ToString(
-					rate_pref+s.InKey,
+					repr.StatName{Key: rate_pref + in_key},
 					val,
 					0, // let formatter handle the time,
 					c_type,
@@ -142,14 +144,14 @@ func (s *StatsdBaseStatItem) Out(fmatter FormatterItem, acc AccumulatorItem) []s
 
 			return []string{
 				fmatter.ToString(
-					f_key+"count."+s.InKey,
+					repr.StatName{Key: f_key + "count." + in_key},
 					val,
 					0, // let formatter handle the time,
 					c_type,
 					acc.Tags(),
 				),
 				fmatter.ToString(
-					f_key+"rate."+s.InKey,
+					repr.StatName{Key: f_key + "rate." + in_key},
 					val_p_s,
 					0, // let formatter handle the time,
 					c_type,
@@ -160,7 +162,7 @@ func (s *StatsdBaseStatItem) Out(fmatter FormatterItem, acc AccumulatorItem) []s
 	}
 	return []string{
 		fmatter.ToString(
-			f_key+s.InKey,
+			repr.StatName{Key: f_key + in_key},
 			val,
 			0, // let formatter handle the time,
 			c_type,
@@ -207,7 +209,7 @@ func (s *StatsdBaseStatItem) Accumulate(val float64, sample float64, stattime ti
 /** timer type **/
 
 type StatsdTimerStatItem struct {
-	InKey     string
+	InKey     repr.StatName
 	InType    string
 	Count     int64
 	Min       float64
@@ -228,7 +230,7 @@ type StatsdTimerStatItem struct {
 func (s *StatsdTimerStatItem) Repr() repr.StatRepr {
 	return repr.StatRepr{
 		Time:  time.Now(),
-		Name:  repr.StatName{Key: s.InKey},
+		Name:  s.InKey,
 		Min:   repr.CheckFloat(repr.JsonFloat64(s.Min)),
 		Max:   repr.CheckFloat(repr.JsonFloat64(s.Max)),
 		Count: s.Count,
@@ -240,7 +242,7 @@ func (s *StatsdTimerStatItem) Repr() repr.StatRepr {
 
 // time is 'now' basically for statsd
 func (s *StatsdTimerStatItem) StatTime() time.Time { return time.Now() }
-func (s *StatsdTimerStatItem) Key() string         { return s.InKey }
+func (s *StatsdTimerStatItem) Key() repr.StatName  { return s.InKey }
 func (s *StatsdTimerStatItem) Type() string        { return s.InType }
 
 // stattime is not used for statsd, but there for interface goodness
@@ -305,7 +307,7 @@ func (s *StatsdTimerStatItem) Out(fmatter FormatterItem, acc AccumulatorItem) []
 	if len(sufix) > 0 {
 		f_key = f_key + sufix + "."
 	}
-	f_key = f_key + s.InKey
+	f_key = f_key + s.InKey.Key
 
 	std := float64(0)
 	avg := s.Sum / float64(s.Count)
@@ -336,21 +338,20 @@ func (s *StatsdTimerStatItem) Out(fmatter FormatterItem, acc AccumulatorItem) []
 	if max == STATSD_ACC_MIN_FLAG {
 		max = 0.0
 	}
-
 	base := []string{
-		fmatter.ToString(f_key+".count", float64(s.SampleSum), t_stamp, "c", nil),
-		fmatter.ToString(f_key+".count_ps", float64(s.SampleSum)/float64(tick), t_stamp, "c", nil),
-		fmatter.ToString(f_key+".lower", min, t_stamp, "g", nil),
-		fmatter.ToString(f_key+".upper", max, t_stamp, "g", nil),
-		fmatter.ToString(f_key+".sum", s.Sum, t_stamp, "g", nil),
+		fmatter.ToString(repr.StatName{Key: f_key + ".count"}, float64(s.SampleSum), t_stamp, "c", nil),
+		fmatter.ToString(repr.StatName{Key: f_key + ".count_ps"}, float64(s.SampleSum)/float64(tick), t_stamp, "c", nil),
+		fmatter.ToString(repr.StatName{Key: f_key + ".lower"}, min, t_stamp, "g", nil),
+		fmatter.ToString(repr.StatName{Key: f_key + ".upper"}, max, t_stamp, "g", nil),
+		fmatter.ToString(repr.StatName{Key: f_key + ".sum"}, s.Sum, t_stamp, "g", nil),
 	}
 	if s.Count == 0 {
 		base = append(
 			base,
 			[]string{
-				fmatter.ToString(f_key+".mean", float64(0.0), t_stamp, "g", nil),
-				fmatter.ToString(f_key+".std", float64(0.0), t_stamp, "g", nil),
-				fmatter.ToString(f_key+".median", float64(0.0), t_stamp, "g", nil),
+				fmatter.ToString(repr.StatName{Key: f_key + ".mean"}, float64(0.0), t_stamp, "g", nil),
+				fmatter.ToString(repr.StatName{Key: f_key + ".std"}, float64(0.0), t_stamp, "g", nil),
+				fmatter.ToString(repr.StatName{Key: f_key + ".median"}, float64(0.0), t_stamp, "g", nil),
 			}...,
 		)
 	}
@@ -366,9 +367,9 @@ func (s *StatsdTimerStatItem) Out(fmatter FormatterItem, acc AccumulatorItem) []
 		base = append(
 			base,
 			[]string{
-				fmatter.ToString(f_key+".mean", float64(avg), t_stamp, "g", nil),
-				fmatter.ToString(f_key+".std", float64(std), t_stamp, "g", nil),
-				fmatter.ToString(f_key+".median", float64(median), t_stamp, "g", nil),
+				fmatter.ToString(repr.StatName{Key: f_key + ".mean"}, float64(avg), t_stamp, "g", nil),
+				fmatter.ToString(repr.StatName{Key: f_key + ".std"}, float64(std), t_stamp, "g", nil),
+				fmatter.ToString(repr.StatName{Key: f_key + ".median"}, float64(median), t_stamp, "g", nil),
 			}...,
 		)
 
@@ -406,20 +407,20 @@ func (s *StatsdTimerStatItem) Out(fmatter FormatterItem, acc AccumulatorItem) []
 
 			base = append(base,
 				[]string{
-					fmatter.ToString(fmt.Sprintf("%s.count_%s", f_key, p_name), float64(numInThreshold), t_stamp, "c", nil),
-					fmatter.ToString(fmt.Sprintf("%s.mean_%s", f_key, p_name), float64(mean), t_stamp, "g", nil),
-					fmatter.ToString(fmt.Sprintf("%s.sum_%s", f_key, p_name), float64(sum), t_stamp, "g", nil),
+					fmatter.ToString(repr.StatName{Key: fmt.Sprintf("%s.count_%s", f_key, p_name)}, float64(numInThreshold), t_stamp, "c", nil),
+					fmatter.ToString(repr.StatName{Key: fmt.Sprintf("%s.mean_%s", f_key, p_name)}, float64(mean), t_stamp, "g", nil),
+					fmatter.ToString(repr.StatName{Key: fmt.Sprintf("%s.sum_%s", f_key, p_name)}, float64(sum), t_stamp, "g", nil),
 				}...,
 			)
 			if pct > 0 {
 				base = append(
 					base,
-					fmatter.ToString(fmt.Sprintf("%s.upper_%s", f_key, p_name), float64(thresholdBoundary), t_stamp, "g", nil),
+					fmatter.ToString(repr.StatName{Key: fmt.Sprintf("%s.upper_%s", f_key, p_name)}, float64(thresholdBoundary), t_stamp, "g", nil),
 				)
 			} else {
 				base = append(
 					base,
-					fmatter.ToString(fmt.Sprintf("%s.lower_%s", f_key, p_name), float64(thresholdBoundary), t_stamp, "g", nil),
+					fmatter.ToString(repr.StatName{Key: fmt.Sprintf("%s.lower_%s", f_key, p_name)}, float64(thresholdBoundary), t_stamp, "g", nil),
 				)
 			}
 		}
@@ -664,7 +665,7 @@ func (a *StatsdAccumulate) ProcessLine(line string) (err error) {
 				First:            STATSD_ACC_MIN_FLAG,
 				Last:             STATSD_ACC_MIN_FLAG,
 				Count:            0,
-				InKey:            key,
+				InKey:            repr.StatName{Key: key},
 				PercentThreshold: thres,
 				SampleSum:        0,
 			}
@@ -676,7 +677,7 @@ func (a *StatsdAccumulate) ProcessLine(line string) (err error) {
 				Max:    STATSD_ACC_MIN_FLAG,
 				First:  STATSD_ACC_MIN_FLAG,
 				Last:   STATSD_ACC_MIN_FLAG,
-				InKey:  key,
+				InKey:  repr.StatName{Key: key},
 			}
 		}
 	}

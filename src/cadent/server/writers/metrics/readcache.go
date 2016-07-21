@@ -45,7 +45,7 @@ const (
 
 // basic cached item treat it kinda like a round-robin array
 type ReadCacheItem struct {
-	Metric     string
+	MetricId   repr.StatId // repr.StatName.UniqueID()
 	StartTime  time.Time
 	EndTime    time.Time
 	LastAccess int64
@@ -108,6 +108,12 @@ func (rc *ReadCacheItem) PutSeries(stats repr.StatReprSlice) {
 // put a chunk o data
 func (rc *ReadCacheItem) PutRenderedSeries(data []RawDataPoint) {
 	for _, s := range data {
+		// since the RawDataPoint contains a "mean" .. and may or may not have the Sum/Count
+		// if sum/count are 0, we make the "sum" the mean and a count of 1
+		if s.Sum == 0.0 && s.Count <= 1 && s.Mean != 0.0 {
+			s.Sum = s.Mean
+			s.Count = 1
+		}
 		rc.AddValues(time.Unix(int64(s.Time), 0), s.Min, s.Max, s.First, s.Last, s.Sum, s.Count)
 	}
 }
@@ -117,7 +123,6 @@ func (rc *ReadCacheItem) PutRenderedSeries(data []RawDataPoint) {
 func (rc *ReadCacheItem) Get(start time.Time, end time.Time) (stats repr.StatReprSlice, firsttime time.Time, lasttime time.Time) {
 
 	stats = make(repr.StatReprSlice, 0)
-	var last_added *repr.StatRepr
 
 	it, err := rc.Data.Iter()
 
@@ -130,12 +135,8 @@ func (rc *ReadCacheItem) Get(start time.Time, end time.Time) (stats repr.StatRep
 
 	for it.Next() {
 		stat := it.ReprValue()
-		if stat == nil || stat.Time.IsZero() {
-			continue
-		}
 
-		// some de-dupeing
-		if last_added != nil && last_added.IsSameStat(stat) {
+		if stat == nil || stat.Time.IsZero() {
 			continue
 		}
 		t_int := stat.Time.UnixNano()
@@ -151,7 +152,6 @@ func (rc *ReadCacheItem) Get(start time.Time, end time.Time) (stats repr.StatRep
 				lasttime = stat.Time
 			}
 
-			last_added = stat
 			stats = append(stats, stat)
 		}
 	}
@@ -162,7 +162,6 @@ func (rc *ReadCacheItem) Get(start time.Time, end time.Time) (stats repr.StatRep
 
 func (rc *ReadCacheItem) GetAll() repr.StatReprSlice {
 	out_arr := make([]*repr.StatRepr, 0)
-	var last_added *repr.StatRepr
 	it, err := rc.Data.Iter()
 	if err != nil {
 		return out_arr
@@ -172,11 +171,7 @@ func (rc *ReadCacheItem) GetAll() repr.StatReprSlice {
 		if stat == nil || stat.Time.IsZero() {
 			continue
 		}
-		// some dedupeing
-		if last_added != nil && last_added.IsSameStat(stat) {
-			continue
-		}
-		last_added = stat
+
 		out_arr = append(out_arr, stat)
 	}
 	rc.LastAccess = time.Now().UnixNano()
@@ -279,6 +274,7 @@ func (rc *ReadCache) PutSeries(metric string, stats []*repr.StatRepr) bool {
 		return false
 	}
 	item.(*ReadCacheItem).PutSeries(stats)
+	rc.lru.Set(metric, item)
 	return true
 }
 
@@ -288,6 +284,7 @@ func (rc *ReadCache) PutRenderedSeries(metric string, data []RawDataPoint) bool 
 		return false
 	}
 	item.(*ReadCacheItem).PutRenderedSeries(data)
+	rc.lru.Set(metric, item)
 	return true
 }
 
@@ -296,9 +293,6 @@ func (rc *ReadCache) PutRenderedSeries(metric string, data []RawDataPoint) bool 
 // so the writers will add metrics to the cache as it's assumed to be used in the
 // future
 func (rc *ReadCache) Put(metric string, stat *repr.StatRepr) bool {
-	if len(metric) == 0 {
-		metric = stat.Name.StatKey
-	}
 	if len(metric) == 0 {
 		metric = stat.Name.Key
 	}
@@ -309,6 +303,7 @@ func (rc *ReadCache) Put(metric string, stat *repr.StatRepr) bool {
 	if !ok {
 		return false
 	}
+
 	gots.(*ReadCacheItem).Add(stat)
 	rc.lru.Set(metric, gots)
 	return true
@@ -317,7 +312,7 @@ func (rc *ReadCache) Put(metric string, stat *repr.StatRepr) bool {
 func (rc *ReadCache) Get(metric string, start time.Time, end time.Time) (stats repr.StatReprSlice, first time.Time, last time.Time) {
 	gots, ok := rc.lru.Get(metric)
 	if !ok {
-		return stats, time.Time{}, time.Time{}
+		return stats, first, last
 	}
 	return gots.(*ReadCacheItem).Get(start, end)
 }

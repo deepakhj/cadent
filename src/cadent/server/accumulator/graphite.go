@@ -81,7 +81,7 @@ var GRAPHITE_ACC_FUN = map[string]AGG_TYPE{
 }
 
 type GraphiteBaseStatItem struct {
-	InKey      string
+	InKey      repr.StatName
 	Values     graphiteFloat64
 	InType     string
 	ReduceFunc string
@@ -101,7 +101,7 @@ type GraphiteBaseStatItem struct {
 func (s *GraphiteBaseStatItem) Repr() repr.StatRepr {
 	return repr.StatRepr{
 		Time:  s.Time,
-		Name:  repr.StatName{Key: s.InKey},
+		Name:  s.InKey,
 		Min:   repr.CheckFloat(repr.JsonFloat64(s.Min)),
 		Max:   repr.CheckFloat(repr.JsonFloat64(s.Max)),
 		Count: s.Count,
@@ -112,7 +112,7 @@ func (s *GraphiteBaseStatItem) Repr() repr.StatRepr {
 }
 func (s *GraphiteBaseStatItem) StatTime() time.Time { return s.Time }
 func (s *GraphiteBaseStatItem) Type() string        { return s.InType }
-func (s *GraphiteBaseStatItem) Key() string         { return s.InKey }
+func (s *GraphiteBaseStatItem) Key() repr.StatName  { return s.InKey }
 
 func (s *GraphiteBaseStatItem) ZeroOut() error {
 	// reset the values
@@ -315,7 +315,7 @@ func (a *GraphiteAccumulate) ProcessLine(line string) (err error) {
 		gots = &GraphiteBaseStatItem{
 			InType:     "graphite",
 			Time:       a.ResolutionTime(t),
-			InKey:      key,
+			InKey:      repr.StatName{Key: key},
 			Min:        GRAPHITE_ACC_MIN_FLAG,
 			Max:        GRAPHITE_ACC_MIN_FLAG,
 			First:      GRAPHITE_ACC_MIN_FLAG,

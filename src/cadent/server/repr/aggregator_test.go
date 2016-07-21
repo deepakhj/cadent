@@ -10,33 +10,30 @@ func TestStatReprAggregator(t *testing.T) {
 	// Only pass t into top-level Convey calls
 	t_time := time.Now()
 	ss := StatRepr{
-		Name:       StatName{Key: "moo", StatKey: "moo"},
+		Name:       StatName{Key: "moo", Resolution: 1},
 		Sum:        5,
 		Min:        1,
 		Max:        3,
 		Count:      4,
 		Time:       t_time,
-		Resolution: 1,
 	}
 	ssM := StatRepr{
-		Name: StatName{Key: "moo", StatKey: "moo"},
+		Name: StatName{Key: "moo", Resolution: 1},
 
 		Sum:        5,
 		Min:        0,
 		Max:        8,
 		Count:      4,
 		Time:       t_time,
-		Resolution: 1,
 	}
 	ss2 := StatRepr{
-		Name: StatName{Key: "goo", StatKey: "goo"},
+		Name: StatName{Key: "goo", Resolution: 2},
 
 		Sum:        5,
 		Min:        1,
 		Max:        3,
 		Count:      4,
 		Time:       t_time,
-		Resolution: 2,
 	}
 
 	Convey("Aggregator", t, func() {

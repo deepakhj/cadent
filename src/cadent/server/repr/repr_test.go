@@ -10,24 +10,23 @@ import (
 
 func TestStatAccumulatorRepr(t *testing.T) {
 	// Only pass t into top-level Convey calls
-
+	moo_nm := StatName{Key: "moo", Resolution: 1}
 	ss := StatRepr{
-		Name:       StatName{StatKey: "moo"},
+		Name:       moo_nm,
 		Sum:        5,
 		Min:        1,
 		Max:        JsonFloat64(math.Inf(1)),
 		Count:      4,
 		Time:       time.Now(),
-		Resolution: 1,
 	}
+	goo_nm := StatName{Key: "goo", Resolution: 2}
 	ss2 := StatRepr{
-		Name:       StatName{StatKey: "goo"},
+		Name:       goo_nm,
 		Sum:        5,
 		Min:        1,
 		Max:        3,
 		Count:      4,
 		Time:       time.Now(),
-		Resolution: 2,
 	}
 
 	STAT_REPR_CACHE.Add(ss)
@@ -46,7 +45,7 @@ func TestStatAccumulatorRepr(t *testing.T) {
 		Convey("Should have one elment (again)", func() {
 			So(STAT_REPR_CACHE.Len(), ShouldEqual, 1)
 		})
-		gg := STAT_REPR_CACHE.Get("moo")
+		gg := STAT_REPR_CACHE.Get(moo_nm.UniqueId())
 		Convey("gotten element should exist", func() {
 			So(gg, ShouldNotEqual, nil)
 		})
@@ -84,27 +83,27 @@ func TestStatAccumulatorRepr(t *testing.T) {
 			So(sc.Len(), ShouldEqual, 2)
 		})
 
-		g_st := sc.Get("goo")
+		g_st := sc.Get(goo_nm.UniqueId())
 		Convey("Gotten element should have 2 items", func() {
 			So(g_st.Len(), ShouldEqual, 2)
-			So(g_st.Reprs[0].Name.StatKey, ShouldEqual, "goo")
+			So(g_st.Reprs[0].Name.Key, ShouldEqual, "goo")
 		})
 
 		g_st = sc.Pop()
 		Convey("Pop Gotten element should have 2 items", func() {
 			So(sc.Len(), ShouldEqual, 1)
 			So(g_st.Len(), ShouldEqual, 2)
-			So(g_st.Reprs[0].Name.StatKey, ShouldEqual, "moo")
+			So(g_st.Reprs[0].Name.Key, ShouldEqual, "moo")
 		})
-		g_st = sc.Delete("moo")
+		g_st = sc.Delete(moo_nm.UniqueId())
 		Convey("Delete missing element", func() {
 			So(g_st, ShouldEqual, nil)
 		})
-		g_st = sc.Delete("goo")
+		g_st = sc.Delete(goo_nm.UniqueId())
 		Convey("Delete Gotten element should have 2 items", func() {
 			So(sc.Len(), ShouldEqual, 0)
 			So(g_st.Len(), ShouldEqual, 2)
-			So(g_st.Reprs[0].Name.StatKey, ShouldEqual, "goo")
+			So(g_st.Reprs[0].Name.Key, ShouldEqual, "goo")
 		})
 	})
 }
