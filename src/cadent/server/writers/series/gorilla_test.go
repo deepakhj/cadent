@@ -95,6 +95,10 @@ func Benchmark_GorillaSeries_RawSize(b *testing.B) {
 	benchmarkRawSize(b, "gorilla", 1024)
 }
 
+func Benchmark_GorillaSeries_SingleVal_Raw_Size(b *testing.B) {
+	benchmarkRawSizeSingleStat(b, "gorilla", 1024)
+}
+
 func Benchmark_GorillaSeries_Snappy_Compress(b *testing.B) {
 	benchmarkSnappyCompress(b, "gorilla", 1024)
 }

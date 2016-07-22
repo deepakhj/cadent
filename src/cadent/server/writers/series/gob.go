@@ -13,7 +13,7 @@
 
 	[tag][T0][fullbit, deltaT, min, max, first, last, sum, count],[ ....]
 
-	if fullbit == false/1
+	if fullbit == false/0
 
 	[tag][T0][fullbit, deltaT, sum],[ ....]
 

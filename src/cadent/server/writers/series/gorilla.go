@@ -30,7 +30,7 @@
 
 	Format ..
 
-	there are "2" modes Full resolution for "nanoseconds"
+	there are "2" main time modes Full resolution for "nanoseconds"
 
 	[4 byte header][1byte numvals][32 bit T0][32 bit Tms]
 	[DelTs][XorTms0][v0][v1][...]
@@ -43,6 +43,15 @@
 	[DelTs][v0][v1][...]
 	[NumBit][DoDTs][XorV0][XorV1][...]
 
+
+	There is a third mode for "smart" encoding, much like the Gob/Protobuf formats
+	if the count == 1 (or all the values are the same) we only encode the time + sum
+	This requires an extra "bit" per Value/Time pairs as we need to know how much
+	to encode/decode per item.  This is the default behavior for "full resolution" types
+
+	[header things]
+	[DelTs][small|fullbit][v0][v1][...]
+	[NumBit][DoDTs][small|fullbit][XorV0][XorV1][...]
 
 
 */
@@ -61,7 +70,8 @@ import (
 
 const (
 	GORILLA_BIN_SERIES_TAG_NANOSECOND = "gorn" // just a flag to note we are using this one at the start of each blob
-	GORILLA_BIN_SERIES_TAG_SECOND     = "gors" // just a flag to note we are using this one at the start of each blob
+	GORILLA_BIN_SERIES_TAG_SECOND     = "gors"
+	GORILLA_BIN_SERIES_TAG_NANO_SMART = "gort"
 )
 
 /** shamelessly taken from https://github.com/dgryski/go-tsz/blob/master/bstream.go */
@@ -281,6 +291,7 @@ type GorillaTimeSeries struct {
 
 	curCount       int
 	fullResolution bool // true for nanosecond, false for just second
+	smartEncoding  bool // use smart(er) encoding
 
 	Ts  uint32
 	Tms uint32
@@ -313,6 +324,7 @@ func NewGoriallaTimeSeries(t0 int64, options *Options) *GorillaTimeSeries {
 		curTimeMs:      0,
 		trailingMs:     0,
 		curCount:       0,
+		smartEncoding:  true, // default to true
 		numValues:      uint8(options.NumValues),
 	}
 
@@ -333,7 +345,7 @@ func (s *GorillaTimeSeries) writeHeader() {
 	}
 	// block header
 	if s.fullResolution {
-		s.bw.writeBytes([]byte(GORILLA_BIN_SERIES_TAG_NANOSECOND))
+		s.bw.writeBytes([]byte(GORILLA_BIN_SERIES_TAG_NANO_SMART))
 	} else {
 		s.bw.writeBytes([]byte(GORILLA_BIN_SERIES_TAG_SECOND))
 	}
@@ -524,6 +536,20 @@ func (s *GorillaTimeSeries) AddPoint(t int64, min float64, max float64, first fl
 	if err != nil {
 		return err
 	}
+	// now for the smarty pants
+	if s.smartEncoding {
+		// we have to write a true/false bit for the value to see if "false" not small
+		if count == 1 || sameFloatVals(min, max, first, last, sum) {
+			s.bw.writeBit(zero)
+			// use the sum 4th slot in case we get another
+			s.addValue(4, sum, start)
+			s.curCount++
+			return nil
+		} else {
+			s.bw.writeBit(one)
+		}
+	}
+
 	switch s.numValues {
 	case 6:
 		s.addValue(0, min, start)
@@ -566,6 +592,9 @@ type GorillaIter struct {
 	Ts uint32
 
 	fullResolution bool
+	smartEncoding  bool
+
+	curSmartEnc bit
 
 	curTime   uint32
 	curVals   []float64
@@ -599,7 +628,7 @@ func NewGorillaIterFromBStream(br *bstream) (*GorillaIter, error) {
 	}
 	//log.Printf("Start Byte Read: %v ", br.bitsRead)
 	hh := string(head)
-	if hh != GORILLA_BIN_SERIES_TAG_NANOSECOND && hh != GORILLA_BIN_SERIES_TAG_SECOND {
+	if hh != GORILLA_BIN_SERIES_TAG_NANOSECOND && hh != GORILLA_BIN_SERIES_TAG_SECOND && hh != GORILLA_BIN_SERIES_TAG_NANO_SMART {
 		return nil, fmt.Errorf("Not a valid Gorilla Series")
 	}
 
@@ -607,6 +636,11 @@ func NewGorillaIterFromBStream(br *bstream) (*GorillaIter, error) {
 	fullrez := true
 	if hh == GORILLA_BIN_SERIES_TAG_SECOND {
 		fullrez = false
+	}
+
+	smartEncoding := false
+	if hh == GORILLA_BIN_SERIES_TAG_NANO_SMART {
+		smartEncoding = true
 	}
 
 	// read the numvals
@@ -627,6 +661,7 @@ func NewGorillaIterFromBStream(br *bstream) (*GorillaIter, error) {
 		br:             *br,
 		numValues:      uint8(numvals),
 		fullResolution: fullrez,
+		smartEncoding:  smartEncoding,
 		start:          true,
 	}
 
@@ -815,73 +850,9 @@ func (it *GorillaIter) uncompressValue(curV float64, o_leading uint8, o_trailing
 }
 
 func (it *GorillaIter) readValue(idx uint8) bool {
-
 	var ok bool
 	ok, it.curVals[idx], it.leading[idx], it.trailing[idx] = it.uncompressValue(it.curVals[idx], it.leading[idx], it.trailing[idx])
 	return ok
-
-	if it.start {
-
-		v, err := it.br.readBits(64)
-		if err != nil {
-			it.err = err
-			return false
-		}
-		it.curVals[idx] = math.Float64frombits(v)
-		return true
-	}
-
-	// read compressed value
-	bit, err := it.br.readBit()
-	if err != nil {
-		it.err = err
-		return false
-	}
-
-	// no value change
-	if bit == zero {
-		return true
-	}
-
-	bit, err = it.br.readBit()
-	if err != nil {
-		it.err = err
-		return false
-	}
-	if bit == zero {
-		// reuse leading/trailing zero bits
-		// it.leading, it.trailing = it.leading, it.trailing
-	} else {
-		bits, err := it.br.readBits(5)
-		if err != nil {
-			it.err = err
-			return false
-		}
-		it.leading[idx] = uint8(bits)
-
-		bits, err = it.br.readBits(6)
-		if err != nil {
-			it.err = err
-			return false
-		}
-		mbits := uint8(bits)
-		// 0 significant bits here means we overflowed and we actually need 64; see comment in encoder
-		if mbits == 0 {
-			mbits = 64
-		}
-		it.trailing[idx] = 64 - it.leading[idx] - mbits
-	}
-
-	mbits := int(64 - it.leading[idx] - it.trailing[idx])
-	bits, err := it.br.readBits(mbits)
-	if err != nil {
-		it.err = err
-		return false
-	}
-	vbits := math.Float64bits(it.curVals[idx])
-	vbits ^= (bits << it.trailing[idx])
-	it.curVals[idx] = math.Float64frombits(vbits)
-	return true
 }
 
 func (it *GorillaIter) Next() bool {
@@ -895,10 +866,30 @@ func (it *GorillaIter) Next() bool {
 	if !ok {
 		return false
 	}
-	for i := uint8(0); i < it.numValues; i++ {
-		ok = it.readValue(i)
+
+	// if in the "smart" mode, need the full or small bit
+	it.curSmartEnc = one
+	var err error
+	if it.smartEncoding {
+		it.curSmartEnc, err = it.br.readBit()
+		if err != nil {
+			it.err = err
+			return false
+		}
+
+	}
+	if it.curSmartEnc == zero {
+		// the "4" is the sum index
+		ok = it.readValue(4)
 		if !ok {
 			return false
+		}
+	} else {
+		for i := uint8(0); i < it.numValues; i++ {
+			ok = it.readValue(i)
+			if !ok {
+				return false
+			}
 		}
 	}
 	//log.Printf("Bytes Read: %v", it.br.bitsRead)
@@ -909,10 +900,26 @@ func (it *GorillaIter) Next() bool {
 
 func (it *GorillaIter) Values() (int64, float64, float64, float64, float64, float64, int64) {
 	//log.Printf("Values Time: %v : %v", it.curTime, it.curTimeMs)
+	if it.curSmartEnc == zero {
+		v := it.curVals[4]
+		return combineSecNano(it.curTime, uint32(it.curTimeMs)), v, v, v, v, v, 1
+	}
 	return combineSecNano(it.curTime, uint32(it.curTimeMs)), it.curVals[0], it.curVals[1], it.curVals[2], it.curVals[3], it.curVals[4], int64(it.curVals[5])
 }
 
 func (it *GorillaIter) ReprValue() *repr.StatRepr {
+	if it.curSmartEnc == zero {
+		v := repr.JsonFloat64(it.curVals[4])
+		return &repr.StatRepr{
+			Time:  time.Unix(int64(it.curTime), int64(it.curTimeMs)),
+			Min:   v,
+			Max:   v,
+			Last:  v,
+			First: v,
+			Sum:   v,
+			Count: 1,
+		}
+	}
 	return &repr.StatRepr{
 		Time:  time.Unix(int64(it.curTime), int64(it.curTimeMs)),
 		Min:   repr.JsonFloat64(it.curVals[0]),

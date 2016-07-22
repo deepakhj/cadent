@@ -453,12 +453,38 @@ func genericTestSeries(t *testing.T, stype string) {
 				idx := 0
 				for it.Next() {
 					idx++
+
 				}
 				So(idx, ShouldEqual, n_stats+run+1)
 				run++
 				if run > max_run {
 					break
 				}
+			}
+		})
+
+		Convey("Series Type: "+stype+" - 'Smart' Single Point", func() {
+
+			n_dd, nn := dummyStatSingleVal()
+			nser, _ := NewTimeSeries(stype, nn.UnixNano(), NewDefaultOptions())
+			n_times, o_stats, terr := addSingleValStat(nser, n_dd, n_stats, true)
+			So(terr, ShouldEqual, nil)
+			nit, _ := nser.Iter()
+			idx := 0
+			for nit.Next() {
+				to, _, _, _, _, su, ct := nit.Values()
+
+				// just the second portion test
+				test_lt := time.Unix(0, n_times[idx])
+				test_to := time.Unix(0, to)
+				So(test_lt.Unix(), ShouldEqual, test_to.Unix())
+				So(o_stats[idx].Sum, ShouldEqual, su)
+				So(o_stats[idx].Count, ShouldEqual, ct)
+				idx++
+			}
+			So(idx, ShouldEqual, n_stats)
+			if nit.Error() != nil {
+				t.Fatalf("Iter Error: %v", nit.Error())
 			}
 		})
 

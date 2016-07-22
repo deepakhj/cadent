@@ -86,9 +86,8 @@ func (s *ProtobufTimeSeries) AddPoint(t int64, min float64, max float64, first f
 
 	// if the count is 1, then we only have "one" value that makes any sense .. the sum
 	if count == 1 || sameFloatVals(min, max, first, last, sum) {
-		t_s, _ := splitNano(t)
 		tmp := &ProtStatSmall{
-			Time: proto.Uint32(t_s),
+			Time: proto.Int64(t),
 			Val:  proto.Float64(sum),
 		}
 		p_stat := &ProtStat{
@@ -177,7 +176,7 @@ func (it *ProtobufIter) Values() (int64, float64, float64, float64, float64, flo
 	}
 
 	v := float64(it.curStat.GetSmallStat().GetVal())
-	return combineSecNano(it.curStat.GetSmallStat().GetTime(), 0),
+	return it.curStat.GetSmallStat().GetTime(),
 		v,
 		v,
 		v,
@@ -189,7 +188,7 @@ func (it *ProtobufIter) Values() (int64, float64, float64, float64, float64, flo
 func (it *ProtobufIter) ReprValue() *repr.StatRepr {
 	if it.curStat.GetStatType() {
 		return &repr.StatRepr{
-			Time:  time.Unix(0, it.curStat.GetStat().GetTime()),
+			Time:  time.Unix(it.curStat.GetSmallStat().GetTime(), 0),
 			Min:   repr.JsonFloat64(it.curStat.GetStat().GetMin()),
 			Max:   repr.JsonFloat64(it.curStat.GetStat().GetMax()),
 			Last:  repr.JsonFloat64(it.curStat.GetStat().GetLast()),
@@ -200,7 +199,7 @@ func (it *ProtobufIter) ReprValue() *repr.StatRepr {
 	}
 	v := repr.JsonFloat64(it.curStat.GetSmallStat().GetVal())
 	return &repr.StatRepr{
-		Time:  time.Unix(int64(it.curStat.GetSmallStat().GetTime()), 0),
+		Time:  time.Unix(it.curStat.GetSmallStat().GetTime(), 0),
 		Min:   v,
 		Max:   v,
 		Last:  v,

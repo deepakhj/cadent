@@ -13,7 +13,7 @@ message ProtStatFull {
 
 // object for just int32 time and one value
 message ProtStatSmall {
-    required uint32 time = 1;
+    required int64 time = 1;
     required double val = 2;
 }
 
