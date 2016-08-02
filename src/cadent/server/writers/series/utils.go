@@ -58,6 +58,11 @@ var getSyncBufferPool = sync.Pool{
 func splitNano(t int64) (uint32, uint32) {
 	// not "good way" of splitting a Nano-time is available so we need to
 	// convert things to "time" and grab the resulting bits
+
+	// already in seconds
+	if t <= 2147483647 {
+		return uint32(t), 0
+	}
 	tt := time.Unix(0, t)
 	return uint32(tt.Unix()), uint32(tt.Nanosecond())
 }
