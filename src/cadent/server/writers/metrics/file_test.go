@@ -12,7 +12,6 @@ import (
 
 func TestFileWriterAccumulator(t *testing.T) {
 	// Only pass t into top-level Convey calls
-	return
 	Convey("a dummy file writer", t, func() {
 		file, _ := ioutil.TempFile("/tmp", "cadent_file_test")
 		f_name := file.Name()

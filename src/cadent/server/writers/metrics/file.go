@@ -119,7 +119,7 @@ func (fi *FileMetrics) PeriodicRotate() (err error) {
 				fi.fp.Close()
 				fi.fp = nil
 			}
-			break
+			return
 		case <-ticks.C:
 			err := fi.Rotate()
 			if err != nil {
@@ -127,7 +127,6 @@ func (fi *FileMetrics) PeriodicRotate() (err error) {
 			}
 		}
 	}
-	return nil
 }
 
 // Perform the actual act of rotating and reopening file.
@@ -169,8 +168,6 @@ func (fi *FileMetrics) Rotate() (err error) {
 
 		return err
 	}
-
-	return
 }
 
 func (fi *FileMetrics) WriteLine(line string) (int, error) {
@@ -187,7 +184,7 @@ func (fi *FileMetrics) Write(stat repr.StatRepr) error {
 	// stat\tsum\tmin\tmax\tlast\tcount\tresoltion\ttime\tttl
 
 	line := fmt.Sprintf(
-		"%s\t%0.6f\t%0.6f\t%0.6f\t%0.6f\t%d\t%0.2f\t%0.2f\t%d\t%d\n",
+		"%s\t%0.6f\t%0.6f\t%0.6f\t%0.6f\t%0.6f\t%d\t%d\t%d\t%d\n",
 		stat.Name.Key, stat.Sum, stat.Min, stat.Max, stat.First, stat.Last, stat.Count,
 		stat.Name.Resolution, stat.Time.UnixNano(), stat.Name.TTL,
 	)
