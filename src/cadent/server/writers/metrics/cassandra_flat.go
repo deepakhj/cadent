@@ -191,6 +191,7 @@ func init() {
 // insert job queue workers
 type CassandraFlatMetricJob struct {
 	Cass  *CassandraFlatWriter
+	Name  *repr.StatName
 	Stats repr.StatReprSlice // where the point list live
 	retry int
 }
@@ -204,7 +205,7 @@ func (j CassandraFlatMetricJob) OnRetry() int {
 }
 
 func (j CassandraFlatMetricJob) DoWork() error {
-	_, err := j.Cass.InsertMulti(j.Stats)
+	_, err := j.Cass.InsertMulti(j.Name, j.Stats)
 	return err
 }
 
@@ -217,7 +218,10 @@ type CassandraFlatWriter struct {
 	write_queue      chan dispatch.IJob
 	dispatch_queue   chan chan dispatch.IJob
 	write_dispatcher *dispatch.Dispatch
-	cacher           *Cacher
+
+	cacher            *Cacher
+	cacheOverFlowChan chan *TotalTimeSeries // on byte overflow of cacher force a write
+	overFlowShutdown  chan bool
 
 	shutdown          chan bool // when triggered, we skip the rate limiter and go full out till the queue is done
 	shutitdown        bool      // just a flag
@@ -344,10 +348,10 @@ func (cass *CassandraFlatWriter) Stop() {
 		if did%100 == 0 {
 			cass.log.Warning("shutdown purge: written %d/%d...", did, mets_l)
 		}
-		_, points, _ := cass.cacher.GetById(queueitem.metric)
+		name, points, _ := cass.cacher.GetById(queueitem.metric)
 		if points != nil {
 			stats.StatsdClient.Incr(fmt.Sprintf("writer.cassandraflat.write.send-to-writers"), 1)
-			cass.InsertMulti(points)
+			cass.InsertMulti(name, points)
 		}
 		did++
 	}
@@ -380,6 +384,10 @@ func (cass *CassandraFlatWriter) TrapExit() {
 	go func(ins *CassandraFlatWriter) {
 		s := <-sc
 		cass.log.Warning("Caught %s: Flushing remaining points out before quit ", s)
+
+		if cass.overFlowShutdown != nil {
+			cass.overFlowShutdown <- true
+		}
 
 		cass.Stop()
 		signal.Stop(sc)
@@ -427,9 +435,40 @@ func (cass *CassandraFlatWriter) mergeWrite(stat *repr.StatRepr) *repr.StatRepr 
 	return stat
 }
 
+// listen to the overflow chan from the cache and attempt to write "now"
+func (cass *CassandraFlatWriter) overFlowWrite() {
+	for {
+		select {
+		case <-cass.overFlowShutdown:
+			return
+		case statitem := <-cass.cacheOverFlowChan:
+
+			// bail
+			if cass.shutitdown {
+				return
+			}
+			// need to make a list of points from the series
+			iter, err := statitem.Series.Iter()
+			if err != nil {
+				cass.log.Error("error in overflow writer %v", err)
+				continue
+			}
+			pts := make(repr.StatReprSlice, 0)
+			for iter.Next() {
+				pts = append(pts, iter.ReprValue())
+			}
+			if iter.Error() != nil {
+				cass.log.Error("error in overflow iterator %v", iter.Error())
+			}
+			cass.log.Debug("Cache overflow force write for %s you may want to do something about that", statitem.Name.Key)
+			cass.InsertMulti(statitem.Name, pts)
+		}
+	}
+}
+
 // we can use the batcher effectively for single metric multi point writes as they share the
 // the same token
-func (cass *CassandraFlatWriter) InsertMulti(points repr.StatReprSlice) (int, error) {
+func (cass *CassandraFlatWriter) InsertMulti(name *repr.StatName, points repr.StatReprSlice) (int, error) {
 
 	defer stats.StatsdNanoTimeFunc(fmt.Sprintf("writer.cassandraflat.batch.metric-time-ns"), time.Now())
 
@@ -450,7 +489,7 @@ func (cass *CassandraFlatWriter) InsertMulti(points repr.StatReprSlice) (int, er
 		}
 		batch.Query(
 			DO_Q,
-			stat.Name.Key,
+			name.Key,
 			int64(stat.Name.Resolution),
 			stat.Time.UnixNano(),
 			float64(stat.Sum),
@@ -473,7 +512,7 @@ func (cass *CassandraFlatWriter) InsertMulti(points repr.StatReprSlice) (int, er
 	return l, nil
 }
 
-func (cass *CassandraFlatWriter) InsertOne(stat *repr.StatRepr) (int, error) {
+func (cass *CassandraFlatWriter) InsertOne(name *repr.StatName, stat *repr.StatRepr) (int, error) {
 
 	defer stats.StatsdNanoTimeFunc(fmt.Sprintf("writer.cassandraflat.write.metric-time-ns"), time.Now())
 
@@ -489,7 +528,7 @@ func (cass *CassandraFlatWriter) InsertOne(stat *repr.StatRepr) (int, error) {
 
 	write_stat := cass.mergeWrite(stat)
 	err := cass.conn.Query(Q,
-		stat.Name.Key,
+		name.Key,
 		int64(stat.Name.Resolution),
 		stat.Time.UnixNano(),
 		float64(write_stat.Sum),
@@ -528,13 +567,13 @@ func (cass *CassandraFlatWriter) sendToWriters() error {
 				return nil
 			}
 
-			_, points := cass.cacher.Pop()
+			name, points := cass.cacher.Pop()
 			switch points {
 			case nil:
 				time.Sleep(time.Second)
 			default:
 				stats.StatsdClient.Incr(fmt.Sprintf("writer.cassandraflat.write.send-to-writers"), 1)
-				cass.write_queue <- CassandraFlatMetricJob{Cass: cass, Stats: points}
+				cass.write_queue <- CassandraFlatMetricJob{Cass: cass, Stats: points, Name: name}
 			}
 		}
 	} else {
@@ -548,7 +587,7 @@ func (cass *CassandraFlatWriter) sendToWriters() error {
 				return nil
 			}
 
-			_, points := cass.cacher.Pop()
+			name, points := cass.cacher.Pop()
 
 			switch points {
 			case nil:
@@ -556,7 +595,7 @@ func (cass *CassandraFlatWriter) sendToWriters() error {
 			default:
 
 				stats.StatsdClient.Incr(fmt.Sprintf("writer.cassandraflat.write.send-to-writers"), 1)
-				cass.write_queue <- CassandraFlatMetricJob{Cass: cass, Stats: points}
+				cass.write_queue <- CassandraFlatMetricJob{Cass: cass, Stats: points, Name: name}
 				time.Sleep(dur)
 			}
 
@@ -638,6 +677,23 @@ func (cass *CassandraFlatMetric) Config(conf map[string]interface{}) (err error)
 	_lf := conf["cache_low_fruit_rate"]
 	if _lf != nil {
 		gots.cacher.lowFruitRate = _lf.(float64)
+	}
+
+	_st := conf["cache_series_type"]
+	if _st != nil {
+		gots.cacher.seriesType = _st.(string)
+	}
+
+	_ov := conf["cache_overflow_method"]
+	if _ov != nil {
+		gots.cacher.overFlowMethod = _ov.(string)
+		// set th overflow chan, and start the listener for that channel
+		if gots.cacher.overFlowMethod == "chan" {
+			gots.cacheOverFlowChan = make(chan *TotalTimeSeries, 128) // a little buffer
+			gots.overFlowShutdown = make(chan bool, 5)
+			gots.cacher.SetOverflowChan(gots.cacheOverFlowChan)
+			go gots.overFlowWrite()
+		}
 	}
 
 	cass.writer.Start() //start up
