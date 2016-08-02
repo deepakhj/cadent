@@ -54,7 +54,7 @@ func (t StatJob) DoWork() error {
 }
 
 type AggregateLoop struct {
-	mus []sync.Mutex
+	mus []*sync.Mutex
 
 	// these are assigned from the config file in the PreReg config file
 	FlushTimes []time.Duration `json:"flush_time"`
@@ -95,7 +95,7 @@ func NewAggregateLoop(flushtimes []time.Duration, ttls []time.Duration, name str
 		Name:                name,
 		FlushTimes:          flushtimes,
 		TTLTimes:            ttls,
-		mus:                 make([]sync.Mutex, len(flushtimes)),
+		mus:                 make([]*sync.Mutex, len(flushtimes)),
 		Shutdown:            broadcast.New(1),
 		Aggregators:         repr.NewMulti(flushtimes),
 		InputChan:           make(chan repr.StatRepr, AGGLOOP_DEFAULT_QUEUE_LENGTH),
@@ -216,7 +216,6 @@ func (agg *AggregateLoop) startInputLooper() {
 			return
 		}
 	}
-	return
 }
 
 // this is a helper function to get things to "start" on nicely "rounded"
@@ -228,7 +227,7 @@ func (agg *AggregateLoop) delayRoundedTicker(duration time.Duration) *time.Ticke
 }
 
 // start the looper for each flush time as well as the writers
-func (agg *AggregateLoop) startWriteLooper(duration time.Duration, ttl time.Duration, writer *writers.WriterLoop, mu sync.Mutex) {
+func (agg *AggregateLoop) startWriteLooper(duration time.Duration, ttl time.Duration, writer *writers.WriterLoop, mu *sync.Mutex) {
 	if agg.shutitdown {
 		agg.log.Warning("Got shutdown signal, not starting writers")
 		return
@@ -306,7 +305,6 @@ func (agg *AggregateLoop) startWriteLooper(duration time.Duration, ttl time.Dura
 			return
 		}
 	}
-	return
 }
 
 // For every flus time, start a new timer loop to perform writes

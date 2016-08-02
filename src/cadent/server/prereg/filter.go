@@ -12,7 +12,7 @@ import (
 type PrefixFilter struct {
 	Prefix   string `json:"prefix"`
 	IsReject bool   `json:"is_rejected"`
-	backend  string `json:"backend"`
+	backend  string
 }
 
 func (pref PrefixFilter) ToString() string {
@@ -56,7 +56,7 @@ func (pref *PrefixFilter) SetBackend(back string) (string, error) {
 type SubStringFilter struct {
 	SubString string `json:"substring"`
 	IsReject  bool   `json:"is_rejected"`
-	backend   string `json:"backend"`
+	backend   string
 }
 
 func (sfilter *SubStringFilter) Name() string {
@@ -98,7 +98,7 @@ func (sfilter *SubStringFilter) ToString() string {
 type RegexFilter struct {
 	RegexString string `json:"regex"`
 	IsReject    bool   `json:"is_rejected"`
-	backend     string `json:"backend"`
+	backend     string
 
 	thereg *regexp.Regexp
 }
@@ -141,8 +141,8 @@ func (refilter *RegexFilter) ToString() string {
 
 /**********************   no-op filter ***********************/
 type NoOpFilter struct {
-	backend  string `json:"backend"`
-	IsReject bool   `json:"is_rejected"`
+	backend  string
+	IsReject bool `json:"is_rejected"`
 }
 
 func (nop *NoOpFilter) Name() string {
@@ -188,7 +188,7 @@ type PreReg struct {
 	Name           string `json:"name"`
 
 	// the actual "listening" server that this reg is pinned to
-	ListenServer string `json:listen_server_name`
+	ListenServer string `json:"listen_server_name"`
 
 	FilterList  []FilterItem             `json:"map"`
 	Accumulator *accumulator.Accumulator `json:"accumulator"`

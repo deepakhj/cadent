@@ -225,8 +225,6 @@ func (acc *Accumulator) Start() error {
 			return nil
 		}
 	}
-
-	return nil
 }
 
 func (acc *Accumulator) Stop() {

@@ -483,7 +483,6 @@ func (server *Server) WorkerOutput() {
 
 		}
 	}
-	return
 }
 
 func (server *Server) SendtoOutputWorkers(spl splitter.SplitItem, out chan splitter.SplitItem) {
@@ -927,7 +926,6 @@ func (server *Server) tickDisplay() {
 			return
 		}
 	}
-	return
 }
 
 // Fire up the http server for stats and healthchecks
@@ -1339,7 +1337,6 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, done chan Client) 
 			return
 		}
 	}
-	return
 }
 
 // different mechanism for UDP servers
@@ -1377,7 +1374,6 @@ func (server *Server) startUDPServer(hashers *[]*ConstHasher, done chan Client) 
 				client.Close()
 			}
 		}
-		return
 	}
 
 	// handler pre "socket" (yes we can share the sockets thanks to SO_REUSEPORT)
@@ -1394,7 +1390,6 @@ func (server *Server) startUDPServer(hashers *[]*ConstHasher, done chan Client) 
 			return
 		}
 	}
-	return
 }
 
 // different mechanism for http servers much like UDP,
@@ -1433,7 +1428,6 @@ func (server *Server) startHTTPServer(hashers *[]*ConstHasher, done chan Client)
 			client.Close()
 		}
 	}
-	return
 }
 
 func (server *Server) startBackendServer(hashers *[]*ConstHasher, done chan Client) {
@@ -1496,7 +1490,6 @@ func (server *Server) ConsumeProcessedQueue(qu chan splitter.SplitItem) {
 			stats.StatsdClient.GaugeAvg(fmt.Sprintf("worker.%s.queue.length", server.Name), ct)
 		}
 	}
-	return
 }
 
 func CreateServer(cfg *Config, hashers []*ConstHasher) (*Server, error) {

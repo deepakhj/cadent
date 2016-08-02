@@ -98,8 +98,8 @@ func (wc *Cacher) Add(metric repr.StatName) error {
 
 	if len(wc.Cache) > wc.maxKeys {
 		wc.log.Error("Indexer Key Cache is too large .. over %d keys, have to drop this one", wc.maxKeys)
-		return fmt.Errorf("Cacher: too many keys, dropping metric")
 		stats.StatsdClientSlow.Incr("cacher.indexer.overflow", 1)
+		return fmt.Errorf("Cacher: too many keys, dropping metric")
 	}
 
 	/** ye old debuggin'

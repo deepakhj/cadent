@@ -438,5 +438,4 @@ func (re *ApiLoop) Start() error {
 			return nil
 		}
 	}
-	return nil
 }

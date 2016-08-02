@@ -184,8 +184,6 @@ func (echo EchoServerUDP) ReadMessages() (err error) {
 		}
 
 	}
-
-	return nil
 }
 
 type EchoServerTCP struct {
@@ -265,8 +263,6 @@ func (echo EchoServerTCP) ReadMessages() (err error) {
 		log.Print("Close")
 		atomic.AddUint64(&echo.StatCt.NumClosedConnections, 1)
 	}
-
-	return nil
 }
 
 func createServer(listen *url.URL) (EchoServer, error) {

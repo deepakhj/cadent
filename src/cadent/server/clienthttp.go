@@ -156,10 +156,9 @@ func (client *HTTPClient) run(out_queue chan splitter.SplitItem) {
 		case splitem := <-client.input_queue:
 			client.server.ProcessSplitItem(splitem, out_queue)
 		case <-client.close:
-			break
+			return
 		}
 	}
-	return
 }
 
 func (client HTTPClient) handleRequest(out_queue chan splitter.SplitItem) {

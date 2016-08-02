@@ -381,7 +381,4 @@ func (self *CheckedServerPool) testConnections() error {
 			return nil
 		}
 	}
-
-	return nil
-
 }

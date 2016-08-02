@@ -135,7 +135,6 @@ func (loop *WriterLoop) statTick() {
 			//log.Printf("Write Queue Length: %s: Metrics: %d Indexer %d", loop.name, len(loop.write_chan), len(loop.indexer_chan))
 		}
 	}
-	return
 }
 
 func (loop *WriterLoop) SetMetrics(mets metrics.Metrics) error {
@@ -165,7 +164,6 @@ func (loop *WriterLoop) indexLoop() {
 			return
 		}
 	}
-	return
 }
 
 func (loop *WriterLoop) procLoop() {
@@ -193,7 +191,6 @@ func (loop *WriterLoop) procLoop() {
 			return
 		}
 	}
-	return
 }
 
 func (loop *WriterLoop) processQueue() {
@@ -204,7 +201,9 @@ func (loop *WriterLoop) processQueue() {
 			stat := loop.write_queue.Poll()
 			switch stat {
 			case nil:
+				time.Sleep(time.Second) // just pause a bit as the queue is empty
 				break
+
 			default:
 				// metric writers send to indexer so as to take advantage of it's
 				// caching middle layer to prevent pounding the queue

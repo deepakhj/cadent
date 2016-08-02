@@ -37,8 +37,6 @@ func init() {
 	for idx, _ := range r_list_int {
 		r_list_int[idx] = rand.Intn(123123123123)
 	}
-
-
 }
 
 func BenchmarkMapStringPut(b *testing.B) {

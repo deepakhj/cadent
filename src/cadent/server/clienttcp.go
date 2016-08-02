@@ -215,6 +215,4 @@ func (client *TCPClient) handleSend(outqueue chan splitter.SplitItem) {
 			return
 		}
 	}
-
-	return
 }

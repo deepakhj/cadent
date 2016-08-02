@@ -140,7 +140,6 @@ func (client *UDPClient) consume(inchan chan splitter.SplitItem, out_queue chan 
 			return
 		}
 	}
-	return
 }
 
 // pick a channel to push the stat to
@@ -204,7 +203,6 @@ func (client *UDPClient) run(out_queue chan splitter.SplitItem) {
 			return
 		}
 	}
-	return
 }
 
 func (client *UDPClient) getLines(job_queue chan dispatch.IJob, out_queue chan splitter.SplitItem) {
@@ -225,7 +223,6 @@ func (client *UDPClient) getLines(job_queue chan dispatch.IJob, out_queue chan s
 			}
 		}
 	}
-	return
 }
 
 func (client UDPClient) handleRequest(out_queue chan splitter.SplitItem) {

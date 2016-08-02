@@ -71,9 +71,7 @@ func (w *Worker) Start() {
 				return
 			}
 		}
-		return
 	}()
-	return
 }
 
 // Stop signals the worker to stop listening for work requests.
@@ -174,7 +172,6 @@ func (d *Dispatch) dispatch() {
 			return
 		}
 	}
-	return
 }
 
 func (d *Dispatch) background_dispatch() {
@@ -200,5 +197,4 @@ func (d *Dispatch) background_dispatch() {
 			return
 		}
 	}
-	return
 }

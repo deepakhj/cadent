@@ -139,7 +139,6 @@ func TestAccumualtorAccumulator(t *testing.T) {
 					t.Logf("FlushLine %s", l.Line())
 				}
 			}
-			return
 		}
 		t_f()
 		Convey("should have 30 flushed lines", func() {
@@ -201,7 +200,6 @@ func TestAccumualtorAccumulator(t *testing.T) {
 					t.Logf("FlushLine %s", l.Line())
 				}
 			}
-			return
 		}
 		t_f()
 		Convey("should have 72 flushed lines", func() {
@@ -247,7 +245,6 @@ func TestAccumualtorAccumulator(t *testing.T) {
 					t.Logf("FlushLine %s", l.Line())
 				}
 			}
-			return
 		}
 
 		t_f()
