@@ -15,14 +15,37 @@
 	[acc.agg.writer.metrics.options]
 		...
 		cache_metric_size=102400  # number of metric strings to keep
-		cache_byte_size=1024 # number of bytes to keep in caches per metric
-		cache_series_type="gob" # gob, protobuf, json, gorilla, zipgob
+		cache_byte_size=8192 # number of bytes to keep in caches per metric
+		cache_series_type="protobuf" # gob, protobuf, json, gorilla
 		...
 
 	We use the default "gob" series as
 		a) it's pretty small, and
-		b) we can "sort it" by time (i.e. the format is NOT timeordered)
+		b) we can "sort it" by time (i.e. the format is NOT time-ordered)
 		(note: gorilla would be ideal for space, but REQUIRES time ordered inputs)
+
+	Overflow cache_overflow_method ::
+		2 overflow modes allowed, an overflow is when there are too make bytes in a series
+		based on the cache_byte_size option.
+
+		DROP ::
+		`cache_overflow_method="drop"` : just drop the points as we can do no more until the current blob is written
+
+		if the writers are known not to be able to keep up fast enough, this is really the only thing we can do
+		otherwise we will run out of ram, and lock on the "chan" method stopping the world basically.
+
+		CHAN ::
+		`cache_overflow_method="chan"` : send the current about to expire timeseries + name pair to a channel
+
+		 for the `chan` method to function correctly, it must be set "external" to this object
+		 (i.e. the writers/whatever need to give this object the channel to send the overflows)
+
+		 this is useful for writers that use want to write entire "blobs" of timeseries rather then
+		 write single points of data.  Basically we want to write the entire cache_byte_size blob in one
+		 write action and not the single points.
+
+
+
 */
 
 package metrics
@@ -41,9 +64,10 @@ import (
 )
 
 const (
-	CACHER_NUMBER_BYTES = 8192
-	CACHER_SERIES_TYPE  = "gob"
-	CACHER_METRICS_KEYS = 102400
+	CACHER_NUMBER_BYTES     = 8192
+	CACHER_SERIES_TYPE      = "protobuf"
+	CACHER_METRICS_KEYS     = 102400
+	CACHER_DEFAULT_OVERFLOW = "drop"
 )
 
 /*
@@ -69,7 +93,7 @@ type CacheQueueItem struct {
 }
 
 func (wqi *CacheQueueItem) ToString() string {
-	return fmt.Sprintf("Metric Id: %s Count: %d", wqi.metric, wqi.count)
+	return fmt.Sprintf("Metric Id: %v Count: %d", wqi.metric, wqi.count)
 }
 
 // we pop the "most" populated item
@@ -103,6 +127,10 @@ type Cacher struct {
 	Queue        CacheQueue
 	NameCache    map[repr.StatId]*repr.StatName
 	Cache        map[repr.StatId]series.TimeSeries
+
+	//overflow pieces
+	overFlowMethod string
+	overFlowChan   chan *TotalTimeSeries
 }
 
 func NewCacher() *Cacher {
@@ -110,6 +138,9 @@ func NewCacher() *Cacher {
 	wc.maxKeys = CACHER_METRICS_KEYS
 	wc.maxBytes = CACHER_NUMBER_BYTES
 	wc.seriesType = CACHER_SERIES_TYPE
+	wc.overFlowMethod = CACHER_DEFAULT_OVERFLOW
+	wc.overFlowChan = nil
+
 	wc.curSize = 0
 	wc.log = logging.MustGetLogger("cacher.metrics")
 	wc.Cache = make(map[repr.StatId]series.TimeSeries)
@@ -117,8 +148,13 @@ func NewCacher() *Cacher {
 	wc.shutdown = make(chan bool)
 	wc._accept = true
 	wc.lowFruitRate = 0.25
+
 	go wc.startUpdateTick()
 	return wc
+}
+
+func (wc *Cacher) SetOverflowChan(ch chan *TotalTimeSeries) {
+	wc.overFlowChan = ch
 }
 
 func (wc *Cacher) Stop() {
@@ -146,7 +182,6 @@ func (wc *Cacher) startUpdateTick() {
 			return
 		}
 	}
-	return
 }
 
 func (wc *Cacher) updateQueue() {
@@ -155,9 +190,9 @@ func (wc *Cacher) updateQueue() {
 	wc.mu.RLock() // need both locks
 	f_len := 0
 	for key, values := range wc.Cache {
-		p_len := values.Len()
-		newQueue = append(newQueue, &CacheQueueItem{key, p_len, values.Len()})
-		f_len += values.Count()
+		num_points := values.Count()
+		newQueue = append(newQueue, &CacheQueueItem{key, num_points, values.Len()})
+		f_len += num_points
 	}
 	wc.mu.RUnlock()
 	wc.numCurPoint = f_len
@@ -207,8 +242,8 @@ func (wc *Cacher) Add(name *repr.StatName, stat *repr.StatRepr) error {
 
 	if len(wc.Cache) > wc.maxKeys {
 		wc.log.Error("Key Cache is too large .. over %d metrics keys, have to drop this one", wc.maxKeys)
-		return fmt.Errorf("Cacher: too many keys, dropping metric")
 		stats.StatsdClientSlow.Incr("cacher.metrics.overflow", 1)
+		return fmt.Errorf("Cacher: too many keys, dropping metric")
 	}
 
 	/** ye old debuggin'
@@ -220,9 +255,28 @@ func (wc *Cacher) Add(name *repr.StatName, stat *repr.StatRepr) error {
 	if gots, ok := wc.Cache[unique_id]; ok {
 		cur_size := gots.Len()
 		if gots.Len() > wc.maxBytes {
-			wc.log.Error("Too Many Bytes for %s (max bytes: %d current metrics: %v)... have to drop this one", unique_id, wc.maxBytes, gots.Count())
+
+			// if the overflow method is chan, and there is valid overFLowChan, we "pop" the item from
+			// the cache and send it to the chan (note we're already "locked" here)
+			if wc.overFlowChan != nil && wc.overFlowMethod == "chan" {
+
+				nm := wc.NameCache[unique_id]
+				wc.curSize -= int64(gots.Len()) // shrink the bytes
+				delete(wc.Cache, unique_id)
+				delete(wc.NameCache, unique_id)
+				wc.overFlowChan <- &TotalTimeSeries{nm, gots}
+				stats.StatsdClientSlow.Incr("cacher.metrics.write.overflow", 1)
+
+				//must recompute the ordering
+				wc.updateQueue()
+
+				// break out of this loop and add a new guy
+				goto NEWSTAT
+			}
+
+			wc.log.Error("Too Many Bytes for %v (max bytes: %d current metrics: %v)... have to drop this one", unique_id, wc.maxBytes, gots.Count())
+			stats.StatsdClientSlow.Incr("cacher.metics.points.overflow", 1)
 			return fmt.Errorf("Cacher: too many points in cache, dropping metric")
-			stats.StatsdClientSlow.Incr("cacher.points.overflow", 1)
 		}
 		wc.Cache[unique_id].AddStat(stat)
 		wc.NameCache[unique_id] = name
@@ -231,12 +285,15 @@ func (wc *Cacher) Add(name *repr.StatName, stat *repr.StatRepr) error {
 		stats.StatsdClient.GaugeAvg("cacher.add.ave-points-per-metric", int64(gots.Count()))
 		return nil
 	}
+
+NEWSTAT:
 	tp, err := series.NewTimeSeries(wc.seriesType, stat.Time.UnixNano(), nil)
 	if err != nil {
 		return err
 	}
 	tp.AddStat(stat)
 	wc.Cache[unique_id] = tp
+	wc.NameCache[unique_id] = name
 	wc.curSize += int64(tp.Len())
 	stats.StatsdClient.GaugeAvg("cacher.add.ave-points-per-metric", 1)
 
