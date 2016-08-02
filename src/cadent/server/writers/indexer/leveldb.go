@@ -613,6 +613,13 @@ func (lp *LevelDBIndexer) Expand(metric string) (me MetricExpandItem, err error)
 	return me, err
 }
 
+func (lp *LevelDBIndexer) Delete(name *repr.StatName) error {
+	segment := LevelDBSegment{Path: name.Key}
+	segment.DeletePath(lp.db.SegmentConn())
+
+	return nil
+}
+
 /************************************************************************/
 /**********  Standard Worker Dispatcher JOB   ***************************/
 /************************************************************************/

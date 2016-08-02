@@ -36,7 +36,7 @@
     		length int,
     		has_data boolean,
  		id varint,  # repr.StatName.UniqueID()
-  		PRIMARY KEY (segment, path, has_data)
+  		PRIMARY KEY ((segment, length), path)
 	) WITH CLUSTERING ORDER BY (path ASC)
 
 	CREATE INDEX ON metric.path (id);
@@ -668,6 +668,24 @@ func (cass *CassandraIndexer) Find(metric string) (MetricFindItems, error) {
 	}
 
 	return mt, nil
+}
+
+// delete a path from the index
+// TODO
+func (cass *CassandraIndexer) Delete(name *repr.StatName) (err error) {
+	return nil
+	/*
+		// just remove the
+		cass_Q := fmt.Sprintf(
+			"DELETE FROM %s WHERE segment={pos: ?, segment: ?} AND has_data=1 AND length=? AND id=?",
+			cass.db.PathTable(),
+		)
+
+		err = cass.conn.Query(cass_Q,
+			m_len-1, metric,
+		).Exec()
+		return err
+	*/
 }
 
 /************************************************************************/

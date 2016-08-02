@@ -48,6 +48,10 @@ func (ws *WhisperIndexer) Stop() {
 	//noop
 }
 
+func (my *WhisperIndexer) Delete(name *repr.StatName) error {
+	return nil //noop
+}
+
 //noop
 func (ws *WhisperIndexer) Write(skey repr.StatName) error {
 	return nil

@@ -107,7 +107,6 @@ func (my *MySQLIndexer) PeriodFlush() {
 		time.Sleep(my.max_idle)
 		my.Flush()
 	}
-	return
 }
 
 func (my *MySQLIndexer) Flush() (int, error) {
@@ -165,6 +164,31 @@ func (my *MySQLIndexer) Write(skey repr.StatName) error {
 	my.write_lock.Lock()
 	defer my.write_lock.Unlock()
 	my.write_list = append(my.write_list, skey)
+	return nil
+}
+
+func (my *MySQLIndexer) Delete(name *repr.StatName) error {
+	pthQ := fmt.Sprintf(
+		"DELETE FROM %s WHERE path=? AND length=? ",
+		my.db.PathTable(),
+	)
+
+	pvals := []interface{}{name.Key, len(strings.Split(name.Key, "."))}
+
+	//prepare the statement
+	stmt, err := my.conn.Prepare(pthQ)
+	if err != nil {
+		my.log.Error("Mysql Driver: Indexer Delete Path prepare failed, %v", err)
+		return err
+	}
+	defer stmt.Close()
+
+	//format all vals at once
+	_, err = stmt.Exec(pvals...)
+	if err != nil {
+		my.log.Error("Mysql Driver: Delete Path failed, %v", err)
+		return err
+	}
 	return nil
 }
 

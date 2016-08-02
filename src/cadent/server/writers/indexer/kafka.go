@@ -22,10 +22,12 @@ import (
 /** basic data type **/
 
 type KafkaPath struct {
-	Type     string   `json:"type"`
-	Path     string   `json:"path"`
-	Segments []string `json:"segments"`
-	Time     int64    `json:"time"`
+	Id       repr.StatId `json:"id"`
+	Type     string      `json:"type"`
+	Path     string      `json:"path"`
+	Segments []string    `json:"segments"`
+	SentTime int64       `json:"senttime"`
+	Tags     [][]string  `json:"tags"`
 
 	encoded []byte
 	err     error
@@ -99,9 +101,11 @@ func (kf *KafkaIndexer) Write(skey repr.StatName) error {
 
 	item := &KafkaPath{
 		Type:     "index",
+		Id:       skey.UniqueId(),
 		Path:     skey.Key,
 		Segments: strings.Split(skey.Key, "."),
-		Time:     time.Now().UnixNano(),
+		Tags:     skey.SortedTags(),
+		SentTime: time.Now().UnixNano(),
 	}
 
 	stats.StatsdClientSlow.Incr("writer.kafka.indexer.writes", 1)
@@ -112,6 +116,32 @@ func (kf *KafkaIndexer) Write(skey repr.StatName) error {
 		Value: item,
 	}
 
+	return nil
+}
+
+// send a "delete message" to the mix
+func (kf *KafkaIndexer) Delete(skey *repr.StatName) error {
+	// noop if not writing indexes
+	if !kf.write_index {
+		return nil
+	}
+
+	item := &KafkaPath{
+		Type:     "delete-index",
+		Id:       skey.UniqueId(),
+		Path:     skey.Key,
+		Segments: strings.Split(skey.Key, "."),
+		Tags:     skey.SortedTags(),
+		SentTime: time.Now().UnixNano(),
+	}
+
+	stats.StatsdClientSlow.Incr("writer.kafka.indexer.delete", 1)
+
+	kf.conn.Input() <- &sarama.ProducerMessage{
+		Topic: kf.db.IndexTopic(),
+		Key:   sarama.StringEncoder(skey.Key), // hash on metric key
+		Value: item,
+	}
 	return nil
 }
 

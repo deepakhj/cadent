@@ -49,6 +49,9 @@ type Indexer interface {
 	*/
 	Expand(metric string) (MetricExpandItem, error)
 
-	Stop() // kill stuff
+	// stop all processing
+	Stop()
 
+	// remove an item from the index
+	Delete(name *repr.StatName) error
 }
