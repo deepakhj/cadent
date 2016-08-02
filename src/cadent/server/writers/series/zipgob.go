@@ -18,38 +18,38 @@ import (
 )
 
 const (
-	ZIP_SIMPLE_BIN_SERIES_TAG = "zbts" // just a flag to note we are using this one at the begining of each blob
+	ZIP_SIMPLE_BIN_SERIES_TAG       = "zbts" // just a flag to note we are using this one at the begining of each blob
 	ZIP_SIMPLE_BIN_SERIES_LOWRE_TAG = "zbtl" // just a flag to note we are using this one at the begining of each blob
 )
 
 // this can only handle "future pushing times" not random times
 type ZipGobTimeSeries struct {
-	mu sync.Mutex
+	mu   sync.Mutex
 	sTag string
 
 	T0       int64
 	curCount int
 
-	curDelta int64
-	curTime  int64
+	curDelta       int64
+	curTime        int64
 	fullResolution bool
 
-	buf      *gobBuffer
-	zip      *flate.Writer
-	encoder  *gob.Encoder
+	buf     *gobBuffer
+	zip     *flate.Writer
+	encoder *gob.Encoder
 }
 
 func NewZipGobTimeSeries(t0 int64, options *Options) *ZipGobTimeSeries {
 	ret := &ZipGobTimeSeries{
-		T0:       t0,
-		sTag: ZIP_SIMPLE_BIN_SERIES_TAG,
-		curTime:  0,
-		curDelta: 0,
-		curCount: 0,
+		T0:             t0,
+		sTag:           ZIP_SIMPLE_BIN_SERIES_TAG,
+		curTime:        0,
+		curDelta:       0,
+		curCount:       0,
 		fullResolution: options.HighTimeResolution,
-		buf:      new(gobBuffer),
+		buf:            new(gobBuffer),
 	}
-	if !ret.fullResolution{
+	if !ret.fullResolution {
 		ret.sTag = ZIP_SIMPLE_BIN_SERIES_LOWRE_TAG
 		ts, _ := splitNano(t0)
 		ret.T0 = int64(ts)

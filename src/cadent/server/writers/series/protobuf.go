@@ -29,8 +29,8 @@ type ProtobufTimeSeries struct {
 func NewProtobufTimeSeries(t0 int64, options *Options) *ProtobufTimeSeries {
 
 	ret := &ProtobufTimeSeries{
-		T0:             t0,
-		Stats:          new(ProtStats),
+		T0:    t0,
+		Stats: new(ProtStats),
 	}
 	ret.Stats.FullTimeResolution = options.HighTimeResolution
 	return ret
