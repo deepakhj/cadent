@@ -39,5 +39,5 @@ func (g *GraphiteFormatter) Write(buf BinaryWriter, name repr.StatName, val floa
 	if tstamp <= 0 {
 		tstamp = int32(time.Now().Unix())
 	}
-	fmt.Fprint(buf, "%s %f %d", name.Key, val, tstamp)
+	fmt.Fprintf(buf, "%s %f %d", name.Key, val, tstamp)
 }
