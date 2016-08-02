@@ -19,9 +19,9 @@
 
 	We use the "protobuf" series as
 		a) it's pretty small, and
-		b) we can do array slicing to keep a walking cache in order
-		(gorrilla is more compressed, but much harder to deal w/ the byte size issue as it's highly variable)
-		and w/ gorilla is NOT ok to be out-of-time
+		b) we need something we can easily "slice" to drop out the old points
+		c) we can do array slicing to keep a walking cache in order
+		gorrilla is more compressed BUT w/ gorilla is NOT ok to be out-of-time and it's not "sliceable"
 
 */
 
@@ -226,10 +226,9 @@ func (rc *ReadCache) Start() {
 		case stat := <-rc.InsertQueue:
 			rc.Put(stat.Name.Key, stat)
 		case <-rc.shutdown:
-			break
+			return
 		}
 	}
-	return
 }
 
 func (rc *ReadCache) Stop() {
