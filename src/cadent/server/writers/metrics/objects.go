@@ -1,15 +1,23 @@
 /*
-   Base Json objects to simulate a graphite API response
+   Base objects to simulate a graphite API response
 */
 
 package metrics
 
 import (
+	"cadent/server/repr"
+	"cadent/server/writers/series"
 	"fmt"
 	"math"
 )
 
-/****************** Output structs *********************/
+/******************  a simple union of series.TimeSeries and repr.StatName *********************/
+type TotalTimeSeries struct {
+	Name   *repr.StatName
+	Series series.TimeSeries
+}
+
+/****************** Output structs for the graphite API*********************/
 
 type DataPoint struct {
 	Time  uint32
@@ -279,8 +287,8 @@ func (r *RawRenderItem) Resample(step uint32) {
 	r.Data = data
 }
 
-func (r *RawRenderItem) Quantize() {
-	r.QuantizeToStep(r.Step)
+func (r *RawRenderItem) Quantize() error {
+	return r.QuantizeToStep(r.Step)
 }
 
 // based on the start, stop and step.  Fill in the gaps in missing
@@ -288,7 +296,11 @@ func (r *RawRenderItem) Quantize() {
 // length over the entire interval)
 // You should Put in an "End" time of "ReadData + Step" to avoid loosing the last point as things
 // are  [Start, End) not [Start, End]
-func (r *RawRenderItem) QuantizeToStep(step uint32) {
+func (r *RawRenderItem) QuantizeToStep(step uint32) error {
+
+	if step <= 0 {
+		return fmt.Errorf("Cannot quantize: to a '0' step size ...")
+	}
 
 	// make sure the start/ends are nicely divisible by the Step
 	start := r.Start
@@ -301,7 +313,7 @@ func (r *RawRenderItem) QuantizeToStep(step uint32) {
 
 	if endTime < start {
 		// there's no data in this Step so just bail (too small a step)
-		return
+		return fmt.Errorf("Cannot quantize to step: too little data")
 	}
 
 	// data length of the new data array
@@ -360,6 +372,7 @@ func (r *RawRenderItem) QuantizeToStep(step uint32) {
 	r.Step = step
 	r.End = endTime
 	r.Data = data
+	return nil
 }
 
 // merges 2 series into the current one .. it will quantize them first
