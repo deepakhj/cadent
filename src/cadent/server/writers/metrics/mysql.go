@@ -117,7 +117,6 @@ func (my *MySQLMetrics) PeriodFlush() {
 		time.Sleep(my.max_idle)
 		my.Flush()
 	}
-	return
 }
 
 func (my *MySQLMetrics) Flush() (int, error) {
