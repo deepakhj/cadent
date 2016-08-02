@@ -11,6 +11,7 @@
 		xFilesFactor=0.3
 		write_workers=8
 		write_queue_length=102400
+		cache_series_type="protobuf"
 		cache_metric_size=102400  # the "internal carbon-like-cache" size (ram is your friend)
 		cache_byte_size=8192 # number of bytes per metric to cache above to keep before we drop (ram requirements cache_metric_size*cache_byte_size)
 		cache_low_fruit_rate=0.25 # every 1/4 of the time write "low count" metrics to at least persist them
@@ -41,7 +42,7 @@ import (
 const (
 	WHISPER_METRIC_WORKERS    = 8
 	WHISPER_METRIC_QUEUE_LEN  = 1024 * 100
-	WHISPER_WRITES_PER_SECOND = 1000
+	WHISPER_WRITES_PER_SECOND = 1024
 )
 
 // the singleton (per DSN) as we really only want one "controller" of writes not many lest we explode the
@@ -81,8 +82,11 @@ type WhisperWriter struct {
 	xFilesFactor float32
 	resolutions  [][]int
 	retentions   whisper.Retention
+	indexer      indexer.Indexer
 
-	cache_queue *Cacher
+	cache_queue       *Cacher
+	cacheOverFlowChan chan *TotalTimeSeries // on byte overflow of cacher force a write
+	overFlowShutdown  chan bool
 
 	shutdown   chan bool // when triggered, we skip the rate limiter and go full out till the queue is done
 	shutitdown bool      // just a flag
@@ -92,7 +96,7 @@ type WhisperWriter struct {
 	write_dispatcher  *dispatch.Dispatch
 	num_workers       int
 	queue_len         int
-	writes_per_second int // number of acctuall writes we will do per second assuming "INF" writes allowed
+	writes_per_second int // number of actuall writes we will do per second assuming "INF" writes allowed
 
 	write_lock sync.Mutex
 	log        *logging.Logger
@@ -135,7 +139,7 @@ func NewWhisperWriter(conf map[string]interface{}) (*WhisperWriter, error) {
 		return nil, fmt.Errorf("Whisper Metrics: counld not find base path %s", err)
 	}
 	if !info.IsDir() {
-		return nil, fmt.Errorf("Whisper Metrics: base path %s is not a directory", err)
+		return nil, fmt.Errorf("Whisper Metrics: base path %s is not a directory", ws.base_path)
 	}
 
 	// set up the cacher
@@ -151,6 +155,23 @@ func NewWhisperWriter(conf map[string]interface{}) (*WhisperWriter, error) {
 		ws.cache_queue.maxBytes = int(_ps.(int64))
 	}
 
+	_st := conf["cache_series_type"]
+	if _st != nil {
+		ws.cache_queue.seriesType = _st.(string)
+	}
+
+	_ov := conf["cache_overflow_method"]
+	if _ov != nil {
+		ws.cache_queue.overFlowMethod = _ov.(string)
+		// set th overflow chan, and start the listener for that channel
+		if ws.cache_queue.overFlowMethod == "chan" {
+			ws.cacheOverFlowChan = make(chan *TotalTimeSeries, 128) // a little buffer
+			ws.overFlowShutdown = make(chan bool, 5)
+			ws.cache_queue.SetOverflowChan(ws.cacheOverFlowChan)
+			go ws.overFlowWrite()
+		}
+	}
+
 	_lf := conf["cache_low_fruit_rate"]
 	if _lf != nil {
 		ws.cache_queue.lowFruitRate = _lf.(float64)
@@ -164,7 +185,7 @@ func NewWhisperWriter(conf map[string]interface{}) (*WhisperWriter, error) {
 	ws.shutdown = make(chan bool, 1)
 	ws.shutitdown = false
 	go ws.TrapExit()
-
+	go ws.Start()
 	return ws, nil
 }
 
@@ -197,7 +218,6 @@ func (ws *WhisperWriter) getAggregateType(key string) whisper.AggregationMethod 
 	default:
 		return whisper.Average
 	}
-	return whisper.Average
 }
 
 func (ws *WhisperWriter) getxFileFactor(key string) float32 {
@@ -214,11 +234,17 @@ func (ws *WhisperWriter) getxFileFactor(key string) float32 {
 	default:
 		return ws.xFilesFactor
 	}
-	return ws.xFilesFactor
+}
+
+func (ws *WhisperWriter) getFilePath(metric string) string {
+	if strings.Contains(metric, "/") {
+		return metric
+	}
+	return filepath.Join(ws.base_path, strings.Replace(metric, ".", "/", -1)) + ".wsp"
 }
 
 func (ws *WhisperWriter) getFile(metric string) (*whisper.Whisper, error) {
-	path := filepath.Join(ws.base_path, strings.Replace(metric, ".", "/", -1)) + ".wsp"
+	path := ws.getFilePath(metric)
 	_, err := os.Stat(path)
 	if err != nil {
 		retentions, err := ws.getRetentions()
@@ -235,6 +261,14 @@ func (ws *WhisperWriter) getFile(metric string) (*whisper.Whisper, error) {
 		stats.StatsdClientSlow.Incr("writer.whisper.metric-creates", 1)
 		return whisper.Create(path, retentions, agg, ws.xFilesFactor)
 	}
+
+	// need a recover in case files is corrupt and thus start over
+	defer func() {
+		if r := recover(); r != nil {
+			ws.log.Critical("Whisper Failure (panic) %v :: need to remove file", r)
+			ws.DeleteByName(metric)
+		}
+	}()
 
 	return whisper.Open(path)
 }
@@ -289,6 +323,10 @@ func (ws *WhisperWriter) Stop() {
 	}
 	ws.shutitdown = true
 	ws.shutdown <- true
+	// shutdown overflow ticker
+	if ws.overFlowShutdown != nil {
+		ws.overFlowShutdown <- true
+	}
 	ws.cache_queue.Stop()
 	if ws.write_dispatcher != nil {
 		ws.write_dispatcher.Shutdown()
@@ -328,7 +366,54 @@ func (ws *WhisperWriter) Stop() {
 	return
 }
 
-func (ws *WhisperWriter) InsertMulti(metric *repr.StatName, points repr.StatReprSlice) (int, error) {
+func (ws *WhisperWriter) Start() {
+
+	/**** start the acctuall disk writer dispatcher queue ***/
+	if ws.write_queue == nil {
+		workers := ws.num_workers
+		ws.write_queue = make(chan dispatch.IJob, ws.queue_len)
+		ws.dispatch_queue = make(chan chan dispatch.IJob, workers)
+		ws.write_dispatcher = dispatch.NewDispatch(workers, ws.dispatch_queue, ws.write_queue)
+		ws.write_dispatcher.SetRetries(2)
+		ws.write_dispatcher.Run()
+		go ws.sendToWriters() // fire up queue puller
+	}
+
+}
+
+// listen to the overflow chan from the cache and attempt to write "now"
+func (ws *WhisperWriter) overFlowWrite() {
+	for {
+		select {
+		case <-ws.overFlowShutdown:
+			return
+		case statitem := <-ws.cacheOverFlowChan:
+
+			// bail
+			if ws.shutitdown {
+				return
+			}
+			// need to make a list of points from the series
+			iter, err := statitem.Series.Iter()
+			if err != nil {
+				ws.log.Error("error in overflow writer %v", err)
+				continue
+			}
+			pts := make(repr.StatReprSlice, 0)
+			for iter.Next() {
+				pts = append(pts, iter.ReprValue())
+			}
+			if iter.Error() != nil {
+				ws.log.Error("error in overflow iterator %v", iter.Error())
+			}
+			ws.log.Debug("Cache overflow force write for %s you may want to do something about that", statitem.Name.Key)
+			ws.InsertMulti(statitem.Name, pts)
+		}
+	}
+}
+
+func (ws *WhisperWriter) InsertMulti(metric *repr.StatName, points repr.StatReprSlice) (npts int, err error) {
+
 	whis, err := ws.getFile(metric.Key)
 	if err != nil {
 		ws.log.Error("Whisper:InsertMetric write error: %s", err)
@@ -336,15 +421,9 @@ func (ws *WhisperWriter) InsertMulti(metric *repr.StatName, points repr.StatRepr
 		return 0, err
 	}
 
-	/* ye old debuggin
-	if strings.Contains(metric, "flushesposts") {
-		ws.cache_queue.DumpPoints(points)
-	} */
-
 	// convert "points" to a whisper object
 	whisp_points := make([]*whisper.TimeSeriesPoint, 0)
 	for _, pt := range points {
-
 		whisp_points = append(whisp_points,
 			&whisper.TimeSeriesPoint{
 				Time: int(pt.Time.Unix()), Value: ws.guessValue(metric.Key, pt),
@@ -352,14 +431,23 @@ func (ws *WhisperWriter) InsertMulti(metric *repr.StatName, points repr.StatRepr
 		)
 	}
 
-	if points != nil {
+	// need a recover in case files is corrupt and thus start over
+	defer func() {
+		if r := recover(); r != nil {
+			ws.log.Critical("Whisper Failure (panic) '%v' :: Corrupt :: need to remove file: %s", r, metric.Key)
+			ws.DeleteByName(metric.Key)
+			err = r.(error)
+		}
+	}()
+
+	if points != nil && len(whisp_points) > 0 {
 		stats.StatsdClientSlow.GaugeAvg("writer.whisper.points-per-update", int64(len(points)))
 		whis.UpdateMany(whisp_points)
 	}
 	stats.StatsdClientSlow.Incr("writer.whisper.update-many-writes", 1)
 
 	whis.Close()
-	return len(points), nil
+	return len(points), err
 }
 
 // insert the metrics from the cache
@@ -367,7 +455,7 @@ func (ws *WhisperWriter) InsertNext() (int, error) {
 	defer stats.StatsdSlowNanoTimeFunc("writer.whisper.update-time-ns", time.Now())
 
 	metric, points := ws.cache_queue.Pop()
-	if points == nil {
+	if metric == nil || points == nil || len(points) == 0 {
 		return 0, nil
 	}
 	return ws.InsertMulti(metric, points)
@@ -398,21 +486,10 @@ func (ws *WhisperWriter) Write(stat repr.StatRepr) error {
 		return nil
 	}
 
-	/**** start the acctuall disk writer dispatcher queue ***/
-	if ws.write_queue == nil {
-		workers := ws.num_workers
-		ws.write_queue = make(chan dispatch.IJob, ws.queue_len)
-		ws.dispatch_queue = make(chan chan dispatch.IJob, workers)
-		ws.write_dispatcher = dispatch.NewDispatch(workers, ws.dispatch_queue, ws.write_queue)
-		ws.write_dispatcher.SetRetries(2)
-		ws.write_dispatcher.Run()
-		go ws.sendToWriters() // fireup queue puller
-	}
-
 	// add to the writeback cache only
 	ws.cache_queue.Add(&stat.Name, &stat)
 
-	// and now add it to the readcache ifit's been activated
+	// and now add it to the readcache iff it's been activated
 	r_cache := GetReadCache()
 	if r_cache != nil {
 		r_cache.InsertQueue <- &stat
@@ -439,10 +516,23 @@ func (ws *WhisperWriter) sendToWriters() error {
 			}
 		case <-ws.shutdown:
 			ws.log.Warning("Whisper shutdown received, stopping write loop")
-			break
+			return nil
 		}
 	}
-	return nil
+}
+
+// the only recourse to handle "corrupt" files is to nuke it and start again
+// otherwise panics all around for no good reason
+func (ws *WhisperWriter) DeleteByName(name string) (err error) {
+	path := ws.getFilePath(name)
+	err = os.Remove(path)
+	if err != nil {
+		return err
+	}
+	if ws.indexer == nil {
+		return nil
+	}
+	return ws.indexer.Delete(&repr.StatName{Key: name})
 }
 
 /****************** Main Writer Interfaces *********************/
@@ -479,6 +569,7 @@ func (ws *WhisperMetrics) Config(conf map[string]interface{}) error {
 
 func (ws *WhisperMetrics) SetIndexer(idx indexer.Indexer) error {
 	ws.indexer = idx
+	ws.writer.indexer = idx // needed for "delete" actions
 	return nil
 }
 
@@ -499,15 +590,6 @@ func (ws *WhisperMetrics) Write(stat repr.StatRepr) error {
 }
 
 /**** READER ***/
-
-// convert moo.goo.og -> /basepath/moo/goo/og.wsp
-func (ws *WhisperMetrics) ToPath(metric string) string {
-	// asume done already
-	if strings.Contains(metric, "/") {
-		return metric
-	}
-	return filepath.Join(ws.writer.base_path, strings.Replace(metric, ".", "/", -1)+".wsp")
-}
 
 func (ws *WhisperMetrics) GetFromCache(metric string, start int64, end int64) (rawd *RawRenderItem, got bool) {
 	rawd = new(RawRenderItem)
@@ -598,13 +680,14 @@ func (ws *WhisperMetrics) RawRenderOne(metric indexer.MetricFindItem, from strin
 		cached.Quantize()
 		return cached, nil
 	}
-	path := ws.ToPath(stat_name.Key)
+	path := ws.writer.getFilePath(stat_name.Key)
 	whis, err := whisper.Open(path)
 	if err != nil {
 		// try the cache
 		var d_points []RawDataPoint
 		inflight, err := ws.writer.cache_queue.Get(stat_name)
-		if inflight != nil && err == nil && len(inflight) > 0 {
+		// need at LEAST 2 points to get the proper step size
+		if inflight != nil && err == nil && len(inflight) > 1 {
 			f_t := uint32(0)
 			step_t := uint32(0)
 
@@ -629,14 +712,26 @@ func (ws *WhisperMetrics) RawRenderOne(metric indexer.MetricFindItem, from strin
 			rawd.Step = step_t
 			rawd.Metric = metric.Id
 			rawd.Data = d_points
-			return rawd, nil
+			err = rawd.Quantize()
+			return rawd, err
 		} else {
 			ws.writer.log.Error("Could not open file %s", path)
 			return rawd, err
 		}
 	}
 
-	series, err := whis.Fetch(int(start), int(end))
+	// need a recover in case files is corrupt and thus start over
+	var series *whisper.TimeSeries
+	defer func() {
+		if r := recover(); r != nil {
+			ws.log.Critical("Read Whisper Failure (panic) %v :: Corrupt :: need to remove file: %s", r, path)
+			ws.writer.DeleteByName(path)
+			err = r.(error)
+		}
+	}()
+
+	series, err = whis.Fetch(int(start), int(end))
+
 	if err != nil || series == nil {
 		if err == nil {
 			err = fmt.Errorf("No data between these times")
@@ -716,7 +811,6 @@ func (ws *WhisperMetrics) RawRenderOne(metric indexer.MetricFindItem, from strin
 	rawd.Step = step_t
 	rawd.Metric = metric.Id
 	rawd.Data = d_points
-
 	return rawd, nil
 }
 
@@ -803,7 +897,7 @@ func (j WhisperMetricsJob) OnRetry() int {
 func (j WhisperMetricsJob) DoWork() error {
 	_, err := j.Whis.InsertNext()
 	if err != nil {
-		j.Whis.log.Error("Insert failed for Metric: %v retrying ...", j)
+		j.Whis.log.Error("Insert failed for Metric: %v retrying ...", err)
 	}
 	return err
 }
