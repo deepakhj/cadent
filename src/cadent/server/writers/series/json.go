@@ -62,6 +62,10 @@ func NewJsonTimeSeries(t0 int64, options *Options) *JsonTimeSeries {
 	return ret
 }
 
+func (s *JsonTimeSeries) HighResolution() bool {
+	return true
+}
+
 func (s *JsonTimeSeries) Count() int {
 	return len(s.Stats)
 }

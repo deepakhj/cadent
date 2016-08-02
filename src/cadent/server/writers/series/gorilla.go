@@ -371,6 +371,10 @@ func setFinished(bw *bstream) {
 	bw.writeBit(zero)
 }
 
+func (s *GorillaTimeSeries) HighResolution() bool {
+	return s.fullResolution
+}
+
 func (s *GorillaTimeSeries) Finish() {
 	s.Lock()
 	defer s.Unlock()
@@ -638,10 +642,7 @@ func NewGorillaIterFromBStream(br *bstream) (*GorillaIter, error) {
 		fullrez = false
 	}
 
-	smartEncoding := false
-	if hh == GORILLA_BIN_SERIES_TAG_NANO_SMART {
-		smartEncoding = true
-	}
+	smartEncoding := true
 
 	// read the numvals
 	numvals, err := br.readBits(8)

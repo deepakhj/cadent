@@ -16,13 +16,12 @@
 */
 package series
 
-import proto "github.com/golang/protobuf/proto"
+import proto "github.com/gogo/protobuf/proto"
 import fmt "fmt"
 import math "math"
 
-import github_com_golang_protobuf_proto "github.com/golang/protobuf/proto"
-
 import io "io"
+import github_com_gogo_protobuf_proto "github.com/gogo/protobuf/proto"
 
 // Reference imports to suppress errors if they are not otherwise used.
 var _ = proto.Marshal
@@ -31,17 +30,18 @@ var _ = math.Inf
 
 // This is a compile-time assertion to ensure that this generated file
 // is compatible with the proto package it is being compiled against.
-const _ = proto.ProtoPackageIsVersion1
+// A compilation error at this line likely means your copy of the
+// proto package needs to be updated.
+const _ = proto.GoGoProtoPackageIsVersion2 // please upgrade the proto package
 
 type ProtStatFull struct {
-	Time             *int64   `protobuf:"varint,1,req,name=time" json:"time,omitempty"`
-	Count            *int64   `protobuf:"varint,7,req,name=count" json:"count,omitempty"`
-	Min              *float64 `protobuf:"fixed64,2,req,name=min" json:"min,omitempty"`
-	Max              *float64 `protobuf:"fixed64,3,req,name=max" json:"max,omitempty"`
-	Sum              *float64 `protobuf:"fixed64,4,req,name=sum" json:"sum,omitempty"`
-	First            *float64 `protobuf:"fixed64,5,req,name=first" json:"first,omitempty"`
-	Last             *float64 `protobuf:"fixed64,6,req,name=last" json:"last,omitempty"`
-	XXX_unrecognized []byte   `json:"-"`
+	Time  int64   `protobuf:"varint,1,req,name=time" json:"time"`
+	Count int64   `protobuf:"varint,7,req,name=count" json:"count"`
+	Min   float64 `protobuf:"fixed64,2,req,name=min" json:"min"`
+	Max   float64 `protobuf:"fixed64,3,req,name=max" json:"max"`
+	Sum   float64 `protobuf:"fixed64,4,req,name=sum" json:"sum"`
+	First float64 `protobuf:"fixed64,5,req,name=first" json:"first"`
+	Last  float64 `protobuf:"fixed64,6,req,name=last" json:"last"`
 }
 
 func (m *ProtStatFull) Reset()                    { *m = ProtStatFull{} }
@@ -50,59 +50,58 @@ func (*ProtStatFull) ProtoMessage()               {}
 func (*ProtStatFull) Descriptor() ([]byte, []int) { return fileDescriptorProtobuf, []int{0} }
 
 func (m *ProtStatFull) GetTime() int64 {
-	if m != nil && m.Time != nil {
-		return *m.Time
+	if m != nil {
+		return m.Time
 	}
 	return 0
 }
 
 func (m *ProtStatFull) GetCount() int64 {
-	if m != nil && m.Count != nil {
-		return *m.Count
+	if m != nil {
+		return m.Count
 	}
 	return 0
 }
 
 func (m *ProtStatFull) GetMin() float64 {
-	if m != nil && m.Min != nil {
-		return *m.Min
+	if m != nil {
+		return m.Min
 	}
 	return 0
 }
 
 func (m *ProtStatFull) GetMax() float64 {
-	if m != nil && m.Max != nil {
-		return *m.Max
+	if m != nil {
+		return m.Max
 	}
 	return 0
 }
 
 func (m *ProtStatFull) GetSum() float64 {
-	if m != nil && m.Sum != nil {
-		return *m.Sum
+	if m != nil {
+		return m.Sum
 	}
 	return 0
 }
 
 func (m *ProtStatFull) GetFirst() float64 {
-	if m != nil && m.First != nil {
-		return *m.First
+	if m != nil {
+		return m.First
 	}
 	return 0
 }
 
 func (m *ProtStatFull) GetLast() float64 {
-	if m != nil && m.Last != nil {
-		return *m.Last
+	if m != nil {
+		return m.Last
 	}
 	return 0
 }
 
 // object for just int32 time and one value
 type ProtStatSmall struct {
-	Time             *int64   `protobuf:"varint,1,req,name=time" json:"time,omitempty"`
-	Val              *float64 `protobuf:"fixed64,2,req,name=val" json:"val,omitempty"`
-	XXX_unrecognized []byte   `json:"-"`
+	Time int64   `protobuf:"varint,1,req,name=time" json:"time"`
+	Val  float64 `protobuf:"fixed64,2,req,name=val" json:"val"`
 }
 
 func (m *ProtStatSmall) Reset()                    { *m = ProtStatSmall{} }
@@ -111,24 +110,23 @@ func (*ProtStatSmall) ProtoMessage()               {}
 func (*ProtStatSmall) Descriptor() ([]byte, []int) { return fileDescriptorProtobuf, []int{1} }
 
 func (m *ProtStatSmall) GetTime() int64 {
-	if m != nil && m.Time != nil {
-		return *m.Time
+	if m != nil {
+		return m.Time
 	}
 	return 0
 }
 
 func (m *ProtStatSmall) GetVal() float64 {
-	if m != nil && m.Val != nil {
-		return *m.Val
+	if m != nil {
+		return m.Val
 	}
 	return 0
 }
 
 type ProtStat struct {
-	StatType         *bool          `protobuf:"varint,1,req,name=stat_type" json:"stat_type,omitempty"`
-	Stat             *ProtStatFull  `protobuf:"bytes,2,opt,name=stat" json:"stat,omitempty"`
-	SmallStat        *ProtStatSmall `protobuf:"bytes,3,opt,name=small_stat" json:"small_stat,omitempty"`
-	XXX_unrecognized []byte         `json:"-"`
+	StatType  bool           `protobuf:"varint,1,req,name=stat_type" json:"stat_type"`
+	Stat      *ProtStatFull  `protobuf:"bytes,3,opt,name=stat" json:"stat,omitempty"`
+	SmallStat *ProtStatSmall `protobuf:"bytes,4,opt,name=small_stat" json:"small_stat,omitempty"`
 }
 
 func (m *ProtStat) Reset()                    { *m = ProtStat{} }
@@ -137,8 +135,8 @@ func (*ProtStat) ProtoMessage()               {}
 func (*ProtStat) Descriptor() ([]byte, []int) { return fileDescriptorProtobuf, []int{2} }
 
 func (m *ProtStat) GetStatType() bool {
-	if m != nil && m.StatType != nil {
-		return *m.StatType
+	if m != nil {
+		return m.StatType
 	}
 	return false
 }
@@ -158,14 +156,21 @@ func (m *ProtStat) GetSmallStat() *ProtStatSmall {
 }
 
 type ProtStats struct {
-	Stats            []*ProtStat `protobuf:"bytes,2,rep,name=stats" json:"stats,omitempty"`
-	XXX_unrecognized []byte      `json:"-"`
+	FullTimeResolution bool        `protobuf:"varint,1,req,name=full_time_resolution" json:"full_time_resolution"`
+	Stats              []*ProtStat `protobuf:"bytes,2,rep,name=stats" json:"stats,omitempty"`
 }
 
 func (m *ProtStats) Reset()                    { *m = ProtStats{} }
 func (m *ProtStats) String() string            { return proto.CompactTextString(m) }
 func (*ProtStats) ProtoMessage()               {}
 func (*ProtStats) Descriptor() ([]byte, []int) { return fileDescriptorProtobuf, []int{3} }
+
+func (m *ProtStats) GetFullTimeResolution() bool {
+	if m != nil {
+		return m.FullTimeResolution
+	}
+	return false
+}
 
 func (m *ProtStats) GetStats() []*ProtStat {
 	if m != nil {
@@ -195,58 +200,27 @@ func (m *ProtStatFull) MarshalTo(data []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if m.Time == nil {
-		return 0, new(github_com_golang_protobuf_proto.RequiredNotSetError)
-	} else {
-		data[i] = 0x8
-		i++
-		i = encodeVarintProtobuf(data, i, uint64(*m.Time))
-	}
-	if m.Min == nil {
-		return 0, new(github_com_golang_protobuf_proto.RequiredNotSetError)
-	} else {
-		data[i] = 0x11
-		i++
-		i = encodeFixed64Protobuf(data, i, uint64(math.Float64bits(float64(*m.Min))))
-	}
-	if m.Max == nil {
-		return 0, new(github_com_golang_protobuf_proto.RequiredNotSetError)
-	} else {
-		data[i] = 0x19
-		i++
-		i = encodeFixed64Protobuf(data, i, uint64(math.Float64bits(float64(*m.Max))))
-	}
-	if m.Sum == nil {
-		return 0, new(github_com_golang_protobuf_proto.RequiredNotSetError)
-	} else {
-		data[i] = 0x21
-		i++
-		i = encodeFixed64Protobuf(data, i, uint64(math.Float64bits(float64(*m.Sum))))
-	}
-	if m.First == nil {
-		return 0, new(github_com_golang_protobuf_proto.RequiredNotSetError)
-	} else {
-		data[i] = 0x29
-		i++
-		i = encodeFixed64Protobuf(data, i, uint64(math.Float64bits(float64(*m.First))))
-	}
-	if m.Last == nil {
-		return 0, new(github_com_golang_protobuf_proto.RequiredNotSetError)
-	} else {
-		data[i] = 0x31
-		i++
-		i = encodeFixed64Protobuf(data, i, uint64(math.Float64bits(float64(*m.Last))))
-	}
-	if m.Count == nil {
-		return 0, new(github_com_golang_protobuf_proto.RequiredNotSetError)
-	} else {
-		data[i] = 0x38
-		i++
-		i = encodeVarintProtobuf(data, i, uint64(*m.Count))
-	}
-	if m.XXX_unrecognized != nil {
-		i += copy(data[i:], m.XXX_unrecognized)
-	}
+	data[i] = 0x8
+	i++
+	i = encodeVarintProtobuf(data, i, uint64(m.Time))
+	data[i] = 0x11
+	i++
+	i = encodeFixed64Protobuf(data, i, uint64(math.Float64bits(float64(m.Min))))
+	data[i] = 0x19
+	i++
+	i = encodeFixed64Protobuf(data, i, uint64(math.Float64bits(float64(m.Max))))
+	data[i] = 0x21
+	i++
+	i = encodeFixed64Protobuf(data, i, uint64(math.Float64bits(float64(m.Sum))))
+	data[i] = 0x29
+	i++
+	i = encodeFixed64Protobuf(data, i, uint64(math.Float64bits(float64(m.First))))
+	data[i] = 0x31
+	i++
+	i = encodeFixed64Protobuf(data, i, uint64(math.Float64bits(float64(m.Last))))
+	data[i] = 0x38
+	i++
+	i = encodeVarintProtobuf(data, i, uint64(m.Count))
 	return i, nil
 }
 
@@ -265,23 +239,12 @@ func (m *ProtStatSmall) MarshalTo(data []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if m.Time == nil {
-		return 0, new(github_com_golang_protobuf_proto.RequiredNotSetError)
-	} else {
-		data[i] = 0x8
-		i++
-		i = encodeVarintProtobuf(data, i, uint64(*m.Time))
-	}
-	if m.Val == nil {
-		return 0, new(github_com_golang_protobuf_proto.RequiredNotSetError)
-	} else {
-		data[i] = 0x11
-		i++
-		i = encodeFixed64Protobuf(data, i, uint64(math.Float64bits(float64(*m.Val))))
-	}
-	if m.XXX_unrecognized != nil {
-		i += copy(data[i:], m.XXX_unrecognized)
-	}
+	data[i] = 0x8
+	i++
+	i = encodeVarintProtobuf(data, i, uint64(m.Time))
+	data[i] = 0x11
+	i++
+	i = encodeFixed64Protobuf(data, i, uint64(math.Float64bits(float64(m.Val))))
 	return i, nil
 }
 
@@ -300,20 +263,16 @@ func (m *ProtStat) MarshalTo(data []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if m.StatType == nil {
-		return 0, new(github_com_golang_protobuf_proto.RequiredNotSetError)
+	data[i] = 0x8
+	i++
+	if m.StatType {
+		data[i] = 1
 	} else {
-		data[i] = 0x8
-		i++
-		if *m.StatType {
-			data[i] = 1
-		} else {
-			data[i] = 0
-		}
-		i++
+		data[i] = 0
 	}
+	i++
 	if m.Stat != nil {
-		data[i] = 0x12
+		data[i] = 0x1a
 		i++
 		i = encodeVarintProtobuf(data, i, uint64(m.Stat.Size()))
 		n1, err := m.Stat.MarshalTo(data[i:])
@@ -323,7 +282,7 @@ func (m *ProtStat) MarshalTo(data []byte) (int, error) {
 		i += n1
 	}
 	if m.SmallStat != nil {
-		data[i] = 0x1a
+		data[i] = 0x22
 		i++
 		i = encodeVarintProtobuf(data, i, uint64(m.SmallStat.Size()))
 		n2, err := m.SmallStat.MarshalTo(data[i:])
@@ -331,9 +290,6 @@ func (m *ProtStat) MarshalTo(data []byte) (int, error) {
 			return 0, err
 		}
 		i += n2
-	}
-	if m.XXX_unrecognized != nil {
-		i += copy(data[i:], m.XXX_unrecognized)
 	}
 	return i, nil
 }
@@ -353,6 +309,14 @@ func (m *ProtStats) MarshalTo(data []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	data[i] = 0x8
+	i++
+	if m.FullTimeResolution {
+		data[i] = 1
+	} else {
+		data[i] = 0
+	}
+	i++
 	if len(m.Stats) > 0 {
 		for _, msg := range m.Stats {
 			data[i] = 0x12
@@ -364,9 +328,6 @@ func (m *ProtStats) MarshalTo(data []byte) (int, error) {
 			}
 			i += n
 		}
-	}
-	if m.XXX_unrecognized != nil {
-		i += copy(data[i:], m.XXX_unrecognized)
 	}
 	return i, nil
 }
@@ -401,54 +362,28 @@ func encodeVarintProtobuf(data []byte, offset int, v uint64) int {
 func (m *ProtStatFull) Size() (n int) {
 	var l int
 	_ = l
-	if m.Time != nil {
-		n += 1 + sovProtobuf(uint64(*m.Time))
-	}
-	if m.Min != nil {
-		n += 9
-	}
-	if m.Max != nil {
-		n += 9
-	}
-	if m.Sum != nil {
-		n += 9
-	}
-	if m.First != nil {
-		n += 9
-	}
-	if m.Last != nil {
-		n += 9
-	}
-	if m.Count != nil {
-		n += 1 + sovProtobuf(uint64(*m.Count))
-	}
-	if m.XXX_unrecognized != nil {
-		n += len(m.XXX_unrecognized)
-	}
+	n += 1 + sovProtobuf(uint64(m.Time))
+	n += 9
+	n += 9
+	n += 9
+	n += 9
+	n += 9
+	n += 1 + sovProtobuf(uint64(m.Count))
 	return n
 }
 
 func (m *ProtStatSmall) Size() (n int) {
 	var l int
 	_ = l
-	if m.Time != nil {
-		n += 1 + sovProtobuf(uint64(*m.Time))
-	}
-	if m.Val != nil {
-		n += 9
-	}
-	if m.XXX_unrecognized != nil {
-		n += len(m.XXX_unrecognized)
-	}
+	n += 1 + sovProtobuf(uint64(m.Time))
+	n += 9
 	return n
 }
 
 func (m *ProtStat) Size() (n int) {
 	var l int
 	_ = l
-	if m.StatType != nil {
-		n += 2
-	}
+	n += 2
 	if m.Stat != nil {
 		l = m.Stat.Size()
 		n += 1 + l + sovProtobuf(uint64(l))
@@ -457,23 +392,18 @@ func (m *ProtStat) Size() (n int) {
 		l = m.SmallStat.Size()
 		n += 1 + l + sovProtobuf(uint64(l))
 	}
-	if m.XXX_unrecognized != nil {
-		n += len(m.XXX_unrecognized)
-	}
 	return n
 }
 
 func (m *ProtStats) Size() (n int) {
 	var l int
 	_ = l
+	n += 2
 	if len(m.Stats) > 0 {
 		for _, e := range m.Stats {
 			l = e.Size()
 			n += 1 + l + sovProtobuf(uint64(l))
 		}
-	}
-	if m.XXX_unrecognized != nil {
-		n += len(m.XXX_unrecognized)
 	}
 	return n
 }
@@ -525,7 +455,7 @@ func (m *ProtStatFull) Unmarshal(data []byte) error {
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Time", wireType)
 			}
-			var v int64
+			m.Time = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowProtobuf
@@ -535,12 +465,11 @@ func (m *ProtStatFull) Unmarshal(data []byte) error {
 				}
 				b := data[iNdEx]
 				iNdEx++
-				v |= (int64(b) & 0x7F) << shift
+				m.Time |= (int64(b) & 0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			m.Time = &v
 			hasFields[0] |= uint64(0x00000001)
 		case 2:
 			if wireType != 1 {
@@ -559,8 +488,7 @@ func (m *ProtStatFull) Unmarshal(data []byte) error {
 			v |= uint64(data[iNdEx-3]) << 40
 			v |= uint64(data[iNdEx-2]) << 48
 			v |= uint64(data[iNdEx-1]) << 56
-			v2 := float64(math.Float64frombits(v))
-			m.Min = &v2
+			m.Min = float64(math.Float64frombits(v))
 			hasFields[0] |= uint64(0x00000002)
 		case 3:
 			if wireType != 1 {
@@ -579,8 +507,7 @@ func (m *ProtStatFull) Unmarshal(data []byte) error {
 			v |= uint64(data[iNdEx-3]) << 40
 			v |= uint64(data[iNdEx-2]) << 48
 			v |= uint64(data[iNdEx-1]) << 56
-			v2 := float64(math.Float64frombits(v))
-			m.Max = &v2
+			m.Max = float64(math.Float64frombits(v))
 			hasFields[0] |= uint64(0x00000004)
 		case 4:
 			if wireType != 1 {
@@ -599,8 +526,7 @@ func (m *ProtStatFull) Unmarshal(data []byte) error {
 			v |= uint64(data[iNdEx-3]) << 40
 			v |= uint64(data[iNdEx-2]) << 48
 			v |= uint64(data[iNdEx-1]) << 56
-			v2 := float64(math.Float64frombits(v))
-			m.Sum = &v2
+			m.Sum = float64(math.Float64frombits(v))
 			hasFields[0] |= uint64(0x00000008)
 		case 5:
 			if wireType != 1 {
@@ -619,8 +545,7 @@ func (m *ProtStatFull) Unmarshal(data []byte) error {
 			v |= uint64(data[iNdEx-3]) << 40
 			v |= uint64(data[iNdEx-2]) << 48
 			v |= uint64(data[iNdEx-1]) << 56
-			v2 := float64(math.Float64frombits(v))
-			m.First = &v2
+			m.First = float64(math.Float64frombits(v))
 			hasFields[0] |= uint64(0x00000010)
 		case 6:
 			if wireType != 1 {
@@ -639,14 +564,13 @@ func (m *ProtStatFull) Unmarshal(data []byte) error {
 			v |= uint64(data[iNdEx-3]) << 40
 			v |= uint64(data[iNdEx-2]) << 48
 			v |= uint64(data[iNdEx-1]) << 56
-			v2 := float64(math.Float64frombits(v))
-			m.Last = &v2
+			m.Last = float64(math.Float64frombits(v))
 			hasFields[0] |= uint64(0x00000020)
 		case 7:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Count", wireType)
 			}
-			var v int64
+			m.Count = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowProtobuf
@@ -656,12 +580,11 @@ func (m *ProtStatFull) Unmarshal(data []byte) error {
 				}
 				b := data[iNdEx]
 				iNdEx++
-				v |= (int64(b) & 0x7F) << shift
+				m.Count |= (int64(b) & 0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			m.Count = &v
 			hasFields[0] |= uint64(0x00000040)
 		default:
 			iNdEx = preIndex
@@ -675,30 +598,29 @@ func (m *ProtStatFull) Unmarshal(data []byte) error {
 			if (iNdEx + skippy) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.XXX_unrecognized = append(m.XXX_unrecognized, data[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
 	}
 	if hasFields[0]&uint64(0x00000001) == 0 {
-		return new(github_com_golang_protobuf_proto.RequiredNotSetError)
+		return github_com_gogo_protobuf_proto.NewRequiredNotSetError("time")
 	}
 	if hasFields[0]&uint64(0x00000002) == 0 {
-		return new(github_com_golang_protobuf_proto.RequiredNotSetError)
+		return github_com_gogo_protobuf_proto.NewRequiredNotSetError("min")
 	}
 	if hasFields[0]&uint64(0x00000004) == 0 {
-		return new(github_com_golang_protobuf_proto.RequiredNotSetError)
+		return github_com_gogo_protobuf_proto.NewRequiredNotSetError("max")
 	}
 	if hasFields[0]&uint64(0x00000008) == 0 {
-		return new(github_com_golang_protobuf_proto.RequiredNotSetError)
+		return github_com_gogo_protobuf_proto.NewRequiredNotSetError("sum")
 	}
 	if hasFields[0]&uint64(0x00000010) == 0 {
-		return new(github_com_golang_protobuf_proto.RequiredNotSetError)
+		return github_com_gogo_protobuf_proto.NewRequiredNotSetError("first")
 	}
 	if hasFields[0]&uint64(0x00000020) == 0 {
-		return new(github_com_golang_protobuf_proto.RequiredNotSetError)
+		return github_com_gogo_protobuf_proto.NewRequiredNotSetError("last")
 	}
 	if hasFields[0]&uint64(0x00000040) == 0 {
-		return new(github_com_golang_protobuf_proto.RequiredNotSetError)
+		return github_com_gogo_protobuf_proto.NewRequiredNotSetError("count")
 	}
 
 	if iNdEx > l {
@@ -740,7 +662,7 @@ func (m *ProtStatSmall) Unmarshal(data []byte) error {
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Time", wireType)
 			}
-			var v int64
+			m.Time = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowProtobuf
@@ -750,12 +672,11 @@ func (m *ProtStatSmall) Unmarshal(data []byte) error {
 				}
 				b := data[iNdEx]
 				iNdEx++
-				v |= (int64(b) & 0x7F) << shift
+				m.Time |= (int64(b) & 0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			m.Time = &v
 			hasFields[0] |= uint64(0x00000001)
 		case 2:
 			if wireType != 1 {
@@ -774,8 +695,7 @@ func (m *ProtStatSmall) Unmarshal(data []byte) error {
 			v |= uint64(data[iNdEx-3]) << 40
 			v |= uint64(data[iNdEx-2]) << 48
 			v |= uint64(data[iNdEx-1]) << 56
-			v2 := float64(math.Float64frombits(v))
-			m.Val = &v2
+			m.Val = float64(math.Float64frombits(v))
 			hasFields[0] |= uint64(0x00000002)
 		default:
 			iNdEx = preIndex
@@ -789,15 +709,14 @@ func (m *ProtStatSmall) Unmarshal(data []byte) error {
 			if (iNdEx + skippy) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.XXX_unrecognized = append(m.XXX_unrecognized, data[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
 	}
 	if hasFields[0]&uint64(0x00000001) == 0 {
-		return new(github_com_golang_protobuf_proto.RequiredNotSetError)
+		return github_com_gogo_protobuf_proto.NewRequiredNotSetError("time")
 	}
 	if hasFields[0]&uint64(0x00000002) == 0 {
-		return new(github_com_golang_protobuf_proto.RequiredNotSetError)
+		return github_com_gogo_protobuf_proto.NewRequiredNotSetError("val")
 	}
 
 	if iNdEx > l {
@@ -854,10 +773,9 @@ func (m *ProtStat) Unmarshal(data []byte) error {
 					break
 				}
 			}
-			b := bool(v != 0)
-			m.StatType = &b
+			m.StatType = bool(v != 0)
 			hasFields[0] |= uint64(0x00000001)
-		case 2:
+		case 3:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Stat", wireType)
 			}
@@ -890,7 +808,7 @@ func (m *ProtStat) Unmarshal(data []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		case 3:
+		case 4:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field SmallStat", wireType)
 			}
@@ -935,12 +853,11 @@ func (m *ProtStat) Unmarshal(data []byte) error {
 			if (iNdEx + skippy) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.XXX_unrecognized = append(m.XXX_unrecognized, data[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
 	}
 	if hasFields[0]&uint64(0x00000001) == 0 {
-		return new(github_com_golang_protobuf_proto.RequiredNotSetError)
+		return github_com_gogo_protobuf_proto.NewRequiredNotSetError("stat_type")
 	}
 
 	if iNdEx > l {
@@ -949,6 +866,7 @@ func (m *ProtStat) Unmarshal(data []byte) error {
 	return nil
 }
 func (m *ProtStats) Unmarshal(data []byte) error {
+	var hasFields [1]uint64
 	l := len(data)
 	iNdEx := 0
 	for iNdEx < l {
@@ -977,6 +895,27 @@ func (m *ProtStats) Unmarshal(data []byte) error {
 			return fmt.Errorf("proto: ProtStats: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field FullTimeResolution", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowProtobuf
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				v |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.FullTimeResolution = bool(v != 0)
+			hasFields[0] |= uint64(0x00000001)
 		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Stats", wireType)
@@ -1020,9 +959,11 @@ func (m *ProtStats) Unmarshal(data []byte) error {
 			if (iNdEx + skippy) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.XXX_unrecognized = append(m.XXX_unrecognized, data[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
+	}
+	if hasFields[0]&uint64(0x00000001) == 0 {
+		return github_com_gogo_protobuf_proto.NewRequiredNotSetError("full_time_resolution")
 	}
 
 	if iNdEx > l {
@@ -1135,21 +1076,26 @@ var (
 	ErrIntOverflowProtobuf   = fmt.Errorf("proto: integer overflow")
 )
 
+func init() { proto.RegisterFile("protobuf.proto", fileDescriptorProtobuf) }
+
 var fileDescriptorProtobuf = []byte{
-	// 240 bytes of a gzipped FileDescriptorProto
+	// 273 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x09, 0x6e, 0x88, 0x02, 0xff, 0xe2, 0xe2, 0x2b, 0x28, 0xca, 0x2f,
 	0xc9, 0x4f, 0x2a, 0x4d, 0xd3, 0x03, 0x33, 0x84, 0xd8, 0x8a, 0x53, 0x8b, 0x32, 0x53, 0x8b, 0x95,
-	0xf2, 0xb9, 0x78, 0x02, 0x80, 0x02, 0xc1, 0x25, 0x89, 0x25, 0x6e, 0xa5, 0x39, 0x39, 0x42, 0x3c,
-	0x5c, 0x2c, 0x25, 0x99, 0xb9, 0xa9, 0x12, 0x8c, 0x0a, 0x4c, 0x1a, 0xcc, 0x42, 0xdc, 0x5c, 0xcc,
-	0xb9, 0x99, 0x79, 0x12, 0x4c, 0x40, 0x0e, 0x23, 0x98, 0x93, 0x58, 0x21, 0xc1, 0x0c, 0xe3, 0x14,
-	0x97, 0xe6, 0x4a, 0xb0, 0x80, 0x39, 0xbc, 0x5c, 0xac, 0x69, 0x99, 0x45, 0xc5, 0x25, 0x12, 0xac,
-	0x60, 0x2e, 0xd0, 0x8c, 0x9c, 0x44, 0x20, 0x8f, 0x0d, 0x26, 0x99, 0x9c, 0x5f, 0x9a, 0x57, 0x22,
-	0xc1, 0x0e, 0x32, 0x52, 0x49, 0x8b, 0x8b, 0x17, 0x66, 0x61, 0x70, 0x6e, 0x22, 0x36, 0x1b, 0xcb,
-	0x12, 0x73, 0x20, 0x36, 0x2a, 0xe5, 0x70, 0x71, 0xc0, 0xd4, 0x0a, 0x09, 0x72, 0x71, 0x16, 0x03,
-	0xe9, 0xf8, 0x92, 0xca, 0x02, 0x88, 0x5a, 0x0e, 0x21, 0x25, 0x2e, 0x16, 0x90, 0x10, 0x50, 0x31,
-	0xa3, 0x06, 0xb7, 0x91, 0x88, 0x1e, 0xc4, 0x4b, 0x7a, 0x28, 0xfe, 0xd1, 0xe4, 0xe2, 0x2a, 0x06,
-	0x59, 0x13, 0x0f, 0x56, 0xc9, 0x0c, 0x56, 0x29, 0x8a, 0xae, 0x12, 0xec, 0x10, 0x25, 0x1d, 0x2e,
-	0x4e, 0x98, 0x40, 0xb1, 0x90, 0x3c, 0x17, 0x2b, 0x48, 0x47, 0x31, 0xd0, 0x70, 0x66, 0xa0, 0x16,
-	0x01, 0x74, 0x2d, 0x4e, 0x02, 0x27, 0x1e, 0xc9, 0x31, 0x5e, 0x00, 0xe2, 0x07, 0x40, 0x3c, 0xe3,
-	0xb1, 0x1c, 0x03, 0x20, 0x00, 0x00, 0xff, 0xff, 0xf2, 0x1f, 0xbb, 0x6c, 0x63, 0x01, 0x00, 0x00,
+	0x66, 0x32, 0x72, 0xf1, 0x04, 0x00, 0x45, 0x82, 0x4b, 0x12, 0x4b, 0xdc, 0x4a, 0x73, 0x72, 0x84,
+	0x84, 0xb8, 0x58, 0x4a, 0x32, 0x73, 0x53, 0x25, 0x18, 0x15, 0x98, 0x34, 0x98, 0x9d, 0x58, 0x4e,
+	0xdc, 0x93, 0x67, 0x10, 0x12, 0xe4, 0x62, 0xce, 0xcd, 0xcc, 0x93, 0x60, 0x02, 0x0a, 0x31, 0x22,
+	0x09, 0x25, 0x56, 0x48, 0x30, 0xa3, 0x0a, 0x15, 0x97, 0xe6, 0x4a, 0xb0, 0x20, 0x09, 0x09, 0x73,
+	0xb1, 0xa6, 0x65, 0x16, 0x15, 0x97, 0x48, 0xb0, 0x22, 0x09, 0x02, 0x6d, 0xc8, 0x49, 0x04, 0x8a,
+	0xb1, 0xa1, 0x2a, 0x4c, 0xce, 0x2f, 0xcd, 0x2b, 0x91, 0x60, 0x47, 0x58, 0xab, 0x64, 0xc6, 0xc5,
+	0x0b, 0x73, 0x5a, 0x70, 0x6e, 0x22, 0x6e, 0xb7, 0x95, 0x25, 0xe6, 0x20, 0xbb, 0x4d, 0xa9, 0x88,
+	0x8b, 0x03, 0xa6, 0x4f, 0x48, 0x9c, 0x8b, 0xb3, 0x18, 0x48, 0xc7, 0x97, 0x54, 0x16, 0x40, 0xf4,
+	0x71, 0x40, 0xf5, 0x29, 0x71, 0xb1, 0x80, 0x24, 0x80, 0x3e, 0x60, 0xd4, 0xe0, 0x36, 0x12, 0xd1,
+	0x83, 0x84, 0x87, 0x1e, 0x4a, 0x58, 0x68, 0x72, 0x71, 0x15, 0x83, 0x2c, 0x8e, 0x07, 0xab, 0x64,
+	0x01, 0xab, 0x14, 0x45, 0x57, 0x09, 0x76, 0x9a, 0x52, 0x00, 0x17, 0x27, 0x4c, 0xa0, 0x18, 0x68,
+	0xb6, 0x48, 0x1a, 0x50, 0x7f, 0x3c, 0xc8, 0xb1, 0xf1, 0x45, 0xa9, 0xc5, 0xf9, 0x39, 0xa5, 0x25,
+	0x99, 0xf9, 0x79, 0x28, 0xf6, 0xcb, 0x73, 0xb1, 0x82, 0x4c, 0x2d, 0x06, 0xba, 0x9c, 0x19, 0x68,
+	0xac, 0x00, 0xba, 0xb1, 0x4e, 0x02, 0x27, 0x1e, 0xc9, 0x31, 0x5e, 0x00, 0xe2, 0x07, 0x40, 0x3c,
+	0xe1, 0xb1, 0x1c, 0x03, 0x20, 0x00, 0x00, 0xff, 0xff, 0x12, 0xd1, 0x04, 0x22, 0xc4, 0x01, 0x00,
+	0x00,
 }

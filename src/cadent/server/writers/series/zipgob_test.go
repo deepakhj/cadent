@@ -9,7 +9,7 @@ func TestZipSimpleBinaryTimeSeries(t *testing.T) {
 }
 
 func Benchmark_ZipGobPut(b *testing.B) {
-	benchmarkSeriesPut(b, "zipgob", 1024)
+	benchmarkSeriesPut(b, "zipgob", testDefaultByteSize)
 }
 
 func Benchmark_ZipGob8k(b *testing.B) {
@@ -17,21 +17,21 @@ func Benchmark_ZipGob8k(b *testing.B) {
 }
 
 func Benchmark_ZipGobRawSize(b *testing.B) {
-	benchmarkRawSize(b, "zipgob", 1024)
+	benchmarkRawSize(b, "zipgob", testDefaultByteSize)
 }
 
 func Benchmark_ZipGobSnappyCompress(b *testing.B) {
-	benchmarkSnappyCompress(b, "zipgob", 1024)
+	benchmarkSnappyCompress(b, "zipgob", testDefaultByteSize)
 }
 
 func Benchmark_ZipGobFlateCompress(b *testing.B) {
-	benchmarkFlateCompress(b, "zipgob", 1024)
+	benchmarkFlateCompress(b, "zipgob", testDefaultByteSize)
 }
 
 func Benchmark_ZipGobZipCompress(b *testing.B) {
-	benchmarkZipCompress(b, "zipgob", 1024)
+	benchmarkZipCompress(b, "zipgob", testDefaultByteSize)
 }
 
 func Benchmark_ZipGobReading(b *testing.B) {
-	benchmarkSeriesReading(b, "zipgob", 1024)
+	benchmarkSeriesReading(b, "zipgob", testDefaultByteSize)
 }

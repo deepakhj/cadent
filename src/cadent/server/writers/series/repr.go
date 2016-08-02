@@ -33,6 +33,9 @@ func NewReprTimeSeries(t0 int64, options *Options) *ReprTimeSeries {
 	return ret
 }
 
+func (s *ReprTimeSeries) HighResolution() bool {
+	return true
+}
 func (s *ReprTimeSeries) Count() int {
 	return len(s.Stats)
 }

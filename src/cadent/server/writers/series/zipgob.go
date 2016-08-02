@@ -19,32 +19,40 @@ import (
 
 const (
 	ZIP_SIMPLE_BIN_SERIES_TAG = "zbts" // just a flag to note we are using this one at the begining of each blob
+	ZIP_SIMPLE_BIN_SERIES_LOWRE_TAG = "zbtl" // just a flag to note we are using this one at the begining of each blob
 )
 
 // this can only handle "future pushing times" not random times
 type ZipGobTimeSeries struct {
 	mu sync.Mutex
+	sTag string
 
 	T0       int64
 	curCount int
 
 	curDelta int64
 	curTime  int64
+	fullResolution bool
 
 	buf      *gobBuffer
 	zip      *flate.Writer
 	encoder  *gob.Encoder
-	curBytes int
 }
 
 func NewZipGobTimeSeries(t0 int64, options *Options) *ZipGobTimeSeries {
 	ret := &ZipGobTimeSeries{
 		T0:       t0,
+		sTag: ZIP_SIMPLE_BIN_SERIES_TAG,
 		curTime:  0,
 		curDelta: 0,
-		curBytes: 0,
 		curCount: 0,
+		fullResolution: options.HighTimeResolution,
 		buf:      new(gobBuffer),
+	}
+	if !ret.fullResolution{
+		ret.sTag = ZIP_SIMPLE_BIN_SERIES_LOWRE_TAG
+		ts, _ := splitNano(t0)
+		ret.T0 = int64(ts)
 	}
 	ret.zip, _ = flate.NewWriter(ret.buf, flate.BestSpeed)
 	ret.encoder = gob.NewEncoder(ret.zip)
@@ -52,13 +60,17 @@ func NewZipGobTimeSeries(t0 int64, options *Options) *ZipGobTimeSeries {
 	return ret
 }
 
+func (s *ZipGobTimeSeries) HighResolution() bool {
+	return s.fullResolution
+}
 func (s *ZipGobTimeSeries) Count() int {
 	return s.curCount
 }
 
 func (s *ZipGobTimeSeries) writeHeader() {
 	// tag it
-	s.encoder.Encode(ZIP_SIMPLE_BIN_SERIES_TAG)
+
+	s.encoder.Encode(s.sTag)
 	// need the start time
 	s.encoder.Encode(s.T0)
 }
@@ -104,19 +116,24 @@ func (s *ZipGobTimeSeries) Iter() (TimeSeriesIter, error) {
 
 // the t is the "time we want to add
 func (s *ZipGobTimeSeries) AddPoint(t int64, min float64, max float64, first float64, last float64, sum float64, count int64) error {
-	if s.curTime == 0 {
-		s.curDelta = t - s.T0
-	} else {
-		s.curDelta = t - s.curTime
+	use_t := t
+	if !s.fullResolution {
+		tt, _ := splitNano(t)
+		use_t = int64(tt)
 	}
 
-	s.curTime = t
+	if s.curTime == 0 {
+		s.curDelta = use_t - s.T0
+	} else {
+		s.curDelta = use_t - s.curTime
+	}
+
+	s.curTime = use_t
 	s.mu.Lock()
 	s.encoder.Encode(s.curDelta)
 	if count == 1 || sameFloatVals(min, max, first, last, sum) {
 		s.encoder.Encode(false)
 		s.encoder.Encode(sum) // just the sum
-		s.curBytes += 64 + 1
 	} else {
 		s.encoder.Encode(true)
 		s.encoder.Encode(min)
@@ -125,7 +142,6 @@ func (s *ZipGobTimeSeries) AddPoint(t int64, min float64, max float64, first flo
 		s.encoder.Encode(last)
 		s.encoder.Encode(sum)
 		s.encoder.Encode(count)
-		s.curBytes += 64*7 + 1
 	}
 	s.mu.Unlock()
 	s.curCount++

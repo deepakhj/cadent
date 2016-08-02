@@ -21,8 +21,6 @@ import (
 type ProtobufTimeSeries struct {
 	mu sync.Mutex
 
-	high_res_time bool
-
 	T0      int64
 	curTime int64
 	Stats   *ProtStats
@@ -31,11 +29,15 @@ type ProtobufTimeSeries struct {
 func NewProtobufTimeSeries(t0 int64, options *Options) *ProtobufTimeSeries {
 
 	ret := &ProtobufTimeSeries{
-		T0:            t0,
-		high_res_time: options.HighTimeResolution,
-		Stats:         new(ProtStats),
+		T0:             t0,
+		Stats:          new(ProtStats),
 	}
+	ret.Stats.FullTimeResolution = options.HighTimeResolution
 	return ret
+}
+
+func (s *ProtobufTimeSeries) HighResolution() bool {
+	return s.Stats.FullTimeResolution
 }
 
 func (s *ProtobufTimeSeries) Count() int {
@@ -68,6 +70,7 @@ func (s *ProtobufTimeSeries) Iter() (iter TimeSeriesIter, err error) {
 	s.mu.Unlock()
 
 	iter, err = NewProtobufIter(d)
+	iter.(*ProtobufIter).fullResolution = s.Stats.FullTimeResolution
 	return iter, err
 }
 
@@ -83,15 +86,19 @@ func (s *ProtobufTimeSeries) LastTime() int64 {
 func (s *ProtobufTimeSeries) AddPoint(t int64, min float64, max float64, first float64, last float64, sum float64, count int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
+	use_t := t
+	if !s.Stats.FullTimeResolution {
+		ts, _ := splitNano(t)
+		use_t = int64(ts)
+	}
 	// if the count is 1, then we only have "one" value that makes any sense .. the sum
 	if count == 1 || sameFloatVals(min, max, first, last, sum) {
 		tmp := &ProtStatSmall{
-			Time: proto.Int64(t),
-			Val:  proto.Float64(sum),
+			Time: use_t,
+			Val:  sum,
 		}
 		p_stat := &ProtStat{
-			StatType:  proto.Bool(false),
+			StatType:  false,
 			SmallStat: tmp,
 		}
 		s.Stats.Stats = append(s.Stats.Stats, p_stat)
@@ -99,16 +106,16 @@ func (s *ProtobufTimeSeries) AddPoint(t int64, min float64, max float64, first f
 	} else {
 
 		tmp := &ProtStatFull{
-			Time:  proto.Int64(t),
-			Min:   proto.Float64(min),
-			Max:   proto.Float64(max),
-			First: proto.Float64(first),
-			Last:  proto.Float64(last),
-			Sum:   proto.Float64(sum),
-			Count: proto.Int64(count),
+			Time:  use_t,
+			Min:   min,
+			Max:   max,
+			First: first,
+			Last:  last,
+			Sum:   sum,
+			Count: count,
 		}
 		p_stat := &ProtStat{
-			StatType: proto.Bool(true),
+			StatType: true,
 			Stat:     tmp,
 		}
 		s.Stats.Stats = append(s.Stats.Stats, p_stat)
@@ -124,10 +131,11 @@ func (s *ProtobufTimeSeries) AddStat(stat *repr.StatRepr) error {
 // Iter lets you iterate over a series.  It is not concurrency-safe.
 // but you should give it a "copy" of any byte array
 type ProtobufIter struct {
-	Stats   []*ProtStat
-	curIdx  int
-	statLen int
-	curStat *ProtStat
+	Stats          []*ProtStat
+	curIdx         int
+	statLen        int
+	curStat        *ProtStat
+	fullResolution bool
 
 	curTime int64
 
@@ -143,7 +151,12 @@ func NewProtobufIterFromBytes(data []byte) (iter TimeSeriesIter, err error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewProtobufIter(stats.Stats)
+	iter, err = NewProtobufIter(stats.Stats)
+	if err != nil {
+		return nil, err
+	}
+	iter.(*ProtobufIter).fullResolution = stats.FullTimeResolution
+	return iter, nil
 }
 
 func NewProtobufIter(stats []*ProtStat) (*ProtobufIter, error) {
@@ -165,8 +178,13 @@ func (it *ProtobufIter) Next() bool {
 }
 
 func (it *ProtobufIter) Values() (int64, float64, float64, float64, float64, float64, int64) {
+
 	if it.curStat.GetStatType() {
-		return it.curStat.GetStat().GetTime(),
+		t := it.curStat.GetStat().GetTime()
+		if !it.fullResolution {
+			t = combineSecNano(uint32(t), 0)
+		}
+		return t,
 			float64(it.curStat.GetStat().GetMin()),
 			float64(it.curStat.GetStat().GetMax()),
 			float64(it.curStat.GetStat().GetFirst()),
@@ -176,7 +194,11 @@ func (it *ProtobufIter) Values() (int64, float64, float64, float64, float64, flo
 	}
 
 	v := float64(it.curStat.GetSmallStat().GetVal())
-	return it.curStat.GetSmallStat().GetTime(),
+	t := it.curStat.GetSmallStat().GetTime()
+	if !it.fullResolution {
+		t = combineSecNano(uint32(t), 0)
+	}
+	return t,
 		v,
 		v,
 		v,
@@ -187,8 +209,14 @@ func (it *ProtobufIter) Values() (int64, float64, float64, float64, float64, flo
 
 func (it *ProtobufIter) ReprValue() *repr.StatRepr {
 	if it.curStat.GetStatType() {
+		var t time.Time
+		if it.fullResolution {
+			t = time.Unix(0, it.curStat.GetStat().GetTime())
+		} else {
+			t = time.Unix(it.curStat.GetStat().GetTime(), 0)
+		}
 		return &repr.StatRepr{
-			Time:  time.Unix(it.curStat.GetSmallStat().GetTime(), 0),
+			Time:  t,
 			Min:   repr.JsonFloat64(it.curStat.GetStat().GetMin()),
 			Max:   repr.JsonFloat64(it.curStat.GetStat().GetMax()),
 			Last:  repr.JsonFloat64(it.curStat.GetStat().GetLast()),
@@ -198,8 +226,14 @@ func (it *ProtobufIter) ReprValue() *repr.StatRepr {
 		}
 	}
 	v := repr.JsonFloat64(it.curStat.GetSmallStat().GetVal())
+	var t time.Time
+	if it.fullResolution {
+		t = time.Unix(0, it.curStat.GetSmallStat().GetTime())
+	} else {
+		t = time.Unix(it.curStat.GetSmallStat().GetTime(), 0)
+	}
 	return &repr.StatRepr{
-		Time:  time.Unix(it.curStat.GetSmallStat().GetTime(), 0),
+		Time:  t,
 		Min:   v,
 		Max:   v,
 		Last:  v,

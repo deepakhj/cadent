@@ -19,10 +19,11 @@ message ProtStatSmall {
 
 message ProtStat {
     required bool stat_type = 1; // false == small true == full
-    optional ProtStatFull stat = 2;
-    optional ProtStatSmall small_stat = 3;
+    optional ProtStatFull stat = 3;
+    optional ProtStatSmall small_stat = 4;
 }
 
 message ProtStats {
+    required bool full_time_resolution = 1;
     repeated ProtStat stats = 2;
 }

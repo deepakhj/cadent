@@ -1,5 +1,6 @@
 /*
-	Make it easy to get a new time series algo
+	Make it easy to get a new time series algo .. not exactly the optimal
+	"registry" technique but it works
 */
 
 package series

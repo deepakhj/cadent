@@ -29,6 +29,7 @@ type TimeSeries interface {
 	Len() int
 	StartTime() int64
 	LastTime() int64
+	HighResolution() bool
 }
 
 type TimeSeriesIter interface {

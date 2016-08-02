@@ -29,14 +29,14 @@ import (
 	"bytes"
 	"cadent/server/repr"
 	"encoding/gob"
-	"fmt"
 	"io"
 	"sync"
 	"time"
 )
 
 const (
-	SIMPLE_BIN_SERIES_TAG = "gobn" // just a flag to note we are using this one at the begining of each blob
+	SIMPLE_BIN_SERIES_TAG        = "gobn" // just a flag to note we are using this one at the begining of each blob
+	SIMPLE_BIN_SERIES_TAG_LOWRES = "gobl" // just a flag to note we are using this one at the begining of each blob
 )
 
 // from
@@ -47,8 +47,9 @@ type gobBuffer struct {
 	data []byte
 }
 
-func (e *gobBuffer) WriteByte(c byte) {
+func (e *gobBuffer) WriteByte(c byte) (err error) {
 	e.data = append(e.data, c)
+	return
 }
 
 func (e *gobBuffer) Write(p []byte) (int, error) {
@@ -72,26 +73,35 @@ func (e *gobBuffer) Reset() {
 type GobTimeSeries struct {
 	mu sync.Mutex
 
-	T0 int64
+	T0             int64
+	fullResolution bool // true for nanosecond, false for just second
+	sTag           string
 
 	curDelta int64
 	curTime  int64
 
 	buf      *gobBuffer
 	encoder  *gob.Encoder
-	curBytes int
 	curCount int
 }
 
 func NewGobTimeSeries(t0 int64, options *Options) *GobTimeSeries {
 	ret := &GobTimeSeries{
-		T0:       t0,
-		curTime:  0,
-		curDelta: 0,
-		curBytes: 0,
-		curCount: 0,
-		buf:      new(gobBuffer),
+		T0:             t0,
+		fullResolution: options.HighTimeResolution,
+		curTime:        0,
+		curDelta:       0,
+		curCount:       0,
+		sTag:           SIMPLE_BIN_SERIES_TAG,
+		buf:            new(gobBuffer),
 	}
+
+	if !ret.fullResolution {
+		ts, _ := splitNano(t0)
+		ret.T0 = int64(ts)
+		ret.sTag = SIMPLE_BIN_SERIES_TAG_LOWRES
+	}
+
 	ret.encoder = gob.NewEncoder(ret.buf)
 	ret.writeHeader()
 	return ret
@@ -99,9 +109,13 @@ func NewGobTimeSeries(t0 int64, options *Options) *GobTimeSeries {
 
 func (s *GobTimeSeries) writeHeader() {
 	// tag it
-	s.encoder.Encode(SIMPLE_BIN_SERIES_TAG)
+	s.encoder.Encode(s.sTag)
+
 	// need the start time
+	// fullrez gets full int64, otherwise just int32 for second
+	// the encoder does the job of squeezeing it
 	s.encoder.Encode(s.T0)
+
 }
 
 func (s *GobTimeSeries) UnmarshalBinary(data []byte) error {
@@ -140,25 +154,35 @@ func (s *GobTimeSeries) LastTime() int64 {
 
 func (s *GobTimeSeries) Iter() (TimeSeriesIter, error) {
 	byts := s.Bytes()
-	return NewGobIter(bytes.NewBuffer(byts), SIMPLE_BIN_SERIES_TAG)
+	return NewGobIter(bytes.NewBuffer(byts), s.sTag)
+}
+
+func (s *GobTimeSeries) HighResolution() bool {
+	return s.fullResolution
 }
 
 // the t is the "time we want to add
 func (s *GobTimeSeries) AddPoint(t int64, min float64, max float64, first float64, last float64, sum float64, count int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.curTime == 0 {
-		s.curDelta = t - s.T0
-	} else {
-		s.curDelta = t - s.curTime
+
+	use_t := t
+	if !s.fullResolution {
+		tt, _ := splitNano(t)
+		use_t = int64(tt)
 	}
 
-	s.curTime = t
+	if s.curTime == 0 {
+		s.curDelta = use_t - s.T0
+	} else {
+		s.curDelta = use_t - s.curTime
+	}
+
+	s.curTime = use_t
 	s.encoder.Encode(s.curDelta)
 	if count == 1 || sameFloatVals(min, max, first, last, sum) {
 		s.encoder.Encode(false)
 		s.encoder.Encode(sum) // just the sum
-		s.curBytes += 64 + 1
 	} else {
 		s.encoder.Encode(true)
 		s.encoder.Encode(min)
@@ -167,7 +191,6 @@ func (s *GobTimeSeries) AddPoint(t int64, min float64, max float64, first float6
 		s.encoder.Encode(last)
 		s.encoder.Encode(sum)
 		s.encoder.Encode(count)
-		s.curBytes += 64*7 + 1
 	}
 	s.curCount += 1
 	return nil
@@ -180,8 +203,9 @@ func (s *GobTimeSeries) AddStat(stat *repr.StatRepr) error {
 // Iter lets you iterate over a series.  It is not concurrency-safe.
 // but you should give it a "copy" of any byte array
 type GobIter struct {
-	T0      int64
-	curTime int64
+	T0             int64
+	curTime        int64
+	fullResolution bool // true for nanosecond, false for just second
 
 	tDelta int64
 	min    float64
@@ -206,8 +230,8 @@ func NewGobIter(buf *bytes.Buffer, tag string) (*GobIter, error) {
 	if err != nil {
 		return nil, err
 	}
-	if st != tag {
-		return nil, fmt.Errorf("This is not a GobTimeSeries blob")
+	if st != SIMPLE_BIN_SERIES_TAG_LOWRES && st != ZIP_SIMPLE_BIN_SERIES_LOWRE_TAG{
+		it.fullResolution = true
 	}
 
 	// need to pull the start time
@@ -216,7 +240,7 @@ func NewGobIter(buf *bytes.Buffer, tag string) (*GobIter, error) {
 }
 
 func NewGobIterFromBytes(data []byte) (*GobIter, error) {
-	return NewGobIter(bytes.NewBuffer(data), SIMPLE_BIN_SERIES_TAG)
+	return NewGobIter(bytes.NewBuffer(data), "")
 }
 
 func (it *GobIter) Next() bool {
@@ -304,12 +328,22 @@ func (it *GobIter) Next() bool {
 }
 
 func (it *GobIter) Values() (int64, float64, float64, float64, float64, float64, int64) {
-	return it.curTime, it.min, it.max, it.first, it.last, it.sum, it.count
+	t := it.curTime
+	if !it.fullResolution {
+		t = combineSecNano(uint32(it.curTime), 0)
+	}
+	return t, it.min, it.max, it.first, it.last, it.sum, it.count
 }
 
 func (it *GobIter) ReprValue() *repr.StatRepr {
+	var t time.Time
+	if it.fullResolution {
+		t = time.Unix(0, it.curTime)
+	} else {
+		t = time.Unix(it.curTime, 0)
+	}
 	return &repr.StatRepr{
-		Time:  time.Unix(0, it.curTime),
+		Time:  t,
 		Min:   repr.JsonFloat64(it.min),
 		Max:   repr.JsonFloat64(it.max),
 		Last:  repr.JsonFloat64(it.last),

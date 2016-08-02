@@ -18,6 +18,8 @@ import (
 	"time"
 )
 
+var testDefaultByteSize = 8192
+
 func init() {
 	rand.Seed(time.Now().UnixNano())
 }
@@ -187,7 +189,27 @@ func benchmarkRawSizeSingleStat(b *testing.B, stype string, n_stat int) {
 		b_per_stat += int64(int64(len(bss)) / int64(n_stat))
 		runs++
 	}
-	b.Logf("Single Val: Raw Size for %v stats: %v Bytes per stat: %v", n_stat, pre_len/runs, b_per_stat/runs)
+	b.Logf("Single Val (%v runs): Raw Size for %v stats: %v Bytes per stat: %v", runs, n_stat, pre_len/runs, b_per_stat/runs)
+
+}
+
+func benchmarkNonRandomRawSizeSingleStat(b *testing.B, stype string, n_stat int) {
+	b.ResetTimer()
+	stat, n := dummyStatSingleVal()
+	b.SetBytes(int64(8 * 8 * n_stat)) //8 64bit numbers
+	runs := int64(0)
+	b_per_stat := int64(0)
+	pre_len := int64(0)
+
+	for i := 0; i < b.N; i++ {
+		ser, _ := NewTimeSeries(stype, n.UnixNano(), NewDefaultOptions())
+		addSingleValStat(ser, stat, n_stat, false)
+		bss, _ := ser.MarshalBinary()
+		pre_len += int64(len(bss))
+		b_per_stat += int64(int64(len(bss)) / int64(n_stat))
+		runs++
+	}
+	b.Logf("NonRandom Single Val: Raw Size for %v stats: %v Bytes per stat: %v", n_stat, pre_len/runs, b_per_stat/runs)
 
 }
 
@@ -397,166 +419,222 @@ func benchmarkSeriesPut8kRandomInt(b *testing.B, stype string) {
 }
 
 func genericTestSeries(t *testing.T, stype string) {
+	highres_opts := NewDefaultOptions()
+	highres_opts.HighTimeResolution = true
+	lowres_opts := &Options{6, false}
 
-	Convey("Series Type: "+stype, t, func() {
-		stat, n := dummyStat()
+	opts := []*Options{highres_opts, lowres_opts}
 
-		ser, _ := NewTimeSeries(stype, n.UnixNano(), NewDefaultOptions())
-		n_stats := 10
-		times, stats, err := addStats(ser, stat, n_stats, true)
-
-		So(err, ShouldEqual, nil)
-		So(ser.StartTime(), ShouldEqual, n.UnixNano())
-		So(ser.LastTime(), ShouldEqual, times[len(times)-1])
-
-		it, err := ser.Iter()
-		idx := 0
-		for it.Next() {
-			to, mi, mx, fi, ls, su, ct := it.Values()
-			So(times[idx], ShouldEqual, to)
-			So(stats[idx].Max, ShouldEqual, mx)
-			So(stats[idx].Last, ShouldEqual, ls)
-			So(stats[idx].Count, ShouldEqual, ct)
-			So(stats[idx].First, ShouldEqual, fi)
-			So(stats[idx].Min, ShouldEqual, mi)
-			So(stats[idx].Sum, ShouldEqual, su)
-
-			//t.Logf("%d: Time ok: %v", idx, times[idx] == to)
-			r := it.ReprValue()
-
-			So(stats[idx].Sum, ShouldEqual, r.Sum)
-			So(stats[idx].Min, ShouldEqual, r.Min)
-			So(stats[idx].Max, ShouldEqual, r.Max)
-
-			//t.Logf("BIT Repr: %v", r)
-			idx++
+	for _, opt := range opts {
+		nm := "highres"
+		if opt == lowres_opts {
+			nm = "lowres"
 		}
-		So(idx, ShouldEqual, n_stats)
-		if it.Error() != nil {
-			t.Fatalf("Iter Error: %v", it.Error())
-		}
+		Convey("Series Type : "+stype+" : "+nm, t, func() {
+			stat, n := dummyStat()
 
-		// compression, iterator R/W test
-		bss := ser.Bytes()
-		if err != nil {
-			t.Fatalf("ERROR: %v", err)
-		}
-		t.Logf("Data size: %v", len(bss))
+			ser, _ := NewTimeSeries(stype, n.UnixNano(), opt)
+			n_stats := 10
+			times, stats, err := addStats(ser, stat, n_stats, true)
+			So(err, ShouldEqual, nil)
 
-		Convey("Series Type: "+stype+" - Multi Iterator", func() {
-			run := 0
-			max_run := 10
-			dd, _ := dummyStat()
-			for {
-				ser.AddStat(dd)
-				it, _ := ser.Iter()
-				idx := 0
-				for it.Next() {
-					idx++
+			s_time_test := n.UnixNano()
+			e_time_test := times[len(times)-1]
+			if !ser.HighResolution() {
+				tt, _ := splitNano(s_time_test)
+				s_time_test = int64(tt)
 
-				}
-				So(idx, ShouldEqual, n_stats+run+1)
-				run++
-				if run > max_run {
-					break
-				}
+				tt, _ = splitNano(e_time_test)
+				e_time_test = int64(tt)
+
+				s_time := ser.StartTime()
+				tt, _ = splitNano(s_time)
+
+				So(tt, ShouldEqual, s_time_test)
+
+				e_time := ser.LastTime()
+				tt, _ = splitNano(e_time)
+
+				So(tt, ShouldEqual, e_time_test)
+
+			} else {
+
+				So(ser.StartTime(), ShouldEqual, s_time_test)
+				So(ser.LastTime(), ShouldEqual, e_time_test)
 			}
-		})
 
-		Convey("Series Type: "+stype+" - 'Smart' Single Point", func() {
-
-			n_dd, nn := dummyStatSingleVal()
-			nser, _ := NewTimeSeries(stype, nn.UnixNano(), NewDefaultOptions())
-			n_times, o_stats, terr := addSingleValStat(nser, n_dd, n_stats, true)
-			So(terr, ShouldEqual, nil)
-			nit, _ := nser.Iter()
+			it, err := ser.Iter()
 			idx := 0
-			for nit.Next() {
-				to, _, _, _, _, su, ct := nit.Values()
-
+			for it.Next() {
+				to, mi, mx, fi, ls, su, ct := it.Values()
 				// just the second portion test
-				test_lt := time.Unix(0, n_times[idx])
 				test_to := time.Unix(0, to)
-				So(test_lt.Unix(), ShouldEqual, test_to.Unix())
-				So(o_stats[idx].Sum, ShouldEqual, su)
-				So(o_stats[idx].Count, ShouldEqual, ct)
+				test_lt := time.Unix(0, times[idx])
+				//t.Logf("VALS: %v %v %v %v %v %v %v", to, mi, mx, fi, ls, su, ct)
+				if ser.HighResolution() {
+					So(test_lt.UnixNano(), ShouldEqual, test_to.UnixNano())
+				} else {
+					So(test_lt.Unix(), ShouldEqual, test_to.Unix())
+				}
+				So(stats[idx].Max, ShouldEqual, mx)
+				So(stats[idx].Last, ShouldEqual, ls)
+				So(stats[idx].Count, ShouldEqual, ct)
+				So(stats[idx].First, ShouldEqual, fi)
+				So(stats[idx].Min, ShouldEqual, mi)
+				So(stats[idx].Sum, ShouldEqual, su)
+
+				//t.Logf("%d: Time ok: %v", idx, times[idx] == to)
+				r := it.ReprValue()
+
+				So(stats[idx].Sum, ShouldEqual, r.Sum)
+				So(stats[idx].Min, ShouldEqual, r.Min)
+				So(stats[idx].Max, ShouldEqual, r.Max)
+
+				//t.Logf("BIT Repr: %v", r)
 				idx++
 			}
 			So(idx, ShouldEqual, n_stats)
-			if nit.Error() != nil {
-				t.Fatalf("Iter Error: %v", nit.Error())
-			}
-		})
-
-		Convey("Series Type: "+stype+" - Snappy/Iterator", func() {
-			// Snappy tests
-			c_bss := snappy.Encode(nil, bss)
-			t.Logf("Snappy Data size: %v", len(c_bss))
-
-			outs := make([]byte, 0)
-			dec, err := snappy.Decode(outs, c_bss)
-			t.Logf("Snappy Decode Data size: %v", len(dec))
-			if err != nil {
-				t.Fatalf("Error: %v", err)
+			if it.Error() != nil {
+				t.Fatalf("Iter Error: %v", it.Error())
 			}
 
-			n_iter, err := NewIter(stype, dec)
-			if err != nil {
-				t.Fatalf("Error: %v", err)
-			}
-			idx = 0
-			for n_iter.Next() {
-				to, mi, mx, fi, ls, su, ct := n_iter.Values()
-				So(times[idx], ShouldEqual, to)
-				So(stats[idx].Max, ShouldEqual, mx)
-				So(stats[idx].Last, ShouldEqual, ls)
-				So(stats[idx].Count, ShouldEqual, ct)
-				So(stats[idx].First, ShouldEqual, fi)
-				So(stats[idx].Min, ShouldEqual, mi)
-				So(stats[idx].Sum, ShouldEqual, su)
-				idx++
-			}
-		})
-		bss = ser.Bytes()
-
-		Convey("Series Type: "+stype+" - Zip/Iterator", func() {
-			// zip tests
-			c_bss := new(bytes.Buffer)
-			zipper := zlib.NewWriter(c_bss)
-			zipper.Write(bss)
-			zipper.Close()
-
-			t.Logf("Zip Data size: %v", c_bss.Len())
-
-			outs := new(bytes.Buffer)
-			rdr, err := zlib.NewReader(c_bss)
+			// compression, iterator R/W test
+			bss := ser.Bytes()
 			if err != nil {
 				t.Fatalf("ERROR: %v", err)
 			}
-			io.Copy(outs, rdr)
-			rdr.Close()
-			t.Logf("Zip Decode Data size: %v", outs.Len())
-			if err != nil {
-				t.Fatalf("Error: %v", err)
-			}
+			t.Logf("Data size: %v", len(bss))
 
-			n_iter, err := NewIter(stype, outs.Bytes())
-			if err != nil {
-				t.Fatalf("Error: %v", err)
-			}
-			idx = 0
-			for n_iter.Next() {
-				to, mi, mx, fi, ls, su, ct := n_iter.Values()
-				So(times[idx], ShouldEqual, to)
-				So(stats[idx].Max, ShouldEqual, mx)
-				So(stats[idx].Last, ShouldEqual, ls)
-				So(stats[idx].Count, ShouldEqual, ct)
-				So(stats[idx].First, ShouldEqual, fi)
-				So(stats[idx].Min, ShouldEqual, mi)
-				So(stats[idx].Sum, ShouldEqual, su)
-				idx++
-			}
+			Convey("Series Type: "+stype+" - Multi Iterator - "+nm, func() {
+				run := 0
+				max_run := 10
+				dd, _ := dummyStat()
+				for {
+					ser.AddStat(dd)
+					it, _ := ser.Iter()
+					idx := 0
+					for it.Next() {
+						idx++
+
+					}
+					So(idx, ShouldEqual, n_stats+run+1)
+					run++
+					if run > max_run {
+						break
+					}
+				}
+			})
+
+			Convey("Series Type: "+stype+" - 'Smart' Single Point - "+nm, func() {
+
+				n_dd, nn := dummyStatSingleVal()
+				nser, _ := NewTimeSeries(stype, nn.UnixNano(), opt)
+				n_times, o_stats, terr := addSingleValStat(nser, n_dd, n_stats, true)
+				So(terr, ShouldEqual, nil)
+				nit, _ := nser.Iter()
+				idx := 0
+				for nit.Next() {
+					to, _, _, _, _, su, ct := nit.Values()
+
+					test_to := time.Unix(0, to)
+					test_lt := time.Unix(0, n_times[idx])
+					if ser.HighResolution() {
+						So(test_lt.UnixNano(), ShouldEqual, test_to.UnixNano())
+					} else {
+						So(test_lt.Unix(), ShouldEqual, test_to.Unix())
+					}
+					So(o_stats[idx].Sum, ShouldEqual, su)
+					So(o_stats[idx].Count, ShouldEqual, ct)
+					idx++
+				}
+				So(idx, ShouldEqual, n_stats)
+				if nit.Error() != nil {
+					t.Fatalf("Iter Error: %v", nit.Error())
+				}
+			})
+
+			Convey("Series Type: "+stype+" - Snappy/Iterator - "+nm, func() {
+				// Snappy tests
+				c_bss := snappy.Encode(nil, bss)
+				t.Logf("Snappy Data size: %v", len(c_bss))
+
+				outs := make([]byte, 0)
+				dec, err := snappy.Decode(outs, c_bss)
+				t.Logf("Snappy Decode Data size: %v", len(dec))
+				if err != nil {
+					t.Fatalf("Error: %v", err)
+				}
+
+				n_iter, err := NewIter(stype, dec)
+				if err != nil {
+					t.Fatalf("Error: %v", err)
+				}
+				idx = 0
+				for n_iter.Next() {
+					to, mi, mx, fi, ls, su, ct := n_iter.Values()
+					test_to := time.Unix(0, to)
+					test_lt := time.Unix(0, times[idx])
+					if ser.HighResolution() {
+						So(test_lt.UnixNano(), ShouldEqual, test_to.UnixNano())
+					} else {
+						So(test_lt.Unix(), ShouldEqual, test_to.Unix())
+					}
+					So(stats[idx].Max, ShouldEqual, mx)
+					So(stats[idx].Last, ShouldEqual, ls)
+					So(stats[idx].Count, ShouldEqual, ct)
+					So(stats[idx].First, ShouldEqual, fi)
+					So(stats[idx].Min, ShouldEqual, mi)
+					So(stats[idx].Sum, ShouldEqual, su)
+					idx++
+				}
+			})
+			bss = ser.Bytes()
+
+			Convey("Series Type: "+stype+" - Zip/Iterator - "+nm, func() {
+				// zip tests
+				c_bss := new(bytes.Buffer)
+				zipper := zlib.NewWriter(c_bss)
+				zipper.Write(bss)
+				zipper.Close()
+
+				t.Logf("Zip Data size: %v", c_bss.Len())
+
+				outs := new(bytes.Buffer)
+				rdr, err := zlib.NewReader(c_bss)
+				if err != nil {
+					t.Fatalf("ERROR: %v", err)
+				}
+				io.Copy(outs, rdr)
+				rdr.Close()
+				t.Logf("Zip Decode Data size: %v", outs.Len())
+				if err != nil {
+					t.Fatalf("Error: %v", err)
+				}
+
+				n_iter, err := NewIter(stype, outs.Bytes())
+				if err != nil {
+					t.Fatalf("Error: %v", err)
+				}
+				idx = 0
+				for n_iter.Next() {
+					to, mi, mx, fi, ls, su, ct := n_iter.Values()
+					test_to := time.Unix(0, to)
+					test_lt := time.Unix(0, times[idx])
+					if ser.HighResolution() {
+						So(test_lt.UnixNano(), ShouldEqual, test_to.UnixNano())
+					} else {
+						So(test_lt.Unix(), ShouldEqual, test_to.Unix())
+					}
+					So(stats[idx].Max, ShouldEqual, mx)
+					So(stats[idx].Last, ShouldEqual, ls)
+					So(stats[idx].Count, ShouldEqual, ct)
+					So(stats[idx].First, ShouldEqual, fi)
+					So(stats[idx].Min, ShouldEqual, mi)
+					So(stats[idx].Sum, ShouldEqual, su)
+					idx++
+				}
+			})
+
 		})
-
-	})
+	}
 }
