@@ -31,7 +31,7 @@ Indexers: take a metrics "name" which has the form
 
 And will "index it" somehow.  Currently the "tags" are not yet used in the indexers .. but the future ....
 
-The StatName has a "UniqueID" which is basically a FNV-64a hash of the following
+The StatName has a "UniqueID" which is basically a MMH3 hash of the following
 
     FNV64a(Key + ":" + sortByName(Tags))
 
@@ -91,6 +91,7 @@ You should make Schemas like so (`datetime(6)` is microsecond resolution, if you
 useful for key space lookups
 
     CREATE TABLE `{path_table}` (
+        `pidth` int NULL,
         `path` varchar(255) NOT NULL DEFAULT '',
         `length` int NOT NULL
         PRIMARY KEY `stat` (`stat`),
@@ -99,7 +100,8 @@ useful for key space lookups
 
     CREATE TABLE `{table}_{keeperprefix}` (
       `id` int(11) unsigned NOT NULL AUTO_INCREMENT,
-      `stat` varchar(255) NOT NULL DEFAULT '',
+      `uid` int NULL,
+      `path` varchar(255) NOT NULL DEFAULT '',
       `sum` float NOT NULL,
       `min` float NOT NULL,
       `max` float NOT NULL,
@@ -109,7 +111,8 @@ useful for key space lookups
       `resolution` int(11) NOT NULL,
       `time` datetime(6) NOT NULL,
       PRIMARY KEY (`id`),
-      KEY `stat` (`stat`),
+      KEY `uid` (`uid`),
+      KEY `path` (`path`),
       KEY `time` (`time`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
@@ -214,89 +217,93 @@ If you want to allow 24h windows, simply raise `max_sstable_age_days` to â€˜1.0â
     USE metric;
 
     CREATE TYPE metric_point (
-        max double,
-        min double,
-        sum double,
-        first double,
-        last double,
-        count int
-    );
+            max double,
+            min double,
+            sum double,
+            first double,
+            last double,
+            count int
+        );
 
 
-    CREATE TYPE metric_id (
-        path text,
-        resolution int
-    );
+        CREATE TYPE metric_path (
+            path text,
+            resolution int
+        );
 
-    CREATE TABLE metric.metric (
-        id frozen<metric_id>,
-        time bigint,
-        point frozen<metric_point>,
-        PRIMARY KEY (id, time)
-    ) WITH COMPACT STORAGE
-        AND CLUSTERING ORDER BY (time ASC)
-        AND compaction = {
-            'class': 'DateTieredCompactionStrategy',
-            'min_threshold': '12',
-            'max_threshold': '32',
-            'max_sstable_age_days': '0.083',
-            'base_time_seconds': '50'
-        }
-        AND compression = {'sstable_compression': 'org.apache.cassandra.io.compress.LZ4Compressor'}
-        AND dclocal_read_repair_chance = 0.1
-        AND default_time_to_live = 0
-        AND gc_grace_seconds = 864000
-        AND max_index_interval = 2048
-        AND memtable_flush_period_in_ms = 0
-        AND min_index_interval = 128
-        AND read_repair_chance = 0.0
-        AND speculative_retry = '99.0PERCENTILE';
+        CREATE TABLE metric.metric (
+            id varint,
+            mpath frozen<metric_path>,
+            time bigint,
+            point frozen<metric_point>,
+            PRIMARY KEY (id, mpath, time)
+        ) WITH COMPACT STORAGE
+            AND CLUSTERING ORDER BY (mpath ASC, time ASC)
+            AND compaction = {
+                'class': 'DateTieredCompactionStrategy',
+                'min_threshold': '12',
+                'max_threshold': '32',
+                'max_sstable_age_days': '0.083',
+                'base_time_seconds': '50'
+            }
+            AND compression = {'sstable_compression': 'org.apache.cassandra.io.compress.LZ4Compressor'}
+            AND dclocal_read_repair_chance = 0.1
+            AND default_time_to_live = 0
+            AND gc_grace_seconds = 864000
+            AND max_index_interval = 2048
+            AND memtable_flush_period_in_ms = 0
+            AND min_index_interval = 128
+            AND read_repair_chance = 0.0
+            AND speculative_retry = '99.0PERCENTILE';
 
-    CREATE TYPE metric.segment_pos (
-        pos int,
-        segment text
-    );
+        CREATE TYPE metric.segment_pos (
+            pos int,
+            segment text
+        );
 
-    CREATE TABLE metric.path (
-        segment frozen<segment_pos>,
-        path text,
-        length int,
-        has_data boolean,
-        PRIMARY KEY ((segment, length), path)
-    ) WITH CLUSTERING ORDER BY (path ASC)
-        AND bloom_filter_fp_chance = 0.01
-        AND caching = {'keys':'ALL', 'rows_per_partition':'NONE'}
-        AND comment = ''
-        AND compaction = {'class': 'org.apache.cassandra.db.compaction.SizeTieredCompactionStrategy'}
-        AND compression = {'sstable_compression': 'org.apache.cassandra.io.compress.LZ4Compressor'}
-        AND dclocal_read_repair_chance = 0.1
-        AND default_time_to_live = 0
-        AND gc_grace_seconds = 864000
-        AND max_index_interval = 2048
-        AND memtable_flush_period_in_ms = 0
-        AND min_index_interval = 128
-        AND read_repair_chance = 0.0
-        AND speculative_retry = '99.0PERCENTILE';
 
-    CREATE TABLE metric.segment (
-        pos int,
-        segment text,
-        PRIMARY KEY (pos, segment)
-    ) WITH COMPACT STORAGE
-        AND CLUSTERING ORDER BY (segment ASC)
-        AND bloom_filter_fp_chance = 0.01
-        AND caching = {'keys':'ALL', 'rows_per_partition':'NONE'}
-        AND comment = ''
-        AND compaction = {'class': 'org.apache.cassandra.db.compaction.SizeTieredCompactionStrategy'}
-        AND compression = {'sstable_compression': 'org.apache.cassandra.io.compress.LZ4Compressor'}
-        AND dclocal_read_repair_chance = 0.1
-        AND default_time_to_live = 0
-        AND gc_grace_seconds = 864000
-        AND max_index_interval = 2048
-        AND memtable_flush_period_in_ms = 0
-        AND min_index_interval = 128
-        AND read_repair_chance = 0.0
-        AND speculative_retry = '99.0PERCENTILE';
+        CREATE TABLE metric.path (
+            segment frozen<segment_pos>,
+            length int,
+            path text,
+            id varint,
+            has_data boolean,
+            PRIMARY KEY (segment, length, path, id)
+        ) WITH
+             bloom_filter_fp_chance = 0.01
+            AND caching = {'keys':'ALL', 'rows_per_partition':'NONE'}
+            AND comment = ''
+            AND compaction = {'class': 'org.apache.cassandra.db.compaction.SizeTieredCompactionStrategy'}
+            AND compression = {'sstable_compression': 'org.apache.cassandra.io.compress.LZ4Compressor'}
+            AND dclocal_read_repair_chance = 0.1
+            AND default_time_to_live = 0
+            AND gc_grace_seconds = 864000
+            AND max_index_interval = 2048
+            AND memtable_flush_period_in_ms = 0
+            AND min_index_interval = 128
+            AND read_repair_chance = 0.0
+            AND speculative_retry = '99.0PERCENTILE';
+        CREATE INDEX ON metric.path (id);
+
+        CREATE TABLE metric.segment (
+            pos int,
+            segment text,
+            PRIMARY KEY (pos, segment)
+        ) WITH COMPACT STORAGE
+            AND CLUSTERING ORDER BY (segment ASC)
+            AND bloom_filter_fp_chance = 0.01
+            AND caching = {'keys':'ALL', 'rows_per_partition':'NONE'}
+            AND comment = ''
+            AND compaction = {'class': 'org.apache.cassandra.db.compaction.SizeTieredCompactionStrategy'}
+            AND compression = {'sstable_compression': 'org.apache.cassandra.io.compress.LZ4Compressor'}
+            AND dclocal_read_repair_chance = 0.1
+            AND default_time_to_live = 0
+            AND gc_grace_seconds = 864000
+            AND max_index_interval = 2048
+            AND memtable_flush_period_in_ms = 0
+            AND min_index_interval = 128
+            AND read_repair_chance = 0.0
+            AND speculative_retry = '99.0PERCENTILE';
 
 
 ### Gotcha's
@@ -415,7 +422,7 @@ You can set `write_index = false` if you want to NOT write the index message (as
 already and consumers can deal with indexing)
 
         INDEX {
-            id: [int64 FNV64a],
+            id: [uint32 MMH3],
     	    type: "index | delete-index",
     	    path: "my.metric.is.good",
     	    segments: ["my", "metric", "is", "good"],
@@ -426,7 +433,7 @@ already and consumers can deal with indexing)
     	    type: "metric",
     	    time: [int64 unix Nano second time stamp],
     	    metric: "my.metric.is.good",
-    	    id: [int64 FNV64a],
+    	    id: [uint32 MMH3],
     	    sum: float64,
     	    mean: float64,
     	    min: float64,
