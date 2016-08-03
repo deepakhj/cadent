@@ -66,10 +66,10 @@
 			"revisionTime": "2016-06-02T00:10:21Z"
 		},
 		{
-			"checksumSHA1": "Ob6CmVNdVsBvXJLDGIcowMz4WsA=",
+			"checksumSHA1": "ByQ5uMKyzM7GQ95GSE6RBgeTjhw=",
 			"path": "github.com/gocql/gocql",
-			"revision": "b7b8a0e04b0cb0ca0b379421c58ec6fab9939b85",
-			"revisionTime": "2016-05-25T20:37:33Z"
+			"revision": "b2caded3d0f457e42515c06d4092c02055cebaa0",
+			"revisionTime": "2016-07-29T08:37:58Z"
 		},
 		{
 			"checksumSHA1": "Z3N6HDGWcvcNu0FloZRq54uO3h4=",
