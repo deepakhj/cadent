@@ -93,20 +93,45 @@ simply reject the incoming line
 
 And then ...
 
-Finally an Accumulator, which initially "accumulates" lines that can be (thing statsd or carbon-aggrigate) then 
+Accumulators. which initially "accumulates" lines that can be (thing statsd or carbon-aggrigate) then
 emits them to a designated backend, which then can be "PreRegex" to other backends if nessesary
 Currently only "graphite" and "statsd" accumulators are available such that one can do statsd -> graphite or even 
 graphite -> graphite or graphite -> statsd (weird) or statsd -> statsd.  The {same}->{same} are more geared
 towards pre-buffering very "loud" inputs so as no to overwhelm the various backends.
 
+NOTE :: if in a cluster of hashers and accumulators .. NTP is your friend .. make sure your clocks are in-sync
+
+And then ...
+
+Data stores, since we have all the data, why not try a more another data store?
+Whisper, Cassandra, Kafka, Mysql, TextFile
+
+And then ..
+
+Indexers.  Needs to be able to index the metrics keys in some fashion.  Kafka, Cassandra, LevelDB, "whisper".
+
+And then ..
+
+GraphiteAPI.  Special datastores need to be able to hook into the graphite eco system.
+
+And then ..
+
+TimeSeries.  The initial pass at external data stores, where "dumb".  Basically things stored a point for every time/value set.
+This turned can be expensive.  The Whisper format is pretty compact, but requires lots of IO to deal internal rollups and
+ seeking to proper places in the RRD.  Cassandra on a "flat point" storage is both very high disk use and for big queries can be
+ slow.  Internally things were also not stored effiently causing some ram bloat.  So a variety of compressed time series were
+ created to deal w/ all these issues.  These series are binary chunked blobs spanning a time range of points.  Some algorithms are
+ very space efficent (gorilla) but not as easy to deal with if slices/sorting, etc are needed.  So given the use case a
+ few series types that are used.
+
+Current Flow ::
+
 The Flow of a given line looks like so
 
-    InLine(s) -> Listener -> Splitter -> [Accumulator] -> [PreReg/Filter] -> Backend -> Hasher -> OutPool -> Buffer -> outLine(s)
+    InLine(s) -> Listener -> Splitter -> [Accumulator] -> [PreReg/Filter] -> Backend -> Hasher -> OutPool -> Buffer -> outLine(s) -> And/Or -> [Writer/Indexer]
                                                                 |
                                                                 [-> Replicator -> Hasher -> OutPool -> Buffer -> outLine(s)]
 Things in `[]` are optional
-
-NOTE :: if in a cluster of hashers and accumulators .. NTP is your friend .. make sure your clocks are in-sync
 
 What Needs Work
 ---------------
@@ -121,12 +146,11 @@ lines are strings in the incoming) but at large loads this can lead to RAM and G
 metric floods, RAM pressure, writing issues and so on.  There is no real magic bullet i've found yet to be able to handle huge loads w/o dropping
 some points in the series at somepoint in the chain.  Things like backpressure are hard to impliment as the senders need to
 also understand backpressure (which UDP cannot) and various stats sending clients do not either (as it requires them to
-also have some interal buffering mechanisms when issues occur).
-
-Personally, the best mechanism may be to imitate a cassandra/kafka append only rotating log on the file system, which then
+also have some interal buffering mechanisms when issues occur). Personally, the best mechanism may be to imitate a
+cassandra/kafka append only rotating log on the file system, which then
 the writers/indexers simply consume internally to do the writes. Much similare to how Hekad's ElasticSearch writer behaves
 but, even w/ this mechanism, if the writers cannot keep up eventually there will be death. Internally the "write-cache" is this
-mecahnism of a sort, in RAM, but will simply drop overflowing points.
+mecahnism of a sort, in RAM, but will simply drop overflowing points.  So really Kafka may be the only "real" solution here.
 
 3. Metric Indexing: Graphites "format" was made for file glob patterns, which is good if everything is on a file system
 this is not the case for other data stores.  And intertroducing a "tag/multi-dim" structure on top of this just makes
@@ -138,6 +162,11 @@ The internal "write cache", an LRU "read cache" and the "data store" itself.  Th
 time in each of these 3 places.  So a given read request (especially for "recent-ish" data) will hit all 3.  Merging them can
 be a bit of an expensive operation.  Ideally most reads will eventually end up just hitting the read-cache (which is a
  smart cache that will get points auto-added as the come in if the metric has been requested before even before writing).
+
+5. Clustering/Internal messaging.  The current hashing mechanism is "dumb" in that it does not know about any external
+cadents running that may be the accumulator portion (which cannot be assumed as we may be dumping to somethin totally different)
+But if it is a "cadent->cadent" transfer there are much better/faster mechanisms to get data across a wire then convertering things
+back to strings and starting the entire process over again.
 
 ## Accumulators 
 
