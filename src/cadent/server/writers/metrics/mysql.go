@@ -1,16 +1,23 @@
 /*
-	THe MySQL write
+	THe MySQL stat write
 
-	The table should have this schema to match the repr item
-
-// this is for easy index searches on paths
-
-CREATE TABLE `{path_table}` (
-  `path` varchar(255) NOT NULL DEFAULT '',
-  `length` int NOT NULL,
-  PRIMARY KEY (`path`),
-  KEY `length` (`length`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+     CREATE TABLE `{table}_{keeperprefix}` (
+      `id` int(11) unsigned NOT NULL AUTO_INCREMENT,
+      `uid` int NULL,
+      `path` varchar(255) NOT NULL DEFAULT '',
+      `sum` float NOT NULL,
+      `min` float NOT NULL,
+      `max` float NOT NULL,
+      `first` float NOT NULL,
+      `last` float NOT NULL,
+      `count` float NOT NULL,
+      `resolution` int(11) NOT NULL,
+      `time` datetime(6) NOT NULL,
+      PRIMARY KEY (`id`),
+      KEY `uid` (`uid`),
+      KEY `path` (`path`),
+      KEY `time` (`time`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 	OPTIONS: For `Config`
 
@@ -129,14 +136,14 @@ func (my *MySQLMetrics) Flush() (int, error) {
 	}
 
 	Q := fmt.Sprintf(
-		"INSERT INTO %s (id, stat, sum, min, max, last, count, resolution, time) VALUES ",
+		"INSERT INTO %s (id, uid, path, sum, min, max, last, count, resolution, time) VALUES ",
 		my.db.Tablename(),
 	)
 
 	vals := []interface{}{}
 
 	for _, stat := range my.write_list {
-		Q += "(?,?,?,?,?,?,?,?,?), "
+		Q += "(?,?,?,?,?,?,?,?,?,?), "
 		vals = append(
 			vals, stat.UniqueId(), stat.Name.Key, stat.Sum, stat.Min, stat.Max, stat.Last, stat.Count, stat.Name.Resolution, stat.Time,
 		)

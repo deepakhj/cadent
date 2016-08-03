@@ -6,6 +6,7 @@
 // this is for easy index searches on paths
 
 CREATE TABLE `{path_table}` (
+  `id` int NULL,
   `path` varchar(255) NOT NULL DEFAULT '',
   `length` int NOT NULL,
   PRIMARY KEY (`path`),
@@ -119,15 +120,15 @@ func (my *MySQLIndexer) Flush() (int, error) {
 	}
 
 	pthQ := fmt.Sprintf(
-		"INSERT IGNORE INTO %s (path, length) VALUES ",
+		"INSERT IGNORE INTO %s (id, path, length) VALUES ",
 		my.db.PathTable(),
 	)
 
 	pvals := []interface{}{}
 
 	for _, stat := range my.write_list {
-		pthQ += "(?, ?), "
-		pvals = append(pvals, stat.Key, len(strings.Split(stat.Key, ".")))
+		pthQ += "(?, ?, ?), "
+		pvals = append(pvals, stat.UniqueId(), stat.Key, len(strings.Split(stat.Key, ".")))
 
 	}
 	//trim the last ", "
@@ -169,11 +170,11 @@ func (my *MySQLIndexer) Write(skey repr.StatName) error {
 
 func (my *MySQLIndexer) Delete(name *repr.StatName) error {
 	pthQ := fmt.Sprintf(
-		"DELETE FROM %s WHERE path=? AND length=? ",
+		"DELETE FROM %s WHERE id=? AND path=? AND length=? ",
 		my.db.PathTable(),
 	)
 
-	pvals := []interface{}{name.Key, len(strings.Split(name.Key, "."))}
+	pvals := []interface{}{name.UniqueId(), name.Key, len(strings.Split(name.Key, "."))}
 
 	//prepare the statement
 	stmt, err := my.conn.Prepare(pthQ)
