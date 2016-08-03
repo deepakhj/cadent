@@ -8,10 +8,11 @@ and single files for each series.
 
 We have "3" dbs
 {segments} -> {position} mappings
-{segments} -> {path} mappings
-{tags} -> {path} mappings
+{segments} -> {id}:{path} mappings
+{tags} -> {id}:{path} mappings
+{id} -> {path} mappings
 
-If no tags are used (i.e. graphite like) then the tags will basically be emptyy
+If no tags are used (i.e. graphite like) then the tags will basically be empty
 
 We follow a data pattern alot like the Cassandra one, as we attempting to get a similar glob matcher
 when tags enter (not really done yet) the tag thing will be important
@@ -24,7 +25,7 @@ so we can do
 
 the segment DB
 
-things like `find.startswith({length}:{longest.non.regex.part}) -> path`
+things like `find.startswith({length}:{longest.non.regex.part}) -> id:path`
 and do the regex on the iterator
 
 the segment DB
@@ -53,6 +54,7 @@ import (
 	leveldb_util "github.com/syndtr/goleveldb/leveldb/util"
 	logging "gopkg.in/op/go-logging.v1"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -72,12 +74,12 @@ level DB keys
 
 This one is for "finds"
 i.e.  cadent.zipperwork.local.writer.cassandra.write.metric-time-ns.upper_99 -> cadent.zipperwork.local.writer.cassandra.write.metric-time-ns.upper_99
-- SEG:{length}:{segment} -> {path}
+- SEG:{length}:{segment} -> {id}:{path}
 
 This is used for "expands"
-"has data" is when  segment+1 == path
+"has data" is when segment+1 == path
 i.e cadent.zipperwork.local.writer -> cadent.zipperwork.local.writer.cassandra
-- POS:{pos}:{segment} -> {segment+1}:{has_data} used for expand
+- POS:{pos}:{segment}:{has_data} -> {id}:{segment+1}:{has_data} used for expand
 
 for reverse lookups basically for deletion purposes
 Second set :: PATH:{path} -> {length}:{segment}
@@ -91,10 +93,11 @@ type LevelDBSegment struct {
 	Segment     string
 	NextSegment string
 	Path        string
+	Id          repr.StatId
 }
 
 // given a path get all the various segment datas
-func ParsePath(stat_key string) (segments []LevelDBSegment) {
+func ParsePath(stat_key string, id repr.StatId) (segments []LevelDBSegment) {
 
 	s_parts := strings.Split(stat_key, ".")
 	p_len := len(s_parts)
@@ -141,6 +144,7 @@ func ParsePath(stat_key string) (segments []LevelDBSegment) {
 			Path:        stat_key,
 			Length:      p_len - 1,
 			Pos:         idx, // starts at 0
+			Id:          id,
 		}
 	}
 
@@ -152,7 +156,15 @@ func (ls *LevelDBSegment) SegmentKey(segment string, len int) []byte {
 }
 
 func (ls *LevelDBSegment) SegmentData() ([]byte, []byte) {
-	return []byte(ls.SegmentKey(ls.Segment, ls.Length)), []byte(ls.Path)
+	return []byte(ls.SegmentKey(ls.Segment, ls.Length)), []byte(fmt.Sprintf("%d|%s", ls.Id, ls.Path))
+}
+
+func (ls *LevelDBSegment) IdKey(id repr.StatId) []byte {
+	return []byte(fmt.Sprintf("ID:%d", id))
+}
+
+func (ls *LevelDBSegment) IdData() ([]byte, []byte) {
+	return []byte(ls.IdKey(ls.Id)), []byte(ls.Path)
 }
 
 func (ls *LevelDBSegment) PathKey(path string) []byte {
@@ -163,17 +175,23 @@ func (ls *LevelDBSegment) ReverseSegmentData() ([]byte, []byte) {
 }
 
 func (ls *LevelDBSegment) PosSegmentKey(path string, pos int) []byte {
-	return []byte(fmt.Sprintf("POS:%d:%s", pos, path))
+	has_data := "0"
+	if ls.NextSegment == ls.Path {
+		has_data = "1"
+	}
+	return []byte(fmt.Sprintf("POS:%d:%s:%s", pos, path, has_data))
 }
 
 // POS:{pos}:{segment} -> {segment+1}:{has_data}
 func (ls *LevelDBSegment) PosSegmentData() ([]byte, []byte) {
 	has_data := "0"
+	use_id := repr.StatId(0) //paths w/ no data have no id
 	if ls.NextSegment == ls.Path {
 		has_data = "1"
+		use_id = ls.Id
 	}
 	return []byte(ls.PosSegmentKey(ls.Segment, ls.Pos)),
-		[]byte(fmt.Sprintf("%s:%s", ls.NextSegment, has_data))
+		[]byte(fmt.Sprintf("%d:%s:%s", use_id, ls.NextSegment, has_data))
 
 }
 
@@ -187,6 +205,8 @@ func (ls *LevelDBSegment) InsertAllIntoBatch(batch *leveldb.Batch) {
 		batch.Put(k, v)
 		k1, v1 := ls.ReverseSegmentData()
 		batch.Put(k1, v1)
+		k2, v2 := ls.IdData()
+		batch.Put(k2, v2)
 	}
 	k, v := ls.PosSegmentData()
 	batch.Put(k, v)
@@ -219,7 +239,7 @@ func (ls *LevelDBSegment) DeletePath(segdb *leveldb.DB) (err error) {
 	// log.Printf("DEL: GotPath: Path: %s :: data: %s", path_key, val)
 
 	// grab all the segments
-	segs := ParsePath(string(ls.Path))
+	segs := ParsePath(string(ls.Path), ls.Id)
 	l_segs := len(segs)
 	errs := make([]error, 0)
 	// remove all things that point to this path
@@ -441,7 +461,7 @@ func (lb *LevelDBIndexer) WriteOne(name repr.StatName) error {
 	stats.StatsdClientSlow.Incr("indexer.leveldb.noncached-writes-path", 1)
 
 	skey := name.Key
-	segments := ParsePath(skey)
+	segments := ParsePath(skey, name.UniqueId())
 
 	for _, seg := range segments {
 		err := seg.InsertAll(lb.db.SegmentConn())
@@ -509,17 +529,24 @@ func (lp *LevelDBIndexer) Find(metric string) (mt MetricFindItems, err error) {
 		var ms MetricFindItem
 		// Remember that the contents of the returned slice should not be modified, and
 		// only valid until the next call to Next.
-		value := iter.Value() // should be {path}:{has_data:0|1}
+		value := iter.Value() // should be {id}:{path}:{has_data:0|1}
 		value_arr := strings.Split(string(value), ":")
 		has_data := value_arr[len(value_arr)-1]
-		on_path := value_arr[0]
+		on_path := value_arr[1]
+		on_path_byte := []byte(on_path)
+		on_id, id_err := strconv.Atoi(value_arr[0])
+		use_id := new(repr.StatId)
+		if id_err == nil {
+			*use_id = repr.StatId(on_id)
+		}
 		spl := strings.Split(on_path, ".")
 
 		if reged != nil {
-			if reged.Match(value) {
+			if reged.Match(on_path_byte) {
 				ms.Text = spl[len(spl)-1]
 				ms.Id = on_path
 				ms.Path = on_path
+				ms.UniqueId = use_id
 
 				if has_data == "1" {
 					ms.Expandable = 0
@@ -538,6 +565,7 @@ func (lp *LevelDBIndexer) Find(metric string) (mt MetricFindItems, err error) {
 			ms.Text = spl[len(spl)-1]
 			ms.Id = on_path
 			ms.Path = on_path
+			ms.UniqueId = use_id
 
 			if has_data == "1" {
 				ms.Expandable = 0
@@ -566,9 +594,9 @@ func (lp *LevelDBIndexer) FindRoot() (mt MetricFindItems, err error) {
 	iter := lp.db.SegmentConn().NewIterator(leveldb_util.BytesPrefix([]byte(prefix)), nil)
 
 	for iter.Next() {
-		value := iter.Value() // should be {path}:{has_data:0|1}
+		value := iter.Value() // should be {id}:{path}:{has_data:0|1}
 		value_arr := strings.Split(string(value), ":")
-		on_path := value_arr[0]
+		on_path := value_arr[1]
 
 		var ms MetricFindItem
 		ms.Text = on_path
