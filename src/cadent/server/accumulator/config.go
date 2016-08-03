@@ -135,7 +135,7 @@ func (cf *ConfigAccumulator) ParseDurations() error {
 	}
 	cf.accumulate_time = cf.durations[0]
 	if len(cf.AccTimer) > 0 {
-		log.Critical("cf.AccTimer: %v", cf.AccTimer)
+		log.Info("Base Accumulator Timer: %v", cf.AccTimer)
 		_dur, err := time.ParseDuration(cf.AccTimer)
 		if err != nil {
 			return err
