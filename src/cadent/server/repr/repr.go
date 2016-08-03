@@ -7,6 +7,7 @@ package repr
 import (
 	"bytes"
 	"fmt"
+	"github.com/reusee/mmh3"
 	"hash/fnv"
 	"math"
 	"sort"
@@ -45,7 +46,7 @@ func (s SortingTags) String() string {
 	return strings.Join(str, ",")
 }
 
-type StatId uint64
+type StatId uint32
 
 type StatName struct {
 	Key        string      `json:"key"`
@@ -56,9 +57,9 @@ type StatName struct {
 
 // take the various "parts" (keys, resolution, tags) and return a basic md5 hash of things
 func (s *StatName) UniqueId() StatId {
-	buf := fnv.New64a()
-	fmt.Fprintf(buf, "%s:%s", s.Key, s.SortedTags())
-	return StatId(buf.Sum64())
+	buf := mmh3.New32()
+	buf.Write([]byte(fmt.Sprintf("%s:%s", s.Key, s.SortedTags())))
+	return StatId(buf.Sum32())
 }
 
 // return an array of [ [name, val] ...] sorted by name
