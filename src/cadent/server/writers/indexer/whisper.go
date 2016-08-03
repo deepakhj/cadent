@@ -121,10 +121,13 @@ func (ws *WhisperIndexer) Find(metric string) (MetricFindItems, error) {
 		ms.Id = p   // ID is whatever we want
 		ms.Path = t // "path" is what our interface expects to be the "moo.goo.blaa" thing
 
+		stat_name := repr.StatName{Key: p}
 		if is_data {
+			uid := stat_name.UniqueId()
 			ms.Expandable = 0
 			ms.Leaf = 1
 			ms.AllowChildren = 0
+			ms.UniqueId = &uid
 		} else {
 			ms.Expandable = 1
 			ms.Leaf = 0

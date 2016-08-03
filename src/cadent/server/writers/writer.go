@@ -214,7 +214,7 @@ func (loop *WriterLoop) processQueue() {
 
 	for {
 		proc_queue()
-		time.Sleep(time.Millisecond) // so as to not CPU burn
+		time.Sleep(time.Second) // so as to not CPU burn
 	}
 }
 

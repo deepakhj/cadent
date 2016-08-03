@@ -139,7 +139,7 @@ type CassMetric struct {
 var _CASS_FLAT_WRITER_SINGLETON map[string]*CassandraFlatWriter
 var _cass_flat_set_mutex sync.Mutex
 
-func _get_signelton(conf map[string]interface{}) (*CassandraFlatWriter, error) {
+func _get_flat_signelton(conf map[string]interface{}) (*CassandraFlatWriter, error) {
 	_cass_flat_set_mutex.Lock()
 	defer _cass_flat_set_mutex.Unlock()
 	gots := conf["dsn"]
@@ -312,17 +312,17 @@ func NewCassandraFlatWriter(conf map[string]interface{}) (*CassandraFlatWriter, 
 	}
 
 	cass._insert_query = fmt.Sprintf(
-		"INSERT INTO %s (id, time, point) VALUES  ({path: ?, resolution: ?}, ?, {sum: ?, ?, min: ?, max: ?, first: ?, last: ?, count: ?})",
+		"INSERT INTO %s (id, mpath, time, point) VALUES  (?, {path: ?, resolution: ?}, ?, {sum: ?, min: ?, max: ?, first: ?, last: ?, count: ?})",
 		cass.db.MetricTable(),
 	)
 
 	cass._select_time_query = fmt.Sprintf(
-		"SELECT point.max, point.min, point.sum, point.first, point.last, point.count, time FROM %s WHERE id={path: ?, resolution: ?} AND time <= ? and time >= ?",
+		"SELECT point.max, point.min, point.sum, point.first, point.last, point.count, time FROM %s WHERE id=? and mpath={path: ?, resolution: ?} AND time <= ? and time >= ?",
 		cass.db.MetricTable(),
 	)
 
 	cass._get_query = fmt.Sprintf(
-		"SELECT point.max, point.min, point.sum, point.first, point.last, point.count, time FROM %s WHERE id={path: ?, resolution: ?} and time = ?",
+		"SELECT point.max, point.min, point.sum, point.first, point.last, point.count, time FROM %s WHERE id=? and mpath={path: ?, resolution: ?} and time = ?",
 		cass.db.MetricTable(),
 	)
 
@@ -338,6 +338,10 @@ func (cass *CassandraFlatWriter) Stop() {
 	cass.shutitdown = true
 	cass.shutdown <- true
 	cass.cacher.Stop()
+
+	if cass.overFlowShutdown != nil {
+		cass.overFlowShutdown <- true
+	}
 
 	mets := cass.cacher.Queue
 	mets_l := len(mets)
@@ -357,7 +361,6 @@ func (cass *CassandraFlatWriter) Stop() {
 	}
 	cass.log.Warning("shutdown purge: written %d/%d...", did, mets_l)
 	cass.log.Warning("Shutdown finished ... quiting cassandra writer")
-	return
 }
 
 func (cass *CassandraFlatWriter) Start() {
@@ -384,10 +387,6 @@ func (cass *CassandraFlatWriter) TrapExit() {
 	go func(ins *CassandraFlatWriter) {
 		s := <-sc
 		cass.log.Warning("Caught %s: Flushing remaining points out before quit ", s)
-
-		if cass.overFlowShutdown != nil {
-			cass.overFlowShutdown <- true
-		}
 
 		cass.Stop()
 		signal.Stop(sc)
@@ -489,6 +488,7 @@ func (cass *CassandraFlatWriter) InsertMulti(name *repr.StatName, points repr.St
 		}
 		batch.Query(
 			DO_Q,
+			name.UniqueId(),
 			name.Key,
 			int64(stat.Name.Resolution),
 			stat.Time.UnixNano(),
@@ -528,6 +528,7 @@ func (cass *CassandraFlatWriter) InsertOne(name *repr.StatName, stat *repr.StatR
 
 	write_stat := cass.mergeWrite(stat)
 	err := cass.conn.Query(Q,
+		name.UniqueId(),
 		name.Key,
 		int64(stat.Name.Resolution),
 		stat.Time.UnixNano(),
@@ -625,9 +626,8 @@ type CassandraFlatMetric struct {
 	shutonce    sync.Once
 }
 
-func NewCassandraFlatMetrics() *CassandraMetric {
-	cass := new(CassandraMetric)
-	return cass
+func NewCassandraFlatMetrics() *CassandraFlatMetric {
+	return new(CassandraFlatMetric)
 }
 
 func (cass *CassandraFlatMetric) Stop() {
@@ -648,7 +648,7 @@ func (cass *CassandraFlatMetric) SetResolutions(res [][]int) int {
 }
 
 func (cass *CassandraFlatMetric) Config(conf map[string]interface{}) (err error) {
-	gots, err := _get_signelton(conf)
+	gots, err := _get_flat_signelton(conf)
 	if err != nil {
 		return err
 	}
@@ -783,7 +783,7 @@ func (cass *CassandraFlatMetric) RawRenderOne(metric indexer.MetricFindItem, fro
 	// grab ze data. (note data is already sorted by time asc va the cassandra schema)
 	iter := cass.writer.conn.Query(
 		cass.writer._select_time_query,
-		metric.Id, resolution, nano_end, nano_start,
+		metric.UniqueId, metric.Id, resolution, nano_end, nano_start,
 	).Iter()
 
 	var t, count int64

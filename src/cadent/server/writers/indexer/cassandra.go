@@ -36,7 +36,7 @@
     		length int,
     		has_data boolean,
  		id varint,  # repr.StatName.UniqueID()
-  		PRIMARY KEY ((segment, length), path)
+  		PRIMARY KEY ((segment, length), path, id)
 	) WITH CLUSTERING ORDER BY (path ASC)
 
 	CREATE INDEX ON metric.path (id);
@@ -269,8 +269,8 @@ func (cass *CassandraIndexer) WriteOne(inname repr.StatName) error {
 	cur_part := ""
 	segments := []CassSegment{}
 	paths := []CassPath{}
-	unique_ID := inname.UniqueId()
-
+	unique_ID := inname.UniqueId() // uint32 mmh3-32
+	
 	for idx, part := range s_parts {
 		if len(cur_part) > 1 {
 			cur_part += "."
@@ -510,7 +510,7 @@ func (cass *CassandraIndexer) FindNonRegex(metric string) (MetricFindItems, erro
 	// grab all the paths that match this length if there is no regex needed
 	// these are the "data/leaf" nodes
 	cass_Q := fmt.Sprintf(
-		"SELECT path,length,has_data FROM %s WHERE segment={pos: ?, segment: ?} ",
+		"SELECT id,path,length,has_data FROM %s WHERE segment={pos: ?, segment: ?} ",
 		cass.db.PathTable(),
 	)
 	iter := cass.conn.Query(cass_Q,
@@ -521,10 +521,11 @@ func (cass *CassandraIndexer) FindNonRegex(metric string) (MetricFindItems, erro
 	var ms MetricFindItem
 	var on_pth string
 	var pth_len int
+	var id repr.StatId
 	var has_data bool
 
 	// just grab the "n+1" length ones
-	for iter.Scan(&on_pth, &pth_len, &has_data) {
+	for iter.Scan(&id, &on_pth, &pth_len, &has_data) {
 		if pth_len > m_len {
 			continue
 		}
@@ -539,6 +540,7 @@ func (cass *CassandraIndexer) FindNonRegex(metric string) (MetricFindItems, erro
 			ms.Expandable = 0
 			ms.Leaf = 1
 			ms.AllowChildren = 0
+			ms.UniqueId = &id
 		} else {
 			ms.Expandable = 1
 			ms.Leaf = 0
@@ -575,7 +577,7 @@ func (cass *CassandraIndexer) FindRoot() (MetricFindItems, error) {
 		ms.Text = seg
 		ms.Id = seg
 		ms.Path = seg
-
+		ms.UniqueId = nil
 		ms.Expandable = 1
 		ms.Leaf = 0
 		ms.AllowChildren = 1

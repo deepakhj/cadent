@@ -81,12 +81,13 @@ func GuessAggregateType(metric string) string {
 
 // the basic metric json blob for find
 type MetricFindItem struct {
-	Text          string `json:"text"`
-	Expandable    int    `json:"expandable"`
-	Leaf          int    `json:"leaf"`
-	Id            string `json:"id"`
-	Path          string `json:"path"`
-	AllowChildren int    `json:"allowChildren"`
+	Text          string       `json:"text"`
+	Expandable    int          `json:"expandable"`
+	Leaf          int          `json:"leaf"`
+	Id            string       `json:"id"`
+	Path          string       `json:"path"`
+	AllowChildren int          `json:"allowChildren"`
+	UniqueId      *repr.StatId `json:"uniqueid"` // can be nil
 }
 
 // attempt to pick the "correct" metric based on the stats name
