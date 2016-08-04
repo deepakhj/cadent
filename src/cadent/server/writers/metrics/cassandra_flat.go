@@ -488,7 +488,7 @@ func (cass *CassandraFlatWriter) InsertMulti(name *repr.StatName, points repr.St
 		}
 		batch.Query(
 			DO_Q,
-			name.UniqueId(),
+			name.UniqueIdString(),
 			name.Key,
 			int64(stat.Name.Resolution),
 			stat.Time.UnixNano(),
@@ -528,7 +528,7 @@ func (cass *CassandraFlatWriter) InsertOne(name *repr.StatName, stat *repr.StatR
 
 	write_stat := cass.mergeWrite(stat)
 	err := cass.conn.Query(Q,
-		name.UniqueId(),
+		name.UniqueIdString(),
 		name.Key,
 		int64(stat.Name.Resolution),
 		stat.Time.UnixNano(),

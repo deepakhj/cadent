@@ -54,8 +54,8 @@
 	Schema
 
 	CREATE TYPE metric_id (
-    		id varint,   # repr.StatName.UniqueID()
-    		resolution int
+    		uid varchar,   # repr.StatName.UniqueIDString()
+    		res int  # resolution
 	);
 
 	CREATE TABLE metric (
@@ -96,7 +96,7 @@ const (
 	CASSANDRA_METRIC_WORKERS       = 32
 	CASSANDRA_METRIC_QUEUE_LEN     = 1024 * 1024 * 10
 	CASSANDRA_WRITES_PER_SECOND    = 5000
-	CASSANDRA_DEFAULT_SERIES_TYPE  = "protobuf"
+	CASSANDRA_DEFAULT_SERIES_TYPE  = "gorilla"
 	CASSANDRA_DEFAULT_SERIES_CHUNK = 16 * 1024 * 1024 // 16kb
 )
 
@@ -286,17 +286,17 @@ func NewCassandraWriter(conf map[string]interface{}) (*CassandraWriter, error) {
 	}
 
 	cass._insert_query = fmt.Sprintf(
-		"INSERT INTO %s (id, stime, etime, points) VALUES  ({id: ?, path: ?, resolution: ?}, ?, ?, ?)",
+		"INSERT INTO %s (id, stime, etime, points) VALUES  ({uid: ?, res: ?}, ?, ?, ?)",
 		cass.db.MetricTable(),
 	)
 
 	cass._select_time_query = fmt.Sprintf(
-		"SELECT points, stime, etime FROM %s WHERE id={id: ?, path: ?, resolution: ?} AND etime <= ? and stime >= ?",
+		"SELECT points, stime, etime FROM %s WHERE id={uid: ?, res: ?} AND etime <= ? and stime >= ?",
 		cass.db.MetricTable(),
 	)
 
 	cass._get_query = fmt.Sprintf(
-		"SELECT points, stime, etime FROM %s WHERE id={id: ?, path: ?, resolution: ?} and stime >= ? and etime <= ?",
+		"SELECT points, stime, etime FROM %s WHERE id={uid: ?, res: ?} and stime >= ? and etime <= ?",
 		cass.db.MetricTable(),
 	)
 
@@ -308,7 +308,7 @@ func NewCassandraWriter(conf map[string]interface{}) (*CassandraWriter, error) {
 // the same token
 func (cass *CassandraWriter) InsertSeries(name *repr.StatName, series series.TimeSeries) (int, error) {
 
-	defer stats.StatsdNanoTimeFunc(fmt.Sprintf("writer.cassandraflat.batch.metric-time-ns"), time.Now())
+	defer stats.StatsdNanoTimeFunc(fmt.Sprintf("writer.cassandra.batch.metric-time-ns"), time.Now())
 
 	l := series.Count()
 	if l == 0 {
@@ -336,11 +336,11 @@ func (cass *CassandraWriter) InsertSeries(name *repr.StatName, series series.Tim
 	err = cass.conn.ExecuteBatch(batch)
 	if err != nil {
 		cass.log.Error("Cassandra Driver:Batch Metric insert failed, %v", err)
-		stats.StatsdClientSlow.Incr("writer.cassandraflat.batch.metric-failures", 1)
+		stats.StatsdClientSlow.Incr("writer.cassandra.batch.metric-failures", 1)
 		return 0, err
 	}
-	stats.StatsdClientSlow.Incr("writer.cassandraflat.batch.writes", 1)
-	stats.StatsdClientSlow.GaugeAvg("writer.cassandraflat.batch.metrics-per-writes", int64(l))
+	stats.StatsdClientSlow.Incr("writer.cassandra.batch.writes", 1)
+	stats.StatsdClientSlow.GaugeAvg("writer.cassandra.batch.metrics-per-writes", int64(l))
 
 	return l, nil
 }

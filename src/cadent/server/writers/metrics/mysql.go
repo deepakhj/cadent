@@ -3,7 +3,7 @@
 
      CREATE TABLE `{table}_{keeperprefix}` (
       `id` int(11) unsigned NOT NULL AUTO_INCREMENT,
-      `uid` int NULL,
+      `uid` varchar(50) NULL,
       `path` varchar(255) NOT NULL DEFAULT '',
       `sum` float NOT NULL,
       `min` float NOT NULL,
