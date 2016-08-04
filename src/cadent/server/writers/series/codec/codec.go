@@ -20,12 +20,12 @@ type CodecStatSmall struct {
 }
 
 type CodecStat struct {
-	StatType  bool           `json:"t" codec:"t"`
-	Stat      CodecFullStat  `json:"s" codec:"s"`
-	SmallStat CodecStatSmall `json:"m" codec:"m"`
+	StatType  bool            `json:"t" codec:"t"`
+	Stat      *CodecFullStat  `json:"s" codec:"s"`
+	SmallStat *CodecStatSmall `json:"m" codec:"m"`
 }
 
 type CodecStats struct {
-	FullTimeResolution bool        `json:"r" codec:"r"`
-	Stats              []CodecStat `json:"s" codec:"s"`
+	FullTimeResolution bool         `json:"r" codec:"r"`
+	Stats              []*CodecStat `json:"s" codec:"s"`
 }

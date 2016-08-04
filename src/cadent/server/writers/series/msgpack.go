@@ -72,7 +72,7 @@ func (s *MsgPackTimeSeries) Len() int {
 
 func (s *MsgPackTimeSeries) Iter() (iter TimeSeriesIter, err error) {
 	s.mu.Lock()
-	d := make([]codec.CodecStat, len(s.Stats.Stats))
+	d := make([]*codec.CodecStat, len(s.Stats.Stats))
 	copy(d, s.Stats.Stats)
 	s.mu.Unlock()
 
@@ -100,11 +100,11 @@ func (s *MsgPackTimeSeries) AddPoint(t int64, min float64, max float64, first fl
 	}
 	// if the count is 1, then we only have "one" value that makes any sense .. the sum
 	if count == 1 || sameFloatVals(min, max, first, last, sum) {
-		tmp := codec.CodecStatSmall{
+		tmp := &codec.CodecStatSmall{
 			Time: use_t,
 			Val:  sum,
 		}
-		p_stat := codec.CodecStat{
+		p_stat := &codec.CodecStat{
 			StatType:  false,
 			SmallStat: tmp,
 		}
@@ -112,7 +112,7 @@ func (s *MsgPackTimeSeries) AddPoint(t int64, min float64, max float64, first fl
 
 	} else {
 
-		tmp := codec.CodecFullStat{
+		tmp := &codec.CodecFullStat{
 			Time:  use_t,
 			Min:   min,
 			Max:   max,
@@ -121,7 +121,7 @@ func (s *MsgPackTimeSeries) AddPoint(t int64, min float64, max float64, first fl
 			Sum:   sum,
 			Count: count,
 		}
-		p_stat := codec.CodecStat{
+		p_stat := &codec.CodecStat{
 			StatType: true,
 			Stat:     tmp,
 		}
@@ -138,7 +138,7 @@ func (s *MsgPackTimeSeries) AddStat(stat *repr.StatRepr) error {
 // Iter lets you iterate over a series.  It is not concurrency-safe.
 // but you should give it a "copy" of any byte array
 type MsgPackIter struct {
-	Stats          []codec.CodecStat
+	Stats          []*codec.CodecStat
 	curIdx         int
 	statLen        int
 	curStat        *codec.CodecStat
@@ -163,7 +163,7 @@ func NewMsgPackIterFromBytes(data []byte) (iter TimeSeriesIter, err error) {
 	return iter, nil
 }
 
-func NewMsgPackIter(stats []codec.CodecStat) (*MsgPackIter, error) {
+func NewMsgPackIter(stats []*codec.CodecStat) (*MsgPackIter, error) {
 	it := &MsgPackIter{
 		Stats:   stats,
 		curIdx:  0,
@@ -176,7 +176,7 @@ func (it *MsgPackIter) Next() bool {
 	if it.finished || it.curIdx >= it.statLen {
 		return false
 	}
-	it.curStat = &it.Stats[it.curIdx]
+	it.curStat = it.Stats[it.curIdx]
 	it.curIdx++
 	return true
 }

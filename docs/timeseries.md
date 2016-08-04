@@ -72,6 +72,11 @@ This uses "gogofaster" for the generator of proto schemas
 The most portable format, but also the biggest (as we a storing strings in reality).  I'd only use this if you
 need extream portability across things, as it's not really space efficent at all.
 
+#### MsgPack
+
+In terms of "space" consumed this is a little worse then gogofaster's ProtoBuf.
+In terms of Decoding/Encoding speed it's on a level all its own.  Use this for things that favor speed vs space.
+
 #### Gorilla + DeltaOfDeltas + VarBit + SmartEncoding + TimeResolution
 
 The most extream compression available.  As well as doing the same goodies mentioned, the core squeezer is the

@@ -16,6 +16,7 @@ import (
 	"math/rand"
 	"testing"
 	"time"
+	"runtime"
 )
 
 var testDefaultByteSize = 8192
@@ -153,14 +154,21 @@ func addSingleValStat(ser TimeSeries, stat *repr.StatRepr, num_s int, randomize 
 	return times, stats, nil
 }
 
-func benchmarkRawSize(b *testing.B, stype string, n_stat int) {
+
+func _benchReset(b *testing.B){
+	runtime.GC()
 	b.ResetTimer()
+	b.ReportAllocs()
+}
+
+func benchmarkRawSize(b *testing.B, stype string, n_stat int) {
+
 	stat, n := dummyStat()
 	b.SetBytes(int64(8 * 8 * n_stat)) //8 64bit numbers
 	runs := int64(0)
 	b_per_stat := int64(0)
 	pre_len := int64(0)
-
+	_benchReset(b)
 	for i := 0; i < b.N; i++ {
 		ser, _ := NewTimeSeries(stype, n.UnixNano(), NewDefaultOptions())
 		addStats(ser, stat, n_stat, true)
@@ -174,12 +182,12 @@ func benchmarkRawSize(b *testing.B, stype string, n_stat int) {
 }
 
 func benchmarkRawSizeSingleStat(b *testing.B, stype string, n_stat int) {
-	b.ResetTimer()
 	stat, n := dummyStatSingleVal()
 	b.SetBytes(int64(8 * 8 * n_stat)) //8 64bit numbers
 	runs := int64(0)
 	b_per_stat := int64(0)
 	pre_len := int64(0)
+	_benchReset(b)
 
 	for i := 0; i < b.N; i++ {
 		ser, _ := NewTimeSeries(stype, n.UnixNano(), NewDefaultOptions())
@@ -194,12 +202,12 @@ func benchmarkRawSizeSingleStat(b *testing.B, stype string, n_stat int) {
 }
 
 func benchmarkNonRandomRawSizeSingleStat(b *testing.B, stype string, n_stat int) {
-	b.ResetTimer()
 	stat, n := dummyStatSingleVal()
 	b.SetBytes(int64(8 * 8 * n_stat)) //8 64bit numbers
 	runs := int64(0)
 	b_per_stat := int64(0)
 	pre_len := int64(0)
+	_benchReset(b)
 
 	for i := 0; i < b.N; i++ {
 		ser, _ := NewTimeSeries(stype, n.UnixNano(), NewDefaultOptions())
@@ -220,7 +228,8 @@ func benchmarkFlateCompress(b *testing.B, stype string, n_stat int) {
 	b_per_stat := int64(0)
 	pre_len := int64(0)
 	b.SetBytes(int64(8 * 8 * n_stat)) //8 64byte numbers
-	b.ResetTimer()
+	_benchReset(b)
+
 	for i := 0; i < b.N; i++ {
 		ser, _ := NewTimeSeries(stype, n.UnixNano(), NewDefaultOptions())
 		addStats(ser, stat, n_stat, true)
@@ -247,7 +256,8 @@ func benchmarkZipCompress(b *testing.B, stype string, n_stat int) {
 	b_per_stat := int64(0)
 	pre_len := int64(0)
 	b.SetBytes(int64(8 * 8 * n_stat)) //8 64byte numbers
-	b.ResetTimer()
+	_benchReset(b)
+
 	for i := 0; i < b.N; i++ {
 		ser, _ := NewTimeSeries(stype, n.UnixNano(), NewDefaultOptions())
 		addStats(ser, stat, n_stat, true)
@@ -273,7 +283,8 @@ func benchmarkSnappyCompress(b *testing.B, stype string, n_stat int) {
 	b_per_stat := int64(0)
 	pre_len := int64(0)
 	b.SetBytes(int64(8 * 8 * n_stat)) //8 64byte numbers
-	b.ResetTimer()
+	_benchReset(b)
+
 	for i := 0; i < b.N; i++ {
 		ser, _ := NewTimeSeries(stype, n.UnixNano(), NewDefaultOptions())
 		addStats(ser, stat, n_stat, true)
@@ -297,8 +308,9 @@ func benchmarkSeriesReading(b *testing.B, stype string, n_stat int) {
 
 	runs := int64(0)
 	reads := int64(0)
-	b.ResetTimer()
 	b.SetBytes(int64(8 * 8 * n_stat)) //8 64bit numbers
+
+	_benchReset(b)
 
 	for i := 0; i < b.N; i++ {
 
@@ -322,9 +334,9 @@ func benchmarkSeriesReading(b *testing.B, stype string, n_stat int) {
 }
 
 func benchmarkSeriesPut(b *testing.B, stype string, n_stat int) {
-	b.ResetTimer()
 	stat, n := dummyStat()
 	b.SetBytes(int64(8 * 8)) //8 64bit numbers
+	_benchReset(b)
 	for i := 0; i < b.N; i++ {
 		ser, err := NewTimeSeries(stype, n.UnixNano(), NewDefaultOptions())
 		if err != nil {
@@ -342,6 +354,7 @@ func benchmarkSeriesPut8kRandom(b *testing.B, stype string) {
 	max_size := 8 * 1024
 	b.SetBytes(int64(max_size))
 
+	_benchReset(b)
 	for i := 0; i < b.N; i++ {
 
 		stat, n := dummyStat()
@@ -370,6 +383,7 @@ func benchmarkSeriesPut8kNonRandom(b *testing.B, stype string) {
 	max_size := 8 * 1024
 	b.SetBytes(int64(max_size))
 
+	_benchReset(b)
 	for i := 0; i < b.N; i++ {
 
 		stat, n := dummyStat()
@@ -398,6 +412,7 @@ func benchmarkSeriesPut8kRandomInt(b *testing.B, stype string) {
 	max_size := 8 * 1024
 	b.SetBytes(int64(max_size))
 
+	_benchReset(b)
 	for i := 0; i < b.N; i++ {
 
 		stat, n := dummyStatInt()
