@@ -282,6 +282,7 @@ func (acc *Accumulator) FlushAndPost(attime time.Time) ([]splitter.SplitItem, er
 		out_spl[idx] = spl
 		//log.Notice("sending: %s Len:%d", spl.Line(), len(acc.OutputQueue))
 		acc.PushLine(spl)
+		//log.Notice("SENT: %s Len:%d", spl.Line(), len(acc.OutputQueue))
 	}
 
 	if acc.Aggregators != nil {

@@ -93,7 +93,7 @@ func TestAccumualtorAccumulator(t *testing.T) {
 		})
 	})
 
-	tickC := make(chan splitter.SplitItem)
+	tickC := make(chan splitter.SplitItem, 128)
 	statsd_acc.Accumulate.SetOptions([][]string{
 		{"legacyNamespace", "true"},
 		{"prefixGauge", "gauges"},

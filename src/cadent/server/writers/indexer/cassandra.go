@@ -35,14 +35,14 @@
     		path text,
     		length int,
     		has_data boolean,
- 		id varint,  # repr.StatName.UniqueID()
+ 		id varchar,  # repr.StatName.UniqueIDString()
   		PRIMARY KEY ((segment, length), path, id)
 	) WITH CLUSTERING ORDER BY (path ASC)
 
 	CREATE INDEX ON metric.path (id);
 
 	CREATE TABLE metric.tag (
-    		id varint,  # see repr.StatName.UniqueId()
+    		id varchar,  # see repr.StatName.UniqueId()
     		tags list<text>  # this will be a [ "name=val", "name=val", ...] so we can do `IN "moo=goo" in tag`
     		PRIMARY KEY (id)
 	);
@@ -103,7 +103,7 @@ type CassSegment struct {
     		segment frozen<segment_pos>,
     		path text,
     		length int,
-    		id varint,  # see repr.StatName.UniqueId()
+    		id varchar  # see repr.StatName.UniqueIdString()
     		has_data boolean,
   		PRIMARY KEY (segment, path, has_data)
 	)
@@ -111,7 +111,7 @@ type CassSegment struct {
 type CassPath struct {
 	Segment CassSegment
 	Path    string
-	Id      repr.StatId
+	Id      string
 	Length  int
 	Hasdata bool
 }
@@ -272,7 +272,7 @@ func (cass *CassandraIndexer) WriteOne(inname repr.StatName) error {
 	cur_part := ""
 	segments := []CassSegment{}
 	paths := []CassPath{}
-	unique_ID := inname.UniqueId() // uint32 mmh3-32
+	unique_ID := inname.UniqueIdString()
 
 	for idx, part := range s_parts {
 		if len(cur_part) > 1 {
@@ -524,7 +524,7 @@ func (cass *CassandraIndexer) FindNonRegex(metric string) (MetricFindItems, erro
 	var ms MetricFindItem
 	var on_pth string
 	var pth_len int
-	var id repr.StatId
+	var id string
 	var has_data bool
 
 	// just grab the "n+1" length ones
@@ -543,7 +543,7 @@ func (cass *CassandraIndexer) FindNonRegex(metric string) (MetricFindItems, erro
 			ms.Expandable = 0
 			ms.Leaf = 1
 			ms.AllowChildren = 0
-			ms.UniqueId = &id
+			ms.UniqueId = id
 		} else {
 			ms.Expandable = 1
 			ms.Leaf = 0
@@ -580,7 +580,7 @@ func (cass *CassandraIndexer) FindRoot() (MetricFindItems, error) {
 		ms.Text = seg
 		ms.Id = seg
 		ms.Path = seg
-		ms.UniqueId = nil
+		ms.UniqueId = ""
 		ms.Expandable = 1
 		ms.Leaf = 0
 		ms.AllowChildren = 1

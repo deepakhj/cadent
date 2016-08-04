@@ -127,11 +127,11 @@ func (ws *WhisperIndexer) Find(metric string) (MetricFindItems, error) {
 
 		stat_name := repr.StatName{Key: p}
 		if is_data {
-			uid := stat_name.UniqueId()
+			uid := stat_name.UniqueIdString()
 			ms.Expandable = 0
 			ms.Leaf = 1
 			ms.AllowChildren = 0
-			ms.UniqueId = &uid
+			ms.UniqueId = uid
 		} else {
 			ms.Expandable = 1
 			ms.Leaf = 0

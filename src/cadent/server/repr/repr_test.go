@@ -40,6 +40,8 @@ func TestStatAccumulatorRepr(t *testing.T) {
 		Convey("unique IDs should be correct", func() {
 			So(goo_nm.UniqueId(), ShouldEqual, 1174965185175832276) // fnv64a(key+:+sortedNames(tags))
 			So(moo_nm.UniqueId(), ShouldEqual, 962860623706201084)
+			So(goo_nm.UniqueIdString(), ShouldEqual, "8xd6eafrluxg") // fnv64a(key+:+sortedNames(tags))
+			So(moo_nm.UniqueIdString(), ShouldEqual, "7bcpls2e2ubg")
 		})
 		Convey("Graphite names should be correct", func() {
 			So(goo_nm.Name(), ShouldEqual, "goo.nameA=value2.nameZ=value1")

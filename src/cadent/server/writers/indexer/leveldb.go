@@ -54,7 +54,6 @@ import (
 	leveldb_util "github.com/syndtr/goleveldb/leveldb/util"
 	logging "gopkg.in/op/go-logging.v1"
 	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -93,11 +92,11 @@ type LevelDBSegment struct {
 	Segment     string
 	NextSegment string
 	Path        string
-	Id          repr.StatId
+	Id          string
 }
 
 // given a path get all the various segment datas
-func ParsePath(stat_key string, id repr.StatId) (segments []LevelDBSegment) {
+func ParsePath(stat_key string, id string) (segments []LevelDBSegment) {
 
 	s_parts := strings.Split(stat_key, ".")
 	p_len := len(s_parts)
@@ -159,8 +158,8 @@ func (ls *LevelDBSegment) SegmentData() ([]byte, []byte) {
 	return []byte(ls.SegmentKey(ls.Segment, ls.Length)), []byte(fmt.Sprintf("%d|%s", ls.Id, ls.Path))
 }
 
-func (ls *LevelDBSegment) IdKey(id repr.StatId) []byte {
-	return []byte(fmt.Sprintf("ID:%d", id))
+func (ls *LevelDBSegment) IdKey(id string) []byte {
+	return []byte(fmt.Sprintf("ID:%s", id))
 }
 
 func (ls *LevelDBSegment) IdData() ([]byte, []byte) {
@@ -185,13 +184,13 @@ func (ls *LevelDBSegment) PosSegmentKey(path string, pos int) []byte {
 // POS:{pos}:{segment} -> {segment+1}:{has_data}
 func (ls *LevelDBSegment) PosSegmentData() ([]byte, []byte) {
 	has_data := "0"
-	use_id := repr.StatId(0) //paths w/ no data have no id
+	use_id := "" //paths w/ no data have no id
 	if ls.NextSegment == ls.Path {
 		has_data = "1"
 		use_id = ls.Id
 	}
 	return []byte(ls.PosSegmentKey(ls.Segment, ls.Pos)),
-		[]byte(fmt.Sprintf("%d:%s:%s", use_id, ls.NextSegment, has_data))
+		[]byte(fmt.Sprintf("%s:%s:%s", use_id, ls.NextSegment, has_data))
 
 }
 
@@ -469,7 +468,7 @@ func (lb *LevelDBIndexer) WriteOne(name repr.StatName) error {
 	stats.StatsdClientSlow.Incr("indexer.leveldb.noncached-writes-path", 1)
 
 	skey := name.Key
-	segments := ParsePath(skey, name.UniqueId())
+	segments := ParsePath(skey, name.UniqueIdString())
 
 	for _, seg := range segments {
 		err := seg.InsertAll(lb.db.SegmentConn())
@@ -542,11 +541,8 @@ func (lp *LevelDBIndexer) Find(metric string) (mt MetricFindItems, err error) {
 		has_data := value_arr[len(value_arr)-1]
 		on_path := value_arr[1]
 		on_path_byte := []byte(on_path)
-		on_id, id_err := strconv.Atoi(value_arr[0])
-		use_id := new(repr.StatId)
-		if id_err == nil && on_id != 0 {
-			*use_id = repr.StatId(on_id)
-		}
+		on_id := value_arr[0]
+
 		spl := strings.Split(on_path, ".")
 
 		if reged != nil {
@@ -554,7 +550,7 @@ func (lp *LevelDBIndexer) Find(metric string) (mt MetricFindItems, err error) {
 				ms.Text = spl[len(spl)-1]
 				ms.Id = on_path
 				ms.Path = on_path
-				ms.UniqueId = use_id
+				ms.UniqueId = on_id
 
 				if has_data == "1" {
 					ms.Expandable = 0
@@ -573,7 +569,7 @@ func (lp *LevelDBIndexer) Find(metric string) (mt MetricFindItems, err error) {
 			ms.Text = spl[len(spl)-1]
 			ms.Id = on_path
 			ms.Path = on_path
-			ms.UniqueId = use_id
+			ms.UniqueId = on_id
 
 			if has_data == "1" {
 				ms.Expandable = 0

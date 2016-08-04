@@ -5,12 +5,12 @@
 package repr
 
 import (
-	"bytes"
+	"cadent/server/utils"
 	"fmt"
-	"github.com/reusee/mmh3"
 	"hash/fnv"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -46,7 +46,7 @@ func (s SortingTags) String() string {
 	return strings.Join(str, ",")
 }
 
-type StatId uint32
+type StatId uint64
 
 type StatName struct {
 	Key        string      `json:"key"`
@@ -57,9 +57,20 @@ type StatName struct {
 
 // take the various "parts" (keys, resolution, tags) and return a basic md5 hash of things
 func (s *StatName) UniqueId() StatId {
-	buf := mmh3.New32()
-	buf.Write([]byte(fmt.Sprintf("%s:%s", s.Key, s.SortedTags())))
-	return StatId(buf.Sum32())
+	buf := fnv.New64a()
+
+	byte_buf := utils.GetBytesBuffer()
+	defer utils.PutBytesBuffer(byte_buf)
+
+	fmt.Fprintf(byte_buf, "%s:%s", s.Key, s.SortedTags())
+	buf.Write(byte_buf.Bytes())
+	return StatId(buf.Sum64())
+}
+
+// nice "sqeeuzed" string
+func (s *StatName) UniqueIdString() string {
+	id := s.UniqueId()
+	return strconv.FormatUint(uint64(id), 36)
 }
 
 // return an array of [ [name, val] ...] sorted by name
@@ -90,7 +101,8 @@ func (s *StatName) MergeTags(tags SortingTags) SortingTags {
 
 // return an array of [ [name, val] ...] sorted by name
 func (s *StatName) ByteSize() int64 {
-	buf := new(bytes.Buffer)
+	buf := utils.GetBytesBuffer()
+	defer utils.PutBytesBuffer(buf)
 	fmt.Fprintf(buf, "%s%v", s.Key, s.SortedTags())
 	return int64(buf.Len())
 }

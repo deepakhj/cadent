@@ -3,6 +3,7 @@ package main
 import (
 	cadent "cadent/server"
 	prereg "cadent/server/prereg"
+	"cadent/server/stats"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -344,6 +345,14 @@ func main() {
 				log.Warning("Caught %s: Closing Server `%s` out before quit ", s, srv.Name)
 
 				srv.StopServer()
+			}
+
+			// need to stop the statsd collection as well
+			if stats.StatsdClient != nil {
+				stats.StatsdClient.Close()
+			}
+			if stats.StatsdClientSlow != nil {
+				stats.StatsdClientSlow.Close()
 			}
 
 			signal.Stop(sc)

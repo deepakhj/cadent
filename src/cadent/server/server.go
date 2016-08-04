@@ -390,14 +390,6 @@ func (server *Server) StopServer() {
 		}
 	}
 
-	// need to stop the statsd collection as well
-	if stats.StatsdClient != nil {
-		stats.StatsdClient.Close()
-	}
-	if stats.StatsdClientSlow != nil {
-		stats.StatsdClientSlow.Close()
-	}
-
 	server.log.Warning("Server Terminated .... ")
 
 }

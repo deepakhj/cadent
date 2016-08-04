@@ -91,16 +91,17 @@ You should make Schemas like so (`datetime(6)` is microsecond resolution, if you
 useful for key space lookups
 
     CREATE TABLE `{path_table}` (
-        `pidth` int NULL,
+        `uid` varchar(50)  NULL,
         `path` varchar(255) NOT NULL DEFAULT '',
         `length` int NOT NULL
-        PRIMARY KEY `stat` (`stat`),
+        PRIMARY KEY `uid` (`uid`),
+        KEY `path` (`path`),
          KEY `length` (`length`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
     CREATE TABLE `{table}_{keeperprefix}` (
       `id` int(11) unsigned NOT NULL AUTO_INCREMENT,
-      `uid` int NULL,
+      `uid` varchar(50) NULL,
       `path` varchar(255) NOT NULL DEFAULT '',
       `sum` float NOT NULL,
       `min` float NOT NULL,
@@ -232,7 +233,7 @@ If you want to allow 24h windows, simply raise `max_sstable_age_days` to â€˜1.0â
         );
 
         CREATE TABLE metric.metric (
-            id varint,
+            id varchar,
             mpath frozen<metric_path>,
             time bigint,
             point frozen<metric_point>,
@@ -266,7 +267,7 @@ If you want to allow 24h windows, simply raise `max_sstable_age_days` to â€˜1.0â
             segment frozen<segment_pos>,
             length int,
             path text,
-            id varint,
+            id varchar,
             has_data boolean,
             PRIMARY KEY (segment, length, path, id)
         ) WITH
