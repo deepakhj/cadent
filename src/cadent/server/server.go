@@ -1189,7 +1189,7 @@ func (server *Server) Accepter(listen net.Listener) (<-chan net.Conn, error) {
 					server.back_pressure_lock.Unlock()
 				}
 			case <-shuts.Ch:
-				server.log.Warning("TCP Shutdown gotten .. stopping incoming connections")
+				server.log.Warning("TCP Listener: Shutdown gotten .. stopping incoming connections")
 				listen.Close()
 				shuts.Close()
 				return
@@ -1229,19 +1229,15 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, done chan Client) 
 	defer close(server.back_pressure)
 
 	MakeHandler := func(servv *Server, listen net.Listener) {
-		handel_shut := servv.ShutDown.Listen()
 
 		run := func() {
 
 			// consume the input queue of lines
 			for {
 				select {
-				case <-handel_shut.Ch:
-					handel_shut.Close()
-					return
 				case splitem, more := <-servv.InputQueue:
 					if !more {
-						break
+						return
 					}
 					//server.log.Notice("INQ: %d Line: %s", len(server.InputQueue), splitem.Line())
 					if splitem == nil {
@@ -1292,11 +1288,11 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, done chan Client) 
 				stats.StatsdClient.Incr(fmt.Sprintf("worker.%s.tcp.connection.open", servv.Name), 1)
 
 				go client.handleRequest(nil, close_client)
-			//go client.handleSend(tcp_socket_out)
+
 			case <-shuts_client.Ch:
-				servv.log.Warning("TCP: Shutdown gotten .. stopping incoming connections")
+				servv.log.Warning("TCP Client: Shutdown gotten .. stopping incoming connections")
 				listen.Close()
-				close(close_client)
+				close(close_client) // tell all handlers to stop
 				return
 
 			case workerUpDown := <-servv.WorkerHold:
@@ -1442,7 +1438,10 @@ func (server *Server) startBackendServer(hashers *[]*ConstHasher, done chan Clie
 		for {
 			select {
 			case splitem, more := <-server.InputQueue:
-				if !more || splitem == nil {
+				if !more {
+					return
+				}
+				if splitem == nil {
 					continue
 				}
 				l_len := (int64)(len(splitem.Line()))

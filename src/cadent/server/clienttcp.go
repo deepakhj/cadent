@@ -147,7 +147,7 @@ func (client *TCPClient) InputQueue() chan splitter.SplitItem {
 // close the 2 hooks, channel and connection
 func (client *TCPClient) Close() {
 	defer stats.StatsdClient.Incr(fmt.Sprintf("worker.%s.tcp.connection.close", client.server.Name), 1)
-	defer log.Debug("Closing conn %v", client.Connection.RemoteAddr())
+	defer log.Debug("TCP client: Closing conn %v", client.Connection.RemoteAddr())
 	//client.close <- true
 	client.reader = nil
 	if client.Connection != nil {
@@ -171,36 +171,37 @@ func (client *TCPClient) handleRequest(outqueue chan splitter.SplitItem, close_c
 			client.Connection.Close()
 			return
 		default:
-			line, err := buf.ReadString('\n')
+		}
+		line, err := buf.ReadString('\n')
 
-			if err != nil {
+		if err != nil {
+			break
+		}
+		line = strings.Trim(line, "\n\t ")
+		if len(line) == 0 {
+			continue
+		}
+
+		client.server.BytesReadCount.Up(uint64(len(line)))
+		client.server.AllLinesCount.Up(1)
+		splitem, err := client.server.SplitterProcessor.ProcessLine(line)
+		if err == nil {
+			if client.shutitdown {
 				break
 			}
-			line = strings.Trim(line, "\n\t ")
-			if len(line) == 0 {
-				continue
-			}
-
-			client.server.BytesReadCount.Up(uint64(len(line)))
-			client.server.AllLinesCount.Up(1)
-			splitem, err := client.server.SplitterProcessor.ProcessLine(line)
-			if err == nil {
-				if client.shutitdown {
-					break
-				}
-				//this will block once the queue is full
-				splitem.SetOrigin(splitter.TCP)
-				splitem.SetOriginName(client.server.Name)
-				client.server.ValidLineCount.Up(1)
-				client.input_queue <- splitem
-				//client.dispatch_queue <- TCPJob{Client: client, Splitem: splitem}
-				stats.StatsdClient.Incr("incoming.tcp.lines", 1)
-			} else {
-				client.server.InvalidLineCount.Up(1)
-				stats.StatsdClient.Incr("incoming.tcp.invalidlines", 1)
-				log.Warning("Invalid Line: %s (%s)", err, line)
-			}
+			//this will block once the queue is full
+			splitem.SetOrigin(splitter.TCP)
+			splitem.SetOriginName(client.server.Name)
+			client.server.ValidLineCount.Up(1)
+			client.input_queue <- splitem
+			//client.dispatch_queue <- TCPJob{Client: client, Splitem: splitem}
+			stats.StatsdClient.Incr("incoming.tcp.lines", 1)
+		} else {
+			client.server.InvalidLineCount.Up(1)
+			stats.StatsdClient.Incr("incoming.tcp.invalidlines", 1)
+			log.Warning("Invalid Line: %s (%s)", err, line)
 		}
+
 	}
 
 	if client.done != nil {
