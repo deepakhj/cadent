@@ -131,6 +131,8 @@ type Cacher struct {
 	//overflow pieces
 	overFlowMethod string
 	overFlowChan   chan *TotalTimeSeries
+
+	started bool
 }
 
 func NewCacher() *Cacher {
@@ -148,8 +150,8 @@ func NewCacher() *Cacher {
 	wc.shutdown = make(chan bool)
 	wc._accept = true
 	wc.lowFruitRate = 0.25
-
-	go wc.startUpdateTick()
+	wc.started = false
+	//wc.Start()
 	return wc
 }
 
@@ -157,8 +159,17 @@ func (wc *Cacher) SetOverflowChan(ch chan *TotalTimeSeries) {
 	wc.overFlowChan = ch
 }
 
+func (wc *Cacher) Start() {
+	if !wc.started {
+		go wc.startUpdateTick()
+		wc.started = true
+	}
+}
+
 func (wc *Cacher) Stop() {
-	wc.shutdown <- true
+	if wc.started {
+		wc.shutdown <- true
+	}
 }
 
 func (wc *Cacher) DumpPoints(pts []*repr.StatRepr) {

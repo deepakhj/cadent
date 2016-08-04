@@ -168,6 +168,8 @@ cadents running that may be the accumulator portion (which cannot be assumed as 
 But if it is a "cadent->cadent" transfer there are much better/faster mechanisms to get data across a wire then convertering things
 back to strings and starting the entire process over again.
 
+6. "shutdown" currently pretty clunky and can lead to some not-so-nice fail modes
+
 ## Accumulators 
 
 Accumulators almost always need to have the same "key" incoming.  Since you don't want the same stat key accumulated

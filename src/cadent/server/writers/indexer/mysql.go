@@ -99,6 +99,10 @@ func (my *MySQLIndexer) Config(conf map[string]interface{}) error {
 	return nil
 }
 
+func (my *MySQLIndexer) Start() {
+	//noop
+}
+
 func (my *MySQLIndexer) Stop() {
 	//noop
 }

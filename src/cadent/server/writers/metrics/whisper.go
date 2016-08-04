@@ -182,10 +182,10 @@ func NewWhisperWriter(conf map[string]interface{}) (*WhisperWriter, error) {
 	if _rs != nil {
 		ws.writes_per_second = int(_rs.(int64))
 	}
-	ws.shutdown = make(chan bool, 1)
+	ws.shutdown = make(chan bool, 5)
 	ws.shutitdown = false
-	go ws.TrapExit()
-	go ws.Start()
+	//go ws.TrapExit()
+	//go ws.Start()
 	return ws, nil
 }
 
@@ -317,20 +317,24 @@ func (ws *WhisperWriter) TrapExit() {
 
 // shutdown the writer, purging all cache to files as fast as we can
 func (ws *WhisperWriter) Stop() {
+	ws.log.Warning("Whisper: Shutting down")
 
 	if ws.shutitdown {
 		return // already did
 	}
+
 	ws.shutitdown = true
+	if ws.write_dispatcher != nil {
+		ws.write_dispatcher.Shutdown()
+	}
 	ws.shutdown <- true
 	// shutdown overflow ticker
 	if ws.overFlowShutdown != nil {
 		ws.overFlowShutdown <- true
 	}
+
 	ws.cache_queue.Stop()
-	if ws.write_dispatcher != nil {
-		ws.write_dispatcher.Shutdown()
-	}
+
 	if ws.cache_queue == nil {
 		ws.log.Warning("Whisper: Shutdown finished, nothing in queue to write")
 		return
@@ -363,7 +367,6 @@ func (ws *WhisperWriter) Stop() {
 
 	ws.log.Warning("Whisper: shutdown purge: written %d/%d...", did, mets_l)
 	ws.log.Warning("Whisper: Shutdown finished ... quiting whisper writer")
-	return
 }
 
 func (ws *WhisperWriter) Start() {
@@ -376,6 +379,8 @@ func (ws *WhisperWriter) Start() {
 		ws.write_dispatcher = dispatch.NewDispatch(workers, ws.dispatch_queue, ws.write_queue)
 		ws.write_dispatcher.SetRetries(2)
 		ws.write_dispatcher.Run()
+
+		ws.cache_queue.Start()
 		go ws.sendToWriters() // fire up queue puller
 	}
 
@@ -554,8 +559,11 @@ func NewWhisperMetrics() *WhisperMetrics {
 	return ws
 }
 
+func (ws *WhisperMetrics) Start() {
+	ws.writer.Start()
+}
 func (ws *WhisperMetrics) Stop() {
-	ws.shutonce.Do(ws.writer.Stop)
+	ws.writer.Stop()
 }
 
 func (ws *WhisperMetrics) Config(conf map[string]interface{}) error {

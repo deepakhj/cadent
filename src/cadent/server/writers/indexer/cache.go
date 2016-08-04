@@ -57,10 +57,13 @@ func NewCacher() *Cacher {
 	wc.log = logging.MustGetLogger("cacher.indexer")
 	wc.AlreadyWrittenCache = make(map[repr.StatId]bool)
 	wc.Cache = make(map[repr.StatId]repr.StatName)
-	wc.shutdown = make(chan bool)
+	wc.shutdown = make(chan bool, 2)
 	wc._accept = true
-	go wc.statsTick()
 	return wc
+}
+
+func (wc *Cacher) Start() {
+	go wc.statsTick()
 }
 
 func (wc *Cacher) Stop() {

@@ -54,6 +54,10 @@ func (fi *FileMetrics) Stop() {
 	fi.shutdown.Send(true)
 }
 
+func (fi *FileMetrics) Start() {
+	go fi.PeriodicRotate()
+}
+
 func (fi *FileMetrics) SetIndexer(idx indexer.Indexer) error {
 	fi.indexer = idx
 	return nil
@@ -97,8 +101,6 @@ func (fi *FileMetrics) Config(conf map[string]interface{}) error {
 	}
 	fi.fp = nil
 	fi.Rotate()
-
-	go fi.PeriodicRotate()
 
 	return nil
 }

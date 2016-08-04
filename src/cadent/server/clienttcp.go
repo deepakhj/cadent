@@ -78,6 +78,7 @@ type TCPClient struct {
 	done           chan Client
 	worker_queue   chan *OutputMessage
 	close          chan bool
+	shutitdown     bool
 }
 
 func NewTCPClient(server *Server,
@@ -105,12 +106,14 @@ func NewTCPClient(server *Server,
 	client.out_queue = server.ProcessedQueue
 
 	client.done = done
+	client.shutitdown = false
 	client.close = make(chan bool)
 
 	return client
 }
 
 func (client *TCPClient) ShutDown() {
+	client.shutitdown = true
 	client.close <- true
 }
 
@@ -155,47 +158,54 @@ func (client *TCPClient) Close() {
 	client.hashers = nil
 }
 
-func (client *TCPClient) handleRequest(outqueue chan splitter.SplitItem) {
+func (client *TCPClient) handleRequest(outqueue chan splitter.SplitItem, close_client chan bool) {
 	//spin up the splitters
 
 	//client.Connection.SetReadDeadline(time.Now().Add(TCP_READ_TIMEOUT))
 	buf := bufio.NewReaderSize(client.Connection, client.BufferSize)
 	for {
-		line, err := buf.ReadString('\n')
-
-		if err != nil {
+		select {
+		case <-client.close:
 			break
-		}
-		line = strings.Trim(line, "\n\t ")
-		if len(line) == 0 {
-			continue
-		}
+		case <-close_client:
+			client.Connection.Close()
+			return
+		default:
+			line, err := buf.ReadString('\n')
 
-		client.server.BytesReadCount.Up(uint64(len(line)))
-		client.server.AllLinesCount.Up(1)
-		splitem, err := client.server.SplitterProcessor.ProcessLine(line)
-		if err == nil {
-			//this will block once the queue is full
-			splitem.SetOrigin(splitter.TCP)
-			splitem.SetOriginName(client.server.Name)
-			client.server.ValidLineCount.Up(1)
-			client.input_queue <- splitem
-			//client.dispatch_queue <- TCPJob{Client: client, Splitem: splitem}
-			stats.StatsdClient.Incr("incoming.tcp.lines", 1)
-		} else {
-			client.server.InvalidLineCount.Up(1)
-			stats.StatsdClient.Incr("incoming.tcp.invalidlines", 1)
-			log.Warning("Invalid Line: %s (%s)", err, line)
+			if err != nil {
+				break
+			}
+			line = strings.Trim(line, "\n\t ")
+			if len(line) == 0 {
+				continue
+			}
+
+			client.server.BytesReadCount.Up(uint64(len(line)))
+			client.server.AllLinesCount.Up(1)
+			splitem, err := client.server.SplitterProcessor.ProcessLine(line)
+			if err == nil {
+				if client.shutitdown {
+					break
+				}
+				//this will block once the queue is full
+				splitem.SetOrigin(splitter.TCP)
+				splitem.SetOriginName(client.server.Name)
+				client.server.ValidLineCount.Up(1)
+				client.input_queue <- splitem
+				//client.dispatch_queue <- TCPJob{Client: client, Splitem: splitem}
+				stats.StatsdClient.Incr("incoming.tcp.lines", 1)
+			} else {
+				client.server.InvalidLineCount.Up(1)
+				stats.StatsdClient.Incr("incoming.tcp.invalidlines", 1)
+				log.Warning("Invalid Line: %s (%s)", err, line)
+			}
 		}
 	}
 
-	//buf = nil
-	//close it and end the send routing
-	//outqueue <- splitter.BlankSplitterItem()
 	if client.done != nil {
 		client.done <- client
 	}
-	//client.close <- true
 
 	return
 }

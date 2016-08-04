@@ -20,6 +20,7 @@ func (my *NoopIndexer) Config(conf map[string]interface{}) error {
 }
 
 func (my *NoopIndexer) Stop()                            {}
+func (my *NoopIndexer) Start()                           {}
 func (my *NoopIndexer) Delete(name *repr.StatName) error { return nil }
 
 func (my *NoopIndexer) Write(metric repr.StatName) error {

@@ -630,6 +630,10 @@ func NewCassandraFlatMetrics() *CassandraFlatMetric {
 	return new(CassandraFlatMetric)
 }
 
+func (cass *CassandraFlatMetric) Start() {
+	cass.writer.Start()
+}
+
 func (cass *CassandraFlatMetric) Stop() {
 	cass.shutonce.Do(cass.writer.Stop)
 }

@@ -106,6 +106,11 @@ func (my *MySQLMetrics) Stop() {
 	return
 }
 
+// TODO
+func (my *MySQLMetrics) Start() {
+	return
+}
+
 func (my *MySQLMetrics) SetIndexer(idx indexer.Indexer) error {
 	my.indexer = idx
 	return nil

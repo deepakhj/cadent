@@ -387,14 +387,21 @@ func (lb *LevelDBIndexer) Config(conf map[string]interface{}) error {
 		lb.queue_len = int(_qs.(int64))
 	}
 
-	lb.Start() // fire it up
+	//lb.Start() // fire it up
 
 	return nil
 }
 
 func (lp *LevelDBIndexer) Stop() {
+	if !lp._accept {
+		return
+	}
 	lp._accept = false
 	lp.shutonce.Do(lp.cache.Stop)
+	if lp.write_queue != nil {
+		lp.write_dispatcher.Shutdown()
+	}
+	lp.db.Close()
 }
 
 func (lp *LevelDBIndexer) Start() {
@@ -405,6 +412,7 @@ func (lp *LevelDBIndexer) Start() {
 		lp.write_dispatcher = dispatch.NewDispatch(workers, lp.dispatch_queue, lp.write_queue)
 		lp.write_dispatcher.SetRetries(2)
 		lp.write_dispatcher.Run()
+		lp.cache.Start()
 		go lp.sendToWriters() // the dispatcher
 	}
 }
@@ -536,7 +544,7 @@ func (lp *LevelDBIndexer) Find(metric string) (mt MetricFindItems, err error) {
 		on_path_byte := []byte(on_path)
 		on_id, id_err := strconv.Atoi(value_arr[0])
 		use_id := new(repr.StatId)
-		if id_err == nil {
+		if id_err == nil && on_id != 0 {
 			*use_id = repr.StatId(on_id)
 		}
 		spl := strings.Split(on_path, ".")

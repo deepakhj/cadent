@@ -161,7 +161,9 @@ func (client *HTTPClient) run(out_queue chan splitter.SplitItem) {
 	}
 }
 
-func (client HTTPClient) handleRequest(out_queue chan splitter.SplitItem) {
+// note close_client is not used, but for the interface due to the
+// nature of http requests handling in go (different then straight TCP)
+func (client HTTPClient) handleRequest(out_queue chan splitter.SplitItem, close_client chan bool) {
 
 	// multi http servers needs new muxers
 	// start up the http listens

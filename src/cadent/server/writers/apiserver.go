@@ -104,6 +104,8 @@ type ApiLoop struct {
 
 	ReadCache           *metrics.ReadCache
 	activate_cache_chan chan *metrics.RawRenderItem
+
+	started bool
 }
 
 func ParseConfigString(inconf string) (rl *ApiLoop, err error) {
@@ -122,6 +124,7 @@ func ParseConfigString(inconf string) (rl *ApiLoop, err error) {
 	if err != nil {
 		return nil, err
 	}
+	rl.started = false
 	rl.Metrics.SetIndexer(rl.Indexer)
 	rl.SetBasePath(rl.Conf.BasePath)
 	rl.log = logging.MustGetLogger("reader.http")
@@ -166,13 +169,18 @@ func (re *ApiLoop) Config(conf ApiConfig, resolution float64) (err error) {
 }
 
 func (re *ApiLoop) Stop() {
-	re.shutdown <- true
+	if re.shutdown != nil {
+		re.shutdown <- true
+	}
 }
 
 func (re *ApiLoop) activateCacheLoop() {
 	for {
 		select {
-		case data := <-re.activate_cache_chan:
+		case data, more := <-re.activate_cache_chan:
+			if !more {
+				return
+			}
 			re.ReadCache.ActivateMetricFromRenderData(data)
 		}
 	}
@@ -421,7 +429,6 @@ func (re *ApiLoop) Start() error {
 		return fmt.Errorf("Could not make http socket: %s", err)
 	}
 
-	re.shutdown = make(chan bool, 10)
 	re.activate_cache_chan = make(chan *metrics.RawRenderItem, 256)
 
 	// start up the activateCacheLoop
@@ -429,12 +436,19 @@ func (re *ApiLoop) Start() error {
 
 	go http.Serve(conn, WriteLog(mux, outlog))
 
+	re.shutdown = make(chan bool, 5)
+	re.started = true
+
 	for {
 		select {
-		case <-re.shutdown:
+		case _, more := <-re.shutdown:
+			// already done
+			if !more {
+				return nil
+			}
 			conn.Close()
 			golog.Print("Shutdown of API http server...")
-			close(re.shutdown)
+			close(re.activate_cache_chan)
 			return nil
 		}
 	}

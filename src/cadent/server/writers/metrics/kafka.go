@@ -103,7 +103,10 @@ func (kf *KafkaMetrics) Config(conf map[string]interface{}) error {
 	return nil
 }
 
-// TODO
+func (kf *KafkaMetrics) Start() {
+	//noop
+}
+
 func (kf *KafkaMetrics) Stop() {
 	if err := kf.conn.Close(); err != nil {
 		kf.log.Error("Failed to shut down producer cleanly %v", err)

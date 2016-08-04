@@ -307,15 +307,19 @@ func (server *Server) TrapExit() {
 		close(sc)
 
 		// re-raise it
-		process, _ := os.FindProcess(os.Getpid())
-		process.Signal(s)
+		//process, _ := os.FindProcess(os.Getpid())
+		//process.Signal(s)
 		return
 	}(server)
 }
 
 func (server *Server) StopServer() {
+	server.log.Warning("Stoping Server")
 
-	go func() { server.StopTicker <- true }()
+	//broadcast die
+	server.ShutDown.Close()
+
+	go func() { close(server.StopTicker) }()
 
 	// need to clen up the socket here otherwise it may not get cleaned
 	if server.ListenURL != nil && server.ListenURL.Scheme == "unix" {
@@ -328,31 +332,28 @@ func (server *Server) StopServer() {
 	}
 
 	//shut this guy down too
-	if server.PreRegFilter != nil && server.PreRegFilter.Accumulator != nil {
+	if server.PreRegFilter != nil {
 		server.log.Warning("Shutting down Prereg accumulator for `%s`", server.Name)
-		tick := time.NewTimer(2 * time.Second)
-		did := make(chan bool)
-		go func() {
-			server.PreRegFilter.Accumulator.Stop()
-			did <- true
-			return
-		}()
+		//tick := time.NewTimer(2 * time.Second)
+		//did := make(chan bool)
+		//go func() {
+		server.PreRegFilter.Stop()
+		//did <- true
+		//return
+		//}()
 
-		select {
+		/*select {
 		case <-tick.C:
 			close(did)
 			break
 		case <-did:
 			break
-		}
+		}*/
 
-	} else {
-		server.log.Warning("No Accumualtor for `%s` no shutdown", server.Name)
 	}
-
-	//broadcast die
-	server.ShutDown.Send(true)
-
+	if server.OutputDispatcher != nil {
+		server.OutputDispatcher.Shutdown()
+	}
 	// bleed the pools
 	if server.Outpool != nil {
 		for k, outp := range server.Outpool {
@@ -376,37 +377,28 @@ func (server *Server) StopServer() {
 		}
 	}
 
+	close(server.ProcessedQueue)
+	close(server.WorkQueue)
 	// bleed the queues if things get stuck
-	for {
-		for i := 0; i < len(server.ProcessedQueue); i++ {
-			_ = <-server.ProcessedQueue
-		}
-		if len(server.ProcessedQueue) == 0 {
-			break
-		}
-	}
 	for {
 		for i := 0; i < len(server.InputQueue); i++ {
 			_ = <-server.InputQueue
 		}
+		// need to keep this open as it's inside other "clients"
 		if len(server.InputQueue) == 0 {
 			break
 		}
 	}
 
-	for {
-		for i := 0; i < len(server.WorkQueue); i++ {
-			_ = <-server.WorkQueue
-		}
-		if len(server.WorkQueue) == 0 {
-			break
-		}
+	// need to stop the statsd collection as well
+	if stats.StatsdClient != nil {
+		stats.StatsdClient.Close()
+	}
+	if stats.StatsdClientSlow != nil {
+		stats.StatsdClientSlow.Close()
 	}
 
-	if server.OutputDispatcher != nil {
-		server.OutputDispatcher.Shutdown()
-	}
-	server.log.Warning("Termination .... ")
+	server.log.Warning("Server Terminated .... ")
 
 }
 
@@ -618,7 +610,7 @@ func NewServer(cfg *Config) (server *Server, err error) {
 	serv.SplitterConfig = cfg.MsgConfig
 	serv.Replicas = cfg.Replicas
 
-	serv.ShutDown = broadcast.New(1)
+	serv.ShutDown = broadcast.New(2)
 
 	// serv.work_breaker = breaker.New(3, 1, 2*time.Second)
 
@@ -1202,17 +1194,19 @@ func (server *Server) Accepter(listen net.Listener) (<-chan net.Conn, error) {
 				shuts.Close()
 				return
 			default:
-				conn, err := listen.Accept()
-				if err != nil {
-					stats.StatsdClient.Incr(fmt.Sprintf("%s.tcp.incoming.failed.connections", server.Name), 1)
-					server.log.Warning("Error Accecption Connection: %s", err)
-					continue
-				}
-				stats.StatsdClient.Incr(fmt.Sprintf("%s.tcp.incoming.connections", server.Name), 1)
-				//server.log.Debug("Accepted connection from %s", conn.RemoteAddr())
 
-				conns <- conn
 			}
+
+			conn, err := listen.Accept()
+			if err != nil {
+				stats.StatsdClient.Incr(fmt.Sprintf("%s.tcp.incoming.failed.connections", server.Name), 1)
+				server.log.Warning("Error Accecption Connection: %s", err)
+				continue
+			}
+			stats.StatsdClient.Incr(fmt.Sprintf("%s.tcp.incoming.connections", server.Name), 1)
+			//server.log.Debug("Accepted connection from %s", conn.RemoteAddr())
+
+			conns <- conn
 
 		}
 	}()
@@ -1235,13 +1229,20 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, done chan Client) 
 	defer close(server.back_pressure)
 
 	MakeHandler := func(servv *Server, listen net.Listener) {
+		handel_shut := servv.ShutDown.Listen()
 
 		run := func() {
 
 			// consume the input queue of lines
 			for {
 				select {
-				case splitem := <-servv.InputQueue:
+				case <-handel_shut.Ch:
+					handel_shut.Close()
+					return
+				case splitem, more := <-servv.InputQueue:
+					if !more {
+						break
+					}
 					//server.log.Notice("INQ: %d Line: %s", len(server.InputQueue), splitem.Line())
 					if splitem == nil {
 						continue
@@ -1275,7 +1276,7 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, done chan Client) 
 		}
 
 		shuts_client := servv.ShutDown.Listen()
-
+		close_client := make(chan bool)
 		for {
 			select {
 			case conn, ok := <-accepts_queue:
@@ -1290,11 +1291,12 @@ func (server *Server) startTCPServer(hashers *[]*ConstHasher, done chan Client) 
 
 				stats.StatsdClient.Incr(fmt.Sprintf("worker.%s.tcp.connection.open", servv.Name), 1)
 
-				go client.handleRequest(nil)
+				go client.handleRequest(nil, close_client)
 			//go client.handleSend(tcp_socket_out)
 			case <-shuts_client.Ch:
 				servv.log.Warning("TCP: Shutdown gotten .. stopping incoming connections")
 				listen.Close()
+				close(close_client)
 				return
 
 			case workerUpDown := <-servv.WorkerHold:
@@ -1352,7 +1354,9 @@ func (server *Server) startUDPServer(hashers *[]*ConstHasher, done chan Client) 
 		shuts := servv.ShutDown.Listen()
 		defer shuts.Close()
 
-		go client.handleRequest(udp_socket_out)
+		// close chan is not needed as the TCP one is as there is
+		// "one" handler for UDP cons
+		go client.handleRequest(udp_socket_out, nil)
 		go client.handleSend(udp_socket_out)
 
 		for {
@@ -1408,7 +1412,7 @@ func (server *Server) startHTTPServer(hashers *[]*ConstHasher, done chan Client)
 	shuts := server.ShutDown.Listen()
 	defer shuts.Close()
 
-	go client.handleRequest(http_socket_out)
+	go client.handleRequest(http_socket_out, nil)
 	go client.handleSend(http_socket_out)
 
 	for {
@@ -1437,8 +1441,8 @@ func (server *Server) startBackendServer(hashers *[]*ConstHasher, done chan Clie
 	run := func() {
 		for {
 			select {
-			case splitem := <-server.InputQueue:
-				if splitem == nil {
+			case splitem, more := <-server.InputQueue:
+				if !more || splitem == nil {
 					continue
 				}
 				l_len := (int64)(len(splitem.Line()))
@@ -1472,11 +1476,16 @@ func (server *Server) startBackendServer(hashers *[]*ConstHasher, done chan Clie
 // from a socket (where the output queue is needed for server responses and the like)
 // Backend Servers use this exclusively as there are no sockets
 func (server *Server) ConsumeProcessedQueue(qu chan splitter.SplitItem) {
+	shuts := server.ShutDown.Listen()
+
 	for {
 		select {
-		case l := <-qu:
-			if l == nil || !l.IsValid() {
-				break
+		case <-shuts.Ch:
+			shuts.Close()
+			return
+		case l, more := <-qu:
+			if !more || l == nil || !l.IsValid() {
+				return
 			}
 		case workerUpDown := <-server.WorkerHold:
 			server.InWorkQueue.Add(workerUpDown)
@@ -1523,7 +1532,7 @@ func CreateServer(cfg *Config, hashers []*ConstHasher) (*Server, error) {
 	}
 	go server.tickDisplay()
 
-	server.TrapExit() //trappers
+	//server.TrapExit() //trappers
 
 	// add it to the list of backends available
 	SERVER_BACKENDS.Add(server.Name, server)
@@ -1534,7 +1543,6 @@ func CreateServer(cfg *Config, hashers []*ConstHasher) (*Server, error) {
 func (server *Server) StartServer() {
 
 	server.log.Info("Using %d workers to process output", server.Workers)
-	defer server.StopServer()
 
 	//fire up the send to workers
 	done := make(chan Client)

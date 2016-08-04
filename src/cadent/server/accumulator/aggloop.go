@@ -203,6 +203,7 @@ func (agg *AggregateLoop) startInputLooper() {
 		agg.stat_write_queue = make(chan dispatch.IJob, AGGLOOP_DEFAULT_QUEUE_LENGTH)
 		agg.stat_dispatch_queue = make(chan chan dispatch.IJob, workers)
 		agg.stat_dispatcher = dispatch.NewDispatch(workers, agg.stat_dispatch_queue, agg.stat_write_queue)
+		agg.stat_dispatcher.Name = "aggloop"
 		agg.stat_dispatcher.Run()
 	}
 
@@ -237,9 +238,10 @@ func (agg *AggregateLoop) startWriteLooper(duration time.Duration, ttl time.Dura
 
 	_dur := duration
 	_ttl := ttl
+
 	//_mu := mu
 	// start up the writers listeners
-	go writer.Start()
+	writer.Start()
 
 	post := func(items map[string]repr.StatRepr) {
 		defer stats.StatsdSlowNanoTimeFunc("aggregator.postwrite-time-ns", time.Now())
@@ -310,6 +312,12 @@ func (agg *AggregateLoop) startWriteLooper(duration time.Duration, ttl time.Dura
 // For every flus time, start a new timer loop to perform writes
 func (agg *AggregateLoop) Start() error {
 	agg.log.Notice("Starting Aggregator Loop for `%s`", agg.Name)
+
+	if agg.shutitdown {
+		agg.log.Warning("Got shutdown signal, not starting loop")
+		return nil
+	}
+
 	//start the input loop acceptor
 	go agg.startInputLooper()
 	for idx, writ := range agg.OutWriters {
@@ -324,17 +332,25 @@ func (agg *AggregateLoop) Start() error {
 }
 
 func (agg *AggregateLoop) Stop() {
-	agg.log.Warning("Initiating shutdown of aggregator for `%s`", agg.Name)
-	go func() {
-		agg.Shutdown.Send(true)
-		agg.shutitdown = true
-		if agg.OutReader != nil {
-			go agg.OutReader.Stop()
-		}
-		for idx := range agg.OutWriters {
-			go agg.OutWriters[idx].Stop()
-		}
-		agg.log.Warning("Shutdown of aggregator `%s`", agg.Name)
+	if agg.shutitdown {
 		return
-	}()
+	}
+	agg.log.Warning("Initiating shutdown of aggregator for `%s`", agg.Name)
+
+	if agg.stat_dispatcher != nil {
+		agg.stat_dispatcher.Shutdown()
+	}
+
+	agg.Shutdown.Send(true)
+	agg.shutitdown = true
+
+	if agg.OutReader != nil {
+		agg.OutReader.Stop()
+	}
+
+	for idx := range agg.OutWriters {
+		agg.log.Warning("Starting Shutdown of writer `%s:%s`", agg.Name, agg.OutWriters[idx].GetName())
+		agg.OutWriters[idx].Stop()
+	}
+	agg.log.Warning("Shutdown of aggregator `%s`", agg.Name)
 }

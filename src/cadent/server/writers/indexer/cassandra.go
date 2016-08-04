@@ -185,6 +185,9 @@ func (cass *CassandraIndexer) Start() {
 		cass.write_dispatcher = dispatch.NewDispatch(workers, cass.dispatch_queue, cass.write_queue)
 		cass.write_dispatcher.SetRetries(2)
 		cass.write_dispatcher.Run()
+
+		cass.cache.Start() //start cacher
+
 		go cass.sendToWriters() // the dispatcher
 	}
 }
@@ -232,7 +235,7 @@ func (cass *CassandraIndexer) Config(conf map[string]interface{}) (err error) {
 		cass.writes_per_second = int(_ws.(int64))
 	}
 
-	cass.Start() // fire it up
+	//cass.Start() // fire it up
 
 	return nil
 }
@@ -270,7 +273,7 @@ func (cass *CassandraIndexer) WriteOne(inname repr.StatName) error {
 	segments := []CassSegment{}
 	paths := []CassPath{}
 	unique_ID := inname.UniqueId() // uint32 mmh3-32
-	
+
 	for idx, part := range s_parts {
 		if len(cur_part) > 1 {
 			cur_part += "."

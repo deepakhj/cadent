@@ -384,6 +384,8 @@ func (cass *CassandraWriter) Start() {
 		cass.write_dispatcher = dispatch.NewDispatch(workers, cass.dispatch_queue, cass.write_queue)
 		cass.write_dispatcher.SetRetries(2)
 		cass.write_dispatcher.Run()
+
+		cass.cacher.Start()
 		go cass.sendToWriters() // the dispatcher
 	}
 }
@@ -492,6 +494,10 @@ func NewCassandraMetrics() *CassandraMetric {
 
 func (cass *CassandraMetric) Stop() {
 	cass.shutonce.Do(cass.writer.Stop)
+}
+
+func (cass *CassandraMetric) Start() {
+	cass.writer.Start()
 }
 
 func (cass *CassandraMetric) SetIndexer(idx indexer.Indexer) error {

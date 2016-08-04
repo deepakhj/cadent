@@ -11,6 +11,7 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
+	"os/signal"
 	"path"
 	"runtime"
 	"strconv"
@@ -326,6 +327,35 @@ func main() {
 		log.Notice("Staring Server `%s`", srv.Name)
 		go srv.StartServer()
 	}
+
+	// traps some signals
+
+	TrapExit := func() {
+		//trap kills to flush queues and close connections
+		sc := make(chan os.Signal, 1)
+		signal.Notify(sc,
+			syscall.SIGINT,
+			syscall.SIGTERM,
+			syscall.SIGQUIT)
+
+		go func() {
+			s := <-sc
+			for _, srv := range servers {
+				log.Warning("Caught %s: Closing Server `%s` out before quit ", s, srv.Name)
+
+				srv.StopServer()
+			}
+
+			signal.Stop(sc)
+			close(sc)
+
+			// re-raise it
+			//process, _ := os.FindProcess(os.Getpid())
+			//process.Signal(s)
+			return
+		}()
+	}
+	TrapExit()
 
 	//fire up the http stats if given
 	if len(def.HealthServerBind) != 0 {

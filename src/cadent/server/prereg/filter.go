@@ -227,6 +227,12 @@ func (pr *PreReg) FirstMatchBackend(line string) (string, bool, error) {
 	return pr.DefaultBackEnd, false, nil
 }
 
+func (pr *PreReg) Stop() {
+	if pr.Accumulator != nil {
+		pr.Accumulator.Stop()
+	}
+}
+
 func (pr *PreReg) LogConfig() {
 	log.Debug(" - Pre Filter Group: %s", pr.Name)
 	log.Debug("   - Pinned To Listener: %s", pr.ListenServer)

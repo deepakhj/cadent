@@ -44,6 +44,10 @@ func (ws *WhisperIndexer) Config(conf map[string]interface{}) error {
 	return nil
 }
 
+func (ws *WhisperIndexer) Start() {
+	//noop
+}
+
 func (ws *WhisperIndexer) Stop() {
 	//noop
 }

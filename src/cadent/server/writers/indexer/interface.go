@@ -49,6 +49,8 @@ type Indexer interface {
 	*/
 	Expand(metric string) (MetricExpandItem, error)
 
+	Start()
+
 	// stop all processing
 	Stop()
 

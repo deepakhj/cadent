@@ -103,6 +103,7 @@ type WriterLoop struct {
 	MetricQLen   int
 	IndexerQLen  int
 	log          *logging.Logger
+	stopped      bool
 }
 
 func New() (loop *WriterLoop, err error) {
@@ -113,12 +114,17 @@ func New() (loop *WriterLoop, err error) {
 	loop.shutdowner = broadcast.New(0)
 	loop.write_queue = NewWriteQueue(WRITER_MAX_WRITE_QUEUE)
 	loop.log = logging.MustGetLogger("writer")
+	loop.stopped = false
 
 	return loop, nil
 }
 
 func (loop *WriterLoop) SetName(name string) {
 	loop.name = name
+}
+
+func (loop *WriterLoop) GetName() string {
+	return loop.name
 }
 
 func (loop *WriterLoop) statTick() {
@@ -187,6 +193,7 @@ func (loop *WriterLoop) procLoop() {
 			}
 		case <-shut.Ch:
 			loop.metrics.Stop()
+			loop.indexer.Stop()
 			shut.Close()
 			return
 		}
@@ -194,6 +201,7 @@ func (loop *WriterLoop) procLoop() {
 }
 
 func (loop *WriterLoop) processQueue() {
+	shut := loop.shutdowner.Listen()
 
 	proc_queue := func() {
 		ct := loop.write_queue.Len()
@@ -213,8 +221,13 @@ func (loop *WriterLoop) processQueue() {
 	}
 
 	for {
-		proc_queue()
-		time.Sleep(time.Second) // so as to not CPU burn
+		select {
+		case <-shut.Ch:
+			return
+		default:
+			proc_queue()
+			time.Sleep(time.Second) // so as to not CPU burn
+		}
 	}
 }
 
@@ -223,27 +236,37 @@ func (loop *WriterLoop) Full() bool {
 }
 
 func (loop *WriterLoop) Start() {
+	loop.log.Notice("Starting Writer `%s`", loop.name)
 	loop.write_chan = make(chan repr.StatRepr, loop.MetricQLen)
 	loop.indexer_chan = make(chan repr.StatRepr, loop.IndexerQLen) // indexing is slow, so we'll need to buffer things a bit more
 
+	go loop.metrics.Start()
+	go loop.indexer.Start()
 	go loop.indexLoop()
 	go loop.procLoop()
 	go loop.processQueue()
 	go loop.statTick()
-	return
 }
 
 func (loop *WriterLoop) Stop() {
-	go func() {
-		loop.shutdowner.Send(true)
-		if loop.indexer_chan != nil {
-			close(loop.indexer_chan)
-		}
-		if loop.write_chan != nil {
-			close(loop.write_chan)
-		}
+	if loop.stopped {
 		return
-	}()
+	}
+	loop.stopped = true
+	loop.log.Warning("Shutting down writer `%s`", loop.name)
+	loop.shutdowner.Send(true)
+	if loop.indexer_chan != nil {
+		close(loop.indexer_chan)
+		loop.indexer_chan = nil
+	}
+	if loop.write_chan != nil {
+		close(loop.write_chan)
+		loop.write_chan = nil
+	}
+	loop.log.Warning("Shutting down metrics writer `%s`", loop.name)
+	loop.metrics.Stop()
+	loop.log.Warning("Shutting down index writer `%s`", loop.name)
+	loop.indexer.Stop()
 }
 
 /******************************************************************

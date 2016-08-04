@@ -94,7 +94,6 @@ func NewAccumlator(inputtype string, outputtype string, keepkeys bool, name stri
 		Name:              name,
 		FlushTimes:        []time.Duration{time.Duration(time.Second)},
 		AccumulateTime:    time.Duration(time.Second),
-		Shutdown:          make(chan bool, 0),
 		LineQueue:         make(chan string, 10000),
 		shutitdown:        false,
 		timer:             nil,
@@ -146,7 +145,9 @@ func (acc *Accumulator) ProcessSplitItem(sp splitter.SplitItem) error {
 
 func (acc *Accumulator) ProcessLine(sp string) error {
 	stats.StatsdClient.Incr("accumulator.lines.incoming", 1)
-	acc.LineQueue <- sp
+	if !acc.shutitdown {
+		acc.LineQueue <- sp
+	}
 	return nil
 }
 
@@ -189,8 +190,15 @@ func (acc *Accumulator) Start() error {
 			acc.timer = acc.delayRoundedTicker(acc.AccumulateTime)
 		}
 	}
+
 	if acc.LineQueue == nil {
 		acc.LineQueue = make(chan string, 10000)
+	}
+
+	// here again as a stop can hit in the middle of the delay timer
+	if acc.shutitdown {
+		acc.log.Warning("Shutting down, will not start `%s`", acc.Name)
+		return nil
 	}
 
 	acc.log.Notice("Starting accumulator loop for `%s`", acc.Name)
@@ -203,13 +211,16 @@ func (acc *Accumulator) Start() error {
 
 	defer func() {
 		close(acc.LineQueue)
-		acc.LineQueue = nil
 	}()
 
+	acc.Shutdown = make(chan bool, 5)
 	for {
 
 		select {
-		case line := <-acc.LineQueue:
+		case line, more := <-acc.LineQueue:
+			if !more {
+				return nil
+			}
 			acc.Accumulate.ProcessLine(line)
 			stats.StatsdClient.Incr("accumulator.lines.processed", 1)
 		case dd := <-acc.timer.C:
@@ -218,10 +229,6 @@ func (acc *Accumulator) Start() error {
 		case <-acc.Shutdown:
 			acc.timer.Stop()
 			acc.log.Warning("Shutting down final flush of accumulator `%s`", acc.Name)
-			acc.FlushAndPost(time.Now())
-			if acc.Aggregators != nil {
-				acc.Aggregators.Stop()
-			}
 			return nil
 		}
 	}
@@ -229,12 +236,14 @@ func (acc *Accumulator) Start() error {
 
 func (acc *Accumulator) Stop() {
 	acc.log.Warning("Initiating shutdown of accumulator `%s`", acc.Name)
-	go func() {
-		acc.shutitdown = true
+	acc.shutitdown = true
+	if acc.Shutdown != nil {
 		acc.Shutdown <- true
-		return
-	}()
-	return
+	}
+	acc.FlushAndPost(time.Now())
+	if acc.Aggregators != nil {
+		acc.Aggregators.Stop()
+	}
 }
 
 // move back into Main Server loop
