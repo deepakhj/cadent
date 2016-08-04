@@ -344,17 +344,14 @@ func (ws *WhisperWriter) Stop() {
 	ws.log.Warning("Whisper: Shutting down, exhausting the queue (%d items) and quiting", mets_l)
 	// full tilt write out
 	did := 0
-	for {
-		name, pts := ws.cache_queue.Pop()
-		if name == nil {
-			break
-		}
+	for _, queueitem := range mets {
 		if did%100 == 0 {
 			ws.log.Warning("Whisper: shutdown purge: written %d/%d...", did, mets_l)
 		}
-		if pts != nil {
-			stats.StatsdClient.Incr("writer.whisper.write.send-to-writers", 1)
-			ws.InsertMulti(name, pts)
+		name, points, _ := ws.cache_queue.GetById(queueitem.metric)
+		if points != nil {
+			stats.StatsdClient.Incr(fmt.Sprintf("writer.cassandraflat.write.send-to-writers"), 1)
+			ws.InsertMulti(name, points)
 		}
 		did++
 	}
