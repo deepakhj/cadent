@@ -1,4 +1,6 @@
 
+// render via: protoc --gogofaster_out=. *.proto
+
 package series;
 
 message ProtStatFull {

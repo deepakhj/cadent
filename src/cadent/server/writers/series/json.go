@@ -45,7 +45,6 @@ type jsonStat struct {
 
 type JsonStats []jsonStat
 
-// this can only handle "future pushing times" not random times
 type JsonTimeSeries struct {
 	mu sync.Mutex
 
