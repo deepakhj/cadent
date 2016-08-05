@@ -22,6 +22,7 @@ type MsgPackTimeSeries struct {
 
 	T0      int64
 	curTime int64
+	handle  msgpack.Handle
 	Stats   *codec.CodecStats
 }
 
@@ -30,6 +31,19 @@ func NewMsgPackTimeSeries(t0 int64, options *Options) *MsgPackTimeSeries {
 	ret := &MsgPackTimeSeries{
 		T0:    t0,
 		Stats: new(codec.CodecStats),
+	}
+	switch options.Handler {
+	case "binc":
+		ret.handle = new(msgpack.BincHandle)
+	case "cbor":
+		ret.handle = new(msgpack.CborHandle)
+	case "json":
+		ret.handle = new(msgpack.JsonHandle)
+	default:
+		ret.handle = new(msgpack.MsgpackHandle)
+	}
+	if options.Handler == "msgpack" {
+
 	}
 	ret.Stats.FullTimeResolution = options.HighTimeResolution
 	return ret
@@ -44,15 +58,13 @@ func (s *MsgPackTimeSeries) Count() int {
 }
 
 func (s *MsgPackTimeSeries) UnmarshalBinary(data []byte) error {
-	var h msgpack.Handle = new(msgpack.MsgpackHandle)
-	var dec *msgpack.Decoder = msgpack.NewDecoderBytes(data, h)
+	var dec *msgpack.Decoder = msgpack.NewDecoderBytes(data, s.handle)
 	return dec.Decode(s.Stats)
 }
 
 func (s *MsgPackTimeSeries) MarshalBinary() ([]byte, error) {
 	bw := new(bytes.Buffer)
-	var h msgpack.Handle = new(msgpack.MsgpackHandle)
-	var enc *msgpack.Encoder = msgpack.NewEncoder(bw, h)
+	var enc *msgpack.Encoder = msgpack.NewEncoder(bw, s.handle)
 	var err error = enc.Encode(s.Stats)
 	if err != nil {
 		return nil, err
@@ -127,7 +139,12 @@ func (s *MsgPackTimeSeries) AddPoint(t int64, min float64, max float64, first fl
 		}
 		s.Stats.Stats = append(s.Stats.Stats, p_stat)
 	}
-	s.curTime = t
+	if t > s.curTime {
+		s.curTime = t
+	}
+	if t < s.T0 {
+		s.T0 = t
+	}
 	return nil
 }
 

@@ -120,7 +120,12 @@ func (s *JsonTimeSeries) AddPoint(t int64, min float64, max float64, first float
 		Sum:   repr.JsonFloat64(sum),
 		Count: count,
 	})
-	s.curTime = t
+	if t > s.curTime {
+		s.curTime = t
+	}
+	if t < s.T0 {
+		s.T0 = t
+	}
 	return nil
 }
 

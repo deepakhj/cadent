@@ -120,7 +120,12 @@ func (s *ProtobufTimeSeries) AddPoint(t int64, min float64, max float64, first f
 		}
 		s.Stats.Stats = append(s.Stats.Stats, p_stat)
 	}
-	s.curTime = t
+	if t > s.curTime {
+		s.curTime = t
+	}
+	if t < s.T0 {
+		s.T0 = t
+	}
 	return nil
 }
 

@@ -5,7 +5,7 @@ import (
 )
 
 func TestSimpleJsonTimeSeries(t *testing.T) {
-	genericTestSeries(t, "json")
+	genericTestSeries(t, "json", NewDefaultOptions())
 }
 
 func Benchmark_JsonSeriesPut(b *testing.B) {

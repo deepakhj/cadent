@@ -5,7 +5,7 @@ import (
 )
 
 func Test_Gorilla_Series(t *testing.T) {
-	genericTestSeries(t, "gorilla")
+	genericTestSeries(t, "gorilla", NewDefaultOptions())
 }
 
 func Benchmark_GorillaSeriesPut(b *testing.B) {

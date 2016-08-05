@@ -5,7 +5,7 @@ import (
 )
 
 func Test_GobSeries(t *testing.T) {
-	genericTestSeries(t, "binary")
+	genericTestSeries(t, "binary", NewDefaultOptions())
 }
 
 func Benchmark_GobSeries_Put(b *testing.B) {

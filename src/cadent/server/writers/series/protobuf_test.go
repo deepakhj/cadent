@@ -5,7 +5,7 @@ import (
 )
 
 func TestProtbufArrayTimeSeries(t *testing.T) {
-	genericTestSeries(t, "protobuf")
+	genericTestSeries(t, "protobuf", NewDefaultOptions())
 }
 
 func Benchmark_ProtoBuf_Put(b *testing.B) {

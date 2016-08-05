@@ -14,9 +14,9 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"io"
 	"math/rand"
+	"runtime"
 	"testing"
 	"time"
-	"runtime"
 )
 
 var testDefaultByteSize = 8192
@@ -154,8 +154,7 @@ func addSingleValStat(ser TimeSeries, stat *repr.StatRepr, num_s int, randomize 
 	return times, stats, nil
 }
 
-
-func _benchReset(b *testing.B){
+func _benchReset(b *testing.B) {
 	runtime.GC()
 	b.ResetTimer()
 	b.ReportAllocs()
@@ -433,16 +432,17 @@ func benchmarkSeriesPut8kRandomInt(b *testing.B, stype string) {
 
 }
 
-func genericTestSeries(t *testing.T, stype string) {
-	highres_opts := NewDefaultOptions()
+func genericTestSeries(t *testing.T, stype string, options *Options) {
+	highres_opts := options
 	highres_opts.HighTimeResolution = true
-	lowres_opts := &Options{6, false}
+	lowres_opts := *options
+	lowres_opts.HighTimeResolution = false
 
-	opts := []*Options{highres_opts, lowres_opts}
+	opts := []*Options{highres_opts, &lowres_opts}
 
 	for _, opt := range opts {
 		nm := "highres"
-		if opt == lowres_opts {
+		if opt == &lowres_opts {
 			nm = "lowres"
 		}
 		Convey("Series Type : "+stype+" : "+nm, t, func() {

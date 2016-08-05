@@ -26,6 +26,9 @@ func NewTimeSeries(name string, t0 int64, options *Options) (TimeSeries, error) 
 		return NewGoriallaTimeSeries(t0, options), nil
 	case name == "msgpack":
 		return NewMsgPackTimeSeries(t0, options), nil
+	case name == "binc":
+		options.Handler = "binc"
+		return NewMsgPackTimeSeries(t0, options), nil
 	case name == "repr":
 		return NewReprTimeSeries(t0, options), nil
 	default:
@@ -46,7 +49,7 @@ func NewIter(name string, data []byte) (TimeSeriesIter, error) {
 		return NewProtobufIterFromBytes(data)
 	case name == "gorilla":
 		return NewGorillaIterFromBytes(data)
-	case name == "msgpack":
+	case name == "msgpack" || name == "binc":
 		return NewMsgPackIterFromBytes(data)
 	case name == "repr":
 		return NewReprIterFromBytes(data)

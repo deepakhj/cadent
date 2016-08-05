@@ -5,7 +5,7 @@ import (
 )
 
 func TestZipSimpleBinaryTimeSeries(t *testing.T) {
-	genericTestSeries(t, "zipgob")
+	genericTestSeries(t, "zipgob", NewDefaultOptions())
 }
 
 func Benchmark_ZipGobPut(b *testing.B) {

@@ -5,7 +5,7 @@ import (
 )
 
 func Test_ReprSeries(t *testing.T) {
-	genericTestSeries(t, "repr")
+	genericTestSeries(t, "repr", NewDefaultOptions())
 }
 
 func Benchmark_ReprSeries_Put(b *testing.B) {
