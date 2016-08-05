@@ -337,6 +337,7 @@ func (cass *CassandraFlatWriter) Stop() {
 	}
 	cass.shutitdown = true
 	cass.shutdown <- true
+
 	cass.cacher.Stop()
 
 	if cass.overFlowShutdown != nil {
@@ -372,6 +373,7 @@ func (cass *CassandraFlatWriter) Start() {
 		cass.write_dispatcher = dispatch.NewDispatch(workers, cass.dispatch_queue, cass.write_queue)
 		cass.write_dispatcher.SetRetries(2)
 		cass.write_dispatcher.Run()
+		cass.cacher.Start()
 		go cass.sendToWriters() // the dispatcher
 	}
 }
