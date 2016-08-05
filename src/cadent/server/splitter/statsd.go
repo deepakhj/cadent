@@ -19,6 +19,7 @@ type StatsdSplitItem struct {
 	inphase  Phase
 	inorigin Origin
 	inoname  string
+	tags     [][]string
 }
 
 func (g *StatsdSplitItem) Key() string {
@@ -27,6 +28,10 @@ func (g *StatsdSplitItem) Key() string {
 
 func (g *StatsdSplitItem) HasTime() bool {
 	return false
+}
+
+func (g *StatsdSplitItem) Tags() [][]string {
+	return g.tags
 }
 
 func (g *StatsdSplitItem) Timestamp() time.Time {

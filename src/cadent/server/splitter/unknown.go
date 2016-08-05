@@ -22,6 +22,10 @@ func (g *UnkSplitItem) Line() string {
 	return ""
 }
 
+func (g *UnkSplitItem) Tags() [][]string {
+	return [][]string{}
+}
+
 func (g *UnkSplitItem) HasTime() bool {
 	return false
 }

@@ -20,10 +20,15 @@ type RegexSplitItem struct {
 	inphase  Phase
 	inorigin Origin
 	inoname  string
+	tags     [][]string
 }
 
 func (g *RegexSplitItem) Key() string {
 	return g.inkey
+}
+
+func (g *RegexSplitItem) Tags() [][]string {
+	return g.tags
 }
 
 func (g *RegexSplitItem) Line() string {

@@ -39,10 +39,15 @@ type GraphiteSplitItem struct {
 	inphase  Phase
 	inorigin Origin
 	inoname  string
+	tags     [][]string
 }
 
 func (g *GraphiteSplitItem) Key() string {
 	return g.inkey
+}
+
+func (g *GraphiteSplitItem) Tags() [][]string {
+	return g.tags
 }
 
 func (g *GraphiteSplitItem) HasTime() bool {

@@ -29,6 +29,7 @@ type SplitItem interface {
 	Timestamp() time.Time
 	Line() string
 	Fields() []string
+	Tags() [][]string
 	Phase() Phase
 	SetPhase(Phase)
 	Origin() Origin
