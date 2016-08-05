@@ -84,6 +84,7 @@ import (
 	"syscall"
 
 	"cadent/server/dispatch"
+	"cadent/server/utils/shutdown"
 	"cadent/server/writers/indexer"
 	"cadent/server/writers/series"
 	"math"
@@ -346,6 +347,8 @@ func (cass *CassandraWriter) InsertSeries(name *repr.StatName, series series.Tim
 }
 
 func (cass *CassandraWriter) Stop() {
+	shutdown.AddToShutdown()
+	defer shutdown.ReleaseFromShutdown()
 
 	if cass.shutitdown {
 		return // already did
@@ -548,8 +551,6 @@ func (cass *CassandraMetric) Config(conf map[string]interface{}) (err error) {
 
 	// match blob types
 	gots.cacher.seriesType = gots.blob_series_type
-
-	cass.writer.Start() //start up
 
 	return nil
 }

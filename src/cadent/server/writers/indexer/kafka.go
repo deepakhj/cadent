@@ -10,6 +10,7 @@ package indexer
 import (
 	"cadent/server/repr"
 	"cadent/server/stats"
+	"cadent/server/utils/shutdown"
 	"cadent/server/writers/dbs"
 	"encoding/json"
 	"fmt"
@@ -68,6 +69,8 @@ func NewKafkaIndexer() *KafkaIndexer {
 func (my *KafkaIndexer) Start() {}
 
 func (kf *KafkaIndexer) Stop() {
+	shutdown.AddToShutdown()
+	defer shutdown.ReleaseFromShutdown()
 	if err := kf.conn.Close(); err != nil {
 		kf.log.Error("Failed to shut down producer cleanly %v", err)
 	}

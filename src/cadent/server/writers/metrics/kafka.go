@@ -10,6 +10,7 @@ package metrics
 import (
 	"cadent/server/repr"
 	"cadent/server/stats"
+	"cadent/server/utils/shutdown"
 	"cadent/server/writers/dbs"
 	"cadent/server/writers/indexer"
 	"encoding/json"
@@ -108,6 +109,8 @@ func (kf *KafkaMetrics) Start() {
 }
 
 func (kf *KafkaMetrics) Stop() {
+	shutdown.AddToShutdown()
+	defer shutdown.ReleaseFromShutdown()
 	if err := kf.conn.Close(); err != nil {
 		kf.log.Error("Failed to shut down producer cleanly %v", err)
 	}

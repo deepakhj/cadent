@@ -4,6 +4,7 @@ import (
 	cadent "cadent/server"
 	prereg "cadent/server/prereg"
 	"cadent/server/stats"
+	"cadent/server/utils/shutdown"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -341,9 +342,9 @@ func main() {
 
 		go func() {
 			s := <-sc
+
 			for _, srv := range servers {
 				log.Warning("Caught %s: Closing Server `%s` out before quit ", s, srv.Name)
-
 				srv.StopServer()
 			}
 
@@ -358,13 +359,14 @@ func main() {
 			signal.Stop(sc)
 			close(sc)
 
+			shutdown.WaitOnShutdown()
 			// re-raise it
-			//process, _ := os.FindProcess(os.Getpid())
-			//process.Signal(s)
+			process, _ := os.FindProcess(os.Getpid())
+			process.Signal(s)
 			return
 		}()
 	}
-	TrapExit()
+	go TrapExit()
 
 	//fire up the http stats if given
 	if len(def.HealthServerBind) != 0 {

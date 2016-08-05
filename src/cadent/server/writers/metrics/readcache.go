@@ -30,6 +30,7 @@ package metrics
 import (
 	"cadent/server/lrucache"
 	"cadent/server/repr"
+	"cadent/server/utils/shutdown"
 	"cadent/server/writers/series"
 	"fmt"
 	"sort"
@@ -226,12 +227,14 @@ func (rc *ReadCache) Start() {
 		case stat := <-rc.InsertQueue:
 			rc.Put(stat.Name.Key, stat)
 		case <-rc.shutdown:
+			shutdown.ReleaseFromShutdown()
 			return
 		}
 	}
 }
 
 func (rc *ReadCache) Stop() {
+	shutdown.AddToShutdown()
 	rc.shutdown <- true
 }
 

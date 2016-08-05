@@ -26,6 +26,7 @@ package indexer
 
 import (
 	"cadent/server/repr"
+	"cadent/server/utils/shutdown"
 	"cadent/server/writers/dbs"
 	"database/sql"
 	"fmt"
@@ -104,6 +105,8 @@ func (my *MySQLIndexer) Start() {
 }
 
 func (my *MySQLIndexer) Stop() {
+	shutdown.AddToShutdown()
+	defer shutdown.ReleaseFromShutdown()
 	//noop
 }
 

@@ -72,6 +72,7 @@ import (
 	"github.com/gocql/gocql"
 	logging "gopkg.in/op/go-logging.v1"
 
+	"cadent/server/utils/shutdown"
 	"strings"
 	"sync"
 	"time"
@@ -147,7 +148,6 @@ type CassandraIndexer struct {
 	max_write_size int             // size of that buffer before a flush
 	max_idle       time.Duration   // either max_write_size will trigger a write or this time passing will
 	write_lock     sync.Mutex
-	shutonce       sync.Once
 	num_workers    int
 	queue_len      int
 	_accept        bool //shtdown notice
@@ -173,8 +173,18 @@ func NewCassandraIndexer() *CassandraIndexer {
 }
 
 func (cass *CassandraIndexer) Stop() {
+	shutdown.AddToShutdown()
+	defer shutdown.ReleaseFromShutdown()
+
+	if !cass._accept {
+		return // already did
+	}
 	cass._accept = false
-	cass.shutonce.Do(cass.cache.Stop)
+
+	cass.cache.Stop()
+	if cass.write_queue != nil {
+		cass.write_dispatcher.Shutdown()
+	}
 }
 
 func (cass *CassandraIndexer) Start() {

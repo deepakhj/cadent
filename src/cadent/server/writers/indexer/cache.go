@@ -26,6 +26,7 @@ import (
 	"fmt"
 
 	"cadent/server/repr"
+	"cadent/server/utils/shutdown"
 	logging "gopkg.in/op/go-logging.v1"
 	"sync"
 	"time"
@@ -67,6 +68,7 @@ func (wc *Cacher) Start() {
 }
 
 func (wc *Cacher) Stop() {
+	shutdown.AddToShutdown()
 	wc.shutdown <- true
 }
 
@@ -75,9 +77,12 @@ func (wc *Cacher) statsTick() {
 	for {
 		select {
 		case <-wc.shutdown:
+
 			wc._accept = false
 			ticker.Stop()
 			wc.log.Warning("Index Cache shutdown .. stopping accepts")
+
+			shutdown.ReleaseFromShutdown() //release me as i'm done
 			return
 
 		case <-ticker.C:

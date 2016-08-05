@@ -32,6 +32,7 @@ package metrics
 
 import (
 	"cadent/server/repr"
+	"cadent/server/utils/shutdown"
 	"cadent/server/writers/dbs"
 	"cadent/server/writers/indexer"
 	"database/sql"
@@ -103,6 +104,8 @@ func (my *MySQLMetrics) Config(conf map[string]interface{}) error {
 
 // TODO
 func (my *MySQLMetrics) Stop() {
+	shutdown.AddToShutdown()
+	defer shutdown.ReleaseFromShutdown()
 	return
 }
 

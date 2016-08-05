@@ -24,6 +24,7 @@ package writers
 
 import (
 	"cadent/server/stats"
+	"cadent/server/utils/shutdown"
 	"cadent/server/writers/indexer"
 	"cadent/server/writers/metrics"
 	"encoding/json"
@@ -169,6 +170,9 @@ func (re *ApiLoop) Config(conf ApiConfig, resolution float64) (err error) {
 }
 
 func (re *ApiLoop) Stop() {
+	shutdown.AddToShutdown()
+	defer shutdown.ReleaseFromShutdown()
+
 	if re.shutdown != nil {
 		re.shutdown <- true
 	}
@@ -180,6 +184,9 @@ func (re *ApiLoop) activateCacheLoop() {
 		case data, more := <-re.activate_cache_chan:
 			if !more {
 				return
+			}
+			if data == nil {
+				continue
 			}
 			re.ReadCache.ActivateMetricFromRenderData(data)
 		}
@@ -309,14 +316,20 @@ func (re *ApiLoop) parseForRender(w http.ResponseWriter, r *http.Request) (strin
 func (re *ApiLoop) ToGraphiteRender(raw_data []*metrics.RawRenderItem) *metrics.WhisperRenderItem {
 	whis := new(metrics.WhisperRenderItem)
 	whis.Series = make(map[string][]metrics.DataPoint)
+	if raw_data == nil {
+		return nil
+	}
 	for _, data := range raw_data {
+		if data == nil {
+			continue
+		}
+		d_points := make([]metrics.DataPoint, data.Len(), data.Len())
 		whis.End = data.End
 		whis.Start = data.Start
 		whis.Step = data.Step
 		whis.RealEnd = data.RealEnd
 		whis.RealStart = data.RealStart
 
-		d_points := make([]metrics.DataPoint, data.Len(), data.Len())
 		for idx, d := range data.Data {
 			v := d.Mean
 			d_points[idx] = metrics.DataPoint{Time: d.Time, Value: &v}
@@ -338,6 +351,10 @@ func (re *ApiLoop) Render(w http.ResponseWriter, r *http.Request) {
 	data, err := re.Metrics.RawRender(target, from, to)
 	if err != nil {
 		re.OutError(w, fmt.Sprintf("%v", err), http.StatusServiceUnavailable)
+		return
+	}
+	if data == nil {
+		re.OutError(w, "No data found", http.StatusNoContent)
 		return
 	}
 
@@ -362,6 +379,10 @@ func (re *ApiLoop) RawRender(w http.ResponseWriter, r *http.Request) {
 	data, err := re.Metrics.RawRender(target, from, to)
 	if err != nil {
 		re.OutError(w, fmt.Sprintf("%v", err), http.StatusServiceUnavailable)
+		return
+	}
+	if data == nil {
+		re.OutError(w, "No data found", http.StatusNoContent)
 		return
 	}
 

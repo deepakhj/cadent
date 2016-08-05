@@ -48,3 +48,31 @@ var GetSyncBufferPool = sync.Pool{
 		return bytes.NewBuffer([]byte{})
 	},
 }
+
+var mutexPool = sync.Pool{
+	New: func() interface{} {
+		return new(sync.Mutex)
+	},
+}
+
+func GetMutex() *sync.Mutex {
+	return mutexPool.Get().(*sync.Mutex)
+}
+
+func PutMutex(mu *sync.Mutex) {
+	mutexPool.Put(mu)
+}
+
+var waitGroupPool = sync.Pool{
+	New: func() interface{} {
+		return new(sync.WaitGroup)
+	},
+}
+
+func GetWaitGroup() *sync.WaitGroup {
+	return waitGroupPool.Get().(*sync.WaitGroup)
+}
+
+func PutWaitGroup(mu *sync.WaitGroup) {
+	mutexPool.Put(mu)
+}

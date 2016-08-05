@@ -33,6 +33,7 @@ import (
 	"cadent/server/prereg"
 	"cadent/server/splitter"
 	"cadent/server/stats"
+	sdown "cadent/server/utils/shutdown"
 	"encoding/json"
 	"fmt"
 	logging "gopkg.in/op/go-logging.v1"
@@ -314,6 +315,8 @@ func (server *Server) TrapExit() {
 }
 
 func (server *Server) StopServer() {
+	sdown.AddToShutdown()
+	defer sdown.ReleaseFromShutdown()
 	server.log.Warning("Stoping Server")
 
 	//broadcast die

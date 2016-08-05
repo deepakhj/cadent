@@ -58,6 +58,7 @@ import (
 	"math/rand"
 	"sort"
 
+	"cadent/server/utils/shutdown"
 	logging "gopkg.in/op/go-logging.v1"
 	"sync"
 	"time"
@@ -167,6 +168,7 @@ func (wc *Cacher) Start() {
 }
 
 func (wc *Cacher) Stop() {
+	shutdown.AddToShutdown()
 	if wc.started {
 		wc.shutdown <- true
 	}
@@ -190,6 +192,8 @@ func (wc *Cacher) startUpdateTick() {
 			tick.Stop()
 			wc._accept = false
 			wc.log.Warning("Cache shutdown .. stopping accepts")
+			shutdown.ReleaseFromShutdown()
+
 			return
 		}
 	}
@@ -349,6 +353,49 @@ func (wc *Cacher) Get(name *repr.StatName) (repr.StatReprSlice, error) {
 	}
 	stats.StatsdClientSlow.Incr("cacher.read.cache-gets.empty", 1)
 	return nil, nil
+}
+
+func (wc *Cacher) GetAsRawRenderItem(name *repr.StatName) (*RawRenderItem, error) {
+
+	data, err := wc.Get(name)
+	if err != nil {
+		return nil, err
+	}
+	if len(data) == 0 {
+		return nil, nil
+	}
+
+	rawd := new(RawRenderItem)
+	rawd.Start = uint32(data[0].Time.Unix())
+	rawd.End = uint32(data[len(data)-1].Time.Unix())
+	rawd.RealEnd = rawd.End
+	rawd.RealStart = rawd.Start
+
+	f_t := uint32(0)
+	step_t := uint32(0)
+
+	rawd.Data = make([]RawDataPoint, len(data), len(data))
+	for idx, pt := range data {
+		on_t := uint32(pt.Time.Unix())
+		rawd.Data[idx] = RawDataPoint{
+			Time:  on_t,
+			Count: pt.Count,
+			Min:   float64(pt.Min),
+			Max:   float64(pt.Max),
+			First: float64(pt.First),
+			Last:  float64(pt.Last),
+			Sum:   float64(pt.Sum),
+			Mean:  float64(pt.Mean),
+		}
+		if f_t <= 0 {
+			f_t = on_t
+		}
+		if step_t <= 0 && f_t >= 0 {
+			step_t = on_t - f_t
+		}
+	}
+	rawd.Step = step_t
+	return rawd, nil
 }
 
 func (wc *Cacher) GetById(metric_id repr.StatId) (*repr.StatName, repr.StatReprSlice, error) {

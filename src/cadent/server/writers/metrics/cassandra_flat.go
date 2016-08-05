@@ -55,6 +55,8 @@ import (
 	"syscall"
 
 	"cadent/server/dispatch"
+	"cadent/server/utils"
+	"cadent/server/utils/shutdown"
 	"cadent/server/writers/indexer"
 	"math"
 	"strings"
@@ -223,9 +225,8 @@ type CassandraFlatWriter struct {
 	cacheOverFlowChan chan *TotalTimeSeries // on byte overflow of cacher force a write
 	overFlowShutdown  chan bool
 
-	shutdown          chan bool // when triggered, we skip the rate limiter and go full out till the queue is done
-	shutitdown        bool      // just a flag
-	writes_per_second int       // allowed writes per second
+	shutitdown        bool // just a flag
+	writes_per_second int  // allowed writes per second
 	num_workers       int
 	queue_len         int
 	max_write_size    int           // size of that buffer before a flush
@@ -247,7 +248,7 @@ type CassandraFlatWriter struct {
 func NewCassandraFlatWriter(conf map[string]interface{}) (*CassandraFlatWriter, error) {
 	cass := new(CassandraFlatWriter)
 	cass.log = logging.MustGetLogger("metrics.cassandraflat")
-	cass.shutdown = make(chan bool)
+	cass.shutitdown = false
 
 	gots := conf["dsn"]
 	if gots == nil {
@@ -326,17 +327,18 @@ func NewCassandraFlatWriter(conf map[string]interface{}) (*CassandraFlatWriter, 
 		cass.db.MetricTable(),
 	)
 
-	go cass.TrapExit()
 	return cass, nil
 }
 
 func (cass *CassandraFlatWriter) Stop() {
+	shutdown.AddToShutdown()
+	defer shutdown.ReleaseFromShutdown()
 
+	cass.log.Warning("Starting Shutdown of writer")
 	if cass.shutitdown {
 		return // already did
 	}
 	cass.shutitdown = true
-	cass.shutdown <- true
 
 	cass.cacher.Stop()
 
@@ -623,9 +625,6 @@ type CassandraFlatMetric struct {
 	resolutions [][]int
 	indexer     indexer.Indexer
 	writer      *CassandraFlatWriter
-	render_wg   sync.WaitGroup
-	render_mu   sync.Mutex
-	shutonce    sync.Once
 }
 
 func NewCassandraFlatMetrics() *CassandraFlatMetric {
@@ -637,7 +636,7 @@ func (cass *CassandraFlatMetric) Start() {
 }
 
 func (cass *CassandraFlatMetric) Stop() {
-	cass.shutonce.Do(cass.writer.Stop)
+	cass.writer.Stop()
 }
 
 func (cass *CassandraFlatMetric) SetIndexer(idx indexer.Indexer) error {
@@ -701,8 +700,6 @@ func (cass *CassandraFlatMetric) Config(conf map[string]interface{}) (err error)
 			go gots.overFlowWrite()
 		}
 	}
-
-	cass.writer.Start() //start up
 
 	return nil
 }
@@ -795,7 +792,6 @@ func (cass *CassandraFlatMetric) RawRenderOne(metric indexer.MetricFindItem, fro
 	var t, count int64
 	var min, max, sum, first, last float64
 
-	// use mins or maxes for the "upper_xxx, lower_xxx"
 	m_key := metric.Id
 
 	var d_points []RawDataPoint
@@ -838,6 +834,7 @@ func (cass *CassandraFlatMetric) RawRenderOne(metric indexer.MetricFindItem, fro
 	rawd.Step = resolution
 	rawd.Metric = m_key
 	rawd.Data = d_points
+	rawd.Quantize() // fill out all the "blanks"
 
 	return rawd, nil
 }
@@ -886,6 +883,7 @@ func (cass *CassandraFlatMetric) RenderOne(metric indexer.MetricFindItem, from s
 
 	// grab from cache too if not yet written
 	_, inflight, err := cass.writer.cacher.GetById(stat_name.UniqueId())
+
 	// debuggers
 	//cass.writer.log.Critical("%s", s_key)
 	//cass.writer.cacher.DumpPoints(inflight)
@@ -1032,14 +1030,21 @@ func (cass *CassandraFlatMetric) Render(path string, from string, to string) (Wh
 		metrics = append(metrics, mets...)
 	}
 
+	render_wg := utils.GetWaitGroup()
+	defer utils.PutWaitGroup(render_wg)
+
+	render_mu := utils.GetMutex()
+	defer utils.PutMutex(render_mu)
+
 	// ye old fan out technique
 	render_one := func(metric indexer.MetricFindItem) {
+		defer render_wg.Done()
 		_ri, err := cass.RenderOne(metric, from, to)
+
 		if err != nil {
-			cass.render_wg.Done()
 			return
 		}
-		cass.render_mu.Lock()
+		render_mu.Lock()
 		for k, rr := range _ri.Series {
 			whis.Series[k] = rr
 		}
@@ -1048,25 +1053,22 @@ func (cass *CassandraFlatMetric) Render(path string, from string, to string) (Wh
 		whis.RealStart = _ri.RealStart
 		whis.RealEnd = _ri.RealEnd
 		whis.Step = _ri.Step
+		render_mu.Unlock()
 
-		cass.render_mu.Unlock()
-		cass.render_wg.Done()
 		return
 	}
 
 	for _, metric := range metrics {
-		cass.render_wg.Add(1)
+		render_wg.Add(1)
 		go render_one(metric)
 	}
-	cass.render_wg.Wait()
+	render_wg.Wait()
 	return whis, nil
 }
 
 func (cass *CassandraFlatMetric) RawRender(path string, from string, to string) ([]*RawRenderItem, error) {
 
 	defer stats.StatsdSlowNanoTimeFunc("reader.cassandraflat.rawrender.get-time-ns", time.Now())
-
-	var rawd []*RawRenderItem
 
 	paths := strings.Split(path, ",")
 	var metrics []indexer.MetricFindItem
@@ -1079,22 +1081,26 @@ func (cass *CassandraFlatMetric) RawRender(path string, from string, to string) 
 		metrics = append(metrics, mets...)
 	}
 
+	rawd := make([]*RawRenderItem, len(metrics), len(metrics))
+
+	render_wg := utils.GetWaitGroup()
+	defer utils.PutWaitGroup(render_wg)
+
 	// ye old fan out technique
-	render_one := func(metric indexer.MetricFindItem) {
+	render_one := func(metric indexer.MetricFindItem, idx int) {
+		defer render_wg.Done()
 		_ri, err := cass.RawRenderOne(metric, from, to)
 		if err != nil {
-			cass.render_wg.Done()
 			return
 		}
-		rawd = append(rawd, _ri)
-		cass.render_wg.Done()
+		rawd[idx] = _ri
 		return
 	}
 
-	for _, metric := range metrics {
-		cass.render_wg.Add(1)
-		go render_one(metric)
+	for idx, metric := range metrics {
+		render_wg.Add(1)
+		go render_one(metric, idx)
 	}
-	cass.render_wg.Wait()
+	render_wg.Wait()
 	return rawd, nil
 }

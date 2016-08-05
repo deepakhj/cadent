@@ -47,6 +47,7 @@ import (
 	"cadent/server/dispatch"
 	"cadent/server/repr"
 	"cadent/server/stats"
+	"cadent/server/utils/shutdown"
 	"cadent/server/writers/dbs"
 	"fmt"
 	"github.com/syndtr/goleveldb/leveldb"
@@ -386,12 +387,12 @@ func (lb *LevelDBIndexer) Config(conf map[string]interface{}) error {
 		lb.queue_len = int(_qs.(int64))
 	}
 
-	//lb.Start() // fire it up
-
 	return nil
 }
 
 func (lp *LevelDBIndexer) Stop() {
+	shutdown.AddToShutdown()
+	defer shutdown.ReleaseFromShutdown()
 	if !lp._accept {
 		return
 	}

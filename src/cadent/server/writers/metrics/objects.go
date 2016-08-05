@@ -143,6 +143,7 @@ func (r *RawDataPoint) Merge(d *RawDataPoint) {
 
 type RawRenderItem struct {
 	Metric    string         `json:"metric"`
+	Id        string         `json:"id"`
 	RealStart uint32         `json:"data_from"`
 	RealEnd   uint32         `json:"data_end"`
 	Start     uint32         `json:"from"`

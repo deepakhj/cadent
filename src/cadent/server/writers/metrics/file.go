@@ -17,6 +17,7 @@ package metrics
 import (
 	"cadent/server/broadcast"
 	"cadent/server/repr"
+	"cadent/server/utils/shutdown"
 	"cadent/server/writers/indexer"
 	"fmt"
 	logging "gopkg.in/op/go-logging.v1"
@@ -51,6 +52,8 @@ func NewFileMetrics() *FileMetrics {
 
 // TODO
 func (fi *FileMetrics) Stop() {
+	shutdown.AddToShutdown()
+
 	fi.shutdown.Send(true)
 }
 
@@ -121,6 +124,7 @@ func (fi *FileMetrics) PeriodicRotate() (err error) {
 				fi.fp.Close()
 				fi.fp = nil
 			}
+			shutdown.ReleaseFromShutdown()
 			return
 		case <-ticks.C:
 			err := fi.Rotate()
