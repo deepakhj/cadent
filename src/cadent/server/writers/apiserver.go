@@ -383,6 +383,19 @@ func (re *ApiLoop) NoOp(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
+func (re *ApiLoop) corsHandler(handler http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Add("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+
+		if r.Method == "OPTIONS" {
+			// nothing to do, CORS headers already sent
+			return
+		}
+		handler(w, r)
+	}
+}
+
 func (re *ApiLoop) Start() error {
 	mux := http.NewServeMux()
 	re.log.Notice("Starting reader http server on %s, base path: %s", re.Conf.Listen, re.Conf.BasePath)
@@ -434,7 +447,7 @@ func (re *ApiLoop) Start() error {
 	// start up the activateCacheLoop
 	go re.activateCacheLoop()
 
-	go http.Serve(conn, WriteLog(mux, outlog))
+	go http.Serve(conn, re.corsHandler(WriteLog(mux, outlog)))
 
 	re.shutdown = make(chan bool, 5)
 	re.started = true
