@@ -162,6 +162,7 @@ func (wc *Cacher) SetOverflowChan(ch chan *TotalTimeSeries) {
 
 func (wc *Cacher) Start() {
 	if !wc.started {
+		wc.log.Notice("Starting Metric Cache sorter tick (%d max metrics, %d max bytes per metric)", wc.maxKeys, wc.maxBytes)
 		go wc.startUpdateTick()
 		wc.started = true
 	}
@@ -282,8 +283,8 @@ func (wc *Cacher) Add(name *repr.StatName, stat *repr.StatRepr) error {
 				wc.overFlowChan <- &TotalTimeSeries{nm, gots}
 				stats.StatsdClientSlow.Incr("cacher.metrics.write.overflow", 1)
 
-				//must recompute the ordering
-				wc.updateQueue()
+				//must recompute the ordering XXX LOCKING ISSUE
+				//wc.updateQueue()
 
 				// break out of this loop and add a new guy
 				goto NEWSTAT
