@@ -15,7 +15,6 @@ const (
 	JSON
 	PROTOBUF
 	GORILLA
-	CODEC
 	MSGPACK
 	BINC
 	CBOR
@@ -36,8 +35,6 @@ func NameFromId(id uint8) string {
 		return "gorilla"
 	case MSGPACK:
 		return "msgpack"
-	case CODEC:
-		return "codec"
 	case BINC:
 		return "binc"
 	case CBOR:
@@ -63,13 +60,11 @@ func IdFromName(nm string) uint8 {
 		return GORILLA
 	case "msgpack":
 		return MSGPACK
-	case "codec":
-		return CODEC
 	case "binc":
 		return BINC
 	case "cbor":
 		return CBOR
-	case "REPR":
+	case "repr":
 		return REPR
 	default:
 		return 0
