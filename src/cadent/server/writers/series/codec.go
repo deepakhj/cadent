@@ -102,7 +102,7 @@ func (s *CodecTimeSeries) Len() int {
 	return s.buf.Len()
 }
 
-func (s *CodecTimeSeries) Iter() (TimeSeriesIter,  error) {
+func (s *CodecTimeSeries) Iter() (TimeSeriesIter, error) {
 	return NewCodecIterFromBytes(s.Bytes())
 }
 

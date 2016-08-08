@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	GOB uint8 = iota
+	GOB uint8 = iota + 1
 	ZIPGOB
 	JSON
 	PROTOBUF

@@ -28,7 +28,7 @@ type MsgpackTimeSeries struct {
 	fullRes bool
 	ct      int
 	buf     *bytes.Buffer
-	writer *msgp.Writer
+	writer  *msgp.Writer
 }
 
 func NewMsgpackTimeSeries(t0 int64, options *Options) *MsgpackTimeSeries {
@@ -157,7 +157,7 @@ func (s *MsgpackTimeSeries) AddStat(stat *repr.StatRepr) error {
 // but you should give it a "copy" of any byte array
 type MsgpackIter struct {
 	buf            *bytes.Reader
-	reader *msgp.Reader
+	reader         *msgp.Reader
 	curIdx         int
 	curStat        *msgpacker.Stat
 	fullResolution bool
@@ -182,7 +182,6 @@ func NewMsgpackIterFromBytes(data []byte) (TimeSeriesIter, error) {
 	if n != 4 {
 		return nil, fmt.Errorf("Msgpack: Invalid Header")
 	}
-
 
 	//fmt.Printf("NEXT: %v %n\n\n", it.buf.Len())
 
