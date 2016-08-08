@@ -12,20 +12,39 @@ CREATE TABLE `{path_table}` (
   KEY `length` (`length`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `{table}{table_prefix}` (
-  `id` int(11) unsigned NOT NULL AUTO_INCREMENT,
-  `stat` varchar(255) NOT NULL DEFAULT '',
-  `sum` float NOT NULL,
-  `mean` float NOT NULL,
-  `min` float NOT NULL,
-  `max` float NOT NULL,
-  `count` float NOT NULL,
-  `resolution` int(11) NOT NULL,
-  `time` datetime(3) NOT NULL,
-  PRIMARY KEY (`id`),
-  KEY `stat` (`stat`),
-  KEY `time` (`time`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+// for "mysql-flat
+CREATE TABLE `{metrics-table}{resolutionprefix}` (
+      `id` int(11) unsigned NOT NULL AUTO_INCREMENT,
+      `uid` varchar(50) NULL,
+      `path` varchar(255) NOT NULL DEFAULT '',
+      `sum` float NOT NULL,
+      `min` float NOT NULL,
+      `max` float NOT NULL,
+      `first` float NOT NULL,
+      `last` float NOT NULL,
+      `count` float NOT NULL,
+      `resolution` int(11) NOT NULL,
+      `time` datetime(6) NOT NULL,
+      PRIMARY KEY (`id`),
+      KEY `uid` (`uid`),
+      KEY `path` (`path`),
+      KEY `time` (`time`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+// for "mysql"  blob form
+CREATE TABLE `{table}{prefix}` (
+      `id` BIGINT unsigned NOT NULL AUTO_INCREMENT,
+      `uid` varchar(50) NULL,
+      `path` varchar(255) NOT NULL DEFAULT '',
+      `point_type` varchar(20) NOT NULL DEFAULT '',
+      `points` blob,
+      `stime` BIGINT unsigned NOT NULL,
+      `etime` BIGINT unsigned NOT NULL,
+      PRIMARY KEY (`id`),
+      KEY `uid` (`uid`),
+      KEY `path` (`path`),
+      KEY `time` (`stime`, `etime`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 	OPTIONS: For `Config`
 

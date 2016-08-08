@@ -41,7 +41,7 @@
 		cache_low_fruit_rate=0.25 # every 1/4 of the time write "low count" metrics to at least persist them
 		writes_per_second=5000 # allowed insert queries per second
 
-		blob_type="protobuf" # gob, gorilla, json, protobuf .. the data binary blob type
+		series_encoding_type="protobuf" # gob, gorilla, json, protobuf .. the data binary blob type
 
 		numcons=5  # cassandra connection pool size
 		timeout="30s" # query timeout
@@ -202,7 +202,7 @@ type CassandraWriter struct {
 	dispatch_queue   chan chan dispatch.IJob
 	write_dispatcher *dispatch.Dispatch
 	cacher           *Cacher
-	blob_series_type string
+	series_encoding  string
 
 	shutdown          chan bool // when triggered, we skip the rate limiter and go full out till the queue is done
 	shutitdown        bool      // just a flag
@@ -280,10 +280,10 @@ func NewCassandraWriter(conf map[string]interface{}) (*CassandraWriter, error) {
 		cass.writes_per_second = int(_rs.(int64))
 	}
 
-	cass.blob_series_type = CASSANDRA_DEFAULT_SERIES_TYPE
+	cass.series_encoding = CASSANDRA_DEFAULT_SERIES_TYPE
 	_bt := conf["blob_type"]
 	if _bt != nil {
-		cass.blob_series_type = _bt.(string)
+		cass.series_encoding = _bt.(string)
 	}
 
 	cass._insert_query = fmt.Sprintf(
@@ -301,7 +301,7 @@ func NewCassandraWriter(conf map[string]interface{}) (*CassandraWriter, error) {
 		cass.db.MetricTable(),
 	)
 
-	go cass.TrapExit()
+	//go cass.TrapExit() //let stop to this instead
 	return cass, nil
 }
 
@@ -527,7 +527,7 @@ func (cass *CassandraMetric) Config(conf map[string]interface{}) (err error) {
 	if resolution == nil {
 		return fmt.Errorf("Resulotuion needed for cassandra writer")
 	}
-	cache_str := conf["dsn"].(string) + gots.blob_series_type
+	cache_str := conf["dsn"].(string) + gots.series_encoding
 	gots.cacher, err = _get_cacher_signelton(cache_str)
 	if err != nil {
 		return err
@@ -550,7 +550,7 @@ func (cass *CassandraMetric) Config(conf map[string]interface{}) (err error) {
 	}
 
 	// match blob types
-	gots.cacher.seriesType = gots.blob_series_type
+	gots.cacher.seriesType = gots.series_encoding
 
 	return nil
 }

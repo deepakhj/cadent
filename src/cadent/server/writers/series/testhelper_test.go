@@ -479,6 +479,9 @@ func genericTestSeries(t *testing.T, stype string, options *Options) {
 			}
 
 			it, err := ser.Iter()
+			if err != nil {
+				t.Fatalf("Iterator Error: %v", err)
+			}
 			idx := 0
 			for it.Next() {
 				to, mi, mx, fi, ls, su, ct := it.Values()

@@ -1,5 +1,5 @@
 
-// render via: protoc --gogofaster_out=. *.proto
+//go:generate protoc --gogofaster_out=. protobuf.proto
 
 package series;
 

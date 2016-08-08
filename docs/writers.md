@@ -67,7 +67,7 @@ The main writers are
 
         Good for the highest throughput and data effiency for storage
 
-    - cassandra_flat: a row for each time/point
+    - cassandra-flat: a row for each time/point
 
         Good for simplicity, and when you are starting out w/ cassandra to verify things are working as planned
 
@@ -76,8 +76,15 @@ The main writers are
         Good for local testing or even a local collector for a given node, or if you simply want a better/faster/stronger
         carbon-cache like entity.
 
-    - mysql:
+    - mysql: a binary blob of timeseries points between a time range
 
+        If your data storage requirements are not overly huge, this is pretty good. (also since the local dev
+        on cassandra is "hard" and slow as it was never meant to run in a docker container really, this is
+        a bit easier to get going and start playing w/ blob formats)
+
+    - mysql-flat:
+
+        Like cassandra-flat but for mysql ..
         Good for "slow" stats (not huge throughput or volume as you will kill the DB)
 
 

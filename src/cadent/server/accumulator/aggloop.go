@@ -184,14 +184,14 @@ func (agg *AggregateLoop) SetWriter(conf writers.WriterConfig) error {
 		wr.SetIndexer(idx)
 
 		agg.OutWriters = append(agg.OutWriters, wr)
-		agg.log.Notice("Started duration %s Aggregator writer", dur.String())
+		agg.log.Notice("Set Aggregator writer @ %s", dur.String())
 		if num_writers == metrics.FirstResolution {
 			agg.log.Notice("Only one writer needed for this writer driver")
 			break
 		}
 
 	}
-	agg.log.Notice("Started %d Aggregator writers", len(agg.OutWriters))
+	agg.log.Notice("Set %d Aggregator writers", len(agg.OutWriters))
 	return nil
 }
 

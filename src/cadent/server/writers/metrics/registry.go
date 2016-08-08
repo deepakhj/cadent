@@ -12,6 +12,8 @@ func NewMetrics(name string) (Metrics, error) {
 	switch {
 	case name == "mysql":
 		return NewMySQLMetrics(), nil
+	case name == "mysql-flat":
+		return NewMySQLFlatMetrics(), nil
 	case name == "file":
 		return NewFileMetrics(), nil
 	case name == "cassandra":
@@ -30,6 +32,8 @@ func NewMetrics(name string) (Metrics, error) {
 func ResolutionsNeeded(name string) (WritersNeeded, error) {
 	switch {
 	case name == "mysql":
+		return AllResolutions, nil
+	case name == "mysql-flat":
 		return AllResolutions, nil
 	case name == "file":
 		return AllResolutions, nil

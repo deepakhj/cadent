@@ -468,6 +468,12 @@
 			"revisionTime": "2016-06-13T12:32:53Z"
 		},
 		{
+			"checksumSHA1": "mbhJnsNwGAwkTQH5c2hVRO9YmxA=",
+			"path": "github.com/philhofer/fwd",
+			"revision": "98c11a7a6ec829d672b03833c3d69a7fae1ca972",
+			"revisionTime": "2016-01-29T03:59:39Z"
+		},
+		{
 			"checksumSHA1": "1CgV24NpUYP9ZPIgcnbZD5F/8CA=",
 			"path": "github.com/reusee/mmh3",
 			"revision": "64b85163255bbb6af4f0d0eab61ecdda7ea7cd96",
@@ -523,6 +529,42 @@
 			"tree": true
 		},
 		{
+			"checksumSHA1": "BUVPFM3WljQTrBWpmzGqE1sHpEQ=",
+			"path": "github.com/tinylib/msgp",
+			"revision": "ad0ff2e232ad2e37faf67087fb24bf8d04a8ce20",
+			"revisionTime": "2016-08-03T06:23:24Z"
+		},
+		{
+			"checksumSHA1": "+gtojE7AuqP4x7dmbK1qSUKdZp8=",
+			"path": "github.com/tinylib/msgp/gen",
+			"revision": "ad0ff2e232ad2e37faf67087fb24bf8d04a8ce20",
+			"revisionTime": "2016-08-03T06:23:24Z"
+		},
+		{
+			"checksumSHA1": "aTiJJQgo4zVRwQ9O3y0IY7O9cAk=",
+			"path": "github.com/tinylib/msgp/msgp",
+			"revision": "ad0ff2e232ad2e37faf67087fb24bf8d04a8ce20",
+			"revisionTime": "2016-08-03T06:23:24Z"
+		},
+		{
+			"checksumSHA1": "atwFTXWCB+ErTq5rpKCO02n+uFM=",
+			"path": "github.com/tinylib/msgp/parse",
+			"revision": "ad0ff2e232ad2e37faf67087fb24bf8d04a8ce20",
+			"revisionTime": "2016-08-03T06:23:24Z"
+		},
+		{
+			"checksumSHA1": "qNT+bWeQb5+AZPehlP1br40kzhA=",
+			"path": "github.com/tinylib/msgp/printer",
+			"revision": "ad0ff2e232ad2e37faf67087fb24bf8d04a8ce20",
+			"revisionTime": "2016-08-03T06:23:24Z"
+		},
+		{
+			"checksumSHA1": "spJ1eXh+9C2lgTjm7ErpjQ8PaXw=",
+			"path": "github.com/ttacon/chalk",
+			"revision": "22c06c80ed312dcb6e1cf394f9634aa2c4676e22",
+			"revisionTime": "2016-06-26T20:24:18Z"
+		},
+		{
 			"checksumSHA1": "0Vna0ZeDxFdE/TjHgCiN2rBhGfI=",
 			"path": "github.com/ugorji/go/codec",
 			"revision": "3487a5545b3d480987dfb0492035299077fab33a",
@@ -533,6 +575,18 @@
 			"path": "golang.org/x/net/context",
 			"revision": "3f122ce3dbbe488b7e6a8bdb26f41edec852a40b",
 			"revisionTime": "2016-06-09T04:57:12Z"
+		},
+		{
+			"checksumSHA1": "zxA5c9WSpUYfg2SCWX/GuRTuALE=",
+			"path": "golang.org/x/tools/go/ast/astutil",
+			"revision": "72064bd64745c21ad7fe43d550d08e8f07bf4f73",
+			"revisionTime": "2016-08-05T20:40:13Z"
+		},
+		{
+			"checksumSHA1": "8ed/ZqmUrBJkID7xyrxGxUdOkJE=",
+			"path": "golang.org/x/tools/imports",
+			"revision": "72064bd64745c21ad7fe43d550d08e8f07bf4f73",
+			"revisionTime": "2016-08-05T20:40:13Z"
 		},
 		{
 			"checksumSHA1": "6f8MEU31llHM1sLM/GGH4/Qxu0A=",
@@ -551,6 +605,10 @@
 			"path": "gopkg.in/yaml.v2",
 			"revision": "a83829b6f1293c91addabc89d0571c246397bbf4",
 			"revisionTime": "2016-03-01T20:40:22Z"
+		},
+		{
+			"path": "https://github.com/tinylib/msgp",
+			"revision": ""
 		},
 		{
 			"path": "statsd",

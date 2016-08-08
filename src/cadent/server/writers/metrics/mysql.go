@@ -1,30 +1,42 @@
 /*
-	THe MySQL stat write
+	THe MySQL stat write for "binary" blobs of time series
 
-     CREATE TABLE `{table}_{keeperprefix}` (
-      `id` int(11) unsigned NOT NULL AUTO_INCREMENT,
+     CREATE TABLE `{table}{prefix}` (
+      `id` BIGINT unsigned NOT NULL AUTO_INCREMENT,
       `uid` varchar(50) NULL,
       `path` varchar(255) NOT NULL DEFAULT '',
-      `sum` float NOT NULL,
-      `min` float NOT NULL,
-      `max` float NOT NULL,
-      `first` float NOT NULL,
-      `last` float NOT NULL,
-      `count` float NOT NULL,
-      `resolution` int(11) NOT NULL,
-      `time` datetime(6) NOT NULL,
+      `point_type` TINYINT NOT NULL,
+      `points` blob,
+      `stime` BIGINT unsigned NOT NULL,
+      `etime` BIGINT unsigned NOT NULL,
       PRIMARY KEY (`id`),
       KEY `uid` (`uid`),
       KEY `path` (`path`),
-      KEY `time` (`time`)
+      KEY `time` (`stime`, `etime`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 	OPTIONS: For `Config`
 
-		table: base table name (default: metrics)
-		prefix: table prefix if any (_1s, _5m)
-		batch_count: batch this many inserts for much faster insert performance (default 1000)
-		periodic_flush: regardless of if batch_count met always flush things at this interval (default 1s)
+	table: base table name (default: metrics)
+	prefix: table prefix if any (_1s, _5m)
+
+	# series (and cache) encoding types
+	series_encoding: gorilla
+
+	# the "internal carbon-like-cache" size (ram is your friend)
+	# if there are more then this many metric keys in the system, newer ones will be DROPPED
+	cache_metric_size=102400
+
+	# number of points per metric to cache before we write them
+	# note you'll need AT MOST cache_byte_size * cache_metric_size * 2*8 bytes of RAM
+	# this is also the "chunk" size stored in Mysql
+	cache_byte_size=8192
+
+	# we write the blob after this much time even if it has not reached the byte limit
+	# one hour default
+	cache_longest_time=3600s
+
+
 
 */
 
@@ -32,15 +44,23 @@ package metrics
 
 import (
 	"cadent/server/repr"
+	"cadent/server/stats"
 	"cadent/server/utils/shutdown"
 	"cadent/server/writers/dbs"
 	"cadent/server/writers/indexer"
+	"cadent/server/writers/series"
 	"database/sql"
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
 	logging "gopkg.in/op/go-logging.v1"
 	"sync"
 	"time"
+)
+
+const (
+	MYSQL_DEFAULT_LONGEST_TIME = "3600s"
+	MYSQL_DEFAULT_SERIES_TYPE  = "gorilla"
+	MYSQL_DEFAULT_SERIES_CHUNK = 16 * 1024 * 1024 // 16kb
 )
 
 /****************** Interfaces *********************/
@@ -50,10 +70,24 @@ type MySQLMetrics struct {
 	indexer     indexer.Indexer
 	resolutions [][]int
 
+	series_encoding  string
+	blob_max_bytes   int
+	blob_oldest_time time.Duration
+
 	write_list     []repr.StatRepr // buffer the writes so as to do "multi" inserts per query
 	max_write_size int             // size of that buffer before a flush
 	max_idle       time.Duration   // either max_write_size will trigger a write or this time passing will
 	write_lock     sync.Mutex
+
+	cacher            *Cacher
+	cacheOverFlowChan chan *TotalTimeSeries // on byte overflow of cacher force a write
+	overFlowShutdown  chan bool
+
+	shutitdown        bool      // just a flag
+	shutdown          chan bool // just a flag
+	writes_per_second int       // allowed writes per second
+	num_workers       int
+	queue_len         int
 
 	log *logging.Logger
 }
@@ -65,12 +99,21 @@ func NewMySQLMetrics() *MySQLMetrics {
 }
 
 func (my *MySQLMetrics) Config(conf map[string]interface{}) error {
+
 	gots := conf["dsn"]
 	if gots == nil {
 		return fmt.Errorf("`dsn` (user:pass@tcp(host:port)/db) is needed for mysql config")
 	}
 	dsn := gots.(string)
-	db, err := dbs.NewDB("mysql", dsn, conf)
+
+	resolution := conf["resolution"]
+	if resolution == nil {
+		return fmt.Errorf("Resulotuion needed for mysql writer")
+	}
+
+	// newDB is a "cached" item to let us pass the connections around
+	db_key := dsn + fmt.Sprintf("%f", resolution)
+	db, err := dbs.NewDB("mysql", db_key, conf)
 	if err != nil {
 		return err
 	}
@@ -96,22 +139,116 @@ func (my *MySQLMetrics) Config(conf map[string]interface{}) error {
 			my.log.Error("Mysql Driver: Invalid Duration `%v`", _pr_flush)
 		}
 	}
+	// cacher and mysql options for series
+	my.series_encoding = MYSQL_DEFAULT_SERIES_TYPE
+	_bt := conf["series_encoding"]
+	if _bt != nil {
+		my.series_encoding = _bt.(string)
+	}
 
-	go my.PeriodFlush()
+	//cacher
+	my.cacher = NewCacher()
+	if err != nil {
+		return err
+	}
+	my.cacher.seriesType = my.series_encoding
+
+	my.blob_max_bytes = MYSQL_DEFAULT_SERIES_CHUNK
+	_bz := conf["cache_byte_size"]
+	if _bz != nil {
+		my.blob_max_bytes = int(_bz.(int64))
+	}
+	my.cacher.maxBytes = my.blob_max_bytes
+
+	pd := MYSQL_DEFAULT_LONGEST_TIME
+	_pd := conf["cache_longest_time"]
+	if _pd != nil {
+		pd = _pd.(string)
+	}
+	dur, err := time.ParseDuration(pd)
+	if err != nil {
+		return fmt.Errorf("Mysql cache_longest_time is not a valid duration: %v", err)
+	}
+	my.blob_oldest_time = dur
+
+	my.cacher.maxKeys = CACHER_METRICS_KEYS
+	_cz := conf["cache_metric_size"]
+	if _cz != nil {
+		my.cacher.maxKeys = _cz.(int)
+	}
+
+	// unlike the other writers, overflows of cache size are
+	// exactly what we want to write
+	my.cacher.overFlowMethod = "chan"
+	my.cacheOverFlowChan = make(chan *TotalTimeSeries, 128) // a little buffer
+	my.overFlowShutdown = make(chan bool)
+	my.cacher.SetOverflowChan(my.cacheOverFlowChan)
+
+	my.shutdown = make(chan bool)
 
 	return nil
 }
 
-// TODO
+func (my *MySQLMetrics) Start() {
+	my.log.Notice("Starting mysql writer for %s at %d bytes per series", my.db.Tablename(), my.blob_max_bytes)
+	my.cacher.Start()
+	go my.overFlowWrite()
+}
+
 func (my *MySQLMetrics) Stop() {
 	shutdown.AddToShutdown()
 	defer shutdown.ReleaseFromShutdown()
-	return
+	my.log.Warning("Starting Shutdown of writer")
+
+	if my.shutitdown {
+		return // already did
+	}
+	my.shutitdown = true
+
+	my.cacher.Stop()
+
+	if my.overFlowShutdown != nil {
+		my.overFlowShutdown <- true
+	}
+
+	mets := my.cacher.Queue
+	mets_l := len(mets)
+	my.log.Warning("Shutting down, exhausting the queue (%d items) and quiting", mets_l)
+	// full tilt write out
+	did := 0
+	for _, queueitem := range mets {
+		if did%100 == 0 {
+			my.log.Warning("shutdown purge: written %d/%d...", did, mets_l)
+		}
+		name, series, _ := my.cacher.GetSeriesById(queueitem.metric)
+		if series != nil {
+			stats.StatsdClient.Incr(fmt.Sprintf("writer.mysql.write.send-to-writers"), 1)
+			my.InsertSeries(name, series)
+		}
+		did++
+	}
+	my.log.Warning("shutdown purge: written %d/%d...", did, mets_l)
+	my.log.Warning("Shutdown finished ... quiting mysql blob writer")
+
 }
 
-// TODO
-func (my *MySQLMetrics) Start() {
-	return
+// listen to the overflow chan from the cache and attempt to write "now"
+func (my *MySQLMetrics) overFlowWrite() {
+	for {
+		select {
+		case <-my.overFlowShutdown:
+			return
+		case statitem := <-my.cacheOverFlowChan:
+
+			// bail
+			if my.shutitdown {
+				return
+			}
+
+			//my.log.Debug("Cache Write byte overflow %s.", statitem.Name.Key)
+			my.InsertSeries(statitem.Name, statitem.Series)
+		}
+	}
 }
 
 func (my *MySQLMetrics) SetIndexer(idx indexer.Indexer) error {
@@ -127,39 +264,32 @@ func (my *MySQLMetrics) SetResolutions(res [][]int) int {
 	return len(res) // need as many writers as bins
 }
 
-func (my *MySQLMetrics) PeriodFlush() {
-	for {
-		time.Sleep(my.max_idle)
-		my.Flush()
-	}
-}
+func (my *MySQLMetrics) InsertSeries(name *repr.StatName, timeseries series.TimeSeries) (int, error) {
 
-func (my *MySQLMetrics) Flush() (int, error) {
-	my.write_lock.Lock()
-	defer my.write_lock.Unlock()
-
-	l := len(my.write_list)
-	if l == 0 {
-		return 0, nil
-	}
+	// i.e metrics_5s
+	t_name := my.db.Tablename()
 
 	Q := fmt.Sprintf(
-		"INSERT INTO %s (id, uid, path, sum, min, max, last, count, resolution, time) VALUES ",
-		my.db.Tablename(),
+		"INSERT INTO %s (uid, path, point_type, points, stime, etime) VALUES ",
+		t_name,
 	)
 
 	vals := []interface{}{}
 
-	for _, stat := range my.write_list {
-		Q += "(?,?,?,?,?,?,?,?,?,?), "
-		vals = append(
-			vals, stat.UniqueId(), stat.Name.Key, stat.Sum, stat.Min, stat.Max, stat.Last, stat.Count, stat.Name.Resolution, stat.Time,
-		)
+	pts := timeseries.Bytes()
+	s_time := timeseries.StartTime()
+	e_time := timeseries.LastTime()
 
-	}
-
-	//trim the last ", "
-	Q = Q[0 : len(Q)-2]
+	Q += "(?,?,?,?,?,?)"
+	vals = append(
+		vals,
+		name.UniqueIdString(),
+		name.Key,
+		series.IdFromName(my.series_encoding),
+		pts,
+		s_time,
+		e_time,
+	)
 
 	//prepare the statement
 	stmt, err := my.conn.Prepare(Q)
@@ -176,26 +306,12 @@ func (my *MySQLMetrics) Flush() (int, error) {
 		return 0, err
 	}
 
-	my.write_list = nil
-	my.write_list = []repr.StatRepr{}
-	return l, nil
+	return 1, nil
 }
 
 func (my *MySQLMetrics) Write(stat repr.StatRepr) error {
-
-	if len(my.write_list) > my.max_write_size {
-		_, err := my.Flush()
-		if err != nil {
-			return err
-		}
-	}
-
-	my.indexer.Write(stat.Name) // to the indexer
-
-	// Flush can cause double locking
-	my.write_lock.Lock()
-	defer my.write_lock.Unlock()
-	my.write_list = append(my.write_list, stat)
+	my.indexer.Write(stat.Name)
+	my.cacher.Add(&stat.Name, &stat)
 	return nil
 }
 

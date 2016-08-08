@@ -11,7 +11,52 @@
 
 	this one ALSO LETS YOU UPDATE/MERGE data points in case times come in the past for older data points (which can
 	be a performance penalty)
+
 	the blob version does NOT allow upserts
+
+	A Schema for one to use
+
+	CREATE TYPE metric_point (
+            max double,
+            min double,
+            sum double,
+            first double,
+            last double,
+            count int
+        );
+
+
+        CREATE TYPE metric_path (
+            path text,
+            resolution int
+        );
+
+        CREATE TABLE metric.metric (
+            id varchar,
+            mpath frozen<metric_path>,
+            time bigint,
+            point frozen<metric_point>,
+            PRIMARY KEY (id, mpath, time)
+        ) WITH COMPACT STORAGE
+            AND CLUSTERING ORDER BY (mpath ASC, time ASC)
+            AND compaction = {
+                'class': 'DateTieredCompactionStrategy',
+                'min_threshold': '12',
+                'max_threshold': '32',
+                'max_sstable_age_days': '0.083',
+                'base_time_seconds': '50'
+            }
+            AND compression = {'sstable_compression': 'org.apache.cassandra.io.compress.LZ4Compressor'}
+            AND dclocal_read_repair_chance = 0.1
+            AND default_time_to_live = 0
+            AND gc_grace_seconds = 864000
+            AND max_index_interval = 2048
+            AND memtable_flush_period_in_ms = 0
+            AND min_index_interval = 128
+            AND read_repair_chance = 0.0
+            AND speculative_retry = '99.0PERCENTILE';
+
+	CONFIG options::
 
 	[graphite-cassandra-flat.accumulator.writer.metrics]
 	driver="cassandra-flat"
@@ -65,8 +110,6 @@ import (
 )
 
 const (
-	CASSANDRA_FLAT_RESULT_CACHE_SIZE = 1024 * 1024 * 100
-	CASSANDRA_FLAT_RESULT_CACHE_TTL  = 10 * time.Second
 	CASSANDRA_FLAT_METRIC_WORKERS    = 32
 	CASSANDRA_FLAT_METRIC_QUEUE_LEN  = 1024 * 100
 	CASSANDRA_FLAT_WRITES_PER_SECOND = 5000
@@ -160,31 +203,6 @@ func _get_flat_signelton(conf map[string]interface{}) (*CassandraFlatWriter, err
 	}
 	_CASS_FLAT_WRITER_SINGLETON[dsn] = writer
 	return writer, nil
-}
-
-/***** caching singletons (as readers need to see this as well) ***/
-
-// the singleton
-var _CASS_FLAT_CACHER_SINGLETON map[string]*Cacher
-var _cass_flat_cacher_mutex sync.Mutex
-
-func _get_flat_cacher_signelton(nm string) (*Cacher, error) {
-	_cass_flat_cacher_mutex.Lock()
-	defer _cass_flat_cacher_mutex.Unlock()
-
-	if val, ok := _CASS_CACHER_SINGLETON[nm]; ok {
-		return val, nil
-	}
-
-	cacher := NewCacher()
-	_CASS_FLAT_CACHER_SINGLETON[nm] = cacher
-	return cacher, nil
-}
-
-// special onload init
-func init() {
-	_CASS_FLAT_WRITER_SINGLETON = make(map[string]*CassandraFlatWriter)
-	_CASS_FLAT_CACHER_SINGLETON = make(map[string]*Cacher)
 }
 
 /************************************************************************/
@@ -663,7 +681,7 @@ func (cass *CassandraFlatMetric) Config(conf map[string]interface{}) (err error)
 	if resolution == nil {
 		return fmt.Errorf("Resulotuion needed for cassandra writer")
 	}
-	gots.cacher, err = _get_cacher_signelton(conf["dsn"].(string))
+	gots.cacher = NewCacher()
 	if err != nil {
 		return err
 	}
