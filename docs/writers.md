@@ -63,10 +63,10 @@ A "total" metric has the form
 Not everything is "done" .. as there are many things to write and verify, this is the status of the pieces
 "complete" means both the writing and render api's and functionality are finished
 
-- cassandra-indexer: Indexer is complete
+- cassandra-indexer: Complete
 - cassandra-blob: Not complete
-- caassandra-flat: Complete
-- mysql-indexer: Write complete, Reader API Not complete
+- cassandra-flat: Complete
+- mysql-indexer: Complete
 - mysql-flat: Not copmlete
 - mysql-blob: Complete
 - kafka: Complete (No reader API available)

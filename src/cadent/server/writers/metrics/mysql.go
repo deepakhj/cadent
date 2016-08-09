@@ -456,7 +456,7 @@ func (my *MySQLMetrics) GetFromDatabase(metric *indexer.MetricFindItem, resoluti
 	}
 
 	rows, err := my.conn.Query(Q, vals...)
-	my.log.Debug("Q: %s, %v", Q, vals)
+	//my.log.Debug("Q: %s, %v", Q, vals)
 
 	if err != nil {
 		my.log.Error("Mysql Driver: Metric select failed, %v", err)
