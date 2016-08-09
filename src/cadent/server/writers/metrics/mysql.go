@@ -3,7 +3,7 @@
 
      CREATE TABLE `{table}{prefix}` (
       `id` BIGINT unsigned NOT NULL AUTO_INCREMENT,
-      `uid` varchar(50) NULL,
+      `uid` varchar(50) CHARACTER SET ascii NOT NULL,
       `path` varchar(255) NOT NULL DEFAULT '',
       `ptype` TINYINT NOT NULL,
       `points` blob,
@@ -12,16 +12,17 @@
       PRIMARY KEY (`id`),
       KEY `uid` (`uid`),
       KEY `path` (`path`),
-      KEY `time` (`stime`, `etime`)
+      KEY `time` (`etime`, `stime`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+	Prefixes are `_{resolution}s` (i.e. "_" + (uint32 resolution) + "s")
 
 	OPTIONS: For `Config`
 
-	table: base table name (default: metrics)
-	prefix: table prefix if any (_1s, _5m)
+	table="metrics"
 
 	# series (and cache) encoding types
-	series_encoding: gorilla
+	series_encoding="gorilla"
 
 	# the "internal carbon-like-cache" size (ram is your friend)
 	# if there are more then this many metric keys in the system, newer ones will be DROPPED
@@ -51,6 +52,7 @@ import (
 	"cadent/server/writers/indexer"
 	"cadent/server/writers/series"
 	"database/sql"
+	"errors"
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
 	logging "gopkg.in/op/go-logging.v1"
@@ -66,6 +68,10 @@ const (
 	MYSQL_DEFAULT_SERIES_CHUNK = 16 * 1024 // 16kb
 	MYSQL_RENDER_TIMEOUT       = "5s"      // 5 second time out on any render
 )
+
+// common errors to avoid GC pressure
+var errNotADataNode = errors.New("Mysql: Render: Not a data node")
+var errTimeTooSmall = errors.New("Mysql: Render: time too narrow")
 
 /****************** Interfaces *********************/
 type MySQLMetrics struct {
@@ -427,17 +433,17 @@ func (my *MySQLMetrics) GetFromReadCache(metric string, start int64, end int64) 
 }
 
 // grab the time series from the DBs
-func (my *MySQLMetrics) GetFromDatabase(metric *indexer.MetricFindItem, start int64, end int64) (rawd *RawRenderItem, err error) {
+func (my *MySQLMetrics) GetFromDatabase(metric *indexer.MetricFindItem, resolution uint32, start int64, end int64) (rawd *RawRenderItem, err error) {
 	// i.e metrics_5s
-	t_name := my.db.Tablename()
+	t_name := my.db.RootMetricsTableName()
 	rawd = new(RawRenderItem)
 
 	Q := fmt.Sprintf(
-		"SELECT ptype, points FROM %s WHERE uid=? AND etime >= ? AND etime <= ?",
-		t_name,
+		"SELECT ptype, points FROM %s_%ds WHERE uid=? AND etime >= ? AND etime <= ?",
+		t_name, resolution,
 	)
 
-	// times need to be in Nanos, but comin as a epoch
+	// times need to be in Nanos, but comming as a epoch
 	// time in cassandra is in NanoSeconds so we need to pad the times from seconds -> nanos
 	nano := int64(time.Second)
 	nano_end := end * nano
@@ -558,12 +564,12 @@ func (my *MySQLMetrics) RawDataRenderOne(metric *indexer.MetricFindItem, from st
 
 	if metric.Leaf == 0 {
 		//data only but return a "blank" data set otherwise graphite no likey
-		return rawd, fmt.Errorf("Mysql: RawRenderOne: Not a data node")
+		return rawd, errNotADataNode
 	}
 
 	b_len := (u_end - u_start) / resolution //just to be safe
 	if b_len <= 0 {
-		return rawd, fmt.Errorf("Mysql: RawRenderOne: time too narrow")
+		return rawd, errTimeTooSmall
 	}
 
 	//cache check
@@ -616,7 +622,7 @@ func (my *MySQLMetrics) RawDataRenderOne(metric *indexer.MetricFindItem, from st
 	}
 
 	// and now for the mysql Query otherwise
-	mysql_data, err := my.GetFromDatabase(metric, start, end)
+	mysql_data, err := my.GetFromDatabase(metric, resolution, start, end)
 	if err != nil {
 		my.log.Error("Mysql: Error getting from DB: %v", err)
 		return rawd, err

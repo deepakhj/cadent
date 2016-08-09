@@ -80,7 +80,6 @@ func (sa *Aggregator) Add(stat StatRepr) error {
 		element.Min = stat.Min
 	}
 	element.Sum += stat.Sum
-	element.Mean = JsonFloat64(float64(element.Sum) / float64(element.Count))
 	element.Time = res_time
 	element.Name.Resolution = uint32(sa.Resolution.Seconds())
 	sa.Items[m_k] = element

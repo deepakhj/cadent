@@ -130,7 +130,6 @@ type StatRepr struct {
 	Min   JsonFloat64 `json:"min"`
 	Max   JsonFloat64 `json:"max"`
 	Sum   JsonFloat64 `json:"sum"`
-	Mean  JsonFloat64 `json:"mean"`
 	First JsonFloat64 `json:"first"`
 	Last  JsonFloat64 `json:"last"`
 	Count int64       `json:"count"`
@@ -191,7 +190,6 @@ func (s *StatRepr) Merge(stat *StatRepr) *StatRepr {
 			out.Max = stat.Max
 		}
 		out.Count = out.Count + stat.Count
-		out.Mean = (out.Sum + s.Sum) / JsonFloat64(out.Count)
 		out.Sum = out.Sum + stat.Sum
 		return out
 	}
@@ -205,7 +203,6 @@ func (s *StatRepr) Merge(stat *StatRepr) *StatRepr {
 		out.Max = s.Max
 	}
 	out.Count = out.Count + s.Count
-	out.Mean = (out.Sum + s.Sum) / JsonFloat64(out.Count)
 	out.Sum = out.Sum + s.Sum
 	return out
 }
@@ -231,8 +228,8 @@ func (s *StatRepr) ContainsSelf(stats []*StatRepr) bool {
 }
 
 func (s *StatRepr) String() string {
-	m := float64(s.Mean)
-	if s.Count > 0 && m == 0 {
+	m := float64(s.Sum)
+	if s.Count > 0 {
 		m = float64(s.Sum) / float64(s.Count)
 	}
 	return fmt.Sprintf("Stat: Mean: %f @ %s/%d/%d", m, s.Time, s.Name.Resolution, s.Name.TTL)

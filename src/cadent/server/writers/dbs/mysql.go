@@ -5,12 +5,27 @@
 
 // this is for easy index searches on paths
 
+
+CREATE TABLE `{segment_table}` (
+  `segment` varchar(255) NOT NULL DEFAULT '',
+  `pos` int NOT NULL,
+  PRIMARY KEY (`pos`, `segment`)
+);
+
 CREATE TABLE `{path_table}` (
+      `id` BIGINT unsigned NOT NULL AUTO_INCREMENT,
+  `segment` varchar(255) NOT NULL,
+  `pos` int NOT NULL,
+  `uid` varchar(50) NOT NULL,
   `path` varchar(255) NOT NULL DEFAULT '',
   `length` int NOT NULL,
-  PRIMARY KEY (`path`),
+  `has_data` bool DEFAULT 0,
+  PRIMARY KEY (`id`),
+  KEY `seg_pos` (`segment`, `pos`),
+  KEY `uid` (`uid`),
   KEY `length` (`length`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+);
+
 
 // for "mysql-flat
 CREATE TABLE `{metrics-table}{resolutionprefix}` (
@@ -68,10 +83,11 @@ import (
 
 /****************** Interfaces *********************/
 type MySQLDB struct {
-	conn         *sql.DB
-	table        string
-	path_table   string
-	table_prefix string
+	conn          *sql.DB
+	table         string
+	path_table    string
+	segment_table string
+	table_prefix  string
 
 	log *logging.Logger
 }
@@ -107,6 +123,13 @@ func (my *MySQLDB) Config(conf map[string]interface{}) error {
 		my.path_table = _ptable.(string)
 	}
 
+	_stable := conf["segment_table"]
+	if _ptable == nil {
+		my.segment_table = "metric_segment"
+	} else {
+		my.segment_table = _stable.(string)
+	}
+
 	// file prefix
 	_pref := conf["prefix"]
 	if _pref == nil {
@@ -132,6 +155,10 @@ func (my *MySQLDB) Tablename() string {
 
 func (my *MySQLDB) PathTable() string {
 	return my.path_table
+}
+
+func (my *MySQLDB) SegmentTable() string {
+	return my.segment_table
 }
 
 func (my *MySQLDB) Connection() DBConn {

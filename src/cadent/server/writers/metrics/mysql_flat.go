@@ -1,9 +1,9 @@
 /*
-	THe MySQL stat write
+	THe MySQL flat stat write
 
      CREATE TABLE `{metrics-table}{resolutionprefix}` (
-      `id` int(11) unsigned NOT NULL AUTO_INCREMENT,
-      `uid` varchar(50) NULL,
+      `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+      `uid` varchar(50) CHARACTER SET ascii NOT NULL ,
       `path` varchar(255) NOT NULL DEFAULT '',
       `sum` float NOT NULL,
       `min` float NOT NULL,
@@ -11,7 +11,6 @@
       `first` float NOT NULL,
       `last` float NOT NULL,
       `count` float NOT NULL,
-      `resolution` int(11) NOT NULL,
       `time` datetime(6) NOT NULL,
       PRIMARY KEY (`id`),
       KEY `uid` (`uid`),
@@ -22,7 +21,6 @@
 	OPTIONS: For `Config`
 
 		table: base table name (default: metrics)
-		prefix: table prefix if any (_1s, _5m)
 		batch_count: batch this many inserts for much faster insert performance (default 1000)
 		periodic_flush: regardless of if batch_count met always flush things at this interval (default 1s)
 
@@ -56,6 +54,9 @@ type MySQLFlatMetrics struct {
 	write_lock     sync.Mutex
 
 	log *logging.Logger
+
+	shutitdown bool
+	shutdown   chan bool
 }
 
 func NewMySQLFlatMetrics() *MySQLFlatMetrics {
@@ -97,21 +98,26 @@ func (my *MySQLFlatMetrics) Config(conf map[string]interface{}) error {
 		}
 	}
 
-	go my.PeriodFlush()
+	my.shutitdown = false
+	my.shutdown = make(chan bool)
 
 	return nil
 }
 
 // TODO
 func (my *MySQLFlatMetrics) Stop() {
+	if my.shutitdown {
+		return
+	}
+	my.shutitdown = true
 	shutdown.AddToShutdown()
-	defer shutdown.ReleaseFromShutdown()
+	my.shutdown <- true
 	return
 }
 
 // TODO
 func (my *MySQLFlatMetrics) Start() {
-	return
+	go my.PeriodFlush()
 }
 
 func (my *MySQLFlatMetrics) SetIndexer(idx indexer.Indexer) error {
@@ -129,8 +135,15 @@ func (my *MySQLFlatMetrics) SetResolutions(res [][]int) int {
 
 func (my *MySQLFlatMetrics) PeriodFlush() {
 	for {
-		time.Sleep(my.max_idle)
-		my.Flush()
+		select {
+		case <-my.shutdown:
+			shutdown.ReleaseFromShutdown()
+			my.Flush()
+			return
+		default:
+			time.Sleep(my.max_idle)
+			my.Flush()
+		}
 	}
 }
 
@@ -144,18 +157,17 @@ func (my *MySQLFlatMetrics) Flush() (int, error) {
 	}
 
 	Q := fmt.Sprintf(
-		"INSERT INTO %s (id, uid, path, sum, min, max, last, count, resolution, time) VALUES ",
+		"INSERT INTO %s (id, uid, path, sum, min, max, last, count, time) VALUES ",
 		my.db.Tablename(),
 	)
 
 	vals := []interface{}{}
 
 	for _, stat := range my.write_list {
-		Q += "(?,?,?,?,?,?,?,?,?,?), "
+		Q += "(?,?,?,?,?,?,?,?,?), "
 		vals = append(
-			vals, stat.UniqueId(), stat.Name.Key, stat.Sum, stat.Min, stat.Max, stat.Last, stat.Count, stat.Name.Resolution, stat.Time,
+			vals, stat.Name.UniqueIdString(), stat.Name.Key, stat.Sum, stat.Min, stat.Max, stat.Last, stat.Count, stat.Time,
 		)
-
 	}
 
 	//trim the last ", "

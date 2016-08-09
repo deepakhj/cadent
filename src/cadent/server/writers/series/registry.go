@@ -7,6 +7,7 @@ package series
 
 import (
 	"fmt"
+	"github.com/golang/snappy"
 )
 
 const (
@@ -21,8 +22,29 @@ const (
 	REPR
 )
 
+const (
+	SNAPPY_GOB uint8 = iota + 20
+	SNAPPY_ZIPGOB
+	SNAPPY_JSON
+	SNAPPY_PROTOBUF
+	SNAPPY_GORILLA
+	SNAPPY_MSGPACK
+	SNAPPY_BINC
+	SNAPPY_CBOR
+	SNAPPY_REPR
+)
+
+func IsCompressed(id uint8) bool {
+	return id >= 20
+}
+
 func NameFromId(id uint8) string {
-	switch id {
+	// snappy compressed maybe
+	use_id := id
+	if id >= 20 {
+		use_id = use_id - 20
+	}
+	switch use_id {
 	case GOB:
 		return "gob"
 	case ZIPGOB:
@@ -123,4 +145,25 @@ func NewIter(name string, data []byte) (TimeSeriesIter, error) {
 	default:
 		return nil, fmt.Errorf("Invalid time series type `%s`", name)
 	}
+}
+
+func DecompressBytes(seriestype uint8, data []byte) ([]byte, error) {
+
+	// not compressed
+	if !IsCompressed(seriestype) {
+		return data, nil
+	}
+
+	outs := make([]byte, 0)
+	return snappy.Decode(outs, data)
+}
+
+func CompressBytes(seriestype uint8, data []byte) ([]byte, error) {
+
+	// not to be compressed
+	if !IsCompressed(seriestype) {
+		return data, nil
+	}
+
+	return snappy.Encode(nil, data), nil
 }

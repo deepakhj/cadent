@@ -24,6 +24,7 @@ import (
 
 type KafkaPath struct {
 	Id       repr.StatId `json:"id"`
+	Uid      string      `json:"uid"`
 	Type     string      `json:"type"`
 	Path     string      `json:"path"`
 	Segments []string    `json:"segments"`
@@ -107,6 +108,7 @@ func (kf *KafkaIndexer) Write(skey repr.StatName) error {
 	item := &KafkaPath{
 		Type:     "index",
 		Id:       skey.UniqueId(),
+		Uid:      skey.UniqueIdString(),
 		Path:     skey.Key,
 		Segments: strings.Split(skey.Key, "."),
 		Tags:     skey.SortedTags(),

@@ -32,6 +32,7 @@ import (
 
 	"cadent/server/utils"
 	"cadent/server/utils/shutdown"
+	"errors"
 	whisper "github.com/robyoung/go-whisper"
 	logging "gopkg.in/op/go-logging.v1"
 	"os"
@@ -46,6 +47,9 @@ const (
 	WHISPER_METRIC_QUEUE_LEN  = 1024 * 100
 	WHISPER_WRITES_PER_SECOND = 1024
 )
+
+var errWhisperNotaDataNode = errors.New("Whisper: RawRenderOne: Not a data node")
+var errWhisperNoDataInTimes = errors.New("Whisper: No data between these times")
 
 // the singleton (per DSN) as we really only want one "controller" of writes not many lest we explode the
 // IOwait to death
@@ -648,7 +652,7 @@ func (ws *WhisperMetrics) RawDataRenderOne(metric indexer.MetricFindItem, from s
 
 	if metric.Leaf == 0 {
 		//data only
-		return rawd, fmt.Errorf("Whisper: RawRenderOne: Not a data node")
+		return rawd, errWhisperNotaDataNode
 	}
 
 	start, err := ParseTime(from)
@@ -732,7 +736,7 @@ func (ws *WhisperMetrics) RawDataRenderOne(metric indexer.MetricFindItem, from s
 
 	if err != nil || series == nil {
 		if err == nil {
-			err = fmt.Errorf("No data between these times")
+			err = errWhisperNoDataInTimes
 		}
 		ws.writer.log.Error("Could not get series from %s : error: %v", path, err)
 		return rawd, err

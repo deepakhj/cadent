@@ -114,6 +114,8 @@ const (
 	CASSANDRA_FLAT_METRIC_QUEUE_LEN  = 1024 * 100
 	CASSANDRA_FLAT_WRITES_PER_SECOND = 5000
 	CASSANDRA_FLAT_WRITE_UPSERT      = true
+	CASSANDRA_FLAT_RENDER_TIMEOUT    = "5s" // 5 second time out on any render
+
 )
 
 /** Being Cassandra we need some mappings to match the schemas **/
@@ -446,7 +448,6 @@ func (cass *CassandraFlatWriter) mergeWrite(stat *repr.StatRepr) *repr.StatRepr 
 			Last:  repr.JsonFloat64(last),
 			First: repr.JsonFloat64(first),
 			Count: count,
-			Mean:  repr.JsonFloat64(float64(sum) / float64(count)),
 			Sum:   repr.JsonFloat64(sum),
 			Min:   repr.JsonFloat64(min),
 			Max:   repr.JsonFloat64(max),
@@ -643,6 +644,8 @@ type CassandraFlatMetric struct {
 	resolutions [][]int
 	indexer     indexer.Indexer
 	writer      *CassandraFlatWriter
+
+	render_timeout time.Duration
 }
 
 func NewCassandraFlatMetrics() *CassandraFlatMetric {
@@ -689,6 +692,12 @@ func (cass *CassandraFlatMetric) Config(conf map[string]interface{}) (err error)
 	if err != nil {
 		return err
 	}
+
+	rdur, err := time.ParseDuration(CASSANDRA_FLAT_RENDER_TIMEOUT)
+	if err != nil {
+		return err
+	}
+	cass.render_timeout = rdur
 
 	// prevent a reader from squshing this cacher
 	if !gots.cacher.started && !gots.cacher.inited {
@@ -758,15 +767,6 @@ func (cass *CassandraFlatMetric) getResolution(from int64, to int64) uint32 {
 	return uint32(cass.resolutions[len(cass.resolutions)-1][0])
 }
 
-// based on the resolution attempt to round start/end nicely by the resolutions
-func (cass *CassandraFlatMetric) truncateTo(num int64, mod uint32) int64 {
-	_mods := uint32(math.Mod(float64(num), float64(mod)))
-	if _mods < mod/2 {
-		return num - int64(_mods)
-	}
-	return num + int64(mod-_mods)
-}
-
 func (cass *CassandraFlatMetric) RawRenderOne(metric indexer.MetricFindItem, from string, to string) (*RawRenderItem, error) {
 	defer stats.StatsdSlowNanoTimeFunc("reader.cassandraflat.renderraw.get-time-ns", time.Now())
 
@@ -793,8 +793,8 @@ func (cass *CassandraFlatMetric) RawRenderOne(metric indexer.MetricFindItem, fro
 	//figure out the best res
 	resolution := cass.getResolution(start, end)
 
-	start = cass.truncateTo(start, resolution)
-	end = cass.truncateTo(end, resolution)
+	start = TruncateTimeTo(start, int(resolution))
+	end = TruncateTimeTo(end, int(resolution))
 
 	b_len := uint32(end-start) / resolution //just to be safe
 	if b_len <= 0 {
@@ -1007,23 +1007,33 @@ func (cass *CassandraFlatMetric) Render(path string, from string, to string) (Wh
 	// ye old fan out technique
 	render_one := func(metric indexer.MetricFindItem) {
 		defer render_wg.Done()
-		_ri, err := cass.RenderOne(metric, from, to)
+		timeout := time.NewTimer(cass.render_timeout)
+		for {
+			select {
+			case <-timeout.C:
+				cass.writer.log.Error("Render Timeout for %s (%s->%s)", path, from, to)
+				timeout.Stop()
+				return
+			default:
+			}
+			_ri, err := cass.RenderOne(metric, from, to)
 
-		if err != nil {
+			if err != nil {
+				return
+			}
+			render_mu.Lock()
+			for k, rr := range _ri.Series {
+				whis.Series[k] = rr
+			}
+			whis.Start = _ri.Start
+			whis.End = _ri.End
+			whis.RealStart = _ri.RealStart
+			whis.RealEnd = _ri.RealEnd
+			whis.Step = _ri.Step
+			render_mu.Unlock()
+
 			return
 		}
-		render_mu.Lock()
-		for k, rr := range _ri.Series {
-			whis.Series[k] = rr
-		}
-		whis.Start = _ri.Start
-		whis.End = _ri.End
-		whis.RealStart = _ri.RealStart
-		whis.RealEnd = _ri.RealEnd
-		whis.Step = _ri.Step
-		render_mu.Unlock()
-
-		return
 	}
 
 	for _, metric := range metrics {

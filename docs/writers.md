@@ -58,6 +58,22 @@ A "total" metric has the form
          Metric StatMetric
     }
 
+### Status
+
+Not everything is "done" .. as there are many things to write and verify, this is the status of the pieces
+"complete" means both the writing and render api's and functionality are finished
+
+- cassandra-indexer: Indexer is complete
+- cassandra-blob: Not complete
+- caassandra-flat: Complete
+- mysql-indexer: Write complete, Reader API Not complete
+- mysql-flat: Not copmlete
+- mysql-blob: Complete
+- kafka: Complete (No reader API available)
+- file: Complete (No Reader API available)
+- leveldb-indexer: Complete
+- whisper: Complete
+
 
 #### When to choose and why
 
@@ -87,6 +103,10 @@ The main writers are
         Like cassandra-flat but for mysql ..
         Good for "slow" stats (not huge throughput or volume as you will kill the DB)
 
+    - kafka:
+
+        Toss stats into a kafka topic (no readers/render api for this mode)
+
 
 ### Writer Schemas
 
@@ -97,18 +117,29 @@ You should make Schemas like so (`datetime(6)` is microsecond resolution, if you
 `times` probably best to keep that as "normal" `datetime`).  The TTLs are not relevant here.  The `path_table` is
 useful for key space lookups
 
-    CREATE TABLE `{path_table}` (
-        `uid` varchar(50)  NULL,
-        `path` varchar(255) NOT NULL DEFAULT '',
-        `length` int NOT NULL
-        PRIMARY KEY `uid` (`uid`),
-        KEY `path` (`path`),
-         KEY `length` (`length`)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+        CREATE TABLE `{segment_table}` (
+            `segment` varchar(255) NOT NULL DEFAULT '',
+            `pos` int NOT NULL,
+            PRIMARY KEY (`pos`, `segment`)
+        );
+
+        CREATE TABLE `{path_table}` (
+            `id` BIGINT unsigned NOT NULL AUTO_INCREMENT,
+            `segment` varchar(255) NOT NULL,
+            `pos` int NOT NULL,
+            `uid` varchar(50) NOT NULL,
+            `path` varchar(255) NOT NULL DEFAULT '',
+            `length` int NOT NULL,
+            `has_data` bool DEFAULT 0,
+            PRIMARY KEY (`id`),
+            KEY `seg_pos` (`segment`, `pos`),
+            KEY `uid` (`uid`),
+            KEY `length` (`length`)
+        );
 
     CREATE TABLE `{table}_{resolution}s` (
-      `id` int(11) unsigned NOT NULL AUTO_INCREMENT,
-      `uid` varchar(50) NULL,
+      `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+      `uid` varchar(50) CHARACTER SET ascii NOT NULL,
       `path` varchar(255) NOT NULL DEFAULT '',
       `sum` float NOT NULL,
       `min` float NOT NULL,
@@ -116,7 +147,6 @@ useful for key space lookups
       `first` float NOT NULL,
       `last` float NOT NULL,
       `count` float NOT NULL,
-      `resolution` int(11) NOT NULL,
       `time` datetime(6) NOT NULL,
       PRIMARY KEY (`id`),
       KEY `uid` (`uid`),
@@ -157,7 +187,7 @@ The index table the same if using mysql for that.  The Blob table is different o
 
     CREATE TABLE `{table}_{resolution}s` (
       `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-      `uid` varchar(50) DEFAULT NULL,
+      `uid` varchar(50) DEFAULT CHARACTER SET ascii NOT NULL,
       `path` varchar(255) NOT NULL DEFAULT '',
       `ptype` tinyint(4) NOT NULL,
       `points` blob,
@@ -192,7 +222,7 @@ Config OPtions
 Good for just testing stuff or, well, other random inputs not yet supported
 This will dump a TAB delimited file per `times` item of
 
-    statname sum mean min max count resolution nano_timestamp nano_ttl
+    statname uniqueid sum min max first last count resolution nano_timestamp nano_ttl
 
 If your for times are `times = ["10s", "1m", "10m"]` you will get 3 files of the names.
 
@@ -479,7 +509,6 @@ already and consumers can deal with indexing)
     	    metric: "my.metric.is.good",
     	    id: [uint32 MMH3],
     	    sum: float64,
-    	    mean: float64,
     	    min: float64,
     	    max: float64,
     	    first: float64,

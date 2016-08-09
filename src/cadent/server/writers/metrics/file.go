@@ -19,12 +19,16 @@ import (
 	"cadent/server/repr"
 	"cadent/server/utils/shutdown"
 	"cadent/server/writers/indexer"
+	"errors"
 	"fmt"
 	logging "gopkg.in/op/go-logging.v1"
 	"os"
 	"sync"
 	"time"
 )
+
+var errNoFilePointer = errors.New("Cannot write point, no file pointer")
+var errFileReaderNotImplimented = errors.New("FILE READER NOT IMPLMENTED")
 
 /****************** Interfaces *********************/
 type FileMetrics struct {
@@ -180,18 +184,18 @@ func (fi *FileMetrics) WriteLine(line string) (int, error) {
 	fi.write_lock.Lock()
 	defer fi.write_lock.Unlock()
 	if fi.fp == nil {
-		return 0, fmt.Errorf("Cannot write point, no file pointer")
+		return 0, errNoFilePointer
 	}
 	return fi.fp.Write([]byte(line))
 }
 
 func (fi *FileMetrics) Write(stat repr.StatRepr) error {
 
-	// stat\tsum\tmin\tmax\tlast\tcount\tresoltion\ttime\tttl
+	// stat\tuid\tsum\tmin\tmax\tlast\tcount\tresoltion\ttime\tttl
 
 	line := fmt.Sprintf(
-		"%s\t%0.6f\t%0.6f\t%0.6f\t%0.6f\t%0.6f\t%d\t%d\t%d\t%d\n",
-		stat.Name.Key, stat.Sum, stat.Min, stat.Max, stat.First, stat.Last, stat.Count,
+		"%s\t%s\t%0.6f\t%0.6f\t%0.6f\t%0.6f\t%0.6f\t%d\t%d\t%d\t%d\n",
+		stat.Name.Key, stat.Name.UniqueIdString(), stat.Sum, stat.Min, stat.Max, stat.First, stat.Last, stat.Count,
 		stat.Name.Resolution, stat.Time.UnixNano(), stat.Name.TTL,
 	)
 
@@ -204,8 +208,8 @@ func (fi *FileMetrics) Write(stat repr.StatRepr) error {
 /**** READER ***/
 // XXX TODO
 func (my *FileMetrics) Render(path string, from string, to string) (WhisperRenderItem, error) {
-	return WhisperRenderItem{}, fmt.Errorf("FILE READER NOT YET DONE")
+	return WhisperRenderItem{}, errFileReaderNotImplimented
 }
 func (my *FileMetrics) RawRender(path string, from string, to string) ([]*RawRenderItem, error) {
-	return []*RawRenderItem{}, fmt.Errorf("FILE READER NOT YET DONE")
+	return []*RawRenderItem{}, errFileReaderNotImplimented
 }

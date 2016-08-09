@@ -27,7 +27,6 @@ type KafkaMetric struct {
 	Time       int64            `json:"time"`
 	Metric     string           `json:"metric"`
 	Sum        repr.JsonFloat64 `json:"sum"`
-	Mean       repr.JsonFloat64 `json:"mean"`
 	Min        repr.JsonFloat64 `json:"min"`
 	Max        repr.JsonFloat64 `json:"max"`
 	Count      int64            `json:"count"`
@@ -35,6 +34,7 @@ type KafkaMetric struct {
 	First      repr.JsonFloat64 `json:"first"`
 	Resolution uint32           `json:"resolution"`
 	Id         repr.StatId      `json:"id"`
+	Uid        string           `json:"uid"`
 	TTL        uint32           `json:"ttl"`
 	Tags       repr.SortingTags `json:"tags"` // key1=value1,key2=value2...
 
@@ -140,13 +140,13 @@ func (kf *KafkaMetrics) Write(stat repr.StatRepr) error {
 		Sum:        stat.Sum,
 		First:      stat.First,
 		Last:       stat.Last,
-		Mean:       stat.Mean,
 		Count:      stat.Count,
 		Max:        stat.Max,
 		Min:        stat.Min,
 		Resolution: stat.Name.Resolution,
 		TTL:        stat.Name.TTL,
 		Id:         stat.Name.UniqueId(),
+		Uid:        stat.Name.UniqueIdString(),
 		Tags:       stat.Name.SortedTags(),
 	}
 

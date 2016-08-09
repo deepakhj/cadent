@@ -36,6 +36,28 @@ const (
 	CACHER_METRICS_KEYS = 1024 * 1024
 )
 
+// the singleton
+var _CACHER_SINGLETON map[string]*Cacher
+var _cacher_mutex sync.Mutex
+
+func getCacherSingleton(nm string) (*Cacher, error) {
+	_cacher_mutex.Lock()
+	defer _cacher_mutex.Unlock()
+
+	if val, ok := _CACHER_SINGLETON[nm]; ok {
+		return val, nil
+	}
+
+	cacher := NewCacher()
+	_CACHER_SINGLETON[nm] = cacher
+	return cacher, nil
+}
+
+// special onload init
+func init() {
+	_CACHER_SINGLETON = make(map[string]*Cacher)
+}
+
 // The "cache" item for points
 type Cacher struct {
 	mu                  sync.Mutex

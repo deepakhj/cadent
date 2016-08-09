@@ -86,10 +86,13 @@ This does NOT even remotely support out-of-time-order inputs.  The encoding inte
 that allows for multi float encodings, Nano-second encodings and the "smart" encoding as well.
 
 This is by far the best format to store things if your pieces can support it (both in ram and longterm), but due to
-the forced timeordering, lack  of sorting.  It does not play well w/ many internal things.
+the forced timeordering, lack of sorting.  It does not play well w/ many internal things.
 
 The compression is also highly variable depending on incoming values, so it can be hard to "know" what storage or ram
 constraints will be needed a-priori (unless you know the domain of your metrics well).
+
+This is probably the best option if you are doing a statsd -> graphite output as time should always be moving
+foward.  This one gets tricky with raw graphite inputs as they can be of any time ordering on the incoming.
 
 
 #### Repr
@@ -109,7 +112,7 @@ out of this format for use elsewhere.
 ### The PointType Enum
 
 For reference as we store a uint8 in data stores.  I'd only recommend using Gob, Protobuf or Gorilla, unless you
-need "readability"
+need "super compatability" then JSON/MSGPACK may be a good bet.  Whatever you do don't really use the ZipGob.
 
     const (
         GOB uint8 = iota + 1   # 1

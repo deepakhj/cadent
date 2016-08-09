@@ -101,13 +101,13 @@ type CassSegment struct {
 
 /*
  	CREATE TABLE metric.path (
-    		segment frozen<segment_pos>,
-    		path text,
-    		length int,
-    		id varchar  # see repr.StatName.UniqueIdString()
-    		has_data boolean,
-  		PRIMARY KEY (segment, path, has_data)
-	)
+            segment frozen<segment_pos>,
+            length int,
+            path text,
+            id varchar,
+            has_data boolean,
+            PRIMARY KEY (segment, length, path, id)
+        )
 */
 type CassPath struct {
 	Segment CassSegment
@@ -115,28 +115,6 @@ type CassPath struct {
 	Id      string
 	Length  int
 	Hasdata bool
-}
-
-// the singleton
-var _CASS_CACHER_SINGLETON map[string]*Cacher
-var _cass_cacher_mutex sync.Mutex
-
-func _get_cacher_signelton(nm string) (*Cacher, error) {
-	_cass_cacher_mutex.Lock()
-	defer _cass_cacher_mutex.Unlock()
-
-	if val, ok := _CASS_CACHER_SINGLETON[nm]; ok {
-		return val, nil
-	}
-
-	cacher := NewCacher()
-	_CASS_CACHER_SINGLETON[nm] = cacher
-	return cacher, nil
-}
-
-// special onload init
-func init() {
-	_CASS_CACHER_SINGLETON = make(map[string]*Cacher)
 }
 
 /****************** Writer *********************/
@@ -216,7 +194,7 @@ func (cass *CassandraIndexer) Config(conf map[string]interface{}) (err error) {
 	cass.db = db.(*dbs.CassandraDB)
 	cass.conn = db.Connection().(*gocql.Session)
 
-	// tweak queus and worker sizes
+	// tweak queues and worker sizes
 	_workers := conf["write_workers"]
 	cass.num_workers = CASSANDRA_INDEXER_WORKERS
 	if _workers != nil {
@@ -229,7 +207,8 @@ func (cass *CassandraIndexer) Config(conf map[string]interface{}) (err error) {
 		cass.queue_len = int(_qs.(int64))
 	}
 
-	cass.cache, err = _get_cacher_signelton(dsn)
+	c_key := "indexer:cassandra:" + dsn
+	cass.cache, err = getCacherSingleton(c_key)
 	if err != nil {
 		return err
 	}
