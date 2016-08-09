@@ -9,6 +9,7 @@ import (
 	"cadent/server/writers/series"
 	"fmt"
 	"math"
+	"sort"
 )
 
 /******************  a simple union of series.TimeSeries and repr.StatName *********************/
@@ -65,7 +66,6 @@ type WhisperRenderItem struct {
 type RawDataPoint struct {
 	Time  uint32  `json:"time"`
 	Sum   float64 `json:"sum"`
-	Mean  float64 `json:"mean"`
 	Min   float64 `json:"min"`
 	Max   float64 `json:"max"`
 	First float64 `json:"first"`
@@ -77,7 +77,6 @@ func NullRawDataPoint(time uint32) RawDataPoint {
 	return RawDataPoint{
 		Time:  time,
 		Sum:   math.NaN(),
-		Mean:  math.NaN(),
 		Min:   math.NaN(),
 		Max:   math.NaN(),
 		First: math.NaN(),
@@ -87,11 +86,37 @@ func NullRawDataPoint(time uint32) RawDataPoint {
 }
 
 func (r *RawDataPoint) IsNull() bool {
-	return r.Count == math.MinInt64 && math.IsNaN(r.Sum) && math.IsNaN(r.Mean) && math.IsNaN(r.First) && math.IsNaN(r.Last) && math.IsNaN(r.Min) && math.IsNaN(r.Max)
+	return r.Count == math.MinInt64 && math.IsNaN(r.Sum) && math.IsNaN(r.First) && math.IsNaN(r.Last) && math.IsNaN(r.Min) && math.IsNaN(r.Max)
 }
 
 func (r *RawDataPoint) String() string {
-	return fmt.Sprintf("RawDataPoint: T: %d Mean: %f", r.Time, r.Mean)
+	return fmt.Sprintf("RawDataPoint: T: %d Mean: %f", r.Time, r.AggValue("mean"))
+}
+
+func (r *RawDataPoint) AggValue(aggfunc string) float64 {
+
+	// if the count is 1 there is only but one real value
+	if r.Count == 1 {
+		return r.Sum
+	}
+
+	switch aggfunc {
+	case "sum":
+		return r.Sum
+	case "min":
+		return r.Min
+	case "max":
+		return r.Max
+	case "first":
+		return r.First
+	case "last":
+		return r.Last
+	default:
+		if r.Count > 0 {
+			return r.Sum / float64(r.Count)
+		}
+		return math.NaN()
+	}
 }
 
 // merge two data points into one .. this is a nice merge that will add counts, etc to the pieces
@@ -124,32 +149,28 @@ func (r *RawDataPoint) Merge(d *RawDataPoint) {
 		r.Count += d.Count
 	}
 
-	if !math.IsNaN(r.Sum) && r.Count != math.MinInt64 && r.Count > 0 {
-		r.Mean = r.Sum / float64(r.Count)
-	} else if !math.IsNaN(r.Mean) && !math.IsNaN(d.Mean) {
-		// if no sum/count .. need to do a crude time weighted mean of the two points
-		// this is probably not anywhere near "statistically" accurate
-		// but it's kinda like a linear interoplation
-		r.Mean = (float64(r.Time)*r.Mean + float64(d.Time)*d.Mean) / float64(r.Time+d.Time)
-	} else if math.IsNaN(r.Mean) && !math.IsNaN(d.Mean) {
-		r.Mean = d.Mean // can only use this one
-	}
-
 	if r.Time < d.Time {
 		r.Time = d.Time
 	}
 
 }
 
+type RawDataPointList []RawDataPoint
+
+func (v RawDataPointList) Len() int           { return len(v) }
+func (v RawDataPointList) Swap(i, j int)      { v[i], v[j] = v[j], v[i] }
+func (v RawDataPointList) Less(i, j int) bool { return v[i].Time < v[j].Time }
+
 type RawRenderItem struct {
-	Metric    string         `json:"metric"`
-	Id        string         `json:"id"`
-	RealStart uint32         `json:"data_from"`
-	RealEnd   uint32         `json:"data_end"`
-	Start     uint32         `json:"from"`
-	End       uint32         `json:"to"`
-	Step      uint32         `json:"step"`
-	Data      []RawDataPoint `json:"data"`
+	Metric    string           `json:"metric"`
+	Id        string           `json:"id"`
+	RealStart uint32           `json:"data_from"`
+	RealEnd   uint32           `json:"data_end"`
+	Start     uint32           `json:"from"`
+	End       uint32           `json:"to"`
+	Step      uint32           `json:"step"`
+	AggFunc   string           `json:"aggfunc"`
+	Data      RawDataPointList `json:"data"`
 }
 
 func (r *RawRenderItem) Len() int {
@@ -160,9 +181,26 @@ func (r *RawRenderItem) String() string {
 	return fmt.Sprintf("RawRenderItem: Start: %d End: %d, Points: %d", r.Start, r.End, r.Len())
 }
 
+func (r *RawRenderItem) PrintPoints() {
+	fmt.Printf("RawRenderItem: %s (%s) Start: %d End: %d, Points: %d\n", r.Metric, r.Id, r.Start, r.End, r.Len())
+	for idx, d := range r.Data {
+		fmt.Printf("%d: %d %f\n", idx, d.Time, d.Sum)
+	}
+}
+
 // is True if the start and end times are contained in this data blob
 func (r *RawRenderItem) DataInRange(start uint32, end uint32) bool {
 	return start >= r.RealStart && end <= r.RealEnd
+}
+
+func (r *RawRenderItem) ToDataPoint() []DataPoint {
+	dpts := make([]DataPoint, len(r.Data), len(r.Data))
+	for idx, d := range r.Data {
+		dpts[idx].Time = d.Time
+		use_v := d.AggValue(r.AggFunc)
+		dpts[idx].SetValue(&use_v)
+	}
+	return dpts
 }
 
 // somethings like read caches, are hot data we most of the time
@@ -180,14 +218,16 @@ func (r *RawRenderItem) TrunctateTo(start uint32, end uint32) int {
 		}
 	}
 	r.Data = data
+	d_l := len(r.Data)
+	if d_l > 0 {
+		r.RealEnd = data[len(data)-1].Time
+		r.RealStart = data[0].Time
+	}
 	return len(data)
 }
 
 // a crude "resampling" of incoming data .. if the incoming is non-uniform in time
-// and we need to smear the resulting set into a uniform vector, since things like
-// counts, sums, etc are easily just added together, we just do that, the "Mean" is
-// more trouble (if no Sum and Counts are given) as we then need to do a time weighted
-// mean (see Merge above)
+// and we need to smear the resulting set into a uniform vector
 //
 // If moving from a "large" time step to a "smaller" one you WILL GET NULL values for
 // time slots that do not match anything .. we cannot (will not) interpolate data like that
@@ -320,6 +360,9 @@ func (r *RawRenderItem) QuantizeToStep(step uint32) error {
 	// data length of the new data array
 	data := make([]RawDataPoint, (endTime-start)/step+1)
 	cur_len := uint32(len(r.Data))
+
+	// make sure in time order
+	sort.Sort(r.Data)
 
 	// 'i' iterates Original Data. 'o' iterates OutGoing Data.
 	// t is the current time we need to fill/merge

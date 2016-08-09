@@ -23,7 +23,7 @@ func TestWriterObjects(t *testing.T) {
 	for idx := range t_list1 {
 		t_list1[idx] = RawDataPoint{
 			Time: t_start + uint32(idx)*step_1,
-			Mean: rand.Float64(),
+			Sum:  rand.Float64(),
 		}
 	}
 
@@ -32,7 +32,7 @@ func TestWriterObjects(t *testing.T) {
 	for idx := range t_list2 {
 		t_list2[idx] = RawDataPoint{
 			Time: t_start + uint32(idx)*step_1,
-			Mean: rand.Float64(),
+			Sum:  rand.Float64(),
 		}
 	}
 	t_end2 := t_list2[len(t_list2)-1].Time + step_1
@@ -41,7 +41,7 @@ func TestWriterObjects(t *testing.T) {
 	for idx := range t_list3 {
 		t_list3[idx] = RawDataPoint{
 			Time: t_start + uint32(idx),
-			Mean: float64(rand.Int63n(100)),
+			Sum:  float64(rand.Int63n(100)),
 			Min:  float64(idx),
 			Max:  float64(idx + 100),
 		}
@@ -52,7 +52,7 @@ func TestWriterObjects(t *testing.T) {
 	for idx := range t_list4 {
 		t_list4[idx] = RawDataPoint{
 			Time: t_start + 10*uint32(idx) + uint32(rand.Int63n(2)+1.0),
-			Mean: float64(rand.Int63n(100)),
+			Sum:  float64(rand.Int63n(100)),
 			Min:  float64(idx),
 			Max:  float64(idx + 100),
 		}
@@ -72,7 +72,7 @@ func TestWriterObjects(t *testing.T) {
 		rl.Quantize()
 
 		So(rl.Len(), ShouldBeGreaterThan, len(t_list2))
-		So(math.IsNaN(rl.Data[rl.Len()-1].Mean), ShouldEqual, true)
+		So(math.IsNaN(rl.Data[rl.Len()-1].Sum), ShouldEqual, true)
 
 		// truncate
 		rl.TrunctateTo(t_start, t_end2)
@@ -140,7 +140,7 @@ func TestWriterObjects(t *testing.T) {
 		So(r_list1.Len(), ShouldEqual, r_list2.Len())
 
 		for idx, data := range r_list1.Data {
-			So(data.Mean, ShouldEqual, t_list1[idx].Mean)
+			So(data.Sum, ShouldEqual, t_list1[idx].Sum)
 		}
 
 		// reset
@@ -156,9 +156,9 @@ func TestWriterObjects(t *testing.T) {
 
 		for idx, data := range r_list2.Data {
 			if idx < n_sts2 {
-				So(data.Mean, ShouldEqual, t_list2[idx].Mean)
+				So(data.Sum, ShouldEqual, t_list2[idx].Sum)
 			} else {
-				So(data.Mean, ShouldEqual, t_list1[idx].Mean)
+				So(data.Sum, ShouldEqual, t_list1[idx].Sum)
 			}
 		}
 

@@ -34,7 +34,6 @@ import (
 	"cadent/server/utils/shutdown"
 	whisper "github.com/robyoung/go-whisper"
 	logging "gopkg.in/op/go-logging.v1"
-	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -146,38 +145,40 @@ func NewWhisperWriter(conf map[string]interface{}) (*WhisperWriter, error) {
 	}
 
 	// set up the cacher
-	ws.cache_queue = NewCacher()
-
-	_ms := conf["cache_metric_size"]
-	if _ms != nil {
-		ws.cache_queue.maxKeys = int(_ms.(int64))
-	}
-
-	_ps := conf["cache_byte_size"]
-	if _ps != nil {
-		ws.cache_queue.maxBytes = int(_ps.(int64))
-	}
-
-	_st := conf["cache_series_type"]
-	if _st != nil {
-		ws.cache_queue.seriesType = _st.(string)
-	}
-
-	_ov := conf["cache_overflow_method"]
-	if _ov != nil {
-		ws.cache_queue.overFlowMethod = _ov.(string)
-		// set th overflow chan, and start the listener for that channel
-		if ws.cache_queue.overFlowMethod == "chan" {
-			ws.cacheOverFlowChan = make(chan *TotalTimeSeries, 128) // a little buffer
-			ws.overFlowShutdown = make(chan bool, 5)
-			ws.cache_queue.SetOverflowChan(ws.cacheOverFlowChan)
-			go ws.overFlowWrite()
+	ws.cache_queue, err = getCacherSingleton("whisper")
+	if !ws.cache_queue.started && !ws.cache_queue.inited {
+		ws.cache_queue.inited = true
+		_ms := conf["cache_metric_size"]
+		if _ms != nil {
+			ws.cache_queue.maxKeys = int(_ms.(int64))
 		}
-	}
 
-	_lf := conf["cache_low_fruit_rate"]
-	if _lf != nil {
-		ws.cache_queue.lowFruitRate = _lf.(float64)
+		_ps := conf["cache_byte_size"]
+		if _ps != nil {
+			ws.cache_queue.maxBytes = int(_ps.(int64))
+		}
+
+		_st := conf["cache_series_type"]
+		if _st != nil {
+			ws.cache_queue.seriesType = _st.(string)
+		}
+
+		_ov := conf["cache_overflow_method"]
+		if _ov != nil {
+			ws.cache_queue.overFlowMethod = _ov.(string)
+			// set th overflow chan, and start the listener for that channel
+			if ws.cache_queue.overFlowMethod == "chan" {
+				ws.cacheOverFlowChan = make(chan *TotalTimeSeries, 128) // a little buffer
+				ws.overFlowShutdown = make(chan bool, 5)
+				ws.cache_queue.SetOverflowChan(ws.cacheOverFlowChan)
+				go ws.overFlowWrite()
+			}
+		}
+
+		_lf := conf["cache_low_fruit_rate"]
+		if _lf != nil {
+			ws.cache_queue.lowFruitRate = _lf.(float64)
+		}
 	}
 
 	_rs := conf["writes_per_second"]
@@ -274,45 +275,6 @@ func (ws *WhisperWriter) getFile(metric string) (*whisper.Whisper, error) {
 	}()
 
 	return whisper.Open(path)
-}
-
-func (ws *WhisperWriter) guessValue(metric string, stat *repr.StatRepr) float64 {
-
-	use_metric := indexer.GuessAggregateType(metric)
-
-	switch use_metric {
-	case "sum":
-		return float64(stat.Sum)
-	case "max":
-		return float64(stat.Max)
-	case "min":
-		return float64(stat.Min)
-	case "last":
-		return float64(stat.Last)
-	default:
-		return float64(stat.Sum) / float64(stat.Count)
-	}
-}
-
-func (ws *WhisperWriter) guessRawDataValue(metric string, stat *RawDataPoint) float64 {
-
-	use_metric := indexer.GuessAggregateType(metric)
-
-	switch use_metric {
-	case "sum":
-		return stat.Sum
-	case "max":
-		return stat.Max
-	case "min":
-		return stat.Min
-	case "last":
-		return stat.Last
-	default:
-		if stat.Mean == 0 || math.IsNaN(stat.Mean) {
-			return stat.Sum / float64(stat.Count)
-		}
-		return stat.Mean
-	}
 }
 
 func (ws *WhisperWriter) TrapExit() {
@@ -452,10 +414,11 @@ func (ws *WhisperWriter) InsertMulti(metric *repr.StatName, points repr.StatRepr
 
 	// convert "points" to a whisper object
 	whisp_points := make([]*whisper.TimeSeriesPoint, 0)
+	agg_func := indexer.GuessAggregateType(metric.Key)
 	for _, pt := range points {
 		whisp_points = append(whisp_points,
 			&whisper.TimeSeriesPoint{
-				Time: int(pt.Time.Unix()), Value: ws.guessValue(metric.Key, pt),
+				Time: int(pt.Time.Unix()), Value: pt.AggValue(agg_func),
 			},
 		)
 	}
@@ -517,14 +480,15 @@ func (ws *WhisperWriter) Write(stat repr.StatRepr) error {
 
 	// add to the writeback cache only
 	ws.cache_queue.Add(&stat.Name, &stat)
-
+	agg_func := indexer.GuessAggregateType(stat.Name.Key)
 	// and now add it to the readcache iff it's been activated
 	r_cache := GetReadCache()
 	if r_cache != nil {
 		// add only the "value" we need count==1 makes some timeseries much smaller in cache
-		p_val := ws.guessValue(stat.Name.Key, &stat)
+		p_val := stat.AggValue(agg_func)
 		t_stat := &repr.StatRepr{
-			Mean:  repr.JsonFloat64(p_val),
+			Time:  stat.Time,
+			Sum:   repr.JsonFloat64(p_val),
 			Count: 1,
 			Name:  stat.Name,
 		}
@@ -645,13 +609,15 @@ func (ws *WhisperMetrics) GetFromReadCache(metric string, start int64, end int64
 	step := uint32(0)
 	if cached_stats != nil && len(cached_stats) > 0 {
 		stats.StatsdClient.Incr("reader.whisper.render.cache.hits", 1)
+		rawd.AggFunc = indexer.GuessAggregateType(metric)
 
 		f_t := uint32(0)
 		for _, stat := range cached_stats {
 			t := uint32(stat.Time.Unix())
 			d_points = append(d_points, RawDataPoint{
-				Mean: ws.writer.guessValue(metric, stat), //just a stub for the only value we know in whisper
-				Time: t,
+				Sum:   stat.AggValue(rawd.AggFunc),
+				Count: 1,
+				Time:  t,
 			})
 			if f_t <= 0 {
 				f_t = t
@@ -702,7 +668,10 @@ func (ws *WhisperMetrics) RawDataRenderOne(metric indexer.MetricFindItem, from s
 
 	rawd.Start = uint32(start)
 	rawd.End = uint32(end)
+	rawd.AggFunc = indexer.GuessAggregateType(metric.Id)
 	rawd.Step = 1 // just for something in case of errors
+	rawd.Metric = metric.Id
+	rawd.Id = metric.UniqueId
 
 	//cache check
 	// the read cache should have "all" the points from a "start" to "end" if the read cache has been activated for
@@ -719,6 +688,7 @@ func (ws *WhisperMetrics) RawDataRenderOne(metric indexer.MetricFindItem, from s
 		// spanning range
 		cached.Start = uint32(start)
 		cached.End = uint32(end)
+		cached.AggFunc = rawd.AggFunc
 		cached.Quantize()
 		return cached, nil
 	}
@@ -731,13 +701,16 @@ func (ws *WhisperMetrics) RawDataRenderOne(metric indexer.MetricFindItem, from s
 		// need at LEAST 2 points to get the proper step size
 		if inflight_renderitem != nil && err == nil && len(inflight_renderitem.Data) > 1 {
 			// move the times to the "requested" ones and quantize the list
-			rawd.RealEnd = uint32(end)
-			rawd.RealStart = uint32(start)
-			rawd.Start = rawd.RealStart
-			rawd.End = rawd.RealEnd
-			rawd.Metric = metric.Id
-			err = rawd.Quantize()
-			return rawd, err
+			inflight_renderitem.RealEnd = uint32(end)
+			inflight_renderitem.RealStart = uint32(start)
+			inflight_renderitem.Start = inflight_renderitem.RealStart
+			inflight_renderitem.End = inflight_renderitem.RealEnd
+			inflight_renderitem.Metric = metric.Id
+			inflight_renderitem.Id = metric.UniqueId
+			inflight_renderitem.AggFunc = rawd.AggFunc
+
+			err = inflight_renderitem.Quantize()
+			return inflight_renderitem, err
 		} else {
 			ws.writer.log.Error("Could not open file %s", path)
 			return rawd, err
@@ -773,8 +746,9 @@ func (ws *WhisperMetrics) RawDataRenderOne(metric indexer.MetricFindItem, from s
 
 	for idx, point := range points {
 		rawd.Data[idx] = RawDataPoint{
-			Mean: point.Value, //just a stub for the only value we know
-			Time: uint32(point.Time),
+			Count: 1,
+			Sum:   point.Value, //just a stub for the only value we know
+			Time:  uint32(point.Time),
 		}
 		if f_t <= 0 {
 			f_t = uint32(point.Time)
@@ -789,8 +763,6 @@ func (ws *WhisperMetrics) RawDataRenderOne(metric indexer.MetricFindItem, from s
 	rawd.Start = rawd.RealStart
 	rawd.End = rawd.RealEnd
 	rawd.Step = step_t
-	rawd.Metric = metric.Id
-	rawd.Id = metric.UniqueId
 
 	// grab the "current inflight" from the cache and merge into the main array
 	inflight_data, err := ws.writer.cache_queue.GetAsRawRenderItem(stat_name)
@@ -805,24 +777,11 @@ func (ws *WhisperMetrics) RawDataRenderOne(metric indexer.MetricFindItem, from s
 }
 
 // after the "raw" render we need to yank just the "point" we need from the data which
-// will make the read-cache much smaller (will compress just the Mean value as the count is 1)
+// will make the read-cache much smaller (will compress just the Sum value as the count is 1)
+// we set the "mean" as thats the value the graphite out render uses
 func (ws *WhisperMetrics) RawRenderOne(metric indexer.MetricFindItem, from string, to string) (*RawRenderItem, error) {
 
-	data, err := ws.RawDataRenderOne(metric, from, to)
-	if err != nil {
-		return data, err
-	}
-	for idx := range data.Data {
-		p_val := ws.writer.guessRawDataValue(data.Metric, &data.Data[idx])
-		data.Data[idx].Count = 1
-		data.Data[idx].Mean = p_val
-		data.Data[idx].Min = 0
-		data.Data[idx].Max = 0
-		data.Data[idx].Sum = 0
-		data.Data[idx].First = 0
-		data.Data[idx].Last = 0
-	}
-	return data, err
+	return ws.RawDataRenderOne(metric, from, to)
 
 }
 
@@ -845,7 +804,7 @@ func (ws *WhisperMetrics) Render(path string, from string, to string) (WhisperRe
 
 		d_points := make([]DataPoint, 0)
 		for _, d := range data.Data {
-			v := d.Mean
+			v := d.AggValue(data.AggFunc)
 			d_points = append(d_points, DataPoint{Time: d.Time, Value: &v})
 		}
 		whis.Series[data.Metric] = d_points

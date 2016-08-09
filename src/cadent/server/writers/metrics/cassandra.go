@@ -143,29 +143,9 @@ func _get_cass_signelton(conf map[string]interface{}) (*CassandraWriter, error) 
 	return writer, nil
 }
 
-/***** caching singletons (as readers need to see this as well) ***/
-
-// the singleton
-var _CASS_CACHER_SINGLETON map[string]*Cacher
-var _cass_cacher_mutex sync.Mutex
-
-func _get_cacher_signelton(nm string) (*Cacher, error) {
-	_cass_cacher_mutex.Lock()
-	defer _cass_cacher_mutex.Unlock()
-
-	if val, ok := _CASS_CACHER_SINGLETON[nm]; ok {
-		return val, nil
-	}
-
-	cacher := NewCacher()
-	_CASS_CACHER_SINGLETON[nm] = cacher
-	return cacher, nil
-}
-
 // special onload init
 func init() {
 	_CASS_WRITER_SINGLETON = make(map[string]*CassandraWriter)
-	_CASS_CACHER_SINGLETON = make(map[string]*Cacher)
 }
 
 /************************************************************************/
@@ -528,29 +508,30 @@ func (cass *CassandraMetric) Config(conf map[string]interface{}) (err error) {
 		return fmt.Errorf("Resulotuion needed for cassandra writer")
 	}
 	cache_str := conf["dsn"].(string) + gots.series_encoding
-	gots.cacher, err = _get_cacher_signelton(cache_str)
+	gots.cacher, err = getCacherSingleton(cache_str)
 	if err != nil {
 		return err
 	}
+	if !gots.cacher.started && !gots.cacher.inited {
+		// set the cacher bits
+		_ms := conf["cache_metric_size"]
+		if _ms != nil {
+			gots.cacher.maxKeys = int(_ms.(int64))
+		}
 
-	// set the cacher bits
-	_ms := conf["cache_metric_size"]
-	if _ms != nil {
-		gots.cacher.maxKeys = int(_ms.(int64))
+		_ps := conf["cache_byte_size"]
+		if _ps != nil {
+			gots.cacher.maxBytes = int(_ps.(int64))
+		}
+
+		_lf := conf["cache_low_fruit_rate"]
+		if _lf != nil {
+			gots.cacher.lowFruitRate = _lf.(float64)
+		}
+
+		// match blob types
+		gots.cacher.seriesType = gots.series_encoding
 	}
-
-	_ps := conf["cache_byte_size"]
-	if _ps != nil {
-		gots.cacher.maxBytes = int(_ps.(int64))
-	}
-
-	_lf := conf["cache_low_fruit_rate"]
-	if _lf != nil {
-		gots.cacher.lowFruitRate = _lf.(float64)
-	}
-
-	// match blob types
-	gots.cacher.seriesType = gots.series_encoding
 
 	return nil
 }
@@ -583,15 +564,6 @@ func (cass *CassandraMetric) getResolution(from int64, to int64) uint32 {
 	return uint32(cass.resolutions[len(cass.resolutions)-1][0])
 }
 
-// based on the resolution attempt to round start/end nicely by the resolutions
-func (cass *CassandraMetric) truncateTo(num int64, mod int) int64 {
-	_mods := int(math.Mod(float64(num), float64(mod)))
-	if _mods < mod/2 {
-		return num - int64(_mods)
-	}
-	return num + int64(mod-_mods)
-}
-
 func (cass *CassandraMetric) RawRenderOne(metric indexer.MetricFindItem, from string, to string) (*RawRenderItem, error) {
 	defer stats.StatsdSlowNanoTimeFunc("reader.cassandra.renderraw.get-time-ns", time.Now())
 
@@ -618,8 +590,8 @@ func (cass *CassandraMetric) RawRenderOne(metric indexer.MetricFindItem, from st
 	//figure out the best res
 	resolution := cass.getResolution(start, end)
 
-	start = cass.truncateTo(start, int(resolution))
-	end = cass.truncateTo(end, int(resolution))
+	start = TruncateTimeTo(start, int(resolution))
+	end = TruncateTimeTo(end, int(resolution))
 
 	b_len := uint32(end-start) / resolution //just to be safe
 	if b_len <= 0 {
@@ -657,7 +629,6 @@ func (cass *CassandraMetric) RawRenderOne(metric indexer.MetricFindItem, from st
 		d_points = append(d_points, RawDataPoint{
 			Count: count,
 			Sum:   sum,
-			Mean:  sum / float64(count),
 			Max:   max,
 			Min:   min,
 			Last:  last,
@@ -750,28 +721,8 @@ func (cass *CassandraMetric) RenderOne(metric indexer.MetricFindItem, from strin
 				if d.Time <= cur_step_time {
 
 					// cass.writer.log.Critical("ONPS %v : %v Len %d :I %d, j %d, iLen: %v SUM: %v", d_points[j], interp_vec[i], ct, i, j, b_len, d_points[j].Sum,)
-
-					// the weird setters here are to get the pointers properly (a weird golang thing)
-					switch use_metric {
-					case "mean":
-						m := d.Sum / float64(d.Count)
-						interp_vec[i].Value = &m
-					case "min":
-						m := d.Min
-						interp_vec[i].Value = &m
-					case "max":
-						m := d.Max
-						interp_vec[i].Value = &m
-					case "last":
-						m := d.Last
-						interp_vec[i].Value = &m
-					case "first":
-						m := d.First
-						interp_vec[i].Value = &m
-					default:
-						s := d.Sum
-						interp_vec[i].Value = &s
-					}
+					use_value := d.AggValue(use_metric)
+					interp_vec[i].SetValue(&use_value)
 					interp_vec[i].Time = d.Time //this is the "real" time, graphite does not care, but something might
 					last_got_t = d.Time
 					last_got_index = j
@@ -789,27 +740,8 @@ func (cass *CassandraMetric) RenderOne(metric indexer.MetricFindItem, from strin
 				for ; j < inflight_len; j++ {
 					d := inflight[j]
 					if uint32(d.Time.Unix()) <= interp_vec[i].Time {
-						// the weird setters here are to get the pointers properly (a weird golang thing)
-						switch use_metric {
-						case "mean":
-							m := float64(d.Sum) / float64(d.Count)
-							interp_vec[i].Value = &m
-						case "min":
-							m := float64(d.Min)
-							interp_vec[i].Value = &m
-						case "max":
-							m := float64(d.Max)
-							interp_vec[i].Value = &m
-						case "last":
-							m := float64(d.Last)
-							interp_vec[i].Value = &m
-						case "first":
-							m := float64(d.First)
-							interp_vec[i].Value = &m
-						default:
-							s := float64(d.Sum)
-							interp_vec[i].Value = &s
-						}
+						use_value := float64(d.AggValue(use_metric))
+						interp_vec[i].SetValue(&use_value)
 						j++
 					}
 					break
@@ -826,28 +758,8 @@ func (cass *CassandraMetric) RenderOne(metric indexer.MetricFindItem, from strin
 				if uint32(d.Time.Unix()) <= cur_step_time {
 
 					// cass.writer.log.Critical("ONPS %v : %v Len %d :I %d, j %d, iLen: %v SUM: %v", d_points[j], interp_vec[i], ct, i, j, b_len, d_points[j].Sum,)
-
-					// the weird setters here are to get the pointers properly (a weird golang thing)
-					switch use_metric {
-					case "mean":
-						m := float64(d.Sum) / float64(d.Count)
-						interp_vec[i].Value = &m
-					case "min":
-						m := float64(d.Min)
-						interp_vec[i].Value = &m
-					case "max":
-						m := float64(d.Max)
-						interp_vec[i].Value = &m
-					case "last":
-						m := float64(d.Last)
-						interp_vec[i].Value = &m
-					case "first":
-						m := float64(d.First)
-						interp_vec[i].Value = &m
-					default:
-						s := float64(d.Sum)
-						interp_vec[i].Value = &s
-					}
+					use_value := float64(d.AggValue(use_metric))
+					interp_vec[i].SetValue(&use_value)
 					interp_vec[i].Time = uint32(d.Time.Unix()) //this is the "real" time, graphite does not care, but something might
 					j++
 				}

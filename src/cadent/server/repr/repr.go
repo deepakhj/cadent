@@ -18,7 +18,7 @@ import (
 type JsonFloat64 float64
 
 func CheckFloat(fl JsonFloat64) JsonFloat64 {
-	if math.IsInf(float64(fl), 0) || float64(fl) == math.MinInt64 {
+	if math.IsNaN(float64(fl)) || math.IsInf(float64(fl), 0) || float64(fl) == math.MinInt64 {
 		return JsonFloat64(0)
 	}
 	return fl
@@ -26,7 +26,7 @@ func CheckFloat(fl JsonFloat64) JsonFloat64 {
 
 // needed to handle "Inf" values
 func (s JsonFloat64) MarshalJSON() ([]byte, error) {
-	if math.IsInf(float64(s), 0) || float64(s) == math.MinInt64 {
+	if math.IsNaN(float64(s)) || math.IsInf(float64(s), 0) || float64(s) == math.MinInt64 {
 		return []byte("0.0"), nil
 	}
 	return []byte(fmt.Sprintf("%v", float64(s))), nil
@@ -155,6 +155,26 @@ func (s *StatRepr) Copy() *StatRepr {
 	obj := *s
 	return &obj
 
+}
+
+func (s *StatRepr) AggValue(aggfunc string) float64 {
+	switch aggfunc {
+	case "sum":
+		return float64(s.Sum)
+	case "min":
+		return float64(s.Min)
+	case "max":
+		return float64(s.Max)
+	case "first":
+		return float64(s.First)
+	case "last":
+		return float64(s.Last)
+	default:
+		if s.Count > 0 {
+			return float64(s.Sum) / float64(s.Count)
+		}
+		return math.NaN()
+	}
 }
 
 // merge a stat together,

@@ -331,7 +331,7 @@ func (re *ApiLoop) ToGraphiteRender(raw_data []*metrics.RawRenderItem) *metrics.
 		whis.RealStart = data.RealStart
 
 		for idx, d := range data.Data {
-			v := d.Mean
+			v := d.AggValue(data.AggFunc)
 			d_points[idx] = metrics.DataPoint{Time: d.Time, Value: &v}
 		}
 		whis.Series[data.Metric] = d_points
@@ -358,12 +358,14 @@ func (re *ApiLoop) Render(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	render_data := re.ToGraphiteRender(data)
+
 	for _, d := range data {
 		// send to activator
 		re.activate_cache_chan <- d
 	}
 
-	re.OutJson(w, re.ToGraphiteRender(data))
+	re.OutJson(w, render_data)
 	return
 }
 

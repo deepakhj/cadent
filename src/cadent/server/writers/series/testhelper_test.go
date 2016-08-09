@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"cadent/server/repr"
 	"compress/flate"
+	"compress/lzw"
 	"compress/zlib"
 	"fmt"
 	"github.com/golang/snappy"
@@ -299,6 +300,34 @@ func benchmarkSnappyCompress(b *testing.B, stype string, n_stat int) {
 	}
 	b.Logf("Snappy: Average PreComp size: %v, Post: %v Bytes per stat: %v", pre_len/runs, comp_len/runs, b_per_stat/runs)
 
+}
+
+func benchmarkLZWCompress(b *testing.B, stype string, n_stat int) {
+
+	stat, n := dummyStat()
+	runs := int64(0)
+	comp_len := int64(0)
+	b_per_stat := int64(0)
+	pre_len := int64(0)
+	b.SetBytes(int64(8 * 8 * n_stat)) //8 64byte numbers
+	_benchReset(b)
+
+	for i := 0; i < b.N; i++ {
+		ser, _ := NewTimeSeries(stype, n.UnixNano(), NewDefaultOptions())
+		addStats(ser, stat, n_stat, true)
+		bss, _ := ser.MarshalBinary()
+		c_bss := new(bytes.Buffer)
+		zipper := lzw.NewWriter(c_bss, lzw.MSB, 8)
+		zipper.Write(bss)
+		zipper.Close()
+
+		pre_len += int64(len(bss))
+		c_len := int64(c_bss.Len())
+		comp_len += int64(c_len)
+		b_per_stat += int64(c_len / int64(n_stat))
+		runs++
+	}
+	b.Logf("LZW: Average PreComp size: %v, Post: %v Bytes per stat: %v", pre_len/runs, comp_len/runs, b_per_stat/runs)
 }
 
 func benchmarkSeriesReading(b *testing.B, stype string, n_stat int) {
@@ -625,6 +654,51 @@ func genericTestSeries(t *testing.T, stype string, options *Options) {
 				io.Copy(outs, rdr)
 				rdr.Close()
 				t.Logf("Zip Decode Data size: %v", outs.Len())
+				if err != nil {
+					t.Fatalf("Error: %v", err)
+				}
+
+				n_iter, err := NewIter(stype, outs.Bytes())
+				if err != nil {
+					t.Fatalf("Error: %v", err)
+				}
+				idx = 0
+				for n_iter.Next() {
+					to, mi, mx, fi, ls, su, ct := n_iter.Values()
+					test_to := time.Unix(0, to)
+					test_lt := time.Unix(0, times[idx])
+					if ser.HighResolution() {
+						So(test_lt.UnixNano(), ShouldEqual, test_to.UnixNano())
+					} else {
+						So(test_lt.Unix(), ShouldEqual, test_to.Unix())
+					}
+					So(stats[idx].Max, ShouldEqual, mx)
+					So(stats[idx].Last, ShouldEqual, ls)
+					So(stats[idx].Count, ShouldEqual, ct)
+					So(stats[idx].First, ShouldEqual, fi)
+					So(stats[idx].Min, ShouldEqual, mi)
+					So(stats[idx].Sum, ShouldEqual, su)
+					idx++
+				}
+			})
+
+			Convey("Series Type: "+stype+" - LZW/Iterator - "+nm, func() {
+				// zip tests
+				c_bss := new(bytes.Buffer)
+				zipper := lzw.NewWriter(c_bss, lzw.MSB, 8)
+				zipper.Write(bss)
+				zipper.Close()
+
+				t.Logf("LZW Data size: %v", c_bss.Len())
+
+				outs := new(bytes.Buffer)
+				rdr := lzw.NewReader(c_bss, lzw.MSB, 8)
+				if err != nil {
+					t.Fatalf("ERROR: %v", err)
+				}
+				io.Copy(outs, rdr)
+				rdr.Close()
+				t.Logf("LZW Decode Data size: %v", outs.Len())
 				if err != nil {
 					t.Fatalf("Error: %v", err)
 				}

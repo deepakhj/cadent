@@ -59,6 +59,8 @@ import (
 	"sort"
 
 	"cadent/server/utils/shutdown"
+	"cadent/server/writers/indexer"
+	"errors"
 	logging "gopkg.in/op/go-logging.v1"
 	"sync"
 	"time"
@@ -86,6 +88,30 @@ the "render" step will then attempt to backfill those points
 
 */
 
+// Cache singletons as the readers may need to use this too
+
+// the singleton
+var _CACHER_SINGLETON map[string]*Cacher
+var _cacher_mutex sync.Mutex
+
+func getCacherSingleton(nm string) (*Cacher, error) {
+	_cacher_mutex.Lock()
+	defer _cacher_mutex.Unlock()
+
+	if val, ok := _CACHER_SINGLETON[nm]; ok {
+		return val, nil
+	}
+
+	cacher := NewCacher()
+	_CACHER_SINGLETON[nm] = cacher
+	return cacher, nil
+}
+
+// special onload init
+func init() {
+	_CACHER_SINGLETON = make(map[string]*Cacher)
+}
+
 // struct to pull the next thing to "write"
 type CacheQueueItem struct {
 	metric repr.StatId
@@ -111,10 +137,14 @@ func (v CacheQueueBytes) Len() int           { return len(v) }
 func (v CacheQueueBytes) Swap(i, j int)      { v[i], v[j] = v[j], v[i] }
 func (v CacheQueueBytes) Less(i, j int) bool { return v[i].bytes < v[j].bytes }
 
+//errors
+var errWriteCacheTooManyMetrics = errors.New("Cacher: too many keys, dropping metric")
+var errWriteCacheTooManyPoints = errors.New("Cacher: too many points in cache, dropping metric")
+
 // The "cache" item for points
 type Cacher struct {
-	mu           sync.RWMutex
-	qmu          sync.Mutex
+	mu           *sync.RWMutex
+	qmu          *sync.Mutex
 	maxKeys      int // max num of keys to keep before we have to drop
 	maxBytes     int // max num of points per key to keep before we have to drop
 	seriesType   string
@@ -134,10 +164,13 @@ type Cacher struct {
 	overFlowChan   chan *TotalTimeSeries
 
 	started bool
+	inited  bool
 }
 
 func NewCacher() *Cacher {
 	wc := new(Cacher)
+	wc.mu = new(sync.RWMutex)
+	wc.qmu = new(sync.Mutex)
 	wc.maxKeys = CACHER_METRICS_KEYS
 	wc.maxBytes = CACHER_NUMBER_BYTES
 	wc.seriesType = CACHER_SERIES_TYPE
@@ -152,7 +185,8 @@ func NewCacher() *Cacher {
 	wc._accept = true
 	wc.lowFruitRate = 0.25
 	wc.started = false
-	//wc.Start()
+	wc.inited = false
+
 	return wc
 }
 
@@ -162,9 +196,9 @@ func (wc *Cacher) SetOverflowChan(ch chan *TotalTimeSeries) {
 
 func (wc *Cacher) Start() {
 	if !wc.started {
+		wc.started = true
 		wc.log.Notice("Starting Metric Cache sorter tick (%d max metrics, %d max bytes per metric)", wc.maxKeys, wc.maxBytes)
 		go wc.startUpdateTick()
-		wc.started = true
 	}
 }
 
@@ -201,16 +235,18 @@ func (wc *Cacher) startUpdateTick() {
 }
 
 func (wc *Cacher) updateQueue() {
-	newQueue := make(CacheQueue, 0)
-
-	wc.mu.RLock() // need both locks
 	f_len := 0
+	idx := 0
+	wc.mu.RLock() // need both locks
+	newQueue := make(CacheQueue, len(wc.Cache))
 	for key, values := range wc.Cache {
 		num_points := values.Count()
-		newQueue = append(newQueue, &CacheQueueItem{key, num_points, values.Len()})
+		newQueue[idx] = &CacheQueueItem{key, num_points, values.Len()}
+		idx++
 		f_len += num_points
 	}
 	wc.mu.RUnlock()
+
 	wc.numCurPoint = f_len
 	m_len := len(newQueue)
 	wc.numCurKeys = m_len
@@ -249,6 +285,7 @@ func (wc *Cacher) AddAndUpdate(metric *repr.StatName, stat *repr.StatRepr) (err 
 func (wc *Cacher) Add(name *repr.StatName, stat *repr.StatRepr) error {
 	wc.mu.Lock()
 	defer wc.mu.Unlock()
+
 	//wc.log.Critical("STAT: %s, %v", metric, stat)
 
 	if !wc._accept {
@@ -259,7 +296,7 @@ func (wc *Cacher) Add(name *repr.StatName, stat *repr.StatRepr) error {
 	if len(wc.Cache) > wc.maxKeys {
 		wc.log.Error("Key Cache is too large .. over %d metrics keys, have to drop this one", wc.maxKeys)
 		stats.StatsdClientSlow.Incr("cacher.metrics.overflow", 1)
-		return fmt.Errorf("Cacher: too many keys, dropping metric")
+		return errWriteCacheTooManyMetrics
 	}
 
 	/** ye old debuggin'
@@ -280,9 +317,9 @@ func (wc *Cacher) Add(name *repr.StatName, stat *repr.StatRepr) error {
 				wc.curSize -= int64(gots.Len()) // shrink the bytes
 				delete(wc.Cache, unique_id)
 				delete(wc.NameCache, unique_id)
+
 				wc.overFlowChan <- &TotalTimeSeries{nm, gots}
 				stats.StatsdClientSlow.Incr("cacher.metrics.write.overflow", 1)
-
 				//must recompute the ordering XXX LOCKING ISSUE
 				//wc.updateQueue()
 
@@ -292,7 +329,7 @@ func (wc *Cacher) Add(name *repr.StatName, stat *repr.StatRepr) error {
 
 			wc.log.Error("Too Many Bytes for %v (max bytes: %d current metrics: %v)... have to drop this one", unique_id, wc.maxBytes, gots.Count())
 			stats.StatsdClientSlow.Incr("cacher.metics.points.overflow", 1)
-			return fmt.Errorf("Cacher: too many points in cache, dropping metric")
+			return errWriteCacheTooManyPoints
 		}
 		wc.Cache[unique_id].AddStat(stat)
 		wc.NameCache[unique_id] = name
@@ -307,9 +344,12 @@ NEWSTAT:
 	if err != nil {
 		return err
 	}
+
 	tp.AddStat(stat)
+
 	wc.Cache[unique_id] = tp
 	wc.NameCache[unique_id] = name
+
 	wc.curSize += int64(tp.Len())
 	stats.StatsdClient.GaugeAvg("cacher.add.ave-points-per-metric", 1)
 
@@ -371,6 +411,7 @@ func (wc *Cacher) GetAsRawRenderItem(name *repr.StatName) (*RawRenderItem, error
 	rawd.End = uint32(data[len(data)-1].Time.Unix())
 	rawd.RealEnd = rawd.End
 	rawd.RealStart = rawd.Start
+	rawd.AggFunc = indexer.GuessAggregateType(name.Key)
 
 	f_t := uint32(0)
 	step_t := uint32(0)
@@ -386,7 +427,6 @@ func (wc *Cacher) GetAsRawRenderItem(name *repr.StatName) (*RawRenderItem, error
 			First: float64(pt.First),
 			Last:  float64(pt.Last),
 			Sum:   float64(pt.Sum),
-			Mean:  float64(pt.Mean),
 		}
 		if f_t <= 0 {
 			f_t = on_t

@@ -71,6 +71,7 @@ func (rc *ReadCacheItem) Add(stat *repr.StatRepr) {
 	if rc.Data.Len() > rc.MaxBytes {
 		rc.Data.Stats.Stats = rc.Data.Stats.Stats[1:]
 	}
+
 	rc.Data.AddStat(stat)
 	if stat.Time.After(rc.EndTime) {
 		rc.EndTime = stat.Time
@@ -109,10 +110,7 @@ func (rc *ReadCacheItem) PutSeries(stats repr.StatReprSlice) {
 // put a chunk o data
 func (rc *ReadCacheItem) PutRenderedSeries(data []RawDataPoint) {
 	for _, s := range data {
-		// since the RawDataPoint contains a "mean" .. and may or may not have the Sum/Count
-		// if sum/count are 0, we make the "sum" the mean and a count of 1
-		if s.Sum == 0.0 && s.Count <= 1 && s.Mean != 0.0 {
-			s.Sum = s.Mean
+		if s.Count < 1 {
 			s.Count = 1
 		}
 		rc.AddValues(time.Unix(int64(s.Time), 0), s.Min, s.Max, s.First, s.Last, s.Sum, s.Count)
@@ -305,7 +303,6 @@ func (rc *ReadCache) Put(metric string, stat *repr.StatRepr) bool {
 	if !ok {
 		return false
 	}
-
 	gots.(*ReadCacheItem).Add(stat)
 	rc.lru.Set(metric, gots)
 	return true

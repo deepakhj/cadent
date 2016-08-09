@@ -105,3 +105,22 @@ does some some space, due to the internals of the golang Flate, there is alot of
 with this one if used for a large number of series.  So this may be a good "final persist state" but it should get converted
 out of this format for use elsewhere.
 
+
+### The PointType Enum
+
+For reference as we store a uint8 in data stores.  I'd only recommend using Gob, Protobuf or Gorilla, unless you
+need "readability"
+
+    const (
+        GOB uint8 = iota + 1   # 1
+        ZIPGOB   # 2
+        JSON # 3
+        PROTOBUF  # 4
+        GORILLA # 5
+        MSGPACK # 6
+        BINC # 7
+        CBOR # 8
+        REPR # 9
+    )
+
+

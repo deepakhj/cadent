@@ -63,6 +63,7 @@ import (
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
 	logging "gopkg.in/op/go-logging.v1"
+	"time"
 )
 
 /****************** Interfaces *********************/
@@ -114,7 +115,15 @@ func (my *MySQLDB) Config(conf map[string]interface{}) error {
 		my.table_prefix = _pref.(string)
 	}
 
+	// some reasonable defaults
+	my.conn.SetMaxOpenConns(50)
+	my.conn.SetConnMaxLifetime(time.Duration(5 * time.Minute))
+
 	return nil
+}
+
+func (my *MySQLDB) RootMetricsTableName() string {
+	return my.table
 }
 
 func (my *MySQLDB) Tablename() string {

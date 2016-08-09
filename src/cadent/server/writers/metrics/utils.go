@@ -100,3 +100,12 @@ func PointsInInterval(start int64, end int64, step int64) int64 {
 	}
 	return (end - start) / step
 }
+
+// based on the resolution attempt to round start/end nicely by the resolutions
+func TruncateTimeTo(num int64, mod int) int64 {
+	_mods := int(math.Mod(float64(num), float64(mod)))
+	if _mods < mod/2 {
+		return num - int64(_mods)
+	}
+	return num + int64(mod-_mods)
+}

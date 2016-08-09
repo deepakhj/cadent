@@ -90,7 +90,7 @@ The main writers are
 
 ### Writer Schemas
 
-#### MYSQL
+#### MYSQL-Flat
 
 Slap stuff in a MySQL DB .. not recommended for huge throughput, but maybe useful for some stuff ..
 You should make Schemas like so (`datetime(6)` is microsecond resolution, if you only have second resolution on the
@@ -106,7 +106,7 @@ useful for key space lookups
          KEY `length` (`length`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-    CREATE TABLE `{table}_{keeperprefix}` (
+    CREATE TABLE `{table}_{resolution}s` (
       `id` int(11) unsigned NOT NULL AUTO_INCREMENT,
       `uid` varchar(50) NULL,
       `path` varchar(255) NOT NULL DEFAULT '',
@@ -149,6 +149,42 @@ Config Options
         path_table = "metrics_path"
         batch_count = 1000  # batch up this amount for inserts (faster then single line by line) (default 1000)
         periodic_flush= "1s" # regardless if batch_count met, always flush things at this interval (default 1s)
+
+
+#### MYSQL - blob
+
+The index table the same if using mysql for that.  The Blob table is different of course.
+
+    CREATE TABLE `{table}_{resolution}s` (
+      `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+      `uid` varchar(50) DEFAULT NULL,
+      `path` varchar(255) NOT NULL DEFAULT '',
+      `ptype` tinyint(4) NOT NULL,
+      `points` blob,
+      `stime` bigint(20) unsigned NOT NULL,
+      `etime` bigint(20) unsigned NOT NULL,
+      PRIMARY KEY (`id`),
+      KEY `uid` (`uid`),
+      KEY `path` (`path`),
+      KEY `time` (`etime`,`stime`)
+    ) ENGINE=InnoDB;
+
+
+The acctual "get" query is `select point_type, points where uid={uiqueid} and etime >= {starttime} and etime <= {endtime}`.
+So the index of (etime, stime) is proper.
+
+
+Config OPtions
+
+    [mypregename.accumulator.writer]
+    driver = "mysql"
+    dsn = "root:password@tcp(localhost:3306)/test"
+        [mypregename.accumulator.writer.options]
+        table = "metrics"
+        path_table = "metrics_path"
+        cache_series_type="gorilla"  # the "blob" series type to store
+        cache_byte_size=8192 # size in bytes of the "blob" before we write it
+
 
 
 #### File

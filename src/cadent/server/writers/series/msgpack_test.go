@@ -40,6 +40,10 @@ func Benchmark_Msgpack_Zip_Compress(b *testing.B) {
 	benchmarkZipCompress(b, "msgpack", testDefaultByteSize)
 }
 
+func Benchmark_Msgpack_LZW_Compress(b *testing.B) {
+	benchmarkLZWCompress(b, "msgpack", testDefaultByteSize)
+}
+
 func Benchmark_Msgpack_Reading(b *testing.B) {
 	benchmarkSeriesReading(b, "msgpack", testDefaultByteSize)
 }

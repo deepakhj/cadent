@@ -44,6 +44,9 @@ func Benchmark_Binc_Zip_Compress(b *testing.B) {
 	benchmarkZipCompress(b, "binc", testDefaultByteSize)
 }
 
+func Benchmark_Binc_LZW_Compress(b *testing.B) {
+	benchmarkLZWCompress(b, "binc", testDefaultByteSize)
+}
 func Benchmark_Binc_Reading(b *testing.B) {
 	benchmarkSeriesReading(b, "binc", testDefaultByteSize)
 }
@@ -86,6 +89,10 @@ func Benchmark_Cbor_Flate_Compress(b *testing.B) {
 
 func Benchmark_Cbor_Zip_Compress(b *testing.B) {
 	benchmarkZipCompress(b, "cbor", testDefaultByteSize)
+}
+
+func Benchmark_Cbor_LZW_Compress(b *testing.B) {
+	benchmarkLZWCompress(b, "cbor", testDefaultByteSize)
 }
 
 func Benchmark_Cbor_Reading(b *testing.B) {

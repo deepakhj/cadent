@@ -681,41 +681,49 @@ func (cass *CassandraFlatMetric) Config(conf map[string]interface{}) (err error)
 	if resolution == nil {
 		return fmt.Errorf("Resulotuion needed for cassandra writer")
 	}
-	gots.cacher = NewCacher()
+
+	cache_key := fmt.Sprintf("cassandraflat:cache:%s:%v", conf["dsn"], resolution)
+
+	gots.cacher, err = getCacherSingleton(cache_key)
+
 	if err != nil {
 		return err
 	}
 
-	// set the cacher bits
-	_ms := conf["cache_metric_size"]
-	if _ms != nil {
-		gots.cacher.maxKeys = int(_ms.(int64))
-	}
+	// prevent a reader from squshing this cacher
+	if !gots.cacher.started && !gots.cacher.inited {
+		gots.cacher.inited = true
+		// set the cacher bits
+		_ms := conf["cache_metric_size"]
+		if _ms != nil {
+			gots.cacher.maxKeys = int(_ms.(int64))
+		}
 
-	_ps := conf["cache_byte_size"]
-	if _ps != nil {
-		gots.cacher.maxBytes = int(_ps.(int64))
-	}
+		_ps := conf["cache_byte_size"]
+		if _ps != nil {
+			gots.cacher.maxBytes = int(_ps.(int64))
+		}
 
-	_lf := conf["cache_low_fruit_rate"]
-	if _lf != nil {
-		gots.cacher.lowFruitRate = _lf.(float64)
-	}
+		_lf := conf["cache_low_fruit_rate"]
+		if _lf != nil {
+			gots.cacher.lowFruitRate = _lf.(float64)
+		}
 
-	_st := conf["cache_series_type"]
-	if _st != nil {
-		gots.cacher.seriesType = _st.(string)
-	}
+		_st := conf["cache_series_type"]
+		if _st != nil {
+			gots.cacher.seriesType = _st.(string)
+		}
 
-	_ov := conf["cache_overflow_method"]
-	if _ov != nil {
-		gots.cacher.overFlowMethod = _ov.(string)
-		// set th overflow chan, and start the listener for that channel
-		if gots.cacher.overFlowMethod == "chan" {
-			gots.cacheOverFlowChan = make(chan *TotalTimeSeries, 128) // a little buffer
-			gots.overFlowShutdown = make(chan bool, 5)
-			gots.cacher.SetOverflowChan(gots.cacheOverFlowChan)
-			go gots.overFlowWrite()
+		_ov := conf["cache_overflow_method"]
+		if _ov != nil {
+			gots.cacher.overFlowMethod = _ov.(string)
+			// set th overflow chan, and start the listener for that channel
+			if gots.cacher.overFlowMethod == "chan" {
+				gots.cacheOverFlowChan = make(chan *TotalTimeSeries, 128) // a little buffer
+				gots.overFlowShutdown = make(chan bool, 5)
+				gots.cacher.SetOverflowChan(gots.cacheOverFlowChan)
+				go gots.overFlowWrite()
+			}
 		}
 	}
 
@@ -823,7 +831,6 @@ func (cass *CassandraFlatMetric) RawRenderOne(metric indexer.MetricFindItem, fro
 		d_points = append(d_points, RawDataPoint{
 			Count: count,
 			Sum:   sum,
-			Mean:  sum / float64(count),
 			Max:   max,
 			Min:   min,
 			Last:  last,
@@ -851,7 +858,9 @@ func (cass *CassandraFlatMetric) RawRenderOne(metric indexer.MetricFindItem, fro
 	rawd.End = uint32(end)
 	rawd.Step = resolution
 	rawd.Metric = m_key
+	rawd.Id = metric.UniqueId
 	rawd.Data = d_points
+	rawd.AggFunc = indexer.GuessAggregateType(m_key)
 	rawd.Quantize() // fill out all the "blanks"
 
 	return rawd, nil
@@ -918,28 +927,8 @@ func (cass *CassandraFlatMetric) RenderOne(metric indexer.MetricFindItem, from s
 				if d.Time <= cur_step_time {
 
 					// cass.writer.log.Critical("ONPS %v : %v Len %d :I %d, j %d, iLen: %v SUM: %v", d_points[j], interp_vec[i], ct, i, j, b_len, d_points[j].Sum,)
-
-					// the weird setters here are to get the pointers properly (a weird golang thing)
-					switch use_metric {
-					case "mean":
-						m := d.Sum / float64(d.Count)
-						interp_vec[i].Value = &m
-					case "min":
-						m := d.Min
-						interp_vec[i].Value = &m
-					case "max":
-						m := d.Max
-						interp_vec[i].Value = &m
-					case "last":
-						m := d.Last
-						interp_vec[i].Value = &m
-					case "first":
-						m := d.First
-						interp_vec[i].Value = &m
-					default:
-						s := d.Sum
-						interp_vec[i].Value = &s
-					}
+					use_value := d.AggValue(use_metric)
+					interp_vec[i].Value = &use_value
 					interp_vec[i].Time = d.Time //this is the "real" time, graphite does not care, but something might
 					last_got_t = d.Time
 					last_got_index = j
@@ -957,27 +946,8 @@ func (cass *CassandraFlatMetric) RenderOne(metric indexer.MetricFindItem, from s
 				for ; j < inflight_len; j++ {
 					d := inflight[j]
 					if uint32(d.Time.Unix()) <= interp_vec[i].Time {
-						// the weird setters here are to get the pointers properly (a weird golang thing)
-						switch use_metric {
-						case "mean":
-							m := float64(d.Sum) / float64(d.Count)
-							interp_vec[i].Value = &m
-						case "min":
-							m := float64(d.Min)
-							interp_vec[i].Value = &m
-						case "max":
-							m := float64(d.Max)
-							interp_vec[i].Value = &m
-						case "last":
-							m := float64(d.Last)
-							interp_vec[i].Value = &m
-						case "first":
-							m := float64(d.First)
-							interp_vec[i].Value = &m
-						default:
-							s := float64(d.Sum)
-							interp_vec[i].Value = &s
-						}
+						use_value := d.AggValue(use_metric)
+						interp_vec[i].Value = &use_value
 						j++
 					}
 					break
@@ -994,28 +964,8 @@ func (cass *CassandraFlatMetric) RenderOne(metric indexer.MetricFindItem, from s
 				if uint32(d.Time.Unix()) <= cur_step_time {
 
 					// cass.writer.log.Critical("ONPS %v : %v Len %d :I %d, j %d, iLen: %v SUM: %v", d_points[j], interp_vec[i], ct, i, j, b_len, d_points[j].Sum,)
-
-					// the weird setters here are to get the pointers properly (a weird golang thing)
-					switch use_metric {
-					case "mean":
-						m := float64(d.Sum) / float64(d.Count)
-						interp_vec[i].Value = &m
-					case "min":
-						m := float64(d.Min)
-						interp_vec[i].Value = &m
-					case "max":
-						m := float64(d.Max)
-						interp_vec[i].Value = &m
-					case "last":
-						m := float64(d.Last)
-						interp_vec[i].Value = &m
-					case "first":
-						m := float64(d.First)
-						interp_vec[i].Value = &m
-					default:
-						s := float64(d.Sum)
-						interp_vec[i].Value = &s
-					}
+					use_value := d.AggValue(use_metric)
+					interp_vec[i].Value = &use_value
 					interp_vec[i].Time = uint32(d.Time.Unix()) //this is the "real" time, graphite does not care, but something might
 					j++
 				}
