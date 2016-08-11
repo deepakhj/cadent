@@ -8,6 +8,7 @@ import (
 	"cadent/server/utils"
 	"fmt"
 	"hash/fnv"
+	"io"
 	"math"
 	"sort"
 	"strconv"
@@ -32,18 +33,146 @@ func (s JsonFloat64) MarshalJSON() ([]byte, error) {
 	return []byte(fmt.Sprintf("%v", float64(s))), nil
 }
 
+// for GC purposes
+const SPACE_SEPARATOR = " "
+const DOT_SEPARATOR = "."
+const COMMA_SEPARATOR = ","
+const EQUAL_SEPARATOR = "="
+const IS_SEPARATOR = "_is_"
+const NEWLINE_SEPARATOR = "\n"
+
+var SPACE_SEPARATOR_BYTE = []byte(" ")
+var DOT_SEPARATOR_BYTE = []byte(".")
+var COMMA_SEPARATOR_BYTE = []byte(",")
+var EQUAL_SEPARATOR_BYTE = []byte("=")
+var IS_SEPARATOR_BYTE = []byte("_is_")
+var NEWLINE_SEPARATOR_BYTES = []byte("\n")
+var NEWLINE_SEPARATOR_BYTE = NEWLINE_SEPARATOR_BYTES[0]
+
 type SortingTags [][]string
+
+// make a tag array from a string input inder a few conditions
+// tag=val.tag=val.tag=val
+// or
+// tag_is_val.tag_is_val
+// or
+// tag=val,tag=val
+// or
+// tag_is_val,tag_is_val
+// or
+// tag=val tag=val
+// or
+// tag_is_val tag_is_val
+func SortingTagsFromString(key string) SortingTags {
+
+	var parse_tsg []string
+	if strings.Contains(key, DOT_SEPARATOR) {
+		parse_tsg = strings.Split(key, DOT_SEPARATOR)
+	} else if strings.Contains(key, COMMA_SEPARATOR) {
+		parse_tsg = strings.Split(key, COMMA_SEPARATOR)
+	} else {
+		parse_tsg = strings.Split(key, SPACE_SEPARATOR)
+	}
+	return SortingTagsFromArray(parse_tsg)
+}
+
+func SortingTagsFromArray(keys []string) SortingTags {
+
+	outs := make(SortingTags, 0)
+
+	for _, tgs := range keys {
+		spls := strings.Split(tgs, EQUAL_SEPARATOR)
+		if len(spls) < 2 {
+			// try "_is_"
+			spls = strings.Split(tgs, IS_SEPARATOR)
+			if len(spls) < 2 {
+				continue
+			}
+		}
+
+		outs = append(outs, []string{spls[0], spls[1]})
+	}
+	return outs
+}
 
 func (p SortingTags) Len() int           { return len(p) }
 func (p SortingTags) Less(i, j int) bool { return strings.Compare(p[i][0], p[j][0]) < 0 }
 func (p SortingTags) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 
 func (s SortingTags) String() string {
+	return s.ToStringSep("=", ".")
+}
+
+func (s SortingTags) IsEmpty() bool {
+	return len(s) == 0
+}
+
+func (s SortingTags) Merge(tags SortingTags) SortingTags {
+	n_tags := make(SortingTags, 0)
+	for _, tag := range tags {
+		got := false
+		for _, o_tag := range s {
+			if tag[0] == o_tag[0] {
+				n_tags = append(n_tags, []string{tag[0], tag[1]})
+				got = true
+				break
+			}
+		}
+		if !got {
+			n_tags = append(n_tags, []string{tag[0], tag[1]})
+		}
+	}
+	return n_tags
+}
+
+func (s SortingTags) ToStringSep(wordsep string, tagsep string) string {
 	str := make([]string, len(s))
 	for idx, tag := range s {
-		str[idx] = strings.Join(tag, "=")
+		str[idx] = strings.Join(tag, wordsep)
 	}
-	return strings.Join(str, ",")
+	return strings.Join(str, tagsep)
+}
+
+func (s SortingTags) WriteBytes(buf io.Writer, wordsep []byte, tagsep []byte) {
+
+	l := len(s)
+	for idx, tag := range s {
+		buf.Write([]byte(tag[0]))
+		buf.Write(wordsep)
+		buf.Write([]byte(tag[1]))
+		if idx < l-1 {
+			buf.Write(tagsep)
+		}
+	}
+}
+
+// these methods are for Metrics2.0 things
+func (s SortingTags) FindTag(name string) string {
+	for _, tag := range s {
+		if tag[0] == name {
+			return tag[1]
+		}
+	}
+	return ""
+}
+
+// Hz, B, etc
+func (s SortingTags) Unit() string {
+	return s.FindTag("unit")
+}
+
+// counter, rate, gauge, count, timestamp
+func (s SortingTags) Mtype() string {
+	got := s.FindTag("mtype")
+	if got == "" {
+		got = s.FindTag("target_type")
+	}
+	return got
+}
+
+// min, max, lower, upper, mean, std, sum, upper_\d+, lower_\d+, min_\d+, max_\d+
+func (s SortingTags) Stat() string {
+	return s.FindTag("stat")
 }
 
 type StatId uint64
@@ -51,6 +180,7 @@ type StatId uint64
 type StatName struct {
 	Key        string      `json:"key"`
 	Tags       SortingTags `json:"tags"`
+	MetaTags   SortingTags `json:"meta_tags"`
 	Resolution uint32      `json:"resolution"`
 	TTL        uint32      `json:"ttl"`
 }
@@ -77,6 +207,11 @@ func (s *StatName) UniqueIdString() string {
 func (s *StatName) SortedTags() SortingTags {
 	sort.Sort(s.Tags)
 	return s.Tags
+}
+
+func (s *StatName) SortedMetaTags() SortingTags {
+	sort.Sort(s.MetaTags)
+	return s.MetaTags
 }
 
 // return an array of [ [name, val] ...] sorted by name
@@ -123,6 +258,14 @@ func (s *StatName) Name() string {
 	return strings.Join(str, ".")
 }
 
+func (s *StatName) AggFunc() AggType {
+	h_stat := s.Tags.FindTag("stat")
+	if h_stat != "" {
+		return AggTypeFromTag(h_stat)
+	}
+	return GuessReprValueFromKey(s.Key)
+}
+
 type StatRepr struct {
 	Name StatName
 
@@ -156,17 +299,17 @@ func (s *StatRepr) Copy() *StatRepr {
 
 }
 
-func (s *StatRepr) AggValue(aggfunc string) float64 {
+func (s *StatRepr) AggValue(aggfunc AggType) float64 {
 	switch aggfunc {
-	case "sum":
+	case SUM:
 		return float64(s.Sum)
-	case "min":
+	case MIN:
 		return float64(s.Min)
-	case "max":
+	case MAX:
 		return float64(s.Max)
-	case "first":
+	case FIRST:
 		return float64(s.First)
-	case "last":
+	case LAST:
 		return float64(s.Last)
 	default:
 		if s.Count > 0 {

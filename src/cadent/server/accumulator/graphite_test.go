@@ -1,7 +1,10 @@
 package accumulator
 
 import (
+	"bytes"
+	"cadent/server/repr"
 	. "github.com/smartystreets/goconvey/convey"
+	"strings"
 	"testing"
 )
 
@@ -47,13 +50,27 @@ func TestGraphiteAccumulator(t *testing.T) {
 		err = statter.ProcessLine("stats.gauges.goo 5 123123")
 		err = statter.ProcessLine("stats.gauges.goo 10 123123")
 
-		b_arr := statter.Flush()
-		for _, item := range b_arr.Lines {
-			t.Logf("Graphite Line: %s", item)
+		buf := new(bytes.Buffer)
+		b_arr := statter.Flush(buf)
+		for _, item := range b_arr.Stats {
+			t.Logf("Graphite Line: %s", item.Name.Key)
 		}
 		Convey("Flush should give an array of 4 ", func() {
-			So(len(b_arr.Lines), ShouldEqual, 4)
+			So(len(b_arr.Stats), ShouldEqual, 4)
 		})
+
+		// taggin support
+		err = statter.ProcessLine("stats.gauges.goo 10 123123 moo=house host=me")
+		buf = new(bytes.Buffer)
+		b_arr = statter.Flush(buf)
+		for _, item := range b_arr.Stats {
+			So(item.Name.MetaTags, ShouldResemble, repr.SortingTags{
+				[]string{"moo", "house"},
+				[]string{"host", "me"},
+			})
+		}
+
+		So(strings.Split(buf.String(), "\n")[0], ShouldEqual, "stats.gauges.goo 10.000000 123123 moo=house host=me")
 
 	})
 	stsfmt, err := NewFormatterItem("statsd")
@@ -76,12 +93,13 @@ func TestGraphiteAccumulator(t *testing.T) {
 		err = statter.ProcessLine("stats.counters.goo 5 123123")
 		err = statter.ProcessLine("stats.counters.goo 10 123123")
 
-		b_arr := statter.Flush()
+		buf := new(bytes.Buffer)
+		b_arr := statter.Flush(buf)
 		Convey("statsd out: Flush should give us data", func() {
-			So(len(b_arr.Lines), ShouldEqual, 4)
+			So(len(b_arr.Stats), ShouldEqual, 4)
 		})
-		for _, item := range b_arr.Lines {
-			t.Logf("Statsd Line: %s", item)
+		for _, item := range b_arr.Stats {
+			t.Logf("Statsd Line: %s", item.Name.Key)
 
 		}
 	})

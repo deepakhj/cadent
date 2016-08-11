@@ -213,15 +213,15 @@ func (ws *WhisperWriter) getRetentions() (whisper.Retentions, error) {
 }
 
 func (ws *WhisperWriter) getAggregateType(key string) whisper.AggregationMethod {
-	agg_type := indexer.GuessAggregateType(key)
+	agg_type := repr.GuessReprValueFromKey(key)
 	switch agg_type {
-	case "sum":
+	case repr.SUM:
 		return whisper.Sum
-	case "max":
+	case repr.MAX:
 		return whisper.Max
-	case "min":
+	case repr.MIN:
 		return whisper.Min
-	case "last":
+	case repr.LAST:
 		return whisper.Last
 	default:
 		return whisper.Average
@@ -229,15 +229,15 @@ func (ws *WhisperWriter) getAggregateType(key string) whisper.AggregationMethod 
 }
 
 func (ws *WhisperWriter) getxFileFactor(key string) float32 {
-	agg_type := indexer.GuessAggregateType(key)
+	agg_type := repr.GuessReprValueFromKey(key)
 	switch agg_type {
-	case "sum":
+	case repr.SUM:
 		return 0.0
-	case "max":
+	case repr.MAX:
 		return 0.1
-	case "min":
+	case repr.MIN:
 		return 0.1
-	case "last":
+	case repr.LAST:
 		return 0.1
 	default:
 		return ws.xFilesFactor
@@ -418,7 +418,7 @@ func (ws *WhisperWriter) InsertMulti(metric *repr.StatName, points repr.StatRepr
 
 	// convert "points" to a whisper object
 	whisp_points := make([]*whisper.TimeSeriesPoint, 0)
-	agg_func := indexer.GuessAggregateType(metric.Key)
+	agg_func := repr.GuessReprValueFromKey(metric.Key)
 	for _, pt := range points {
 		whisp_points = append(whisp_points,
 			&whisper.TimeSeriesPoint{
@@ -484,7 +484,7 @@ func (ws *WhisperWriter) Write(stat repr.StatRepr) error {
 
 	// add to the writeback cache only
 	ws.cache_queue.Add(&stat.Name, &stat)
-	agg_func := indexer.GuessAggregateType(stat.Name.Key)
+	agg_func := repr.GuessReprValueFromKey(stat.Name.Key)
 	// and now add it to the readcache iff it's been activated
 	r_cache := GetReadCache()
 	if r_cache != nil {
@@ -613,7 +613,7 @@ func (ws *WhisperMetrics) GetFromReadCache(metric string, start int64, end int64
 	step := uint32(0)
 	if cached_stats != nil && len(cached_stats) > 0 {
 		stats.StatsdClient.Incr("reader.whisper.render.cache.hits", 1)
-		rawd.AggFunc = indexer.GuessAggregateType(metric)
+		rawd.AggFunc = repr.GuessReprValueFromKey(metric)
 
 		f_t := uint32(0)
 		for _, stat := range cached_stats {
@@ -672,7 +672,7 @@ func (ws *WhisperMetrics) RawDataRenderOne(metric indexer.MetricFindItem, from s
 
 	rawd.Start = uint32(start)
 	rawd.End = uint32(end)
-	rawd.AggFunc = indexer.GuessAggregateType(metric.Id)
+	rawd.AggFunc = repr.GuessReprValueFromKey(metric.Id)
 	rawd.Step = 1 // just for something in case of errors
 	rawd.Metric = metric.Id
 	rawd.Id = metric.UniqueId

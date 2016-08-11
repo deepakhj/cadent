@@ -7,6 +7,7 @@
 package splitter
 
 import (
+	"cadent/server/repr"
 	"fmt"
 	"strconv"
 	"strings"
@@ -127,7 +128,7 @@ func (g *GraphiteSplitter) ProcessLine(line string) (SplitItem, error) {
 	//graphite_array := strings.Fields(line)
 	// clean the string of bad chars
 	line = GRAHITE_REPLACER.Replace(line)
-	graphite_array := strings.Split(line, " ")
+	graphite_array := strings.Split(line, repr.SPACE_SEPARATOR)
 	if len(graphite_array) > g.key_index {
 
 		// graphite timestamps are in unix seconds
@@ -135,7 +136,12 @@ func (g *GraphiteSplitter) ProcessLine(line string) (SplitItem, error) {
 		if len(graphite_array) >= g.time_index {
 			i, err := strconv.ParseInt(graphite_array[g.time_index], 10, 64)
 			if err == nil {
-				t = time.Unix(i, 0)
+				// nano or second tstamps
+				if i > 2147483647 {
+					t = time.Unix(0, i)
+				} else {
+					t = time.Unix(i, 0)
+				}
 			}
 		}
 		// log.Printf("IN GRAPHITE: %s ARR: %v  t_idx: %d, time: %s", graphite_array, line, graphite_array[job.time_index], t.String())

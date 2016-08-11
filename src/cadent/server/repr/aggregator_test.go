@@ -49,7 +49,7 @@ func TestStatReprAggregator(t *testing.T) {
 		})
 
 		sc.Add(ss)
-		m_key := sc.MapKey(ss.Name.Key, t_time)
+		m_key := sc.MapKey(ss.Name.UniqueIdString(), t_time)
 		Convey("Should have been aggrigated", func() {
 			gots := sc.Items[m_key]
 			So(gots.Sum, ShouldEqual, 10)

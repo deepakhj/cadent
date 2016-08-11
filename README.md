@@ -381,18 +381,36 @@ There is also a special `listen` called `backend_only` which is simply a place w
 (from say a `PreReg` filter or `Accumulator`) that then out puts to it's consthash server outgoing list
     
 ### Input line types for no accumulator
+
  
     Graphite: <key> <value> <time>
     Statsd: <key>:<value>|<type>|<samplerate>
     Regex: (<\d+>)?(?P<Timestamp>[A-Z][a-z]+\s+\d+\s\d+:\d+:\d+) (?P<Key>\S+) (?P<Logger>\S+):(.*)
+    Carbon2: <tag> <tag> <Tag>  <meta_tag> <value> <time>
+    Carbon2a: name=value.name=value  <meta_tag> <value> <time>
+    Carbon2b: name=value,name=value  <meta_tag> <value> <time>
+    Carbon2c: name_is_value.name_is_value  <meta_tag> <value> <time>
 
  - note: regex need a `(?P<Key>...)` group to function as that will be the hashing key, other fields are ignored
+
+#### some notes on Carbon2
+
+    - has TWO SPACES between the <tag> and <meta_tag> section
+    - <meta_tags> are NOT concidered to signify a different metric
+    - the "<key>" we unique idenfity a metric is a SORTED by name string of the form
+
+        `nameA=value.nameB=value.nameC=value`
 
 ### Input line types for using accumulator
 
     Graphite: <key> <value> <time>
     Statsd: <key>:<value>|<type>|<samplerate>
+    Carbon2: <tag> <tag> <Tag>  <meta_tag> <value> <time>
+    Carbon2a: name=value.name=value  <meta_tag> <value> <time>
+    Carbon2b: name=value,name=value  <meta_tag> <value> <time>
+    Carbon2c: name_is_value.name_is_value  <meta_tag> <value> <time>
 
+ - note: carbon2 has TWO SPACES between the <tag> and <meta_tag> section
 
 ### Internal Stats
 

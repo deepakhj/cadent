@@ -860,7 +860,7 @@ func (cass *CassandraFlatMetric) RawRenderOne(metric indexer.MetricFindItem, fro
 	rawd.Metric = m_key
 	rawd.Id = metric.UniqueId
 	rawd.Data = d_points
-	rawd.AggFunc = indexer.GuessAggregateType(m_key)
+	rawd.AggFunc = repr.GuessReprValueFromKey(m_key)
 	rawd.Quantize() // fill out all the "blanks"
 
 	return rawd, nil

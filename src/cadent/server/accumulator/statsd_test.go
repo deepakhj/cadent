@@ -1,6 +1,7 @@
 package accumulator
 
 import (
+	"bytes"
 	. "github.com/smartystreets/goconvey/convey"
 	"strings"
 	"testing"
@@ -60,15 +61,17 @@ func TestStatsdAccumulator(t *testing.T) {
 			So(err, ShouldEqual, nil)
 		})
 
-		b_arr := statter.Flush()
+		buf := new(bytes.Buffer)
+		b_arr := statter.Flush(buf)
 		Convey("Flush should give an array bigger then 2 ", func() {
-			So(len(b_arr.Lines), ShouldBeGreaterThanOrEqualTo, 2)
+			So(len(b_arr.Stats), ShouldBeGreaterThanOrEqualTo, 2)
 		})
 		got_gauge := ""
 		got_counter := ""
 		got_timer := ""
-		for _, item := range b_arr.Lines {
-			t.Logf("Graphite Line: %s", item)
+
+		for _, item := range strings.Split(buf.String(), "\n") {
+			//fmt.Printf("Flushed Statsd Line: %s\n", item)
 			if strings.Contains(item, ".gauges") {
 				got_gauge = item
 			}
@@ -118,18 +121,20 @@ func TestStatsdAccumulator(t *testing.T) {
 		time.Sleep(time.Second)
 		err = statter.ProcessLine("moo.goo.org:2|ms|@0.1")
 
-		b_arr := statter.Flush()
+		buf := new(bytes.Buffer)
+		b_arr := statter.Flush(buf)
 		Convey("statsd out: Flush should give us data", func() {
-			So(len(b_arr.Lines), ShouldBeGreaterThan, 3)
+			So(len(b_arr.Stats), ShouldEqual, 3)
 		})
 		got_timer := ""
 		have_upper := ""
-		for _, item := range b_arr.Lines {
-			t.Logf("Flush Lines Statsd Line: %s", item)
+		for _, item := range strings.Split(buf.String(), "\n") {
+			//t.Logf("Flush Lines Statsd Line: %s", item)
 			if strings.Contains(item, "stats.timers") {
 				got_timer = item
 			}
 			// note: timers don't get the rate dividor
+			//moo.goo.org.upper_95:2.000000|g
 			if strings.Contains(item, "moo.goo.org.upper_95:2.000000|g") {
 				have_upper = item
 			}
@@ -142,10 +147,10 @@ func TestStatsdAccumulator(t *testing.T) {
 		})
 		have_upper = ""
 		got_timer = ""
-		for _, item := range b_arr.Stats {
-			t.Logf("Flush Stats Statsd Line: %v", item)
-			if strings.Contains(item.Name.Key, "stats.timers") {
-				got_timer = item.Name.Key
+		for _, item := range strings.Split(buf.String(), "\n") {
+			//t.Logf("Flush Stats Statsd Line: %v", item)
+			if strings.Contains(item, "stats.timers") {
+				got_timer = item
 			}
 
 		}

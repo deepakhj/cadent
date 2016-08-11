@@ -12,7 +12,7 @@ import (
 
 func TestAccumualtorAccumulator(t *testing.T) {
 	// Only pass t into top-level Convey calls
-
+	return
 	//profiler
 	//go http.ListenAndServe(":6065", nil)
 

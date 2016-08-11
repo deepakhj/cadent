@@ -20,6 +20,8 @@ func TestRegistryRunner(t *testing.T) {
 		So(st.Name(), ShouldEqual, "statsd")
 		re, _ := NewSplitterItem("regex", conf)
 		So(re.Name(), ShouldEqual, "regex")
+		ca, _ := NewSplitterItem("carbon2", conf)
+		So(ca.Name(), ShouldEqual, "carbon2")
 		_, err := NewSplitterItem("nothere", conf)
 		So(err, ShouldNotEqual, nil)
 
@@ -169,6 +171,84 @@ func TestRegexRunner(t *testing.T) {
 		ri, err := gr.ProcessLine(bad_line)
 		So(ri, ShouldEqual, nil)
 		So(err, ShouldNotEqual, nil)
+	})
+
+}
+
+func TestCarbonTwoRunner(t *testing.T) {
+
+	conf := make(map[string]interface{})
+
+	good_line := "moo.goo.org  moo=goo house=loop 345345 1465866540"
+	good_line_2 := "moo.goo.org  345345 1465866540"
+	good_line_3 := "host=me type=monkey stat=last mtype=counter 345345 1465866540"
+	bad_line := "moo.goo.org 3456n -890"
+	Convey("CarbonTwo Runner should parse lines nicely", t, func() {
+
+		gr, _ := NewCarbonTwoSplitter(conf)
+		spl, _ := gr.ProcessLine(good_line)
+		So(gr.Name(), ShouldEqual, "carbon2")
+		So(spl.Key(), ShouldEqual, "moo.goo.org")
+		So(spl.Line(), ShouldEqual, good_line)
+		So(spl.OriginName(), ShouldEqual, "")
+		So(spl.Phase(), ShouldEqual, Parsed)
+		So(spl.IsValid(), ShouldEqual, true)
+		So(spl.HasTime(), ShouldEqual, true)
+		So(spl.Timestamp().Unix(), ShouldEqual, 1465866540)
+
+		So(spl.Fields(), ShouldResemble, []string{
+			"moo=goo",
+			"house=loop",
+			"345345",
+			"1465866540",
+		})
+
+		spl.SetPhase(AccumulatedParsed)
+		So(spl.Phase(), ShouldEqual, AccumulatedParsed)
+		spl.SetOrigin(TCP)
+		So(spl.Origin(), ShouldEqual, TCP)
+		spl.SetOriginName("moo")
+		So(spl.OriginName(), ShouldEqual, "moo")
+
+		So(spl.Tags(), ShouldResemble, [][]string{
+			{"moo", "goo"},
+			{"house", "loop"},
+		})
+
+	})
+
+	Convey("CarbonTwo Runner should not parser this with a bad key index", t, func() {
+
+		gr, _ := NewCarbonTwoSplitter(conf)
+		spl, err := gr.ProcessLine(bad_line)
+		t.Logf("'%s', %v", good_line, spl)
+		So(spl, ShouldEqual, nil)
+		So(err, ShouldNotEqual, nil)
+	})
+
+	Convey("CarbonTwo Runner not need meta tags", t, func() {
+
+		gr, _ := NewCarbonTwoSplitter(conf)
+		spl, err := gr.ProcessLine(good_line_2)
+		So(spl, ShouldNotEqual, nil)
+		So(err, ShouldEqual, nil)
+		So(spl.Key(), ShouldEqual, "moo.goo.org")
+		So(spl.Timestamp().Unix(), ShouldEqual, 1465866540)
+		So(spl.Tags(), ShouldResemble, [][]string{})
+
+	})
+
+	Convey("CarbonTwo Runner with opener tags", t, func() {
+
+		gr, _ := NewCarbonTwoSplitter(conf)
+		spl, err := gr.ProcessLine(good_line_3)
+		So(spl, ShouldNotEqual, nil)
+		So(err, ShouldEqual, nil)
+		// host=me type=monkey stat=last mtype=counter
+		So(spl.Key(), ShouldEqual, "host=me.mtype=counter.stat=last.type=monkey")
+		So(spl.Timestamp().Unix(), ShouldEqual, 1465866540)
+		So(spl.Tags(), ShouldResemble, [][]string{})
+
 	})
 
 }

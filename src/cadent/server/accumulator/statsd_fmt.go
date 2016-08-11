@@ -7,6 +7,7 @@ package accumulator
 import (
 	"cadent/server/repr"
 	"fmt"
+	"io"
 	"strings"
 )
 
@@ -29,7 +30,7 @@ func (g *StatsdFormatter) SetAccumulator(acc AccumulatorItem) {
 }
 
 func (g *StatsdFormatter) Type() string { return STATSD_FMT_NAME }
-func (g *StatsdFormatter) ToString(name repr.StatName, val float64, tstamp int32, stats_type string, tags []AccumulatorTags) string {
+func (g *StatsdFormatter) ToString(name *repr.StatName, val float64, tstamp int32, stats_type string, tags []AccumulatorTags) string {
 
 	if stats_type == "" {
 		stats_type = "c"
@@ -45,7 +46,7 @@ func (g *StatsdFormatter) ToString(name repr.StatName, val float64, tstamp int32
 	return fmt.Sprintf("%s:%f|%s", key, val, stats_type)
 }
 
-func (g *StatsdFormatter) Write(buf BinaryWriter, name repr.StatName, val float64, tstamp int32, stats_type string, tags []AccumulatorTags) {
+func (g *StatsdFormatter) Write(buf io.Writer, name *repr.StatName, val float64, tstamp int32, stats_type string, tags []AccumulatorTags) {
 
 	if stats_type == "" {
 		stats_type = "c"
@@ -58,5 +59,5 @@ func (g *StatsdFormatter) Write(buf BinaryWriter, name repr.StatName, val float6
 			"stats.gauges.", "", 1),
 		"stats.timers.", "", 1)
 
-	fmt.Fprintf(buf, "%s:%f|%s", key, val, stats_type)
+	fmt.Fprintf(buf, "%s:%f|%s\n", key, val, stats_type)
 }

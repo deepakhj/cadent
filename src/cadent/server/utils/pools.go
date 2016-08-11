@@ -63,6 +63,20 @@ func PutMutex(mu *sync.Mutex) {
 	mutexPool.Put(mu)
 }
 
+var rwMutexPool = sync.Pool{
+	New: func() interface{} {
+		return new(sync.RWMutex)
+	},
+}
+
+func GetRWMutex() *sync.RWMutex {
+	return rwMutexPool.Get().(*sync.RWMutex)
+}
+
+func PutRWMutex(mu *sync.RWMutex) {
+	rwMutexPool.Put(mu)
+}
+
 var waitGroupPool = sync.Pool{
 	New: func() interface{} {
 		return new(sync.WaitGroup)

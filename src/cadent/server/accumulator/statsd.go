@@ -8,6 +8,7 @@ package accumulator
 import (
 	"cadent/server/repr"
 	"fmt"
+	"io"
 	"math"
 	"sort"
 	"strconv"
@@ -50,8 +51,8 @@ type StatsdBaseStatItem struct {
 	mu sync.Mutex
 }
 
-func (s *StatsdBaseStatItem) Repr() repr.StatRepr {
-	return repr.StatRepr{
+func (s *StatsdBaseStatItem) Repr() *repr.StatRepr {
+	return &repr.StatRepr{
 		Name:  s.InKey,
 		Min:   repr.CheckFloat(repr.JsonFloat64(s.Min)),
 		Max:   repr.CheckFloat(repr.JsonFloat64(s.Max)),
@@ -79,7 +80,7 @@ func (s *StatsdBaseStatItem) ZeroOut() error {
 	return nil
 }
 
-func (s *StatsdBaseStatItem) Out(fmatter FormatterItem, acc AccumulatorItem) []string {
+func (s *StatsdBaseStatItem) Write(buffer io.Writer, fmatter FormatterItem, acc AccumulatorItem) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	root := acc.GetOption("Prefix", "stats").(string)
@@ -123,52 +124,53 @@ func (s *StatsdBaseStatItem) Out(fmatter FormatterItem, acc AccumulatorItem) []s
 			if len(sufix) > 0 {
 				rate_pref = rate_pref + sufix + "."
 			}
-			return []string{
+			fmatter.Write(
+				buffer,
+				&repr.StatName{Key: f_key + in_key},
+				val_p_s,
+				0, // let formatter handle the time,
+				c_type,
+				acc.Tags(),
+			)
+			fmatter.Write(buffer,
 
-				fmatter.ToString(
-					repr.StatName{Key: f_key + in_key},
-					val_p_s,
-					0, // let formatter handle the time,
-					c_type,
-					acc.Tags(),
-				),
-				fmatter.ToString(
-					repr.StatName{Key: rate_pref + in_key},
-					val,
-					0, // let formatter handle the time,
-					c_type,
-					acc.Tags(),
-				),
-			}
+				&repr.StatName{Key: rate_pref + in_key},
+				val,
+				0, // let formatter handle the time,
+				c_type,
+				acc.Tags(),
+			)
+			return
 		} else {
 
-			return []string{
-				fmatter.ToString(
-					repr.StatName{Key: f_key + "count." + in_key},
-					val,
-					0, // let formatter handle the time,
-					c_type,
-					acc.Tags(),
-				),
-				fmatter.ToString(
-					repr.StatName{Key: f_key + "rate." + in_key},
-					val_p_s,
-					0, // let formatter handle the time,
-					c_type,
-					acc.Tags(),
-				),
-			}
+			fmatter.Write(
+				buffer,
+				&repr.StatName{Key: f_key + "count." + in_key},
+				val,
+				0, // let formatter handle the time,
+				c_type,
+				acc.Tags(),
+			)
+			fmatter.Write(
+				buffer,
+				&repr.StatName{Key: f_key + "rate." + in_key},
+				val_p_s,
+				0, // let formatter handle the time,
+				c_type,
+				acc.Tags(),
+			)
+			return
 		}
 	}
-	return []string{
-		fmatter.ToString(
-			repr.StatName{Key: f_key + in_key},
-			val,
-			0, // let formatter handle the time,
-			c_type,
-			acc.Tags(),
-		),
-	}
+	fmatter.Write(
+		buffer,
+		&repr.StatName{Key: f_key + in_key},
+		val,
+		0, // let formatter handle the time,
+		c_type,
+		acc.Tags(),
+	)
+
 }
 
 func (s *StatsdBaseStatItem) Accumulate(val float64, sample float64, stattime time.Time) error {
@@ -227,8 +229,8 @@ type StatsdTimerStatItem struct {
 	mu sync.Mutex
 }
 
-func (s *StatsdTimerStatItem) Repr() repr.StatRepr {
-	return repr.StatRepr{
+func (s *StatsdTimerStatItem) Repr() *repr.StatRepr {
+	return &repr.StatRepr{
 		Time:  time.Now(),
 		Name:  s.InKey,
 		Min:   repr.CheckFloat(repr.JsonFloat64(s.Min)),
@@ -290,7 +292,7 @@ func (s *StatsdTimerStatItem) ZeroOut() error {
 	return nil
 }
 
-func (s *StatsdTimerStatItem) Out(fmatter FormatterItem, acc AccumulatorItem) []string {
+func (s *StatsdTimerStatItem) Write(buffer io.Writer, fmatter FormatterItem, acc AccumulatorItem) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	root := acc.GetOption("Prefix", "stats").(string)
@@ -338,22 +340,17 @@ func (s *StatsdTimerStatItem) Out(fmatter FormatterItem, acc AccumulatorItem) []
 	if max == STATSD_ACC_MIN_FLAG {
 		max = 0.0
 	}
-	base := []string{
-		fmatter.ToString(repr.StatName{Key: f_key + ".count"}, float64(s.SampleSum), t_stamp, "c", nil),
-		fmatter.ToString(repr.StatName{Key: f_key + ".count_ps"}, float64(s.SampleSum)/float64(tick), t_stamp, "c", nil),
-		fmatter.ToString(repr.StatName{Key: f_key + ".lower"}, min, t_stamp, "g", nil),
-		fmatter.ToString(repr.StatName{Key: f_key + ".upper"}, max, t_stamp, "g", nil),
-		fmatter.ToString(repr.StatName{Key: f_key + ".sum"}, s.Sum, t_stamp, "g", nil),
-	}
+
+	fmatter.Write(buffer, &repr.StatName{Key: f_key + ".count"}, float64(s.SampleSum), t_stamp, "c", nil)
+	fmatter.Write(buffer, &repr.StatName{Key: f_key + ".count_ps"}, float64(s.SampleSum)/float64(tick), t_stamp, "c", nil)
+	fmatter.Write(buffer, &repr.StatName{Key: f_key + ".lower"}, min, t_stamp, "g", nil)
+	fmatter.Write(buffer, &repr.StatName{Key: f_key + ".upper"}, max, t_stamp, "g", nil)
+	fmatter.Write(buffer, &repr.StatName{Key: f_key + ".sum"}, s.Sum, t_stamp, "g", nil)
+
 	if s.Count == 0 {
-		base = append(
-			base,
-			[]string{
-				fmatter.ToString(repr.StatName{Key: f_key + ".mean"}, float64(0.0), t_stamp, "g", nil),
-				fmatter.ToString(repr.StatName{Key: f_key + ".std"}, float64(0.0), t_stamp, "g", nil),
-				fmatter.ToString(repr.StatName{Key: f_key + ".median"}, float64(0.0), t_stamp, "g", nil),
-			}...,
-		)
+		fmatter.Write(buffer, &repr.StatName{Key: f_key + ".mean"}, float64(0.0), t_stamp, "g", nil)
+		fmatter.Write(buffer, &repr.StatName{Key: f_key + ".std"}, float64(0.0), t_stamp, "g", nil)
+		fmatter.Write(buffer, &repr.StatName{Key: f_key + ".median"}, float64(0.0), t_stamp, "g", nil)
 	}
 	if s.Count > 0 {
 		mid := int64(math.Floor(float64(s.Count) / 2.0))
@@ -364,14 +361,9 @@ func (s *StatsdTimerStatItem) Out(fmatter FormatterItem, acc AccumulatorItem) []
 			median = (s.Values[mid-1] + s.Values[mid]) / 2.0
 		}
 
-		base = append(
-			base,
-			[]string{
-				fmatter.ToString(repr.StatName{Key: f_key + ".mean"}, float64(avg), t_stamp, "g", nil),
-				fmatter.ToString(repr.StatName{Key: f_key + ".std"}, float64(std), t_stamp, "g", nil),
-				fmatter.ToString(repr.StatName{Key: f_key + ".median"}, float64(median), t_stamp, "g", nil),
-			}...,
-		)
+		fmatter.Write(buffer, &repr.StatName{Key: f_key + ".mean"}, float64(avg), t_stamp, "g", nil)
+		fmatter.Write(buffer, &repr.StatName{Key: f_key + ".std"}, float64(std), t_stamp, "g", nil)
+		fmatter.Write(buffer, &repr.StatName{Key: f_key + ".median"}, float64(median), t_stamp, "g", nil)
 
 		sum := s.Min
 		mean := s.Min
@@ -405,29 +397,19 @@ func (s *StatsdTimerStatItem) Out(fmatter FormatterItem, acc AccumulatorItem) []
 				mean = sum / float64(numInThreshold)
 			}
 
-			base = append(base,
-				[]string{
-					fmatter.ToString(repr.StatName{Key: fmt.Sprintf("%s.count_%s", f_key, p_name)}, float64(numInThreshold), t_stamp, "c", nil),
-					fmatter.ToString(repr.StatName{Key: fmt.Sprintf("%s.mean_%s", f_key, p_name)}, float64(mean), t_stamp, "g", nil),
-					fmatter.ToString(repr.StatName{Key: fmt.Sprintf("%s.sum_%s", f_key, p_name)}, float64(sum), t_stamp, "g", nil),
-				}...,
-			)
+			fmatter.Write(buffer, &repr.StatName{Key: fmt.Sprintf("%s.count_%s", f_key, p_name)}, float64(numInThreshold), t_stamp, "c", nil)
+			fmatter.Write(buffer, &repr.StatName{Key: fmt.Sprintf("%s.mean_%s", f_key, p_name)}, float64(mean), t_stamp, "g", nil)
+			fmatter.Write(buffer, &repr.StatName{Key: fmt.Sprintf("%s.sum_%s", f_key, p_name)}, float64(sum), t_stamp, "g", nil)
+
 			if pct > 0 {
-				base = append(
-					base,
-					fmatter.ToString(repr.StatName{Key: fmt.Sprintf("%s.upper_%s", f_key, p_name)}, float64(thresholdBoundary), t_stamp, "g", nil),
-				)
+				fmatter.Write(buffer, &repr.StatName{Key: fmt.Sprintf("%s.upper_%s", f_key, p_name)}, float64(thresholdBoundary), t_stamp, "g", nil)
 			} else {
-				base = append(
-					base,
-					fmatter.ToString(repr.StatName{Key: fmt.Sprintf("%s.lower_%s", f_key, p_name)}, float64(thresholdBoundary), t_stamp, "g", nil),
-				)
+				fmatter.Write(buffer, &repr.StatName{Key: fmt.Sprintf("%s.lower_%s", f_key, p_name)}, float64(thresholdBoundary), t_stamp, "g", nil)
 			}
 		}
 	}
 	// reset the ticker
 	s.start_time = time.Now().Unix()
-	return base
 }
 
 /******************************/
@@ -584,11 +566,12 @@ func (a *StatsdAccumulate) Reset() error {
 	return nil
 }
 
-func (a *StatsdAccumulate) Flush() *flushedList {
+func (a *StatsdAccumulate) Flush(buf io.Writer) *flushedList {
 	fl := new(flushedList)
 	a.mu.Lock()
 	for _, stats := range a.StatsdStats {
-		fl.Add(stats.Out(a.OutFormat, a), stats.Repr())
+		stats.Write(buf, a.OutFormat, a)
+		fl.AddStat(stats.Repr())
 	}
 	a.mu.Unlock()
 	a.Reset()

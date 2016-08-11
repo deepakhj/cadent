@@ -30,6 +30,7 @@ type KafkaPath struct {
 	Segments []string    `json:"segments"`
 	SentTime int64       `json:"senttime"`
 	Tags     [][]string  `json:"tags"`
+	MetaTags [][]string  `json:"meta_tags"`
 
 	encoded []byte
 	err     error
@@ -112,6 +113,7 @@ func (kf *KafkaIndexer) Write(skey repr.StatName) error {
 		Path:     skey.Key,
 		Segments: strings.Split(skey.Key, "."),
 		Tags:     skey.SortedTags(),
+		MetaTags: skey.SortedMetaTags(),
 		SentTime: time.Now().UnixNano(),
 	}
 
@@ -139,6 +141,7 @@ func (kf *KafkaIndexer) Delete(skey *repr.StatName) error {
 		Path:     skey.Key,
 		Segments: strings.Split(skey.Key, "."),
 		Tags:     skey.SortedTags(),
+		MetaTags: skey.SortedMetaTags(),
 		SentTime: time.Now().UnixNano(),
 	}
 

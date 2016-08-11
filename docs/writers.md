@@ -63,17 +63,20 @@ A "total" metric has the form
 Not everything is "done" .. as there are many things to write and verify, this is the status of the pieces
 "complete" means both the writing and render api's and functionality are finished
 
+
 - cassandra-indexer: Complete
 - cassandra-blob: Not complete
 - cassandra-flat: Complete
 - mysql-indexer: Complete
-- mysql-flat: Not copmlete
+- mysql-flat: Not complete
 - mysql-blob: Complete
 - kafka: Complete (No reader API available)
 - file: Complete (No Reader API available)
 - leveldb-indexer: Complete
 - whisper: Complete
 
+
+NOTE: TAGS/Tag indexes are not yet supported .. progress is ongoing
 
 #### When to choose and why
 

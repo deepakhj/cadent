@@ -33,19 +33,52 @@ func TestStatAccumulatorRepr(t *testing.T) {
 	Convey("Stat Names", t, func() {
 		Convey("tags should sort", func() {
 			org := goo_nm.Tags.String()
-			So(org, ShouldEqual, "nameZ=value1,nameA=value2")
+			So(org, ShouldEqual, "nameZ=value1.nameA=value2")
 			tags_str := goo_nm.SortedTags().String()
-			So(tags_str, ShouldEqual, "nameA=value2,nameZ=value1")
+			So(tags_str, ShouldEqual, "nameA=value2.nameZ=value1")
 		})
 		Convey("unique IDs should be correct", func() {
-			So(goo_nm.UniqueId(), ShouldEqual, 1174965185175832276) // fnv64a(key+:+sortedNames(tags))
+			So(goo_nm.UniqueId(), ShouldEqual, 3220740871601082034) // fnv64a(key+:+sortedNames(tags))
 			So(moo_nm.UniqueId(), ShouldEqual, 962860623706201084)
-			So(goo_nm.UniqueIdString(), ShouldEqual, "8xd6eafrluxg") // fnv64a(key+:+sortedNames(tags))
+			So(goo_nm.UniqueIdString(), ShouldEqual, "ogwpcqgu97zm") // fnv64a(key+:+sortedNames(tags))
 			So(moo_nm.UniqueIdString(), ShouldEqual, "7bcpls2e2ubg")
 		})
 		Convey("Graphite names should be correct", func() {
 			So(goo_nm.Name(), ShouldEqual, "goo.nameA=value2.nameZ=value1")
 			So(moo_nm.Name(), ShouldEqual, "moo")
+		})
+	})
+
+	Convey("Tags", t, func() {
+		t_str := "moo=goo loo=baz"
+		t_str_1 := "moo=goo.loo=baz"
+		t_str_2 := "moo=goo,loo=baz"
+		t_str_3 := "moo_is_goo,loo_is_baz"
+		outs := SortingTags{
+			[]string{"moo", "goo"},
+			[]string{"loo", "baz"},
+		}
+		Convey("spaced tags should parse", func() {
+			tags := SortingTagsFromString(t_str)
+			So(tags, ShouldResemble, outs)
+		})
+		Convey("dots tags should parse", func() {
+			tags := SortingTagsFromString(t_str_1)
+			So(tags, ShouldResemble, outs)
+		})
+		Convey("comma tags should parse", func() {
+			tags := SortingTagsFromString(t_str_2)
+			So(tags, ShouldResemble, outs)
+		})
+		Convey("_is_ tags should parse", func() {
+			tags := SortingTagsFromString(t_str_3)
+			So(tags, ShouldResemble, outs)
+		})
+
+		arr_str := []string{"moo=goo", "loo=baz"}
+		Convey("array tags should parse", func() {
+			tags := SortingTagsFromArray(arr_str)
+			So(tags, ShouldResemble, outs)
 		})
 	})
 

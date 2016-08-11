@@ -416,7 +416,7 @@ func (my *MySQLMetrics) GetFromReadCache(metric string, start int64, end int64) 
 				step = t - f_t
 			}
 		}
-		rawd.AggFunc = indexer.GuessAggregateType(metric)
+		rawd.AggFunc = repr.GuessReprValueFromKey(metric)
 		rawd.RealEnd = d_points[len(d_points)-1].Time
 		rawd.RealStart = d_points[0].Time
 		rawd.Start = rawd.RealStart
@@ -472,7 +472,7 @@ func (my *MySQLMetrics) GetFromDatabase(metric *indexer.MetricFindItem, resoluti
 	rawd.Id = metric.UniqueId
 	rawd.Metric = metric.Path
 
-	rawd.AggFunc = indexer.GuessAggregateType(metric.Path)
+	rawd.AggFunc = repr.GuessReprValueFromKey(metric.Id)
 
 	for rows.Next() {
 		var p_type uint8
@@ -560,7 +560,7 @@ func (my *MySQLMetrics) RawDataRenderOne(metric *indexer.MetricFindItem, from st
 	rawd.RealStart = u_start
 	rawd.Start = rawd.RealStart
 	rawd.End = rawd.RealEnd
-	rawd.AggFunc = indexer.GuessAggregateType(metric.Id)
+	rawd.AggFunc = repr.GuessReprValueFromKey(metric.Id)
 
 	if metric.Leaf == 0 {
 		//data only but return a "blank" data set otherwise graphite no likey

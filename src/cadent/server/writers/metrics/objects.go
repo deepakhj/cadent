@@ -90,10 +90,10 @@ func (r *RawDataPoint) IsNull() bool {
 }
 
 func (r *RawDataPoint) String() string {
-	return fmt.Sprintf("RawDataPoint: T: %d Mean: %f", r.Time, r.AggValue("mean"))
+	return fmt.Sprintf("RawDataPoint: T: %d Mean: %f", r.Time, r.AggValue(repr.MEAN))
 }
 
-func (r *RawDataPoint) AggValue(aggfunc string) float64 {
+func (r *RawDataPoint) AggValue(aggfunc repr.AggType) float64 {
 
 	// if the count is 1 there is only but one real value
 	if r.Count == 1 {
@@ -101,15 +101,15 @@ func (r *RawDataPoint) AggValue(aggfunc string) float64 {
 	}
 
 	switch aggfunc {
-	case "sum":
+	case repr.SUM:
 		return r.Sum
-	case "min":
+	case repr.MIN:
 		return r.Min
-	case "max":
+	case repr.MAX:
 		return r.Max
-	case "first":
+	case repr.FIRST:
 		return r.First
-	case "last":
+	case repr.LAST:
 		return r.Last
 	default:
 		if r.Count > 0 {
@@ -169,7 +169,7 @@ type RawRenderItem struct {
 	Start     uint32           `json:"from"`
 	End       uint32           `json:"to"`
 	Step      uint32           `json:"step"`
-	AggFunc   string           `json:"aggfunc"`
+	AggFunc   repr.AggType     `json:"aggfunc"`
 	Data      RawDataPointList `json:"data"`
 }
 

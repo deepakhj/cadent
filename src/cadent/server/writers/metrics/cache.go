@@ -59,7 +59,6 @@ import (
 	"sort"
 
 	"cadent/server/utils/shutdown"
-	"cadent/server/writers/indexer"
 	"errors"
 	logging "gopkg.in/op/go-logging.v1"
 	"sync"
@@ -411,7 +410,7 @@ func (wc *Cacher) GetAsRawRenderItem(name *repr.StatName) (*RawRenderItem, error
 	rawd.End = uint32(data[len(data)-1].Time.Unix())
 	rawd.RealEnd = rawd.End
 	rawd.RealStart = rawd.Start
-	rawd.AggFunc = indexer.GuessAggregateType(name.Key)
+	rawd.AggFunc = repr.GuessReprValueFromKey(name.Key)
 
 	f_t := uint32(0)
 	step_t := uint32(0)
