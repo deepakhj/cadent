@@ -84,9 +84,9 @@ import (
 	"syscall"
 
 	"cadent/server/dispatch"
+	"cadent/server/series"
 	"cadent/server/utils/shutdown"
 	"cadent/server/writers/indexer"
-	"cadent/server/writers/series"
 	"math"
 	"strings"
 	"sync"

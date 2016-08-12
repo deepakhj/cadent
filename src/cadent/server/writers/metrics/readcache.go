@@ -30,8 +30,8 @@ package metrics
 import (
 	"cadent/server/lrucache"
 	"cadent/server/repr"
+	"cadent/server/series"
 	"cadent/server/utils/shutdown"
-	"cadent/server/writers/series"
 	"fmt"
 	"sort"
 	"sync"

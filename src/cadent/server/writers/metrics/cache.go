@@ -52,8 +52,8 @@ package metrics
 
 import (
 	"cadent/server/repr"
+	"cadent/server/series"
 	"cadent/server/stats"
-	"cadent/server/writers/series"
 	"fmt"
 	"math/rand"
 	"sort"

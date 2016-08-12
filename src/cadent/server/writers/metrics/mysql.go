@@ -45,12 +45,12 @@ package metrics
 
 import (
 	"cadent/server/repr"
+	"cadent/server/series"
 	"cadent/server/stats"
 	"cadent/server/utils"
 	"cadent/server/utils/shutdown"
 	"cadent/server/writers/dbs"
 	"cadent/server/writers/indexer"
-	"cadent/server/writers/series"
 	"database/sql"
 	"errors"
 	"fmt"

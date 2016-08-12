@@ -6,7 +6,7 @@ package metrics
 
 import (
 	"cadent/server/repr"
-	"cadent/server/writers/series"
+	"cadent/server/series"
 	"fmt"
 	"math"
 	"sort"

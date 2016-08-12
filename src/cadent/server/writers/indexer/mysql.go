@@ -24,6 +24,24 @@ CREATE TABLE `{path_table}` (
   KEY `length` (`length`)
 );
 
+CREATE TABLE `{tag_table}` (
+  `id` BIGINT unsigned NOT NULL AUTO_INCREMENT,
+  `name` varchar(255) NOT NULL,
+  `value` varchar(255) NOT NULL,
+  `is_meta` tinyint(1) NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  KEY `name` (`name`),
+  UNIQUE KEY `uid` (`value`, `name`, `is_meta`)
+);
+
+CREATE TABLE `{tag_table}_xref` (
+  `tag_id` BIGINT unsigned,
+  `uid` varchar(50) NOT NULL,
+  PRIMARY KEY (`tag_id`, `uid`)
+);
+
+
+
 */
 
 package indexer
@@ -265,6 +283,13 @@ func (my *MySQLIndexer) WriteOne(inname repr.StatName) error {
 		paths = append(paths, on_path)
 	}
 
+	// begin the big transation
+	tx, err := my.conn.Begin()
+	if err != nil {
+		my.log.Error("Failure in Index Write getting transations: %v", tx)
+		return err
+	}
+
 	last_path := paths[len(paths)-1]
 	// now to upsert them all (inserts in cass are upserts)
 	for idx, seg := range segments {
@@ -272,7 +297,7 @@ func (my *MySQLIndexer) WriteOne(inname repr.StatName) error {
 			"INSERT IGNORE INTO %s (pos, segment) VALUES  (?, ?) ",
 			my.db.SegmentTable(),
 		)
-		_, err := my.conn.Exec(Q, seg.Pos, seg.Segment)
+		_, err := tx.Exec(Q, seg.Pos, seg.Segment)
 
 		if err != nil {
 			my.log.Error("Could not insert segment %v", seg)
@@ -302,7 +327,7 @@ func (my *MySQLIndexer) WriteOne(inname repr.StatName) error {
 				"INSERT INTO %s (segment, pos, path, uid, length, has_data) VALUES  (?, ?, ?, ?, ?, ?)",
 				my.db.PathTable(),
 			)
-			_, err = my.conn.Exec(Q,
+			_, err = tx.Exec(Q,
 				seg.Segment, seg.Pos, seg.Segment+"."+s_parts[idx+1], unique_ID, seg.Pos+1, false,
 			)
 			//cass.log.Critical("NODATA:: Seg INS: %s PATH: %s Len: %d", seg.Segment, seg.Segment+"."+s_parts[idx+1], seg.Pos)
@@ -331,7 +356,7 @@ func (my *MySQLIndexer) WriteOne(inname repr.StatName) error {
 			path text,
 			length int
 		*/
-		_, err = my.conn.Exec(Q,
+		_, err = tx.Exec(Q,
 			seg.Segment, seg.Pos, skey, unique_ID, p_len-1, true,
 		)
 		//cass.log.Critical("DATA:: Seg INS: %s PATH: %s Len: %d", seg.Segment, skey, p_len-1)
@@ -343,7 +368,68 @@ func (my *MySQLIndexer) WriteOne(inname repr.StatName) error {
 			stats.StatsdClientSlow.Incr("indexer.mysql.path-writes", 1)
 		}
 	}
-	return nil
+
+	// Tag Time
+	// the ` ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id)` gives us the id no matter if a dupe or not
+	tagQ := fmt.Sprintf(
+		"INSERT INTO %s (name, value, is_meta) VALUES  (?, ?, ?) ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id)",
+		my.db.TagTable(),
+	)
+	var tag_ids []int64
+	if !inname.Tags.IsEmpty() {
+
+		for _, tag := range inname.Tags {
+			res, err := tx.Exec(tagQ, tag[0], tag[1], false)
+			if err != nil {
+				my.log.Error("Could not write tag %v: %v", tag, err)
+				continue
+			}
+			id, err := res.LastInsertId()
+			if err != nil {
+				my.log.Error("Could not get insert tag ID %v: %v", tag, err)
+				continue
+			}
+			tag_ids = append(tag_ids, id)
+		}
+	}
+
+	if !inname.MetaTags.IsEmpty() {
+
+		for _, tag := range inname.MetaTags {
+			res, err := tx.Exec(tagQ, tag[0], tag[1], true)
+			if err != nil {
+				my.log.Error("Could not write tag %v: %v", tag, err)
+				continue
+			}
+			id, err := res.LastInsertId()
+			if err != nil {
+				my.log.Error("Could not get insert tag ID %v: %v", tag, err)
+				continue
+			}
+			tag_ids = append(tag_ids, id)
+		}
+	}
+
+	if len(tag_ids) > 0 {
+		tagQxr := fmt.Sprintf(
+			"INSERT IGNORE INTO %s (tag_id, uid) VALUES ",
+			my.db.TagTableXref(),
+		)
+		var val_q []string
+		var q_bits []interface{}
+		for _, tg := range tag_ids {
+			val_q = append(val_q, "(?,?)")
+			q_bits = append(q_bits, []interface{}{tg, unique_ID}...)
+		}
+		_, err := tx.Exec(tagQxr+strings.Join(val_q, ","), q_bits...)
+		if err != nil {
+			my.log.Error("Could not get insert tag UID-ID %v: %v", err)
+		}
+	}
+	// and we are done
+	err = tx.Commit()
+
+	return err
 }
 
 func (my *MySQLIndexer) Delete(name *repr.StatName) error {

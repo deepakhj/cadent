@@ -1,5 +1,5 @@
 /*
-	The Metric Codec Blob http://github.com/ugorji/go/codec
+	The Metric Msgpack Blob https://github.com/tinylib/msgp
 */
 
 package series
@@ -7,118 +7,94 @@ package series
 import (
 	"bytes"
 	"cadent/server/repr"
-	"cadent/server/writers/series/codec"
+	"cadent/server/series/msgpacker"
 	"fmt"
-	cdec "github.com/ugorji/go/codec"
+	"github.com/tinylib/msgp/msgp"
 	"io"
 	"sync"
 	"time"
 )
 
 const (
-	CODEC_BINC_SERIES_TAG_HIGHRES = "cdbh"
-	CODEC_BINC_SERIES_TAG_LOWRES  = "cdbl"
-	CODEC_CBOR_SERIES_TAG_HIGHRES = "cdch"
-	CODEC_CBOR_SERIES_TAG_LOWRES  = "cdcl"
-	CODEC_MSGP_SERIES_TAG_HIGHRES = "cdmh"
-	CODEC_MSGP_SERIES_TAG_LOWRES  = "cdml"
-	CODEC_JSON_SERIES_TAG_HIGHRES = "cdjh"
-	CODEC_JSON_SERIES_TAG_LOWRES  = "cdjl"
+	MSGPACK_SERIES_TAG_LOWRES  = "mspl"
+	MSGPACK_SERIES_TAG_HIGHRES = "msph"
 )
 
-type CodecTimeSeries struct {
+type MsgpackTimeSeries struct {
 	mu sync.Mutex
 
 	T0      int64
 	curTime int64
 	fullRes bool
-	handle  cdec.Handle
 	ct      int
 	buf     *bytes.Buffer
-	enc     *cdec.Encoder
+	writer  *msgp.Writer
 }
 
-func NewCodecTimeSeries(t0 int64, options *Options) *CodecTimeSeries {
+func NewMsgpackTimeSeries(t0 int64, options *Options) *MsgpackTimeSeries {
 
-	ret := &CodecTimeSeries{
+	ret := &MsgpackTimeSeries{
 		T0:  t0,
 		ct:  0,
 		buf: new(bytes.Buffer),
 	}
+	ret.writer = msgp.NewWriter(ret.buf)
 
-	t_head := ""
-	switch options.Handler {
-	case "binc":
-		ret.handle = new(cdec.BincHandle)
-		t_head = "cdb"
-	case "cbor":
-		ret.handle = new(cdec.CborHandle)
-		t_head = "cdc"
-	case "json":
-		ret.handle = new(cdec.JsonHandle)
-		t_head = "cdj"
-	default:
-		ret.handle = new(cdec.MsgpackHandle)
-		t_head = "cdm"
-	}
-	ret.enc = cdec.NewEncoder(ret.buf, ret.handle)
-	ret.fullRes = options.HighTimeResolution
+	t_head := MSGPACK_SERIES_TAG_LOWRES
 	if options.HighTimeResolution {
-		t_head += "h"
-	} else {
-		t_head += "l"
+		t_head = MSGPACK_SERIES_TAG_HIGHRES
 	}
-
+	ret.fullRes = options.HighTimeResolution
 	// encode the header flag
 	ret.buf.Write([]byte(t_head))
 
 	return ret
 }
 
-func (s *CodecTimeSeries) HighResolution() bool {
+func (s *MsgpackTimeSeries) HighResolution() bool {
 	return s.fullRes
 }
 
-func (s *CodecTimeSeries) Count() int {
+func (s *MsgpackTimeSeries) Count() int {
 	return s.ct
 }
 
-func (s *CodecTimeSeries) UnmarshalBinary(data []byte) error {
+func (s *MsgpackTimeSeries) UnmarshalBinary(data []byte) error {
 	s.buf = bytes.NewBuffer(data)
 	return nil
 }
 
-func (s *CodecTimeSeries) MarshalBinary() ([]byte, error) {
+func (s *MsgpackTimeSeries) MarshalBinary() ([]byte, error) {
 	return s.buf.Bytes(), nil
 }
 
-func (s *CodecTimeSeries) Bytes() []byte {
+func (s *MsgpackTimeSeries) Bytes() []byte {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.writer.Flush()
 	return s.buf.Bytes()
 }
 
-func (s *CodecTimeSeries) Len() int {
+func (s *MsgpackTimeSeries) Len() int {
 	return s.buf.Len()
 }
 
-func (s *CodecTimeSeries) Iter() (TimeSeriesIter, error) {
-	return NewCodecIterFromBytes(s.Bytes())
+func (s *MsgpackTimeSeries) Iter() (TimeSeriesIter, error) {
+	return NewMsgpackIterFromBytes(s.Bytes())
 }
 
-func (s *CodecTimeSeries) StartTime() int64 {
+func (s *MsgpackTimeSeries) StartTime() int64 {
 	return s.T0
 }
 
-func (s *CodecTimeSeries) LastTime() int64 {
+func (s *MsgpackTimeSeries) LastTime() int64 {
 	return s.curTime
 }
 
 // the t is the "time we want to add
-func (s *CodecTimeSeries) AddPoint(t int64, min float64, max float64, first float64, last float64, sum float64, count int64) (err error) {
+func (s *MsgpackTimeSeries) AddPoint(t int64, min float64, max float64, first float64, last float64, sum float64, count int64) (err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
 	use_t := t
 	if !s.fullRes {
 		ts, _ := splitNano(t)
@@ -126,15 +102,16 @@ func (s *CodecTimeSeries) AddPoint(t int64, min float64, max float64, first floa
 	}
 	// if the count is 1, then we only need "one" value that makes any sense .. the sum
 	if count == 1 {
-		tmp := &codec.StatSmall{
+		tmp := &msgpacker.StatSmall{
 			Time: use_t,
 			Val:  sum,
 		}
-		p_stat := &codec.Stat{
+		p_stat := &msgpacker.Stat{
 			StatType:  false,
 			SmallStat: tmp,
 		}
-		err = s.enc.Encode(p_stat)
+		//err = msgp.Encode(s.buf, p_stat)
+		err = p_stat.EncodeMsg(s.writer)
 		if err != nil {
 			return err
 		}
@@ -142,7 +119,7 @@ func (s *CodecTimeSeries) AddPoint(t int64, min float64, max float64, first floa
 
 	} else {
 
-		tmp := &codec.FullStat{
+		tmp := &msgpacker.FullStat{
 			Time:  use_t,
 			Min:   min,
 			Max:   max,
@@ -151,12 +128,13 @@ func (s *CodecTimeSeries) AddPoint(t int64, min float64, max float64, first floa
 			Sum:   sum,
 			Count: count,
 		}
-		p_stat := &codec.Stat{
+		p_stat := &msgpacker.Stat{
 			StatType: true,
 			Stat:     tmp,
 		}
+		//err = msgp.Encode(s.buf, p_stat)
+		err = p_stat.EncodeMsg(s.writer)
 
-		err = s.enc.Encode(p_stat)
 		if err != nil {
 			return err
 		}
@@ -171,78 +149,65 @@ func (s *CodecTimeSeries) AddPoint(t int64, min float64, max float64, first floa
 	return nil
 }
 
-func (s *CodecTimeSeries) AddStat(stat *repr.StatRepr) error {
+func (s *MsgpackTimeSeries) AddStat(stat *repr.StatRepr) error {
 	return s.AddPoint(stat.Time.UnixNano(), float64(stat.Min), float64(stat.Max), float64(stat.First), float64(stat.Last), float64(stat.Sum), stat.Count)
 }
 
 // Iter lets you iterate over a series.  It is not concurrency-safe.
 // but you should give it a "copy" of any byte array
-type CodecIter struct {
-	handle cdec.Handle
-	dec    *cdec.Decoder
-
+type MsgpackIter struct {
+	buf            *bytes.Reader
+	reader         *msgp.Reader
 	curIdx         int
-	curStat        *codec.Stat
+	curStat        *msgpacker.Stat
 	fullResolution bool
 
 	finished bool
 	err      error
 }
 
-func NewCodecIterFromBytes(data []byte) (TimeSeriesIter, error) {
-	it := new(CodecIter)
-	it.curStat = new(codec.Stat)
+func NewMsgpackIterFromBytes(data []byte) (TimeSeriesIter, error) {
+
+	it := new(MsgpackIter)
+	it.curStat = new(msgpacker.Stat)
+
 	// grab the header item
-	buf := bytes.NewReader(data)
+	it.buf = bytes.NewReader(data)
+	//fmt.Printf("NEXT: %v %n\n\n", it.buf.Len())
 	t_head := make([]byte, 4)
-	n, err := buf.Read(t_head)
+	n, err := it.buf.Read(t_head)
 	if err != nil {
 		return nil, err
 	}
 	if n != 4 {
-		return nil, fmt.Errorf("Codec: Invalid Header")
+		return nil, fmt.Errorf("Msgpack: Invalid Header")
 	}
+
+	//fmt.Printf("NEXT: %v %n\n\n", it.buf.Len())
 
 	switch string(t_head) {
-	case CODEC_BINC_SERIES_TAG_HIGHRES:
-		it.handle = new(cdec.BincHandle)
-		it.fullResolution = true
-	case CODEC_BINC_SERIES_TAG_LOWRES:
-		it.handle = new(cdec.BincHandle)
+	case MSGPACK_SERIES_TAG_LOWRES:
 		it.fullResolution = false
-	case CODEC_CBOR_SERIES_TAG_HIGHRES:
-		it.handle = new(cdec.CborHandle)
+	case MSGPACK_SERIES_TAG_HIGHRES:
 		it.fullResolution = true
-	case CODEC_CBOR_SERIES_TAG_LOWRES:
-		it.handle = new(cdec.CborHandle)
-		it.fullResolution = false
-	case CODEC_JSON_SERIES_TAG_HIGHRES:
-		it.handle = new(cdec.JsonHandle)
-		it.fullResolution = true
-	case CODEC_JSON_SERIES_TAG_LOWRES:
-		it.handle = new(cdec.JsonHandle)
-		it.fullResolution = false
-	case CODEC_MSGP_SERIES_TAG_HIGHRES:
-		it.handle = new(cdec.MsgpackHandle)
-		it.fullResolution = true
-	case CODEC_MSGP_SERIES_TAG_LOWRES:
-		it.handle = new(cdec.MsgpackHandle)
-		it.fullResolution = false
 	default:
-		return nil, fmt.Errorf("Codec: Invalid Header Codec %s", t_head)
+		return nil, fmt.Errorf("Msgpack: Invalid Header %s", t_head)
 	}
 
-	it.dec = cdec.NewDecoder(buf, it.handle)
+	it.reader = msgp.NewReader(it.buf)
 
 	return it, nil
 }
 
-func (it *CodecIter) Next() bool {
+func (it *MsgpackIter) Next() bool {
 	if it.finished {
 		return false
 	}
+	//it.curStat = msgpacker.Stat
 	// decode a stat until there are no more
-	err := it.dec.Decode(it.curStat)
+	//err := msgp.Decode(it.buf, it.curStat)
+	err := it.curStat.DecodeMsg(it.reader)
+	//fmt.Printf("NEXT: %v %s", err, it.buf.Len())
 	// we are done
 	if err == io.EOF {
 		it.finished = true
@@ -256,7 +221,7 @@ func (it *CodecIter) Next() bool {
 	return true
 }
 
-func (it *CodecIter) Values() (int64, float64, float64, float64, float64, float64, int64) {
+func (it *MsgpackIter) Values() (int64, float64, float64, float64, float64, float64, int64) {
 
 	if it.curStat.StatType {
 		t := it.curStat.Stat.Time
@@ -286,7 +251,7 @@ func (it *CodecIter) Values() (int64, float64, float64, float64, float64, float6
 		1
 }
 
-func (it *CodecIter) ReprValue() *repr.StatRepr {
+func (it *MsgpackIter) ReprValue() *repr.StatRepr {
 	if it.curStat.StatType {
 		var t time.Time
 		if it.fullResolution {
@@ -322,6 +287,6 @@ func (it *CodecIter) ReprValue() *repr.StatRepr {
 	}
 }
 
-func (it *CodecIter) Error() error {
+func (it *MsgpackIter) Error() error {
 	return it.err
 }

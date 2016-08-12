@@ -83,11 +83,13 @@ import (
 
 /****************** Interfaces *********************/
 type MySQLDB struct {
-	conn          *sql.DB
-	table         string
-	path_table    string
-	segment_table string
-	table_prefix  string
+	conn           *sql.DB
+	table          string
+	path_table     string
+	segment_table  string
+	table_prefix   string
+	tag_table      string
+	tag_table_xref string
 
 	log *logging.Logger
 }
@@ -124,10 +126,24 @@ func (my *MySQLDB) Config(conf map[string]interface{}) error {
 	}
 
 	_stable := conf["segment_table"]
-	if _ptable == nil {
+	if _stable == nil {
 		my.segment_table = "metric_segment"
 	} else {
 		my.segment_table = _stable.(string)
+	}
+
+	_tagtable := conf["tag_table"]
+	if _tagtable == nil {
+		my.tag_table = "metric_tag"
+	} else {
+		my.tag_table = _tagtable.(string)
+	}
+
+	_tagtablex := conf["tag_table_xref"]
+	if _tagtablex == nil {
+		my.tag_table_xref = my.tag_table + "_xref"
+	} else {
+		my.tag_table_xref = _tagtablex.(string)
 	}
 
 	// file prefix
@@ -155,6 +171,14 @@ func (my *MySQLDB) Tablename() string {
 
 func (my *MySQLDB) PathTable() string {
 	return my.path_table
+}
+
+func (my *MySQLDB) TagTable() string {
+	return my.tag_table
+}
+
+func (my *MySQLDB) TagTableXref() string {
+	return my.tag_table_xref
 }
 
 func (my *MySQLDB) SegmentTable() string {
