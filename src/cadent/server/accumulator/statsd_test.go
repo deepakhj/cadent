@@ -128,7 +128,8 @@ func TestStatsdAccumulator(t *testing.T) {
 		})
 		got_timer := ""
 		have_upper := ""
-		for _, item := range strings.Split(buf.String(), "\n") {
+		strs := strings.Split(buf.String(), "\n")
+		for _, item := range strs {
 			//t.Logf("Flush Lines Statsd Line: %s", item)
 			if strings.Contains(item, "stats.timers") {
 				got_timer = item
@@ -139,6 +140,7 @@ func TestStatsdAccumulator(t *testing.T) {
 				have_upper = item
 			}
 		}
+
 		Convey("Statsd should not have stats.timers ", func() {
 			So(len(got_timer), ShouldEqual, 0)
 		})

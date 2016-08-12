@@ -27,7 +27,7 @@ type GraphiteBaseStatItem struct {
 	InKey      repr.StatName
 	Values     repr.AggFloat64
 	InType     string
-	ReduceFunc repr.AggType
+	ReduceFunc repr.AGG_FUNC
 	Time       time.Time
 	Resolution time.Duration
 
@@ -73,7 +73,7 @@ func (s *GraphiteBaseStatItem) ZeroOut() error {
 func (s *GraphiteBaseStatItem) Write(buffer io.Writer, fmatter FormatterItem, acc AccumulatorItem) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	val := repr.ACCUMULATE_FUNC[s.ReduceFunc](s.Values)
+	val := s.ReduceFunc(s.Values)
 	fmatter.Write(
 		buffer,
 		&s.InKey,
@@ -256,7 +256,6 @@ func (a *GraphiteAccumulate) ProcessLine(line string) (err error) {
 	a.mu.Unlock()
 
 	if !ok {
-		def_agg := repr.GuessReprValueFromKey(key)
 		gots = &GraphiteBaseStatItem{
 			InType:     "graphite",
 			Time:       a.ResolutionTime(t),
@@ -265,7 +264,7 @@ func (a *GraphiteAccumulate) ProcessLine(line string) (err error) {
 			Max:        GRAPHITE_ACC_MIN_FLAG,
 			First:      GRAPHITE_ACC_MIN_FLAG,
 			Last:       GRAPHITE_ACC_MIN_FLAG,
-			ReduceFunc: def_agg,
+			ReduceFunc: repr.GuessAggFuncFromKey(key),
 		}
 	}
 

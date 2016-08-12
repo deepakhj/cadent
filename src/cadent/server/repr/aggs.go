@@ -87,6 +87,10 @@ func GuessReprValueFromKey(metric string) AggType {
 	}
 }
 
+func GuessAggFuncFromKey(stat string) AGG_FUNC {
+	return ACCUMULATE_FUNC[GuessReprValueFromKey(stat)]
+}
+
 // for sorting
 type AggFloat64 []float64
 
