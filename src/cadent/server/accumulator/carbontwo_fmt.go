@@ -5,11 +5,11 @@ Dump the line carbontwo expects to get
 package accumulator
 
 import (
+	"bytes"
 	"cadent/server/repr"
 	"fmt"
 	"io"
 	"time"
-	"bytes"
 )
 
 const CARBONTWO_FMT_NAME = "carbontwo_formater"
@@ -60,7 +60,7 @@ func (g *CarbonTwoFormatter) Write(buf io.Writer, name *repr.StatName, val float
 			mtype = "count"
 		}
 
-		if !tags_empty{
+		if !tags_empty {
 			name.Tags.Set("mtype", mtype)
 		}
 	}
@@ -68,7 +68,7 @@ func (g *CarbonTwoFormatter) Write(buf io.Writer, name *repr.StatName, val float
 	unit := name.Tags.Mtype()
 	if unit == "" {
 		unit = "jiff"
-		if !tags_empty{
+		if !tags_empty {
 			name.Tags.Set("unit", unit)
 		}
 	}
