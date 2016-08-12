@@ -130,10 +130,10 @@ func TestGraphiteAccumulator(t *testing.T) {
 			So(len(b_arr.Stats), ShouldEqual, 4)
 		})
 		strs := strings.Split(buf.String(), "\n")
-		So(strs, ShouldContain, "metric=stats.counters.goo mtype=count unit=jiff 17.000000 123123")
-		So(strs, ShouldContain, "metric=moo.goo.avg mtype=count unit=jiff 5.666667 123123")
-		So(strs, ShouldContain, "metric=moo.goo.min mtype=count unit=jiff 2.000000 123123")
-		So(strs, ShouldContain, "metric=moo.goo.max mtype=count unit=jiff 10.000000 123123")
+		So(strs, ShouldContain, "mtype=count unit=jiff what=stats.counters.goo 17.000000 123123")
+		So(strs, ShouldContain, "mtype=count unit=jiff what=moo.goo.avg 5.666667 123123")
+		So(strs, ShouldContain, "mtype=count unit=jiff what=moo.goo.min 2.000000 123123")
+		So(strs, ShouldContain, "mtype=count what=moo.goo.max unit=jiff 10.000000 123123")
 
 	})
 }

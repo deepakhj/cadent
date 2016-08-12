@@ -77,7 +77,7 @@ func (g *CarbonTwoFormatter) Write(buf io.Writer, name *repr.StatName, val float
 		name.Tags.WriteBytes(buf, repr.EQUAL_SEPARATOR_BYTE, repr.SPACE_SEPARATOR_BYTE)
 	} else {
 		s_tags := repr.SortingTags{
-			[]string{"metric", name.Key},
+			[]string{"what", name.Key},
 			[]string{"mtype", mtype},
 			[]string{"unit", unit},
 		}
