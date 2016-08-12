@@ -190,7 +190,7 @@ func (r *RawRenderItem) PrintPoints() {
 
 // is True if the start and end times are contained in this data blob
 func (r *RawRenderItem) DataInRange(start uint32, end uint32) bool {
-	return start >= r.RealStart && end <= r.RealEnd
+	return r.RealStart >= start && end <= r.RealEnd
 }
 
 func (r *RawRenderItem) ToDataPoint() []DataPoint {

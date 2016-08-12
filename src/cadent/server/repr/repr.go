@@ -275,12 +275,20 @@ func (s *StatName) Name() string {
 	return strings.Join(str, ".")
 }
 
-func (s *StatName) AggFunc() AggType {
+func (s *StatName) AggType() AggType {
 	h_stat := s.Tags.Find("stat")
 	if h_stat != "" {
 		return AggTypeFromTag(h_stat)
 	}
 	return GuessReprValueFromKey(s.Key)
+}
+
+func (s *StatName) AggFunc() AGG_FUNC {
+	h_stat := s.Tags.Find("stat")
+	if h_stat != "" {
+		return AggFuncFromTag(h_stat)
+	}
+	return GuessAggFuncFromKey(s.Key)
 }
 
 type StatRepr struct {
