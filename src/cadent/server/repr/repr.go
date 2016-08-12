@@ -35,6 +35,7 @@ func (s JsonFloat64) MarshalJSON() ([]byte, error) {
 
 // for GC purposes
 const SPACE_SEPARATOR = " "
+const DOUBLE_SPACE_SEPARATOR = "  "
 const DOT_SEPARATOR = "."
 const COMMA_SEPARATOR = ","
 const EQUAL_SEPARATOR = "="
@@ -42,6 +43,7 @@ const IS_SEPARATOR = "_is_"
 const NEWLINE_SEPARATOR = "\n"
 
 var SPACE_SEPARATOR_BYTE = []byte(" ")
+var DOUBLE_SPACE_SEPARATOR_BYTE = []byte("  ")
 var DOT_SEPARATOR_BYTE = []byte(".")
 var COMMA_SEPARATOR_BYTE = []byte(",")
 var EQUAL_SEPARATOR_BYTE = []byte("=")
@@ -147,7 +149,7 @@ func (s SortingTags) WriteBytes(buf io.Writer, wordsep []byte, tagsep []byte) {
 }
 
 // these methods are for Metrics2.0 things
-func (s SortingTags) FindTag(name string) string {
+func (s SortingTags) Find(name string) string {
 	for _, tag := range s {
 		if tag[0] == name {
 			return tag[1]
@@ -156,23 +158,34 @@ func (s SortingTags) FindTag(name string) string {
 	return ""
 }
 
+// these methods are for Metrics2.0 things
+func (s SortingTags) Set(name string, val string) {
+	for idx, tag := range s {
+		if tag[0] == name {
+			s[idx][1] = val
+			return
+		}
+	}
+	s = append(s, []string{name, val})
+}
+
 // Hz, B, etc
 func (s SortingTags) Unit() string {
-	return s.FindTag("unit")
+	return s.Find("unit")
 }
 
 // counter, rate, gauge, count, timestamp
 func (s SortingTags) Mtype() string {
-	got := s.FindTag("mtype")
+	got := s.Find("mtype")
 	if got == "" {
-		got = s.FindTag("target_type")
+		got = s.Find("target_type")
 	}
 	return got
 }
 
 // min, max, lower, upper, mean, std, sum, upper_\d+, lower_\d+, min_\d+, max_\d+
 func (s SortingTags) Stat() string {
-	return s.FindTag("stat")
+	return s.Find("stat")
 }
 
 type StatId uint64
@@ -259,7 +272,7 @@ func (s *StatName) Name() string {
 }
 
 func (s *StatName) AggFunc() AggType {
-	h_stat := s.Tags.FindTag("stat")
+	h_stat := s.Tags.Find("stat")
 	if h_stat != "" {
 		return AggTypeFromTag(h_stat)
 	}

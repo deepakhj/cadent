@@ -32,7 +32,14 @@ func (g *StatsdFormatter) SetAccumulator(acc AccumulatorItem) {
 func (g *StatsdFormatter) Type() string { return STATSD_FMT_NAME }
 func (g *StatsdFormatter) ToString(name *repr.StatName, val float64, tstamp int32, stats_type string, tags []AccumulatorTags) string {
 
-	if stats_type == "" {
+	switch {
+	case stats_type == "gauge":
+		stats_type = "g"
+		break
+	case stats_type == "rate":
+		stats_type = "ms"
+		break
+	default:
 		stats_type = "c"
 	}
 
@@ -48,7 +55,14 @@ func (g *StatsdFormatter) ToString(name *repr.StatName, val float64, tstamp int3
 
 func (g *StatsdFormatter) Write(buf io.Writer, name *repr.StatName, val float64, tstamp int32, stats_type string, tags []AccumulatorTags) {
 
-	if stats_type == "" {
+	switch {
+	case stats_type == "gauge":
+		stats_type = "g"
+		break
+	case stats_type == "rate":
+		stats_type = "ms"
+		break
+	default:
 		stats_type = "c"
 	}
 

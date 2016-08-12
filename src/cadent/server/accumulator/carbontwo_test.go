@@ -83,9 +83,7 @@ func TestCarbontwoAccumulator(t *testing.T) {
 
 		buf := new(bytes.Buffer)
 		b_arr := statter.Flush(buf)
-		for _, item := range b_arr.Stats {
-			t.Logf("Carbontwo Line: %s", item.Name.Key)
-		}
+
 		Convey("Flush should give an array of 3 ", func() {
 			So(len(b_arr.Stats), ShouldEqual, 3)
 		})
@@ -108,17 +106,17 @@ func TestCarbontwoAccumulator(t *testing.T) {
 	statter.Init(stsfmt)
 	Convey("Set the formatter to Statsd ", t, func() {
 
-		err = statter.ProcessLine("stat=max unit=B mtype=gauge what=house  moo=goo house=spam 2 123123")
-		err = statter.ProcessLine("stat=max unit=B mtype=gauge what=house  moo=goo house=spam 5 123123")
-		err = statter.ProcessLine("stat=max unit=B mtype=gauge what=house  moo=goo house=spam 10 123123")
+		err = statter.ProcessLine("stat=max unit=B mtype=counter what=house  moo=goo house=spam 2 123123")
+		err = statter.ProcessLine("stat=max unit=B mtype=counter what=house  moo=goo house=spam 5 123123")
+		err = statter.ProcessLine("stat=max unit=B mtype=counter what=house  moo=goo house=spam 10 123123")
 
 		err = statter.ProcessLine("stat=min unit=B mtype=gauge what=house  moo=goo house=spam 2 123123")
 		err = statter.ProcessLine("stat=min unit=B mtype=gauge what=house  moo=goo house=spam 5 123123")
 		err = statter.ProcessLine("stat=min unit=B mtype=gauge what=house  moo=goo house=spam 10 123123")
 
-		err = statter.ProcessLine("stat=mean unit=B mtype=gauge what=house  moo=goo house=spam 2 123123")
-		err = statter.ProcessLine("stat=mean unit=B mtype=gauge what=house  moo=goo house=spam 5 123123")
-		err = statter.ProcessLine("stat=mean unit=B mtype=gauge what=house  moo=goo house=spam 10 123123")
+		err = statter.ProcessLine("stat=mean unit=B mtype=rate what=house  moo=goo house=spam 2 123123")
+		err = statter.ProcessLine("stat=mean unit=B mtype=rate what=house  moo=goo house=spam 5 123123")
+		err = statter.ProcessLine("stat=mean unit=B mtype=rate what=house  moo=goo house=spam 10 123123")
 
 		buf := new(bytes.Buffer)
 		b_arr := statter.Flush(buf)
@@ -126,9 +124,40 @@ func TestCarbontwoAccumulator(t *testing.T) {
 			So(len(b_arr.Stats), ShouldEqual, 3)
 		})
 		strs := strings.Split(buf.String(), "\n")
-		So(strs, ShouldContain, "mtype=gauge.stat=max.unit=B.what=house:10.000000|c")
-		So(strs, ShouldContain, "mtype=gauge.stat=min.unit=B.what=house:2.000000|c")
-		So(strs, ShouldContain, "mtype=gauge.stat=mean.unit=B.what=house:5.666667|c")
+		So(strs, ShouldContain, "mtype=counter.stat=max.unit=B.what=house:10.000000|c")
+		So(strs, ShouldContain, "mtype=gauge.stat=min.unit=B.what=house:2.000000|g")
+		So(strs, ShouldContain, "mtype=rate.stat=mean.unit=B.what=house:5.666667|ms")
+
+	})
+
+	carbfmt, err := NewFormatterItem("carbon2")
+	statter.Init(carbfmt)
+	Convey("Set the formatter to carbon2 ", t, func() {
+
+		err = statter.ProcessLine("stat=max unit=B mtype=counter what=house  moo=goo house=spam 2 123123")
+		err = statter.ProcessLine("stat=max unit=B mtype=counter what=house  moo=goo house=spam 5 123123")
+		err = statter.ProcessLine("stat=max unit=B mtype=counter what=house  moo=goo house=spam 10 123123")
+
+		err = statter.ProcessLine("stat=min unit=B mtype=gauge what=house  moo=goo house=spam 2 123123")
+		err = statter.ProcessLine("stat=min unit=B mtype=gauge what=house  moo=goo house=spam 5 123123")
+		err = statter.ProcessLine("stat=min unit=B mtype=gauge what=house  moo=goo house=spam 10 123123")
+
+		err = statter.ProcessLine("stat=mean unit=B mtype=rate what=house  moo=goo house=spam 2 123123")
+		err = statter.ProcessLine("stat=mean unit=B mtype=rate what=house  moo=goo house=spam 5 123123")
+		err = statter.ProcessLine("stat=mean unit=B mtype=rate what=house  moo=goo house=spam 10 123123")
+
+		err = statter.ProcessLine("stat=mean unit=B mtype=rate what=monkey  10 123123")
+
+		buf := new(bytes.Buffer)
+		b_arr := statter.Flush(buf)
+		Convey("carbon2 out: Flush should give us data", func() {
+			So(len(b_arr.Stats), ShouldEqual, 4)
+		})
+		strs := strings.Split(buf.String(), "\n")
+		So(strs, ShouldContain, "mtype=counter stat=max unit=B what=house  moo=goo house=spam 10.000000 123123")
+		So(strs, ShouldContain, "mtype=gauge stat=min unit=B what=house  moo=goo house=spam 2.000000 123123")
+		So(strs, ShouldContain, "mtype=rate stat=mean unit=B what=house  moo=goo house=spam 5.666667 123123")
+		So(strs, ShouldContain, "mtype=rate stat=mean unit=B what=monkey 10.000000 123123")
 
 	})
 }

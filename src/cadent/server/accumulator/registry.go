@@ -27,6 +27,8 @@ func NewFormatterItem(name string) (FormatterItem, error) {
 		return new(GraphiteFormatter), nil
 	case name == "statsd":
 		return new(StatsdFormatter), nil
+	case name == "carbon2" || name == "carbontwo":
+		return new(CarbonTwoFormatter), nil
 	default:
 		return nil, fmt.Errorf("Invalid formatter %s", name)
 	}

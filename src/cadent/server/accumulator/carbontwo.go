@@ -83,7 +83,7 @@ func (s *CarbonTwoBaseStatItem) Write(buffer io.Writer, fmatter FormatterItem, a
 		&s.InKey,
 		val,
 		int32(s.StatTime().Unix()),
-		"c",
+		s.InKey.Tags.Mtype(),
 		acc.Tags(),
 	)
 
@@ -306,7 +306,7 @@ func (a *CarbonTwoAccumulate) ProcessLine(line string) (err error) {
 			Max:        CARBONTWO_ACC_MIN_FLAG,
 			First:      CARBONTWO_ACC_MIN_FLAG,
 			Last:       CARBONTWO_ACC_MIN_FLAG,
-			ReduceFunc: repr.AggFuncFromTag(tags.FindTag("stat")),
+			ReduceFunc: repr.AggFuncFromTag(tags.Find("stat")),
 		}
 	}
 

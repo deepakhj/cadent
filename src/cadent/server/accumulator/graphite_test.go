@@ -103,4 +103,37 @@ func TestGraphiteAccumulator(t *testing.T) {
 
 		}
 	})
+
+	carbfmt, err := NewFormatterItem("carbon2")
+	statter.Init(carbfmt)
+	Convey("Set the formatter to carbon2 ", t, func() {
+
+		err = statter.ProcessLine("moo.goo.max 2 123123")
+		err = statter.ProcessLine("moo.goo.max 5 123123")
+		err = statter.ProcessLine("moo.goo.max 10 123123")
+
+		err = statter.ProcessLine("moo.goo.min 2 123123")
+		err = statter.ProcessLine("moo.goo.min 5 123123")
+		err = statter.ProcessLine("moo.goo.min 10 123123")
+
+		err = statter.ProcessLine("moo.goo.avg 2 123123")
+		err = statter.ProcessLine("moo.goo.avg 5 123123")
+		err = statter.ProcessLine("moo.goo.avg 10 123123")
+
+		err = statter.ProcessLine("stats.counters.goo 2 123123")
+		err = statter.ProcessLine("stats.counters.goo 5 123123")
+		err = statter.ProcessLine("stats.counters.goo 10 123123")
+
+		buf := new(bytes.Buffer)
+		b_arr := statter.Flush(buf)
+		Convey("carbon2 out: Flush should give us data", func() {
+			So(len(b_arr.Stats), ShouldEqual, 4)
+		})
+		strs := strings.Split(buf.String(), "\n")
+		So(strs, ShouldContain, "metric=stats.counters.goo mtype=count unit=jiff 17.000000 123123")
+		So(strs, ShouldContain, "metric=moo.goo.avg mtype=count unit=jiff 5.666667 123123")
+		So(strs, ShouldContain, "metric=moo.goo.min mtype=count unit=jiff 2.000000 123123")
+		So(strs, ShouldContain, "metric=moo.goo.max mtype=count unit=jiff 10.000000 123123")
+
+	})
 }
