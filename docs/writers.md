@@ -140,6 +140,24 @@ useful for key space lookups
             KEY `length` (`length`)
         );
 
+
+    CREATE TABLE `{tag_table}` (
+      `id` BIGINT unsigned NOT NULL AUTO_INCREMENT,
+      `name` varchar(255) NOT NULL,
+      `value` varchar(255) NOT NULL,
+      `is_meta` tinyint(1) NOT NULL DEFAULT 0,
+      PRIMARY KEY (`id`),
+      KEY `name` (`name`),
+      UNIQUE KEY `uid` (`value`, `name`, `is_meta`)
+    );
+
+    CREATE TABLE `{tag_table}_xref` (
+      `tag_id` BIGINT unsigned,
+      `uid` varchar(50) NOT NULL,
+      PRIMARY KEY (`tag_id`, `uid`)
+    );
+
+
     CREATE TABLE `{table}_{resolution}s` (
       `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
       `uid` varchar(50) CHARACTER SET ascii NOT NULL,
@@ -165,7 +183,7 @@ If your for times are `times = ["10s", "1m", "10m"]` you should make 3 tables na
 
 And only ONE path table
 
-    {path_table}
+    {path_table}, {tag_table}, and {tag_table_xref}
 
 Config Options
 
@@ -180,6 +198,9 @@ Config Options
         [mypregename.accumulator.writer.options]
         table = "metrics"
         path_table = "metrics_path"
+        tag_table = "metrics_tag"
+        tag_table_xref = "metrics_tag_xref"
+
         batch_count = 1000  # batch up this amount for inserts (faster then single line by line) (default 1000)
         periodic_flush= "1s" # regardless if batch_count met, always flush things at this interval (default 1s)
 
