@@ -16,12 +16,14 @@ var _upperReg *regexp.Regexp
 var _upperMaxReg *regexp.Regexp
 var _lowerReg *regexp.Regexp
 var _lowerMinReg *regexp.Regexp
+var _medianReg *regexp.Regexp
 
 func init() {
 	_upperReg, _ = regexp.Compile(".*upper_[0-9]+$")
 	_upperMaxReg, _ = regexp.Compile(".*max_[0-9]+$")
 	_lowerReg, _ = regexp.Compile(".*lower_[0-9]+$")
 	_lowerMinReg, _ = regexp.Compile(".*min_[0-9]+$")
+	_medianReg, _ = regexp.Compile(".*median_[0-9]+$")
 }
 
 type AggType uint8
@@ -34,6 +36,7 @@ const (
 	MIN
 	MAX
 	STD
+	MEDIAN
 )
 
 // if there is a tag that has the agg func in it
@@ -49,6 +52,8 @@ func AggTypeFromTag(stat string) AggType {
 		return LAST
 	case stat == "std":
 		return STD
+	case stat == "median" || stat == "middle":
+		return MEDIAN
 	default:
 		return MEAN
 	}
@@ -75,6 +80,8 @@ func GuessReprValueFromKey(metric string) AggType {
 		return MAX
 	case last_path == "min" || _lowerMinReg.MatchString(last_path) || _lowerReg.MatchString(last_path):
 		return MIN
+	case last_path == "median" || strings.HasPrefix(metric, "stats.median") || _medianReg.MatchString(last_path):
+		return MEDIAN
 	default:
 		return MEAN
 	}
@@ -107,6 +114,18 @@ var ACCUMULATE_FUNC = map[AggType]AGG_FUNC{
 		}
 
 		return val / float64(len(vals))
+	},
+	MEDIAN: func(vals AggFloat64) float64 {
+		l_val := len(vals)
+		if l_val == 0 {
+			return 0
+		}
+		sort.Sort(vals)
+		if l_val%2 == 0 {
+			return vals[l_val-1] + vals[l_val+1]/2.0
+		}
+
+		return vals[l_val]
 	},
 	MAX: func(vals AggFloat64) float64 {
 		if len(vals) == 0 {
@@ -146,10 +165,10 @@ var ACCUMULATE_FUNC = map[AggType]AGG_FUNC{
 			val += item
 		}
 
-		median := val / float64(l)
+		mean := val / float64(l)
 		std := float64(0)
 		for _, item := range vals {
-			std += math.Pow(item-median, 2.0)
+			std += math.Pow(item-mean, 2.0)
 		}
 		return math.Sqrt(std / float64(l))
 	},

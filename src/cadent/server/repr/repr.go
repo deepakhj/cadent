@@ -55,7 +55,6 @@ var NEWLINE_SEPARATOR_BYTE = NEWLINE_SEPARATOR_BYTES[0]
 var DASH_SEPARATOR_BYTES = []byte("-")
 var UNDERSCORE_SEPARATOR_BYTES = []byte("_")
 
-
 type SortingTags [][]string
 
 // make a tag array from a string input inder a few conditions
