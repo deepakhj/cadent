@@ -41,7 +41,6 @@ func (g *CarbonTwoFormatter) ToString(name *repr.StatName, val float64, tstamp i
 // metrics2.0 requires mtype and unit .. we can "infer" an mtype, but not a unit
 // also the "metric" is then the Key (if no tags)
 // if no unit, we then do the "catch all" which is "jiff"
-// we also must replace the "Key" (if no tags) w/
 func (g *CarbonTwoFormatter) Write(buf io.Writer, name *repr.StatName, val float64, tstamp int32, stats_type string, tags []AccumulatorTags) {
 	if tstamp <= 0 {
 		tstamp = int32(time.Now().Unix())
@@ -77,7 +76,11 @@ func (g *CarbonTwoFormatter) Write(buf io.Writer, name *repr.StatName, val float
 	if !name.Tags.IsEmpty() {
 		name.Tags.WriteBytes(buf, repr.EQUAL_SEPARATOR_BYTE, repr.SPACE_SEPARATOR_BYTE)
 	} else {
-		s_tags := repr.SortingTags{[]string{"metric", name.Key}, []string{"mtype", mtype}, []string{"unit", unit}}
+		s_tags := repr.SortingTags{
+			[]string{"metric", name.Key},
+			[]string{"mtype", mtype},
+			[]string{"unit", unit},
+		}
 		s_tags.WriteBytes(buf, repr.EQUAL_SEPARATOR_BYTE, repr.SPACE_SEPARATOR_BYTE)
 
 	}
