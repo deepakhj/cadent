@@ -6,7 +6,6 @@ Accumulators can "write" to something other then a tcp/udp/http/socket, to say t
 these things, you can specify the `backend` to `BLACKHOLE` which will NOT try to reinsert the line back into the pipeline
 and the line "ends" with the Accumulator stage.
 
-
     InLine(port 8126) -> Splitter -> [Accumulator] -> WriterBackend
 
 Writers should hold more then just the "aggregated data point" but a few useful things like
@@ -14,9 +13,7 @@ Writers should hold more then just the "aggregated data point" but a few useful 
     Min, Max, Sum, First, Last and Count
 
 because who's to say what you really want from aggregated values.
-`Count` is just actually how many data points arrived in the aggregation window (for those wanting `Mean` (Sum / Count))
-
-Some example Configs for the current "4" writer backends
+`Count` is just actually how many data points arrived in the aggregation window (for those wanting `Mean` = (Sum / Count))
 
 Writers themselves are split into 2 sections "Indexers" and "Metrics"
 
@@ -25,15 +22,33 @@ Indexers: take a metrics "name" which has the form
     StatName{
         Key string
         Tags  [][]string
+        MetaTags [][]string
         Resolution uint32
         TTL uint32
     }
 
 And will "index it" somehow.  Currently the "tags" are not yet used in the indexers .. but the future ....
 
-The StatName has a "UniqueID" which is basically a MMH3 hash of the following
+The StatName has a "UniqueID" which is basically a FNV64a hash of the following
 
     FNV64a(Key + ":" + sortByName(Tags))
+
+Tags therefore will be part of the unique identifier of things.  Several formats may include a "key + tags" or just "tags".
+This can cause a little confusion as to what the unique ID is.  For instance in a graphite standard, the key is
+ `pth.to.my.metric`.  In the [metrics2.0](https://github.com/metrics20/spec) spec there is no "key" so
+ the acctuall key is derived inside cadent as `name1=value1.name2=value2...` but the unique ID would then be
+
+    FNV64a("name1=value1.name2=value2..." + ":" + "name1=value1.name2=value2...")
+
+So it's a bit of doulbing up on the key + tags set, but for systems that do both a "key" and tags (influx, etc) then
+this method provides some resolution for differeing injection systems.
+
+MetaTags are no concidered part of the unique metric, as they are subject to change.  An example of a MetaTag is the
+sender of the metrics (statsd, cadent, diamond, collectd, etc).  Where the metric itself is the same, but the sender
+has changed.
+
+It should be noted that any cross MetaTag relations will therefore not be strictly unique.  For example if you change
+from diamond to collectd, the metric will effectvely be tagged with both.
 
 Metrics: The base "unit" of a metric is this
 
@@ -47,7 +62,9 @@ Metrics: The base "unit" of a metric is this
         Count int64
     }
 
-Internally these are stored as various "TimeSeries" which is explained below, but basically some list of the basic unit.
+
+Internally these are stored as various "TimeSeries" which is explained in [the timeseries doc](./timeseries.md)
+, but basically some list of the basic unit of `StatMetric`.
 
 When writing "metrics" the StatName is important for the resolution and TTL as well as is UniqueID.
 
@@ -58,11 +75,19 @@ A "total" metric has the form
          Metric StatMetric
     }
 
+### "You" Need To Add your schemas
+
+Cadent could inject the schemas for you.  But as a long time ops person, not every schema is geared towards use cases.
+The scemas presented below are what cardent expects in it's tables, so one will at least need to match them in some form
+For MySQL, for instance, if you wanted to do TTLs on data, you would need to partition the table to allow for easy
+dropping of data at the proper time (and thus some of your indexes may change).  Cassandra is a bit more tricky as the
+query patterns expect some element of consitency in the Primary key, but you may want different replication,
+drivers, and other options that make your environment happy.
+
+
 ### Status
 
-Not everything is "done" .. as there are many things to write and verify, this is the status of the pieces
-"complete" means both the writing and render api's and functionality are finished
-
+Not everything is "done" .. as there are many things to write and verify, this is the status of the pieces.
 
 | Driver   | IndexSupport  |  TagSupport |  SeriesSupport | LineSupport  | DriverNames |
 |---|---|---|---|---|---|
@@ -74,12 +99,17 @@ Not everything is "done" .. as there are many things to write and verify, this i
 | file |  n/a | n/a | n/a  | write | Index: "n/a", Line: "file", Series: "n/a" |
 
 
+`IndexSupport` means that we can use this driver to index the metric space.
 
-`TagSupport` means it will be able to index tags and read them (write/read)
-`SeriesSupport` means it can support the TimeSeries binary blobs
-`LineSupport` support means it can write and/or read
-`n/a` implies it will not be done
-`No` means it can be done, just not complete
+`TagSupport` means the driver will be able to index tags and read them (write/read).
+
+`SeriesSupport` means the driver can support the TimeSeries binary blobs.
+
+`LineSupport` support means the driver can write and/or read the raw first/last/sum set from the Database backend.
+
+`n/a` implies it will not be done, or the backend just does not support it.
+
+`No` means it can be done, just not complete.
 
 
 #### When to choose and why
@@ -112,7 +142,8 @@ The main writers are
 
     - kafka + kafka-flat:
 
-        Toss stats into a kafka topic (no readers/render api for this mode)
+        Toss stats into a kafka topic (no readers/render api for this mode) for processing by some other entity
+
 
 
 ### Writer Schemas
@@ -212,7 +243,10 @@ Config Options
 
 #### MYSQL - blob
 
-The index table the same if using mysql for that.  The Blob table is different of course.
+The index table the same if using mysql for that.  The Blob table is different of course.  Unlike the flat writer
+which may have to contend with many thousands of writes/sec, this one does not have a write cache buffer as writes
+should be much "less".  There will be times of course when many series need to be written and hit their byte limit
+If this becomes an issue while testing, the write-queue mechanism will be re-instated.
 
     CREATE TABLE `{table}_{resolution}s` (
       `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
@@ -243,6 +277,7 @@ Config OPtions
         path_table = "metrics_path"
         cache_series_type="gorilla"  # the "blob" series type to store
         cache_byte_size=8192 # size in bytes of the "blob" before we write it
+        tags = "host=localhost,env=dev" # static tags to include w/ every metric
 
 
 
@@ -279,7 +314,7 @@ Config Options
 NOTE: there are 2 cassandra "modes" .. Flat and Blob
 
 Flat: store every "time, min, max, sun, count, first, last" in a single row
-Blob: store a "chunk" of time (1hour) in a bit packed compressed blob (a "TimeSeries")
+Blob: store a "chunk" of a byte size (16kb default) in a bit packed compressed blob (a "TimeSeries")
 
 Regardless of choice ...
 
@@ -408,6 +443,43 @@ If you want to allow 24h windows, simply raise `max_sstable_age_days` to â€˜1.0â
             AND read_repair_chance = 0.0
             AND speculative_retry = '99.0PERCENTILE';
 
+##### Blob Schema
+
+Much the same, but instead we store the bytes blob of the series.  `ptype` is the encoding of the blob itself.
+Since different resolutions in cassandra are stored in one super table, we need to disinguish the id+resolution
+ as a unique id.
+
+        CREATE TYPE metric_id_res (
+            id varchar,
+            resolution int
+        );
+
+        CREATE TABLE metric.metric (
+            mid frozen<metric_id_res>,
+            stime bigint,
+            etime bigint,
+            ptype int,
+            points blob,
+            PRIMARY KEY (mid, etime, stime)
+        ) WITH COMPACT STORAGE
+            AND CLUSTERING ORDER BY etime ASC)
+            AND compaction = {
+                'class': 'DateTieredCompactionStrategy',
+                'min_threshold': '12',
+                'max_threshold': '32',
+                'max_sstable_age_days': '0.083',
+                'base_time_seconds': '50'
+            }
+            AND compression = {'sstable_compression': 'org.apache.cassandra.io.compress.LZ4Compressor'}
+            AND dclocal_read_repair_chance = 0.1
+            AND default_time_to_live = 0
+            AND gc_grace_seconds = 864000
+            AND max_index_interval = 2048
+            AND memtable_flush_period_in_ms = 0
+            AND min_index_interval = 128
+            AND read_repair_chance = 0.0
+            AND speculative_retry = '99.0PERCENTILE';
+
 
 ### Gotcha's
 
@@ -415,7 +487,7 @@ Some notes from the field::
 
 Write Speed:: Cassandra Protocol v3 (cassandra <= 2.1) is MUCH slower then Protocol v4 (cassandra 2.2 -> 3.X).
 
-Given that we tend to need to write ~100-200 THOUSANDs metric points in our flush window (typically 5s-10s)
+Given that we may to need to write ~100-200 THOUSANDs metric points in our flush window (typically 5s-10s)
 if we cannot fully write all the stats in the flush window beteen flush times, the app will have to SKIP a flush write
 in order to basically not die a horrible death of RAM consumption and deadlocks.
 

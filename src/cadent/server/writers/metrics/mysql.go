@@ -59,7 +59,6 @@ import (
 	logging "gopkg.in/op/go-logging.v1"
 	"math"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -86,11 +85,6 @@ type MySQLMetrics struct {
 	series_encoding  string
 	blob_max_bytes   int
 	blob_oldest_time time.Duration
-
-	write_list     []repr.StatRepr // buffer the writes so as to do "multi" inserts per query
-	max_write_size int             // size of that buffer before a flush
-	max_idle       time.Duration   // either max_write_size will trigger a write or this time passing will
-	write_lock     sync.Mutex
 
 	cacher        *Cacher
 	cacheOverFlow *broadcast.Listener // on byte overflow of cacher force a write
@@ -133,24 +127,6 @@ func (my *MySQLMetrics) Config(conf map[string]interface{}) error {
 	my.db = db.(*dbs.MySQLDB)
 	my.conn = db.Connection().(*sql.DB)
 
-	_wr_buffer := conf["batch_count"]
-	if _wr_buffer == nil {
-		my.max_write_size = 1000
-	} else {
-		// toml things generic ints are int64
-		my.max_write_size = int(_wr_buffer.(int64))
-	}
-
-	_pr_flush := conf["periodic_flush"]
-	my.max_idle = time.Duration(time.Second)
-	if _pr_flush != nil {
-		dur, err := time.ParseDuration(_pr_flush.(string))
-		if err == nil {
-			my.max_idle = dur
-		} else {
-			my.log.Error("Mysql Driver: Invalid Duration `%v`", _pr_flush)
-		}
-	}
 	// cacher and mysql options for series
 	my.series_encoding = MYSQL_DEFAULT_SERIES_TYPE
 	_bt := conf["series_encoding"]

@@ -243,7 +243,7 @@ func (kf *KafkaMetrics) PushSeries(name *repr.StatName, points series.TimeSeries
 		Type:       "metricblob",
 		Metric:     name.Key,
 		Time:       time.Now().UnixNano(),
-		Data:       points.Bytes(),
+		Data:       points.MarshalBinary(),
 		Encoding:   points.Name(),
 		Resolution: name.Resolution,
 		TTL:        name.TTL,
