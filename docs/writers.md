@@ -64,19 +64,23 @@ Not everything is "done" .. as there are many things to write and verify, this i
 "complete" means both the writing and render api's and functionality are finished
 
 
-- cassandra-indexer: Complete
-- cassandra-blob: Not complete
-- cassandra-flat: Complete
-- mysql-indexer: Complete
-- mysql-flat: Not complete
-- mysql-blob: Complete
-- kafka: Complete (No reader API available)
-- file: Complete (No Reader API available)
-- leveldb-indexer: Complete
-- whisper: Complete
+| Driver   | IndexSupport  |  TagSupport |  SeriesSupport | LineSupport  | DriverNames |
+|---|---|---|---|---|---|
+| cassandra | write+read  | No  | No | write+read | Index: "cassandra", Line: "cassandra-flat", Series: "cassandra" |
+| mysql  | write+read  | write  | write+read  | write+read  | Index: "mysql", Line: "mysql-flat", Series: "mysql" |
+| kafka  |  write | write | write  | write  | Index: "kafka", Line: "kafka-flat", Series: "kafka" |
+| whisper|  read | n/a | n/a  | write+read | Index: "whisper", Line: "whisper", Series: "n/a" |
+| leveldb |  write+read | No | n/a  | n/a | Index: "leveldb", Line: "n/a", Series: "n/a" |
+| file |  n/a | n/a | n/a  | write | Index: "n/a", Line: "file", Series: "n/a" |
 
 
-NOTE: TAGS/Tag indexes are not yet supported .. progress is ongoing
+
+`TagSupport` means it will be able to index tags and read them (write/read)
+`SeriesSupport` means it can support the TimeSeries binary blobs
+`LineSupport` support means it can write and/or read
+`n/a` implies it will not be done
+`No` means it can be done, just not complete
+
 
 #### When to choose and why
 
@@ -106,7 +110,7 @@ The main writers are
         Like cassandra-flat but for mysql ..
         Good for "slow" stats (not huge throughput or volume as you will kill the DB)
 
-    - kafka:
+    - kafka + kafka-flat:
 
         Toss stats into a kafka topic (no readers/render api for this mode)
 
@@ -200,6 +204,7 @@ Config Options
         path_table = "metrics_path"
         tag_table = "metrics_tag"
         tag_table_xref = "metrics_tag_xref"
+        tags = "host=localhost,env=dev" # static tags to include w/ every metric
 
         batch_count = 1000  # batch up this amount for inserts (faster then single line by line) (default 1000)
         periodic_flush= "1s" # regardless if batch_count met, always flush things at this interval (default 1s)
@@ -511,7 +516,7 @@ An example config below
         dsn="/root/metrics/path"
 
 
-### KAFKA
+### KAFKA + Kafka-Flat
 
 I mean why not.  There is no "reader" API available for this mode, as kafka it's not designed to be that.  But you can
 shuffle your stats to the kafka bus if needed.  There are 2 message types "index" and "metrics".  They can be
@@ -519,19 +524,25 @@ put on the same topic or each in a different one, the choice is yours.  Below is
 You can set `write_index = false` if you want to NOT write the index message (as the metric message has the metric in it
 already and consumers can deal with indexing)
 
+
         INDEX {
             id: [uint32 MMH3],
     	    type: "index | delete-index",
     	    path: "my.metric.is.good",
     	    segments: ["my", "metric", "is", "good"],
     	    senttime: [int64 unix Nano second time stamp]
+    	    tags: []string //[key1=value1, key2=value2...],
+            meta_tags: []string //[key1=value1, key2=value2...]
     	}
+
+The "Flat" format is
 
     	METRIC{
     	    type: "metric",
     	    time: [int64 unix Nano second time stamp],
     	    metric: "my.metric.is.good",
-    	    id: [uint32 MMH3],
+    	    id: [uint64 FNVa],
+    	    uid: string based on the ID,
     	    sum: float64,
     	    min: float64,
     	    max: float64,
@@ -541,23 +552,46 @@ already and consumers can deal with indexing)
     	    resolution: float64,
     	    ttl: int64,
     	    tags: []string //[key1=value1, key2=value2...]
+    	    meta_tags: []string //[key1=value1, key2=value2...]
     	}
 
+The "Blob" format is
+
+    	METRIC{
+    	    type: "metricblob",
+    	    time: [int64 unix Nano second time stamp],
+    	    metric: "my.metric.is.good",
+    	    id: [uint64 FNVa],
+    	    uid: string // based on the ID,
+    	    data: bytes,
+    	    encoding: string // the series encoding gorilla, protobuf, etc
+    	    resolution: float64,
+    	    ttl: int64,
+    	    tags: []string //[key1=value1, key2=value2...]
+    	    meta_tags: []string //[key1=value1, key2=value2...]
+    	}
+
+Where as the "flat" format is basically a stream of inciming accumulated values, the blob format is
 
 Here are the configuration options
 
             [to-kafka.accumulator.writer.metrics]
-            driver = "kafka"
+            driver = "kafka" // or "kafka-flat"
             dsn = "pathtokafka:9092,pathtokafka2:9092"
             index_topic = "cadent" # topic for index message (default: cadent)
         	metric_topic = "cadent" # topic for data messages (default: cadent)
+
+        	# Options for "Blob" formats
+        	cache_metric_size=1024000 # number of metrics to aggrigate before we must drop
+        	series_encoding="gorilla" # protobuf, msgpack, etc
+        	cache_byte_size=8192 # size of blob before we flush it
 
         	# some kafka options
         	compress = "snappy|gzip|none" (default: none)
         	max_retry = 10
         	ack_type = "local" # (all = all replicas ack, default "local")
         	flush_time = "1s" # flush produced messages ever tick (default "1s")
-        	tags = "server=host1,env=prod" # these are static for whatever process is running this
+        	tags = "host=host1,env=prod" # these are static for whatever process is running this
 
         	[to-kafka..accumulator.writer.indexer]
             driver = "kafka"
