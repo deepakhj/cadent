@@ -2,7 +2,6 @@ package accumulator
 
 import (
 	"bytes"
-	"cadent/server/repr"
 	. "github.com/smartystreets/goconvey/convey"
 	"strings"
 	"testing"
@@ -11,7 +10,7 @@ import (
 type devNullWriter struct{}
 
 func (d *devNullWriter) Write(data []byte) (int, error) { return 0, nil }
-func (d *devNullWriter) WriteByte(data byte)            {}
+func (d *devNullWriter) WriteByte(data byte) error      { return nil }
 
 func TestCarbontwoAccumulator(t *testing.T) {
 	// Only pass t into top-level Convey calls
@@ -90,9 +89,9 @@ func TestCarbontwoAccumulator(t *testing.T) {
 
 		// taggin support
 		for _, item := range b_arr.Stats {
-			So(item.Name.MetaTags, ShouldResemble, repr.SortingTags{
-				[]string{"moo", "goo"},
-				[]string{"house", "spam"},
+			So(item.Name.MetaTags.Tags(), ShouldResemble, [][]string{
+				{"moo", "goo"},
+				{"house", "spam"},
 			})
 		}
 

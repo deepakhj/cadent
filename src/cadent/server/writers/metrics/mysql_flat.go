@@ -47,6 +47,7 @@ type MySQLFlatMetrics struct {
 	conn        *sql.DB
 	indexer     indexer.Indexer
 	resolutions [][]int
+	static_tags repr.SortingTags
 
 	write_list     []repr.StatRepr // buffer the writes so as to do "multi" inserts per query
 	max_write_size int             // size of that buffer before a flush
@@ -96,6 +97,11 @@ func (my *MySQLFlatMetrics) Config(conf map[string]interface{}) error {
 		} else {
 			my.log.Error("Mysql Driver: Invalid Duration `%v`", _pr_flush)
 		}
+	}
+
+	g_tag, ok := conf["tags"]
+	if ok {
+		my.static_tags = repr.SortingTagsFromString(g_tag.(string))
 	}
 
 	my.shutitdown = false
@@ -194,6 +200,7 @@ func (my *MySQLFlatMetrics) Flush() (int, error) {
 }
 
 func (my *MySQLFlatMetrics) Write(stat repr.StatRepr) error {
+	stat.Name.MergeMetric2Tags(my.static_tags)
 
 	if len(my.write_list) > my.max_write_size {
 		_, err := my.Flush()

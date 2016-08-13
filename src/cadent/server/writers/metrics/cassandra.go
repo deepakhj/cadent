@@ -463,6 +463,7 @@ func (cass *CassandraWriter) Write(stat repr.StatRepr) error {
 /****************** Metrics Writer *********************/
 type CassandraMetric struct {
 	resolutions [][]int
+	static_tags repr.SortingTags
 	indexer     indexer.Indexer
 	writer      *CassandraWriter
 	render_wg   sync.WaitGroup
@@ -505,13 +506,19 @@ func (cass *CassandraMetric) Config(conf map[string]interface{}) (err error) {
 
 	resolution := conf["resolution"]
 	if resolution == nil {
-		return fmt.Errorf("Resulotuion needed for cassandra writer")
+		return fmt.Errorf("resolution needed for cassandra writer")
 	}
 	cache_str := conf["dsn"].(string) + gots.series_encoding
 	gots.cacher, err = getCacherSingleton(cache_str)
 	if err != nil {
 		return err
 	}
+
+	g_tag, ok := conf["tags"]
+	if ok {
+		cass.static_tags = repr.SortingTagsFromString(g_tag.(string))
+	}
+
 	if !gots.cacher.started && !gots.cacher.inited {
 		// set the cacher bits
 		_ms := conf["cache_metric_size"]
@@ -542,6 +549,7 @@ func (cass *CassandraMetric) Write(stat repr.StatRepr) error {
 	// keep note of this, when things are not yet "warm" (the indexer should
 	// keep tabs on what it's already indexed for speed sake,
 	// the push "push" of stats will cause things to get pretty slow for a while
+	stat.Name.MergeMetric2Tags(cass.static_tags)
 	cass.indexer.Write(stat.Name)
 	return cass.writer.Write(stat)
 }

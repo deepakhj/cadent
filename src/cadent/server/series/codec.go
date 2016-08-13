@@ -24,6 +24,7 @@ const (
 	CODEC_MSGP_SERIES_TAG_LOWRES  = "cdml"
 	CODEC_JSON_SERIES_TAG_HIGHRES = "cdjh"
 	CODEC_JSON_SERIES_TAG_LOWRES  = "cdjl"
+	CODEC_NAME                    = "codec"
 )
 
 type CodecTimeSeries struct {
@@ -75,6 +76,9 @@ func NewCodecTimeSeries(t0 int64, options *Options) *CodecTimeSeries {
 	return ret
 }
 
+func (s *CodecTimeSeries) Name() string {
+	return CODEC_NAME
+}
 func (s *CodecTimeSeries) HighResolution() bool {
 	return s.fullRes
 }

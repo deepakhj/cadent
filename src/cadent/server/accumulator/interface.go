@@ -28,9 +28,9 @@ type AccumulatorItem interface {
 	Name() string
 	ProcessLine(string) error
 	Reset() error
-	Tags() []AccumulatorTags
+	Tags() repr.SortingTags
 	SetKeepKeys(bool) error
-	SetTags([]AccumulatorTags)
+	SetTags(repr.SortingTags)
 	SetResolution(time.Duration) error
 	GetResolution() time.Duration
 	SetOptions([][]string) error
@@ -38,8 +38,8 @@ type AccumulatorItem interface {
 }
 
 type FormatterItem interface {
-	ToString(name *repr.StatName, val float64, tstamp int32, stats_type string, tags []AccumulatorTags) string
-	Write(buf io.Writer, name *repr.StatName, val float64, tstamp int32, stats_type string, tags []AccumulatorTags)
+	ToString(name *repr.StatName, val float64, tstamp int32, stats_type string, tags repr.SortingTags) string
+	Write(buf io.Writer, name *repr.StatName, val float64, tstamp int32, stats_type string, tags repr.SortingTags)
 	Type() string
 	Init(...string) error
 	SetAccumulator(AccumulatorItem)

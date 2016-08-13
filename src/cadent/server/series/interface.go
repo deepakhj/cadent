@@ -30,6 +30,7 @@ type TimeSeries interface {
 	StartTime() int64
 	LastTime() int64
 	HighResolution() bool
+	Name() string
 }
 
 type TimeSeriesIter interface {

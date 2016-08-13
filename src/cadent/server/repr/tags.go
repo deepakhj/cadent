@@ -61,11 +61,18 @@ func (p SortingTags) Less(i, j int) bool { return strings.Compare(p[i][0], p[j][
 func (p SortingTags) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 
 func (s SortingTags) String() string {
-	return s.ToStringSep("=", ".")
+	return s.ToStringSep(EQUAL_SEPARATOR, SPACE_SEPARATOR)
 }
 
 func (s SortingTags) IsEmpty() bool {
 	return len(s) == 0
+}
+func (s SortingTags) Tags() [][]string {
+	return s
+}
+
+func (s SortingTags) SetTags(tgs [][]string) {
+	s = tgs
 }
 
 func (s SortingTags) Merge(tags SortingTags) SortingTags {
@@ -107,7 +114,6 @@ func (s SortingTags) WriteBytes(buf io.Writer, wordsep []byte, tagsep []byte) {
 	}
 }
 
-// these methods are for Metrics2.0 things
 func (s SortingTags) Find(name string) string {
 	for _, tag := range s {
 		if tag[0] == name {
@@ -117,15 +123,15 @@ func (s SortingTags) Find(name string) string {
 	return ""
 }
 
-// these methods are for Metrics2.0 things
-func (s SortingTags) Set(name string, val string) {
+func (s SortingTags) Set(name string, val string) SortingTags {
 	for idx, tag := range s {
 		if tag[0] == name {
 			s[idx][1] = val
-			return
+			return s
 		}
 	}
 	s = append(s, []string{name, val})
+	return s
 }
 
 // Hz, B, etc

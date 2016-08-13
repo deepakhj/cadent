@@ -120,7 +120,7 @@ func (s *CarbonTwoBaseStatItem) Accumulate(val float64, sample float64, stattime
 type CarbonTwoAccumulate struct {
 	CarbonTwoStats map[string]StatItem
 	OutFormat      FormatterItem
-	InTags         []AccumulatorTags
+	InTags         repr.SortingTags
 	InKeepKeys     bool
 	Resolution     time.Duration
 
@@ -159,11 +159,11 @@ func (s *CarbonTwoAccumulate) GetOption(opt string, defaults interface{}) interf
 	return defaults
 }
 
-func (s *CarbonTwoAccumulate) Tags() []AccumulatorTags {
+func (s *CarbonTwoAccumulate) Tags() repr.SortingTags {
 	return s.InTags
 }
 
-func (s *CarbonTwoAccumulate) SetTags(tags []AccumulatorTags) {
+func (s *CarbonTwoAccumulate) SetTags(tags repr.SortingTags) {
 	s.InTags = tags
 }
 
@@ -282,7 +282,7 @@ func (a *CarbonTwoAccumulate) ProcessLine(line string) (err error) {
 	// the sorted tags give us a string of goodies
 	// make it name=val.name=val
 	sort.Sort(tags)
-	unique_key := tags.ToStringSep("=", ".")
+	unique_key := tags.ToStringSep(repr.EQUAL_SEPARATOR, repr.DOT_SEPARATOR)
 	stat_key := a.MapKey(unique_key, t)
 	var meta_tags repr.SortingTags
 	// now for the "other" tags
@@ -296,7 +296,6 @@ func (a *CarbonTwoAccumulate) ProcessLine(line string) (err error) {
 	a.mu.RUnlock()
 
 	if !ok {
-
 		// based on the stat key (if present) figure out the agg
 		gots = &CarbonTwoBaseStatItem{
 			InType:     "carbontwo",
@@ -306,7 +305,7 @@ func (a *CarbonTwoAccumulate) ProcessLine(line string) (err error) {
 			Max:        CARBONTWO_ACC_MIN_FLAG,
 			First:      CARBONTWO_ACC_MIN_FLAG,
 			Last:       CARBONTWO_ACC_MIN_FLAG,
-			ReduceFunc: repr.AggFuncFromTag(tags.Find("stat")),
+			ReduceFunc: repr.AggFuncFromTag(tags.Stat()),
 		}
 	}
 

@@ -58,8 +58,8 @@ type StatId uint64
 
 type StatName struct {
 	Key        string      `json:"key"`
-	Tags       SortingTags `json:"tags"`
-	MetaTags   SortingTags `json:"meta_tags"`
+	Tags       SortingTags `json:"tags,omitempty"`
+	MetaTags   SortingTags `json:"meta_tags,omitempty"`
 	Resolution uint32      `json:"resolution"`
 	TTL        uint32      `json:"ttl"`
 }
@@ -132,7 +132,7 @@ func (s *StatName) Name() string {
 	str := make([]string, 1+len(s_tags))
 	str[0] = s.Key
 	for idx, tg := range s_tags {
-		str[idx+1] = strings.Join(tg, "=")
+		str[idx+1] = strings.Join(tg, EQUAL_SEPARATOR)
 	}
 	return strings.Join(str, ".")
 }
@@ -151,6 +151,10 @@ func (s *StatName) AggFunc() AGG_FUNC {
 		return AggFuncFromTag(h_stat)
 	}
 	return GuessAggFuncFromKey(s.Key)
+}
+
+func (s *StatName) MergeMetric2Tags(itgs SortingTags) {
+	s.Tags, s.MetaTags = MergeMetric2Tags(itgs, s.Tags, s.MetaTags)
 }
 
 type StatRepr struct {

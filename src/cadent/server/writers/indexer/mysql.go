@@ -378,7 +378,7 @@ func (my *MySQLIndexer) WriteOne(inname repr.StatName) error {
 	var tag_ids []int64
 	if !inname.Tags.IsEmpty() {
 
-		for _, tag := range inname.Tags {
+		for _, tag := range inname.Tags.Tags() {
 			res, err := tx.Exec(tagQ, tag[0], tag[1], false)
 			if err != nil {
 				my.log.Error("Could not write tag %v: %v", tag, err)
@@ -395,7 +395,7 @@ func (my *MySQLIndexer) WriteOne(inname repr.StatName) error {
 
 	if !inname.MetaTags.IsEmpty() {
 
-		for _, tag := range inname.MetaTags {
+		for _, tag := range inname.MetaTags.Tags() {
 			res, err := tx.Exec(tagQ, tag[0], tag[1], true)
 			if err != nil {
 				my.log.Error("Could not write tag %v: %v", tag, err)

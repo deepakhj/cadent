@@ -37,6 +37,7 @@ import (
 const (
 	SIMPLE_BIN_SERIES_TAG        = "gobn" // just a flag to note we are using this one at the begining of each blob
 	SIMPLE_BIN_SERIES_TAG_LOWRES = "gobl" // just a flag to note we are using this one at the begining of each blob
+	GOB_NAME                     = "gob"
 )
 
 // from
@@ -107,6 +108,9 @@ func NewGobTimeSeries(t0 int64, options *Options) *GobTimeSeries {
 	return ret
 }
 
+func (s *GobTimeSeries) Name() string {
+	return GOB_NAME
+}
 func (s *GobTimeSeries) writeHeader() {
 	// tag it
 	s.encoder.Encode(s.sTag)

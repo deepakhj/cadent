@@ -60,16 +60,19 @@ services:
     kafka:
       image: wurstmeister/kafka
       ports:
-        - "9092:9092"
+        - "0.0.0.0:9092:9092"
       links:
         - zookeeper:zk
       environment:
-        KAFKA_ADVERTISED_HOST_NAME: 192.168.99.100
         KAFKA_CREATE_TOPICS: "cadent:1:1"
+        KAFKA_ADVERTISED_PORT: 9092
+        KAFKA_PORT: 9092
+        KAFKA_ADVERTISED_HOST_NAME: 0.0.0.0
+        KAFKA_ZOOKEEPER_CONNECT: "zookeeper:2181"
       volumes:
         - /var/run/docker.sock:/var/run/docker.sock
 
     cassandra:
       image: cassandra
       ports:
-        - "9042:9042"
+        - "0.0.0.0:9042:9042"

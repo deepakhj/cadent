@@ -20,12 +20,7 @@ func TestConfigAccumualtorAccumulator(t *testing.T) {
 	output_format = "graphite"
 	accumulate_flush = "1s"
 	times = ["5s", "1m", "10m"]
-	[[tags]]
-	key="foo"
-	value="bar"
-	[[tags]]
-	key="loo"
-	value="moo"
+	tags = [ [ "foo", "bar"], ["loo", "moo"]]
 
 	[writer]
 	driver="file"
@@ -50,7 +45,7 @@ func TestConfigAccumualtorAccumulator(t *testing.T) {
 				So(acc_c.FlushTimes[0], ShouldEqual, time.Duration(5*time.Second))
 			})
 			Convey("Should have 2 tags", func() {
-				So(len(acc_c.Accumulate.Tags()), ShouldEqual, 2)
+				So(acc_c.Accumulate.Tags().Len(), ShouldEqual, 2)
 			})
 
 		})

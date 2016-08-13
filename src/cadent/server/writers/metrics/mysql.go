@@ -44,6 +44,7 @@
 package metrics
 
 import (
+	"cadent/server/broadcast"
 	"cadent/server/repr"
 	"cadent/server/series"
 	"cadent/server/stats"
@@ -80,6 +81,7 @@ type MySQLMetrics struct {
 	indexer        indexer.Indexer
 	render_timeout time.Duration
 	resolutions    [][]int
+	static_tags    repr.SortingTags
 
 	series_encoding  string
 	blob_max_bytes   int
@@ -90,9 +92,8 @@ type MySQLMetrics struct {
 	max_idle       time.Duration   // either max_write_size will trigger a write or this time passing will
 	write_lock     sync.Mutex
 
-	cacher            *Cacher
-	cacheOverFlowChan chan *TotalTimeSeries // on byte overflow of cacher force a write
-	overFlowShutdown  chan bool
+	cacher        *Cacher
+	cacheOverFlow *broadcast.Listener // on byte overflow of cacher force a write
 
 	shutitdown        bool      // just a flag
 	shutdown          chan bool // just a flag
@@ -181,6 +182,11 @@ func (my *MySQLMetrics) Config(conf map[string]interface{}) error {
 	}
 	my.blob_oldest_time = dur
 
+	g_tag, ok := conf["tags"]
+	if ok {
+		my.static_tags = repr.SortingTagsFromString(g_tag.(string))
+	}
+
 	if err != nil {
 		return err
 	}
@@ -200,9 +206,7 @@ func (my *MySQLMetrics) Config(conf map[string]interface{}) error {
 		// unlike the other writers, overflows of cache size are
 		// exactly what we want to write
 		my.cacher.overFlowMethod = "chan"
-		my.cacheOverFlowChan = make(chan *TotalTimeSeries, 128) // a little buffer
-		my.overFlowShutdown = make(chan bool)
-		my.cacher.SetOverflowChan(my.cacheOverFlowChan)
+		my.cacheOverFlow = my.cacher.GetOverFlowChan()
 	}
 
 	my.shutdown = make(chan bool)
@@ -235,10 +239,6 @@ func (my *MySQLMetrics) Stop() {
 
 	my.cacher.Stop()
 
-	if my.overFlowShutdown != nil {
-		my.overFlowShutdown <- true
-	}
-
 	mets := my.cacher.Queue
 	mets_l := len(mets)
 	my.log.Warning("Shutting down, exhausting the queue (%d items) and quiting", mets_l)
@@ -264,17 +264,15 @@ func (my *MySQLMetrics) Stop() {
 func (my *MySQLMetrics) overFlowWrite() {
 	for {
 		select {
-		case <-my.overFlowShutdown:
-			return
-		case statitem := <-my.cacheOverFlowChan:
+		case statitem, more := <-my.cacheOverFlow.Ch:
 
 			// bail
-			if my.shutitdown {
+			if my.shutitdown || !more {
 				return
 			}
 
 			//my.log.Debug("Cache Write byte overflow %s.", statitem.Name.Key)
-			my.InsertSeries(statitem.Name, statitem.Series)
+			my.InsertSeries(statitem.(*TotalTimeSeries).Name, statitem.(*TotalTimeSeries).Series)
 		}
 	}
 }
@@ -338,27 +336,9 @@ func (my *MySQLMetrics) InsertSeries(name *repr.StatName, timeseries series.Time
 }
 
 func (my *MySQLMetrics) Write(stat repr.StatRepr) error {
+	stat.Name.MergeMetric2Tags(my.static_tags)
 	my.indexer.Write(stat.Name)
 	my.cacher.Add(&stat.Name, &stat)
-
-	/*** the blob meathod does not need a read cache, as well, the blobs are already in the ram **
-
-	agg_func := indexer.GuessAggregateType(stat.Name.Key)
-
-	// and now add it to the readcache iff it's been activated
-	r_cache := GetReadCache()
-	if r_cache != nil {
-		// add only the "value" we need count==1 makes some timeseries much smaller in cache
-		p_val := stat.AggValue(agg_func)
-		t_stat := &repr.StatRepr{
-			Time:  stat.Time,
-			Sum:   repr.JsonFloat64(p_val),
-			Count: 1,
-			Name:  stat.Name,
-		}
-		r_cache.InsertQueue <- t_stat
-	}
-	*/
 	return nil
 }
 

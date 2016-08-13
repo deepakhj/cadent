@@ -99,6 +99,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"cadent/server/broadcast"
 	"cadent/server/dispatch"
 	"cadent/server/utils"
 	"cadent/server/utils/shutdown"
@@ -241,9 +242,8 @@ type CassandraFlatWriter struct {
 	dispatch_queue   chan chan dispatch.IJob
 	write_dispatcher *dispatch.Dispatch
 
-	cacher            *Cacher
-	cacheOverFlowChan chan *TotalTimeSeries // on byte overflow of cacher force a write
-	overFlowShutdown  chan bool
+	cacher                *Cacher
+	cacheOverFlowListener *broadcast.Listener // on byte overflow of cacher force a write
 
 	shutitdown        bool // just a flag
 	writes_per_second int  // allowed writes per second
@@ -362,10 +362,6 @@ func (cass *CassandraFlatWriter) Stop() {
 
 	cass.cacher.Stop()
 
-	if cass.overFlowShutdown != nil {
-		cass.overFlowShutdown <- true
-	}
-
 	mets := cass.cacher.Queue
 	mets_l := len(mets)
 	cass.log.Warning("Shutting down, exhausting the queue (%d items) and quiting", mets_l)
@@ -461,14 +457,13 @@ func (cass *CassandraFlatWriter) mergeWrite(stat *repr.StatRepr) *repr.StatRepr 
 func (cass *CassandraFlatWriter) overFlowWrite() {
 	for {
 		select {
-		case <-cass.overFlowShutdown:
-			return
-		case statitem := <-cass.cacheOverFlowChan:
+		case item, more := <-cass.cacheOverFlowListener.Ch:
 
 			// bail
-			if cass.shutitdown {
+			if cass.shutitdown || !more {
 				return
 			}
+			statitem := item.(*TotalTimeSeries)
 			// need to make a list of points from the series
 			iter, err := statitem.Series.Iter()
 			if err != nil {
@@ -642,6 +637,7 @@ func (cass *CassandraFlatWriter) Write(stat repr.StatRepr) error {
 /****************** Metrics Writer *********************/
 type CassandraFlatMetric struct {
 	resolutions [][]int
+	static_tags repr.SortingTags
 	indexer     indexer.Indexer
 	writer      *CassandraFlatWriter
 
@@ -699,6 +695,11 @@ func (cass *CassandraFlatMetric) Config(conf map[string]interface{}) (err error)
 	}
 	cass.render_timeout = rdur
 
+	g_tag, ok := conf["tags"]
+	if ok {
+		cass.static_tags = repr.SortingTagsFromString(g_tag.(string))
+	}
+
 	// prevent a reader from squshing this cacher
 	if !gots.cacher.started && !gots.cacher.inited {
 		gots.cacher.inited = true
@@ -728,9 +729,7 @@ func (cass *CassandraFlatMetric) Config(conf map[string]interface{}) (err error)
 			gots.cacher.overFlowMethod = _ov.(string)
 			// set th overflow chan, and start the listener for that channel
 			if gots.cacher.overFlowMethod == "chan" {
-				gots.cacheOverFlowChan = make(chan *TotalTimeSeries, 128) // a little buffer
-				gots.overFlowShutdown = make(chan bool, 5)
-				gots.cacher.SetOverflowChan(gots.cacheOverFlowChan)
+				gots.cacheOverFlowListener = gots.cacher.GetOverFlowChan()
 				go gots.overFlowWrite()
 			}
 		}
@@ -745,6 +744,7 @@ func (cass *CassandraFlatMetric) Write(stat repr.StatRepr) error {
 	// keep note of this, when things are not yet "warm" (the indexer should
 	// keep tabs on what it's already indexed for speed sake,
 	// the push "push" of stats will cause things to get pretty slow for a while
+	stat.Name.MergeMetric2Tags(cass.static_tags)
 	cass.indexer.Write(stat.Name)
 	return cass.writer.Write(stat)
 }

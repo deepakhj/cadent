@@ -130,10 +130,23 @@ func TestGraphiteAccumulator(t *testing.T) {
 			So(len(b_arr.Stats), ShouldEqual, 4)
 		})
 		strs := strings.Split(buf.String(), "\n")
+		t.Logf(strings.Join(strs, "\n"))
 		So(strs, ShouldContain, "mtype=count unit=jiff what=stats.counters.goo 17.000000 123123")
 		So(strs, ShouldContain, "mtype=count unit=jiff what=moo.goo.avg 5.666667 123123")
 		So(strs, ShouldContain, "mtype=count unit=jiff what=moo.goo.min 2.000000 123123")
-		So(strs, ShouldContain, "mtype=count what=moo.goo.max unit=jiff 10.000000 123123")
+		So(strs, ShouldContain, "mtype=count unit=jiff what=moo.goo.max 10.000000 123123")
+
+		statter.SetTags(repr.SortingTags{[]string{"moo", "goo"}, []string{"foo", "bar"}})
+
+		err = statter.ProcessLine("stats.counters.goo 2 123123")
+		err = statter.ProcessLine("stats.counters.goo 5 123123")
+		err = statter.ProcessLine("stats.counters.goo 10 123123")
+
+		buf = new(bytes.Buffer)
+		b_arr = statter.Flush(buf)
+		strs = strings.Split(buf.String(), "\n")
+		t.Logf(strings.Join(strs, "\n"))
+		So(strs, ShouldContain, "mtype=count unit=jiff what=stats.counters.goo  foo=bar moo=goo 17.000000 123123")
 
 	})
 }

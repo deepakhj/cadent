@@ -15,6 +15,10 @@ import (
 	"time"
 )
 
+const (
+	PROTOBUF_NAME = "protbuf"
+)
+
 // add sorting option for ProtStats
 
 // this can only handle "future pushing times" not random times
@@ -35,7 +39,9 @@ func NewProtobufTimeSeries(t0 int64, options *Options) *ProtobufTimeSeries {
 	ret.Stats.FullTimeResolution = options.HighTimeResolution
 	return ret
 }
-
+func (s *ProtobufTimeSeries) Name() string {
+	return PROTOBUF_NAME
+}
 func (s *ProtobufTimeSeries) HighResolution() bool {
 	return s.Stats.FullTimeResolution
 }

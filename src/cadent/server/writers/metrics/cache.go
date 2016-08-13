@@ -58,6 +58,7 @@ import (
 	"math/rand"
 	"sort"
 
+	"cadent/server/broadcast"
 	"cadent/server/utils/shutdown"
 	"errors"
 	logging "gopkg.in/op/go-logging.v1"
@@ -160,7 +161,9 @@ type Cacher struct {
 
 	//overflow pieces
 	overFlowMethod string
-	overFlowChan   chan *TotalTimeSeries
+
+	// allow for multiple registering entities
+	overFlowBroadcast *broadcast.Broadcaster // should pass in *TotalTimeSeries
 
 	started bool
 	inited  bool
@@ -174,7 +177,7 @@ func NewCacher() *Cacher {
 	wc.maxBytes = CACHER_NUMBER_BYTES
 	wc.seriesType = CACHER_SERIES_TYPE
 	wc.overFlowMethod = CACHER_DEFAULT_OVERFLOW
-	wc.overFlowChan = nil
+	wc.overFlowBroadcast = nil
 
 	wc.curSize = 0
 	wc.log = logging.MustGetLogger("cacher.metrics")
@@ -186,11 +189,8 @@ func NewCacher() *Cacher {
 	wc.started = false
 	wc.inited = false
 
+	wc.overFlowBroadcast = broadcast.New(128)
 	return wc
-}
-
-func (wc *Cacher) SetOverflowChan(ch chan *TotalTimeSeries) {
-	wc.overFlowChan = ch
 }
 
 func (wc *Cacher) Start() {
@@ -205,7 +205,12 @@ func (wc *Cacher) Stop() {
 	shutdown.AddToShutdown()
 	if wc.started {
 		wc.shutdown <- true
+		wc.overFlowBroadcast.Close()
 	}
+}
+
+func (wc *Cacher) GetOverFlowChan() *broadcast.Listener {
+	return wc.overFlowBroadcast.Listen()
 }
 
 func (wc *Cacher) DumpPoints(pts []*repr.StatRepr) {
@@ -310,14 +315,14 @@ func (wc *Cacher) Add(name *repr.StatName, stat *repr.StatRepr) error {
 
 			// if the overflow method is chan, and there is valid overFLowChan, we "pop" the item from
 			// the cache and send it to the chan (note we're already "locked" here)
-			if wc.overFlowChan != nil && wc.overFlowMethod == "chan" {
+			if wc.overFlowBroadcast != nil && wc.overFlowMethod == "chan" {
 
 				nm := wc.NameCache[unique_id]
 				wc.curSize -= int64(gots.Len()) // shrink the bytes
 				delete(wc.Cache, unique_id)
 				delete(wc.NameCache, unique_id)
 
-				wc.overFlowChan <- &TotalTimeSeries{nm, gots}
+				wc.overFlowBroadcast.Send(&TotalTimeSeries{nm, gots})
 				stats.StatsdClientSlow.Incr("cacher.metrics.write.overflow", 1)
 				//must recompute the ordering XXX LOCKING ISSUE
 				//wc.updateQueue()

@@ -53,7 +53,8 @@
 	[DelTs][small|fullbit][v0][v1][...]
 	[NumBit][DoDTs][small|fullbit][XorV0][XorV1][...]
 
-
+	the "end" of the stream is
+	[0x04][0xffffff][0]
 */
 
 package series
@@ -72,6 +73,7 @@ const (
 	GORILLA_BIN_SERIES_TAG_NANOSECOND = "gorn" // just a flag to note we are using this one at the start of each blob
 	GORILLA_BIN_SERIES_TAG_SECOND     = "gors"
 	GORILLA_BIN_SERIES_TAG_NANO_SMART = "gort"
+	GORILLA_NAME                      = "gorilla"
 )
 
 /** shamelessly taken from https://github.com/dgryski/go-tsz/blob/master/bstream.go */
@@ -123,6 +125,9 @@ func NewGoriallaTimeSeries(t0 int64, options *Options) *GorillaTimeSeries {
 	return ret
 }
 
+func (s *GorillaTimeSeries) Name() string {
+	return GORILLA_NAME
+}
 func (s *GorillaTimeSeries) writeHeader() {
 	t := ^uint8(0)
 	s.leadingMs = t

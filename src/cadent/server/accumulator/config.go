@@ -20,13 +20,8 @@ output_format="graphite"
 to_prereg_group="graphite-proxy"
 keep_keys = true
 random_ticker_start = true # flush time will not be time % duration but whenever things start
+tags = [["moo", "goo"], ["foo", "bar"]]
 
-[[accumulator.tags]]
-key="moo"
-value="goo"
-[[accumulator.tags]]
-key="foo"
-value="bar"
 
 # external writer
 [accumulator.writer]
@@ -43,6 +38,7 @@ times = ["5s", "1m", "1h"]
 */
 
 import (
+	"cadent/server/repr"
 	writers "cadent/server/writers"
 	"fmt"
 	"github.com/BurntSushi/toml"
@@ -59,12 +55,6 @@ const DEFAULT_TTL = 60 * 60 * 24 * 365 * 10 * time.Second
 
 var log = logging.MustGetLogger("accumulator")
 
-// for tagging things if the formatter supports them (influx, or other)
-type AccumulatorTags struct {
-	Key   string `toml:"key"`
-	Value string `toml:"value"`
-}
-
 // options for backends
 
 type ConfigAccumulator struct {
@@ -74,7 +64,7 @@ type ConfigAccumulator struct {
 	OutputFormat      string               `toml:"output_format"`
 	KeepKeys          bool                 `toml:"keep_keys"` // keeps the keys on flush  "0's" them rather then removal
 	Option            [][]string           `toml:"options"`   // option=[ [key, value], [key, value] ...]
-	Tags              []AccumulatorTags    `toml:"tags"`
+	Tags              repr.SortingTags     `toml:"tags"`
 	Writer            writers.WriterConfig `toml:"writer"`
 	Reader            writers.ApiConfig    `toml:"api"`                 // http server for reading
 	Times             []string             `toml:"times"`               // Aggregate Timers (or the first will be used for Accumulator flushes)

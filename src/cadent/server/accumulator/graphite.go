@@ -116,7 +116,7 @@ func (s *GraphiteBaseStatItem) Accumulate(val float64, sample float64, stattime 
 type GraphiteAccumulate struct {
 	GraphiteStats map[string]StatItem
 	OutFormat     FormatterItem
-	InTags        []AccumulatorTags
+	InTags        repr.SortingTags
 	InKeepKeys    bool
 	Resolution    time.Duration
 
@@ -155,11 +155,11 @@ func (s *GraphiteAccumulate) GetOption(opt string, defaults interface{}) interfa
 	return defaults
 }
 
-func (s *GraphiteAccumulate) Tags() []AccumulatorTags {
+func (s *GraphiteAccumulate) Tags() repr.SortingTags {
 	return s.InTags
 }
 
-func (s *GraphiteAccumulate) SetTags(tags []AccumulatorTags) {
+func (s *GraphiteAccumulate) SetTags(tags repr.SortingTags) {
 	s.InTags = tags
 }
 

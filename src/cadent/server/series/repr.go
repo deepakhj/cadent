@@ -14,6 +14,7 @@ import (
 
 const (
 	SIMPLE_REPR_SERIES_TAG = "sarr" // just a flag to note we are using this one at the begining of each blob
+	REPR_NAME              = "repr"
 )
 
 // this can only handle "future pushing times" not random times
@@ -31,6 +32,10 @@ func NewReprTimeSeries(t0 int64, options *Options) *ReprTimeSeries {
 		Stats: make(repr.StatReprSlice, 0),
 	}
 	return ret
+}
+
+func (s *ReprTimeSeries) Name() string {
+	return REPR_NAME
 }
 
 func (s *ReprTimeSeries) HighResolution() bool {

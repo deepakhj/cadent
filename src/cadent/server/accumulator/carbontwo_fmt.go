@@ -5,10 +5,11 @@ Dump the line carbontwo expects to get
 package accumulator
 
 import (
-	"bytes"
 	"cadent/server/repr"
+	"cadent/server/utils"
 	"fmt"
 	"io"
+	"sort"
 	"time"
 )
 
@@ -31,8 +32,9 @@ func (g *CarbonTwoFormatter) SetAccumulator(acc AccumulatorItem) {
 
 func (g *CarbonTwoFormatter) Type() string { return CARBONTWO_FMT_NAME }
 
-func (g *CarbonTwoFormatter) ToString(name *repr.StatName, val float64, tstamp int32, stats_type string, tags []AccumulatorTags) string {
-	buf := new(bytes.Buffer)
+func (g *CarbonTwoFormatter) ToString(name *repr.StatName, val float64, tstamp int32, stats_type string, tags repr.SortingTags) string {
+	buf := utils.GetBytesBuffer()
+	defer utils.PutBytesBuffer(buf)
 	g.Write(buf, name, val, tstamp, stats_type, tags)
 	return buf.String()
 }
@@ -41,10 +43,14 @@ func (g *CarbonTwoFormatter) ToString(name *repr.StatName, val float64, tstamp i
 // metrics2.0 requires mtype and unit .. we can "infer" an mtype, but not a unit
 // also the "metric" is then the Key (if no tags)
 // if no unit, we then do the "catch all" which is "jiff"
-func (g *CarbonTwoFormatter) Write(buf io.Writer, name *repr.StatName, val float64, tstamp int32, stats_type string, tags []AccumulatorTags) {
+func (g *CarbonTwoFormatter) Write(buf io.Writer, name *repr.StatName, val float64, tstamp int32, stats_type string, tags repr.SortingTags) {
 	if tstamp <= 0 {
 		tstamp = int32(time.Now().Unix())
 	}
+
+	// merge things
+	name.MergeMetric2Tags(tags)
+
 	tags_empty := name.Tags.IsEmpty()
 	mtype := name.Tags.Mtype()
 	if mtype == "" {
@@ -72,19 +78,23 @@ func (g *CarbonTwoFormatter) Write(buf io.Writer, name *repr.StatName, val float
 		}
 	}
 
+	fmt.Printf("IN: %v OUT: %v", tags, name.Tags)
+
 	// if there are "tags" we use the Tags for the name, otherwise, we just the Key
-	if !name.Tags.IsEmpty() {
+	if !tags_empty {
+		sort.Sort(name.Tags)
 		name.Tags.WriteBytes(buf, repr.EQUAL_SEPARATOR_BYTE, repr.SPACE_SEPARATOR_BYTE)
 	} else {
-		s_tags := repr.SortingTags{
-			[]string{"what", name.Key},
-			[]string{"mtype", mtype},
-			[]string{"unit", unit},
-		}
+		s_tags := repr.SortingTags([][]string{
+			{"mtype", mtype},
+			{"unit", unit},
+			{"what", name.Key},
+		})
 		s_tags.WriteBytes(buf, repr.EQUAL_SEPARATOR_BYTE, repr.SPACE_SEPARATOR_BYTE)
 
 	}
 	if !name.MetaTags.IsEmpty() {
+		sort.Sort(name.MetaTags)
 		buf.Write(repr.DOUBLE_SPACE_SEPARATOR_BYTE)
 		name.MetaTags.WriteBytes(buf, repr.EQUAL_SEPARATOR_BYTE, repr.SPACE_SEPARATOR_BYTE)
 	}

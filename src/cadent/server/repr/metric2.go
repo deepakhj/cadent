@@ -53,11 +53,14 @@ func IsMetric2Tag(name string) bool {
 }
 
 func MergeMetric2Tags(newtags SortingTags, intag SortingTags, inmeta SortingTags) (SortingTags, SortingTags) {
+	if newtags.IsEmpty() {
+		return intag, inmeta
+	}
 	for _, ntag := range newtags {
 		if IsMetric2Tag(ntag[0]) {
-			intag.Set(ntag[0], ntag[1])
+			intag = intag.Set(ntag[0], ntag[1])
 		} else {
-			inmeta.Set(ntag[0], ntag[1])
+			inmeta = inmeta.Set(ntag[0], ntag[1])
 		}
 	}
 	return intag, inmeta

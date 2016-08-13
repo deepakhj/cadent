@@ -163,7 +163,13 @@ func (kf *KafkaDB) Config(conf map[string]interface{}) error {
 	go func() {
 		for err := range producer.Errors() {
 			stats.StatsdClientSlow.Incr("writer.kafka.write-failures", 1)
-			kf.log.Error("Failed to write access log entry: %v", err)
+			kf.log.Error("Failed to write message: %v", err)
+		}
+	}()
+
+	go func() {
+		for ret := range producer.Successes() {
+			stats.StatsdClient.Incr(fmt.Sprintf("writer.kafka.%s.write-success", ret.Topic), 1)
 		}
 	}()
 	kf.conn = producer

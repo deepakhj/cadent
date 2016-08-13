@@ -419,7 +419,7 @@ func (s *StatsdTimerStatItem) Write(buffer io.Writer, fmatter FormatterItem, acc
 type StatsdAccumulate struct {
 	StatsdStats map[string]StatItem
 	OutFormat   FormatterItem
-	InTags      []AccumulatorTags
+	InTags      repr.SortingTags
 	InKeepKeys  bool
 
 	// statsd like options
@@ -520,11 +520,11 @@ func (s *StatsdAccumulate) GetResolution() time.Duration {
 	return time.Duration(time.Second)
 }
 
-func (s *StatsdAccumulate) Tags() []AccumulatorTags {
+func (s *StatsdAccumulate) Tags() repr.SortingTags {
 	return s.InTags
 }
 
-func (s *StatsdAccumulate) SetTags(tags []AccumulatorTags) {
+func (s *StatsdAccumulate) SetTags(tags repr.SortingTags) {
 	s.InTags = tags
 }
 

@@ -30,6 +30,7 @@ import (
 
 const (
 	SIMPLE_JSON_SERIES_TAG = "jarr" // just a flag to note we are using this one at the begining of each blob
+	JSON_NAME              = "json"
 )
 
 // sort-hand keys for space purposes
@@ -61,6 +62,9 @@ func NewJsonTimeSeries(t0 int64, options *Options) *JsonTimeSeries {
 	return ret
 }
 
+func (s *JsonTimeSeries) Name() string {
+	return JSON_NAME
+}
 func (s *JsonTimeSeries) HighResolution() bool {
 	return true
 }

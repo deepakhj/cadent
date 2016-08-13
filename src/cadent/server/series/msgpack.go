@@ -18,6 +18,7 @@ import (
 const (
 	MSGPACK_SERIES_TAG_LOWRES  = "mspl"
 	MSGPACK_SERIES_TAG_HIGHRES = "msph"
+	MSGPACK_NAME               = "msgpack"
 )
 
 type MsgpackTimeSeries struct {
@@ -51,6 +52,9 @@ func NewMsgpackTimeSeries(t0 int64, options *Options) *MsgpackTimeSeries {
 	return ret
 }
 
+func (s *MsgpackTimeSeries) Name() string {
+	return MSGPACK_NAME
+}
 func (s *MsgpackTimeSeries) HighResolution() bool {
 	return s.fullRes
 }

@@ -30,6 +30,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"cadent/server/broadcast"
 	"cadent/server/utils"
 	"cadent/server/utils/shutdown"
 	"errors"
@@ -90,9 +91,8 @@ type WhisperWriter struct {
 	retentions   whisper.Retention
 	indexer      indexer.Indexer
 
-	cache_queue       *Cacher
-	cacheOverFlowChan chan *TotalTimeSeries // on byte overflow of cacher force a write
-	overFlowShutdown  chan bool
+	cache_queue   *Cacher
+	cacheOverFlow *broadcast.Listener // on byte overflow of cacher force a write
 
 	shutdown   chan bool // when triggered, we skip the rate limiter and go full out till the queue is done
 	shutitdown bool      // just a flag
@@ -172,9 +172,7 @@ func NewWhisperWriter(conf map[string]interface{}) (*WhisperWriter, error) {
 			ws.cache_queue.overFlowMethod = _ov.(string)
 			// set th overflow chan, and start the listener for that channel
 			if ws.cache_queue.overFlowMethod == "chan" {
-				ws.cacheOverFlowChan = make(chan *TotalTimeSeries, 128) // a little buffer
-				ws.overFlowShutdown = make(chan bool, 5)
-				ws.cache_queue.SetOverflowChan(ws.cacheOverFlowChan)
+				ws.cacheOverFlow = ws.cache_queue.GetOverFlowChan()
 				go ws.overFlowWrite()
 			}
 		}
@@ -321,10 +319,6 @@ func (ws *WhisperWriter) Stop() {
 		ws.write_dispatcher.Shutdown()
 	}
 	ws.shutdown <- true
-	// shutdown overflow ticker
-	if ws.overFlowShutdown != nil {
-		ws.overFlowShutdown <- true
-	}
 
 	ws.cache_queue.Stop()
 
@@ -380,14 +374,13 @@ func (ws *WhisperWriter) Start() {
 func (ws *WhisperWriter) overFlowWrite() {
 	for {
 		select {
-		case <-ws.overFlowShutdown:
-			return
-		case statitem := <-ws.cacheOverFlowChan:
+		case item, more := <-ws.cacheOverFlow.Ch:
 
 			// bail
-			if ws.shutitdown {
+			if ws.shutitdown || !more {
 				return
 			}
+			statitem := item.(*TotalTimeSeries)
 			// need to make a list of points from the series
 			iter, err := statitem.Series.Iter()
 			if err != nil {

@@ -78,7 +78,7 @@ func TestWriterReadCache(t *testing.T) {
 			c_item.ActivateMetric(s.Name.Key, nil)
 			c_item.Put(s.Name.Key, s)
 		}
-		t.Logf("ReadCache: Size: %d, Keys: %d", c_item.Size(), c_item.NumKeys())
+		//t.Logf("ReadCache: Size: %d, Keys: %d", c_item.Size(), c_item.NumKeys())
 		//t.Logf("ReadCache: %v", c_item.lru.Items())
 		Convey("ReadCache should have some space left", func() {
 			So(c_item.Size(), ShouldNotEqual, 0)
@@ -150,8 +150,8 @@ func TestWriterReadCache(t *testing.T) {
 			for idx, stat := range dd {
 				So(o_data[idx].Time, ShouldEqual, stat.Time.Unix())
 				So(o_data[idx].Sum, ShouldEqual, float64(stat.Sum)/float64(stat.Count))
-				t.Logf("Orig Data: %v:%v", o_data[idx].Time, o_data[idx].Sum)
-				t.Logf("Cache Data: %v:%v", stat.Time.Unix(), float64(stat.Sum)/float64(stat.Count))
+				//t.Logf("Orig Data: %v:%v", o_data[idx].Time, o_data[idx].Sum)
+				//t.Logf("Cache Data: %v:%v", stat.Time.Unix(), float64(stat.Sum)/float64(stat.Count))
 
 			}
 		})

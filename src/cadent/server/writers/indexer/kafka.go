@@ -29,8 +29,8 @@ type KafkaPath struct {
 	Path     string      `json:"path"`
 	Segments []string    `json:"segments"`
 	SentTime int64       `json:"senttime"`
-	Tags     [][]string  `json:"tags"`
-	MetaTags [][]string  `json:"meta_tags"`
+	Tags     [][]string  `json:"tags,omitempty"`
+	MetaTags [][]string  `json:"meta_tags,omitempty"`
 
 	encoded []byte
 	err     error
@@ -57,14 +57,15 @@ type KafkaIndexer struct {
 	db          *dbs.KafkaDB
 	conn        sarama.AsyncProducer
 	write_index bool // if false, we skip the index writing message as well, the stat metric itself has the key in it
-
-	log *logging.Logger
+	shutitdown  bool
+	log         *logging.Logger
 }
 
 func NewKafkaIndexer() *KafkaIndexer {
 	kf := new(KafkaIndexer)
 	kf.log = logging.MustGetLogger("writers.indexer.kafka")
 	kf.write_index = true
+	kf.shutitdown = false
 	return kf
 }
 
@@ -73,6 +74,8 @@ func (my *KafkaIndexer) Start() {}
 func (kf *KafkaIndexer) Stop() {
 	shutdown.AddToShutdown()
 	defer shutdown.ReleaseFromShutdown()
+	kf.shutitdown = true
+	time.Sleep(time.Second) // wait for any lingering writes
 	if err := kf.conn.Close(); err != nil {
 		kf.log.Error("Failed to shut down producer cleanly %v", err)
 	}
@@ -102,7 +105,7 @@ func (kf *KafkaIndexer) Config(conf map[string]interface{}) error {
 
 func (kf *KafkaIndexer) Write(skey repr.StatName) error {
 	// noop if not writing indexes
-	if !kf.write_index {
+	if !kf.write_index || kf.shutitdown {
 		return nil
 	}
 
@@ -112,8 +115,8 @@ func (kf *KafkaIndexer) Write(skey repr.StatName) error {
 		Uid:      skey.UniqueIdString(),
 		Path:     skey.Key,
 		Segments: strings.Split(skey.Key, "."),
-		Tags:     skey.SortedTags(),
-		MetaTags: skey.SortedMetaTags(),
+		Tags:     skey.SortedTags().Tags(),
+		MetaTags: skey.SortedMetaTags().Tags(),
 		SentTime: time.Now().UnixNano(),
 	}
 
@@ -140,8 +143,8 @@ func (kf *KafkaIndexer) Delete(skey *repr.StatName) error {
 		Id:       skey.UniqueId(),
 		Path:     skey.Key,
 		Segments: strings.Split(skey.Key, "."),
-		Tags:     skey.SortedTags(),
-		MetaTags: skey.SortedMetaTags(),
+		Tags:     skey.SortedTags().Tags(),
+		MetaTags: skey.SortedMetaTags().Tags(),
 		SentTime: time.Now().UnixNano(),
 	}
 

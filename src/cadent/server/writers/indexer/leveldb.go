@@ -156,7 +156,7 @@ func (ls *LevelDBSegment) SegmentKey(segment string, len int) []byte {
 }
 
 func (ls *LevelDBSegment) SegmentData() ([]byte, []byte) {
-	return []byte(ls.SegmentKey(ls.Segment, ls.Length)), []byte(fmt.Sprintf("%d|%s", ls.Id, ls.Path))
+	return []byte(ls.SegmentKey(ls.Segment, ls.Length)), []byte(fmt.Sprintf("%s|%s", ls.Id, ls.Path))
 }
 
 func (ls *LevelDBSegment) IdKey(id string) []byte {
