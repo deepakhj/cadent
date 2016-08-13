@@ -18,10 +18,10 @@
 			"revisionTime": "2016-04-26T10:16:13Z"
 		},
 		{
-			"checksumSHA1": "SRefRkqqzPnXaTyKwdG0NX9vmLc=",
+			"checksumSHA1": "KCBN4RiAzn7E20SFuXwpcYb8Uuw=",
 			"path": "github.com/Shopify/sarama",
-			"revision": "c372abcbb917eb838df44dd6a0cfc3a43dba6fd2",
-			"revisionTime": "2016-06-10T19:01:14Z"
+			"revision": "f4a626377cb2c5dee4cc644e941775138c9fbc80",
+			"revisionTime": "2016-08-12T02:58:02Z"
 		},
 		{
 			"checksumSHA1": "5rPfda8jFccr3A6heL+JAmi9K9g=",
