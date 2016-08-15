@@ -274,9 +274,11 @@ func NewCassandraFlatWriter(conf map[string]interface{}) (*CassandraFlatWriter, 
 	if gots == nil {
 		return nil, fmt.Errorf("Metrics: `dsn` (server1,server2,server3) is needed for cassandra config")
 	}
-	dsn := gots.(string)
 
-	db, err := dbs.NewDB("cassandra", dsn, conf)
+	conn_key := fmt.Sprintf("%v:%v/%v/%v", gots, conf["port"], conf["keyspace"], conf["metrics_table"])
+	cass.log.Notice("Connecting Metrics to Cassandra (%s)", conn_key)
+
+	db, err := dbs.NewDB("cassandra", conn_key, conf)
 	if err != nil {
 		return nil, err
 	}

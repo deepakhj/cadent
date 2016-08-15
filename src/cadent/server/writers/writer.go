@@ -161,9 +161,12 @@ func (loop *WriterLoop) indexLoop() {
 	shut := loop.shutdowner.Listen()
 	for {
 		select {
-		case stat := <-loop.indexer_chan:
+		case stat, more := <-loop.indexer_chan:
 			// indexing can be very expensive (at least for cassandra)
 			// and should have their own internal queues and smarts for handleing a massive influx of metric names
+			if !more {
+				return
+			}
 			loop.indexer.Write(stat.Name)
 		case <-shut.Ch:
 			return
@@ -176,15 +179,11 @@ func (loop *WriterLoop) procLoop() {
 
 	for {
 		select {
-		case stat := <-loop.write_chan:
-			/*
-				//go func() {
-				loop.metrics.Write(stat)
-				//loop.indexer.Write(stat.Key)
-				loop.indexer_chan <- stat
-				//return
-				//}() // non-blocking indexer loop
-			*/
+		case stat, more := <-loop.write_chan:
+			if !more {
+				return
+			}
+
 			// push the stat to the dynamic sized queue (saves oddles of ram on large channels and large metrics dumps)
 			err := loop.write_queue.Push(stat)
 			if err != nil {
@@ -237,7 +236,8 @@ func (loop *WriterLoop) Full() bool {
 func (loop *WriterLoop) Start() {
 	loop.log.Notice("Starting Writer `%s`", loop.name)
 	loop.write_chan = make(chan repr.StatRepr, loop.MetricQLen)
-	loop.indexer_chan = make(chan repr.StatRepr, loop.IndexerQLen) // indexing is slow, so we'll need to buffer things a bit more
+	// indexing is slow, so we'll need to buffer things a bit more
+	loop.indexer_chan = make(chan repr.StatRepr, loop.IndexerQLen)
 
 	go loop.metrics.Start()
 	go loop.indexer.Start()

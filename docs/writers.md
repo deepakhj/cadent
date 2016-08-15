@@ -66,7 +66,7 @@ Metrics: The base "unit" of a metric is this
 Internally these are stored as various "TimeSeries" which is explained in [the timeseries doc](./timeseries.md)
 , but basically some list of the basic unit of `StatMetric`.
 
-When writing "metrics" the StatName is important for the resolution and TTL as well as is UniqueID.
+When writing "metrics" the StatName is important for the resolution and TTL as well as its UniqueID.
 
 A "total" metric has the form
 
@@ -95,7 +95,7 @@ Not everything is "done" .. as there are many things to write and verify, this i
 | mysql  | write+read  | write  | write+read  | write+read  | Index: "mysql", Line: "mysql-flat", Series: "mysql" |
 | kafka  |  write | write | write  | write  | Index: "kafka", Line: "kafka-flat", Series: "kafka" |
 | whisper|  read | n/a | n/a  | write+read | Index: "whisper", Line: "whisper", Series: "n/a" |
-| leveldb |  write+read | No | n/a  | n/a | Index: "leveldb", Line: "n/a", Series: "n/a" |
+| leveldb |  write+read | No | No  | No | Index: "leveldb", Line: "n/a", Series: "n/a" |
 | file |  n/a | n/a | n/a  | write | Index: "n/a", Line: "file", Series: "n/a" |
 
 
@@ -109,7 +109,7 @@ Not everything is "done" .. as there are many things to write and verify, this i
 
 `n/a` implies it will not be done, or the backend just does not support it.
 
-`No` means it can be done, just not complete.
+`No` means it probably be done, just not complete.
 
 
 #### When to choose and why
@@ -451,13 +451,13 @@ Since different resolutions in cassandra are stored in one super table, we need 
 
         CREATE TYPE metric_id_res (
             id varchar,
-            resolution int
+            res int
         );
 
         CREATE TABLE metric.metric (
             mid frozen<metric_id_res>,
-            stime bigint,
             etime bigint,
+            stime bigint,
             ptype int,
             points blob,
             PRIMARY KEY (mid, etime, stime)
@@ -603,8 +603,8 @@ already and consumers can deal with indexing)
     	    path: "my.metric.is.good",
     	    segments: ["my", "metric", "is", "good"],
     	    senttime: [int64 unix Nano second time stamp]
-    	    tags: []string //[key1=value1, key2=value2...],
-            meta_tags: []string //[key1=value1, key2=value2...]
+    	    tags: [][]string //[[key1,value1], [key2,value2]...]
+            meta_tags: [][]string //[[key1,value1], [key2,value2]...]
     	}
 
 The "Flat" format is
@@ -623,8 +623,8 @@ The "Flat" format is
     	    count: int64,
     	    resolution: float64,
     	    ttl: int64,
-    	    tags: []string //[key1=value1, key2=value2...]
-    	    meta_tags: []string //[key1=value1, key2=value2...]
+    	    tags: [][]string //[[key1,value1], [key2,value2]...]
+    	    meta_tags: [][]string //[[key1,value1], [key2,value2]...]
     	}
 
 The "Blob" format is
@@ -639,8 +639,8 @@ The "Blob" format is
     	    encoding: string // the series encoding gorilla, protobuf, etc
     	    resolution: float64,
     	    ttl: int64,
-    	    tags: []string //[key1=value1, key2=value2...]
-    	    meta_tags: []string //[key1=value1, key2=value2...]
+    	    tags: [][]string //[[key1,value1], [key2,value2]...]
+            meta_tags: [][]string //[[key1,value1], [key2,value2]...]
     	}
 
 Where as the "flat" format is basically a stream of inciming accumulated values, the blob format is
@@ -680,3 +680,63 @@ of a kafka writer backend.  One can easily do the same with straight graphite da
 Since ordering and time lag and all sorts of other things can mess w/ the works for things, it's still best to fire stats to
 a consistent hash location, that properly routes and aggregates keys to times such that stats are emitted "once" at a given time
 window.  In that way, ordering/time differences are avoided.  Basically  `statsd -> flush to consthasher -> route -> flush to kafka`
+
+
+
+### Whisper
+
+99% of the performance issue w/ Wisper files are the Disks.  Since we typically here have large space requirements
+(in the TB range) and we are in the Cloud (AWS for us).  We need to use EBS drives which are really slow compared
+to any SSDs in the mix.  So you MUST limit the `writes_per_second` allowed or you'll end up in IOWait death.  For a
+1 Tb (3000 iops) generic EBS (gp2) drive empirically we find that we get ~1500 batch point writes per/second max
+(that's using all the IOPs available, which if you think of each "write" as needing to read first then write that
+makes some sense).  So we set the `writes_per_second=1200` to allow for readers to actually function a bit.
+
+
+### Writers Cache/Ram
+
+This one is a bit tricky to figure out exactly, and it highly dependent on the metric volume and shortest "tick" interval.
+The cache ram needed depends on # metrics/keys and the write capacity.  The cache holds a `map[key][]points`.  Once
+the writer determines which metric to flush to disk/DB we reclaim the RAM.
+
+Just some empirical numbers to gauge things, but the metric you should "watch" about the ram consumed by the cache are
+found in `stats.gauges.{statsd_prefix}.{hostname}.cacher.{bytes|metrics|points}`.
+
+    Specs:
+        Instance: c4.xlarge
+        EBS drive: 1TB (3000 IOPS)
+        Flush Window: 10s
+        Keys Incoming: 140,000
+        Writes/s: 1200(set) ~1000 (actual)
+        CacheRam consumed: ~300-600MB
+        # Points in Cache: ~1.3 Million
+
+The process that runs the graphite writer then consumes ~1.2GB of ram in total.  Assuming the key space does not
+increase (by "alot") the above is pretty much a steady state.
+
+#### "Flat" writers
+
+This is the easiest to figure out capacity in terms of ram.  Basically while things are being aggregated you will need
+at least `N * (8*8 bytes + key/tag lengths)` (N metrics) As each metric+tag set is in Ram until it hits a flush window
+For example.  If you have 10000 metrics, you will need roughly ~200Mb of ram, JUST for the aggregation phase
+FOR EACH RESOLUTION.  So if you have 5s, 1m, 10m flush windows you will need ~600-700Mb.
+
+Since the "flat" metrics are flushed to write-back buffers, each flush will endup copying that aggregation buffer into
+another set of lists.  For each point that's flushed, and not written yet, double your ram requirements.  Depending
+on the speed of the writers, this can get pretty large.  For slow writers this can add up, so keep that in mind.
+
+For things like kafka/cassandra, where writes are very fast, these buffers will be much smaller.
+
+#### "Blob" writers
+
+The timeseries binary blobs are a bit harder to figureout in therms of their exact RAM requirements as some of them
+have variable compression based on the in values themselves (the Gorilla/Gob series for instance).  Others like
+Protobuf/Msgpack have pretty predictable sizes, but they too can use variable bit encodings for things so it's not
+written in stone.  And unlike the flat writers, series are only writen when they fill their `maxBytes` setting.
+
+But a "worse case" is easily derminined as:
+
+`NumResolutions * NumMetrics * 7*64 (7 64bit nums) * 255 (worst metric name size)`
+
+So for 10000 metrics and 3 resolutions that's ~3Gb worse case.  Since the hope is that things are writen and clear out
+the write buffers, one hopes not to get to this point very often (also not all you're metric names will be anywhere near 255).

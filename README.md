@@ -248,10 +248,9 @@ Here you will find the schemas, some gotchas, advice and what nots.
 
 ### TimeSeries
 
-There is lots of experimenting and use cases provided here
+There is lots of experimenting, series types and use cases provided here
 
 [See the timeseries doc](./docs/timeseries.md)
-
 
 
 ### API/Readers
@@ -268,14 +267,12 @@ does not write "nils" so the `/metrics` endpoint has to return an interpolated s
 (this is more a warning for those that may notice some time shifting in some data and "data" holes)
 
 This may mean that you will see some random interspersed `nils` in the data on small time ranges.  There are a variety of reasons for this
-1) flush times are not "exact" go's in the concurency world, not everything is run exactly when we want it do so over time, "drift" will 
+1) flush times are not "exact" go's in the concurency world, not everything is run exactly when we want it do so over time some "drift" will occur.
 2) Since we are both "flushing to disk" and "flushing from buffers" from many buffers at different times, sometimes they just don't line up
 
-*NOTE*  Currently only Cassandra and Whisper "readers" are valid (MySQL can be, needs the code to be written). File and Kafka writers can have no reader apis.
+*NOTE*  Currently only Cassandra, MySQL and Whisper "render apis" are valid. File and Kafka writers can have no render apis.
 
-#### Cassandra
-
-Whisper and Cassandra are currently the only "readers" available, configured in the PreReg `Accumulator` section as follows
+#### API Reader config
 
     [statsd-regex-map]
     listen_server="statsd-proxy" # which listener to sit in front of  (must be in the main config)
@@ -396,6 +393,8 @@ There is also a special `listen` called `backend_only` which is simply a place w
 #### some notes on Carbon2
 
     - has TWO SPACES between the <tag> and <meta_tag> section
+    - Don't put `.|,|=|\s` in the value of a tag (or any other punctuation really, if you need punctuation
+      in a tag, you're doing something wrong.
     - <meta_tags> are NOT concidered to signify a different metric
     - the "<key>" we unique idenfity a metric is a SORTED by name string of the form
 
@@ -405,7 +404,7 @@ There is also a special `listen` called `backend_only` which is simply a place w
 
     Graphite: <key> <value> <time>
     Statsd: <key>:<value>|<type>|<samplerate>
-    Carbon2: <tag> <tag> <Tag>  <meta_tag> <value> <time>
+    Carbon2: <tag> <tag> <tag>  <meta_tag> <value> <time>
     Carbon2a: name=value.name=value  <meta_tag> <value> <time>
     Carbon2b: name=value,name=value  <meta_tag> <value> <time>
     Carbon2c: name_is_value.name_is_value  <meta_tag> <value> <time>
@@ -523,7 +522,7 @@ There is also a "line msg" generator "statblast." It will make a bunch of random
       -servers string
         	list of servers to open (tcp://127.0.0.1:6002,tcp://127.0.0.1:6003), you can choose tcp://, udp://, http://, unix:// (default "tcp://127.0.0.1:8125")
       -type string
-        	statsd or graphite (default "statsd")
+        	statsd or graphite or carbon2 (default "statsd")
       -words string
         	compose the stat keys from these words (default "test,house,here,there,badline,cow,now")
       -words_per_stat int
@@ -562,37 +561,6 @@ TBD
 
 TBD
 
-
-### Whisper Writing
-
-99% of the performance issue w/ Wisper files are the Disks.  Since we typically here have large space requirements
-(in the TB range) and we are in the Cloud (AWS for us).  We need to use EBS drives which are really slow compared
-to any SSDs in the mix.  So you MUST limit the `writes_per_second` allowed or you'll end up in IOWait death.  For a
-1 Tb (3000 iops) generic EBS (gp2) drive empirically we find that we get ~1500 batch point writes per/second max 
-(that's using all the IOPs available, which if you think of each "write" as needing to read first then write that 
-makes some sense).  So we set the `writes_per_second=1200` to allow for readers to actually function a bit.
-
-
-### Writers Cache/Ram
-
-This one is a bit tricky to figure out exactly, and it highly dependent on the metric volume and shortest "tick" interval.
-The cache ram needed depends on # metrics/keys and the write capacity.  The cache holds a `map[key][]points`.  Once
-the writer determines which metric to flush to disk/DB we reclaim the RAM.
-
-Just some empirical numbers to gauge things, but the metric you should "watch" about the ram consumed by the cache are 
-found in `stats.gauges.{statsd_prefix}.{hostname}.cacher.{bytes|metrics|points}`.
-
-    Specs: 
-        Instance: c4.xlarge
-        EBS drive: 1TB (3000 IOPS)
-        Flush Window: 10s
-        Keys Incoming: 140,000
-        Writes/s: 1200(set) ~1000 (actual)
-        CacheRam consumed: ~300-600MB
-        # Points in Cache: ~1.3 Million
-
-The process that runs the graphite writer then consumes ~1.2GB of ram in total.  Assuming the key space does not
-increase (by "alot") the above is pretty much a steady state.
 
 
 Author

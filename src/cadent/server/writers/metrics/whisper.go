@@ -170,11 +170,7 @@ func NewWhisperWriter(conf map[string]interface{}) (*WhisperWriter, error) {
 		_ov := conf["cache_overflow_method"]
 		if _ov != nil {
 			ws.cache_queue.overFlowMethod = _ov.(string)
-			// set th overflow chan, and start the listener for that channel
-			if ws.cache_queue.overFlowMethod == "chan" {
-				ws.cacheOverFlow = ws.cache_queue.GetOverFlowChan()
-				go ws.overFlowWrite()
-			}
+
 		}
 
 		_lf := conf["cache_low_fruit_rate"]
@@ -366,6 +362,12 @@ func (ws *WhisperWriter) Start() {
 
 		ws.cache_queue.Start()
 		go ws.sendToWriters() // fire up queue puller
+
+		// set th overflow chan, and start the listener for that channel
+		if ws.cache_queue.overFlowMethod == "chan" {
+			ws.cacheOverFlow = ws.cache_queue.GetOverFlowChan()
+			go ws.overFlowWrite()
+		}
 	}
 
 }

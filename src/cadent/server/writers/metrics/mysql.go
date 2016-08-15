@@ -75,12 +75,12 @@ var errTimeTooSmall = errors.New("Mysql: Render: time too narrow")
 
 /****************** Interfaces *********************/
 type MySQLMetrics struct {
-	db             *dbs.MySQLDB
-	conn           *sql.DB
-	indexer        indexer.Indexer
-	render_timeout time.Duration
-	resolutions    [][]int
-	static_tags    repr.SortingTags
+	db            *dbs.MySQLDB
+	conn          *sql.DB
+	indexer       indexer.Indexer
+	renderTimeout time.Duration
+	resolutions   [][]int
+	static_tags   repr.SortingTags
 
 	series_encoding  string
 	blob_max_bytes   int
@@ -182,7 +182,6 @@ func (my *MySQLMetrics) Config(conf map[string]interface{}) error {
 		// unlike the other writers, overflows of cache size are
 		// exactly what we want to write
 		my.cacher.overFlowMethod = "chan"
-		my.cacheOverFlow = my.cacher.GetOverFlowChan()
 	}
 
 	my.shutdown = make(chan bool)
@@ -191,7 +190,7 @@ func (my *MySQLMetrics) Config(conf map[string]interface{}) error {
 	if err != nil {
 		return err
 	}
-	my.render_timeout = rdur
+	my.renderTimeout = rdur
 
 	return nil
 }
@@ -200,6 +199,9 @@ func (my *MySQLMetrics) Start() {
 	my.log.Notice("Starting mysql writer for %s at %d bytes per series", my.db.Tablename(), my.blob_max_bytes)
 	my.cacher.maxBytes = my.blob_max_bytes
 	my.cacher.Start()
+
+	// only register this when we start as we really want to consume
+	my.cacheOverFlow = my.cacher.GetOverFlowChan()
 	go my.overFlowWrite()
 }
 
@@ -613,7 +615,6 @@ func (my *MySQLMetrics) RawDataRenderOne(metric *indexer.MetricFindItem, from st
 // will make the read-cache much smaller (will compress just the Mean value as the count is 1)
 func (my *MySQLMetrics) RawRenderOne(metric indexer.MetricFindItem, from string, to string) (*RawRenderItem, error) {
 	return my.RawDataRenderOne(&metric, from, to)
-
 }
 
 func (my *MySQLMetrics) Render(path string, from string, to string) (WhisperRenderItem, error) {
@@ -641,6 +642,7 @@ func (my *MySQLMetrics) Render(path string, from string, to string) (WhisperRend
 	}
 	return whis, err
 }
+
 func (my *MySQLMetrics) RawRender(path string, from string, to string) ([]*RawRenderItem, error) {
 	defer stats.StatsdSlowNanoTimeFunc("reader.mysql.rawrender.get-time-ns", time.Now())
 
@@ -663,7 +665,7 @@ func (my *MySQLMetrics) RawRender(path string, from string, to string) ([]*RawRe
 	// ye old fan out technique
 	render_one := func(metric indexer.MetricFindItem, idx int) {
 		defer render_wg.Done()
-		timeout := time.NewTimer(my.render_timeout)
+		timeout := time.NewTimer(my.renderTimeout)
 		for {
 			select {
 			case <-timeout.C:

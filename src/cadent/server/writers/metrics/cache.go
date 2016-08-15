@@ -239,6 +239,9 @@ func (wc *Cacher) startUpdateTick() {
 }
 
 func (wc *Cacher) updateQueue() {
+	if !wc._accept {
+		return
+	}
 	f_len := 0
 	idx := 0
 	wc.mu.RLock() // need both locks

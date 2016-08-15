@@ -11,8 +11,33 @@ import (
 	logging "gopkg.in/op/go-logging.v1"
 
 	"strings"
+	"sync"
 	"time"
 )
+
+// the singleton as we really ONLY want one connection per DSN
+var _SESSION_SINGLETON map[string]*gocql.Session
+var _session_mutex sync.Mutex
+
+func getSessionSingleton(nm string, cluster *gocql.ClusterConfig) (*gocql.Session, error) {
+	_session_mutex.Lock()
+	defer _session_mutex.Unlock()
+
+	if val, ok := _SESSION_SINGLETON[nm]; ok {
+		return val, nil
+	}
+	sess, err := cluster.CreateSession()
+	if err != nil {
+		return nil, err
+	}
+	_SESSION_SINGLETON[nm] = sess
+	return sess, nil
+}
+
+// special onload init
+func init() {
+	_SESSION_SINGLETON = make(map[string]*gocql.Session)
+}
 
 type CassandraDB struct {
 	conn              *gocql.Session
@@ -43,7 +68,7 @@ func (cass *CassandraDB) Config(conf map[string]interface{}) (err error) {
 	port := 9042
 	_port := conf["port"]
 	if _port != nil {
-		port = _port.(int)
+		port = int(_port.(int64))
 	}
 
 	cass.keyspace = "metric"
@@ -126,7 +151,7 @@ func (cass *CassandraDB) Config(conf map[string]interface{}) (err error) {
 		}
 	*/
 
-	cass.log.Notice("Connecting to Cassandra (can take a bit of time) ... %s", dsn)
+	con_key := fmt.Sprintf("%s:%v/%v/%v|%v|%v", dsn, port, cass.keyspace, cass.metric_table, cass.path_table, cass.segment_table)
 
 	servers := strings.Split(dsn, ",")
 	cluster := gocql.NewCluster(servers...)
@@ -168,24 +193,15 @@ func (cass *CassandraDB) Config(conf map[string]interface{}) (err error) {
 		}
 	}
 
-	/*
-		if *compress {
-			cluster.Compressor = new(gocql.SnappyCompressor)
-		}
-
-		if *policy == "token" {
-			cluster.PoolConfig.HostSelectionPolicy = gocql.TokenAwareHostPolicy(gocql.RoundRobinHostPolicy())
-		}
-	*/
-	cass.conn, err = cluster.CreateSession()
+	sess_key := fmt.Sprintf("%s/%s", dsn, cass.keyspace)
+	cass.log.Notice("Connecting to Cassandra (can take a bit of time) ... %s (%s)", sess_key, con_key)
+	cass.conn, err = getSessionSingleton(sess_key, cluster)
 
 	if err != nil {
 		return err
 	}
-	cass.log.Notice("Connected to Cassandra: %v", servers)
+	cass.log.Notice("Connected to Cassandra: %v (%v)", con_key, servers)
 	cass.cluster = cluster
-	// Not needed as cass does not like Big insert queries
-	// go cass.PeriodicFlush()
 
 	return nil
 }

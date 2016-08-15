@@ -153,7 +153,6 @@ func (kf *KafkaMetrics) Config(conf map[string]interface{}) error {
 
 		// we write the overflows
 		kf.cacher.overFlowMethod = "chan"
-		kf.cacheOverFlow = kf.cacher.GetOverFlowChan()
 	}
 
 	return nil
@@ -162,6 +161,8 @@ func (kf *KafkaMetrics) Config(conf map[string]interface{}) error {
 func (kf *KafkaMetrics) Start() {
 	kf.log.Notice("Starting Kafka writer for %s at %d bytes per series", kf.db.DataTopic(), kf.cacher.maxBytes)
 	kf.cacher.Start()
+	// only register this if we are really going to consume it
+	kf.cacheOverFlow = kf.cacher.GetOverFlowChan()
 	go kf.overFlowWrite()
 }
 
@@ -239,11 +240,15 @@ func (kf *KafkaMetrics) Write(stat repr.StatRepr) error {
 
 func (kf *KafkaMetrics) PushSeries(name *repr.StatName, points series.TimeSeries) error {
 
+	pts, err := points.MarshalBinary()
+	if err != nil {
+		return err
+	}
 	obj := &KafkaMetric{
 		Type:       "metricblob",
 		Metric:     name.Key,
 		Time:       time.Now().UnixNano(),
-		Data:       points.MarshalBinary(),
+		Data:       pts,
 		Encoding:   points.Name(),
 		Resolution: name.Resolution,
 		TTL:        name.TTL,

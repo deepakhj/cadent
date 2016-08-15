@@ -119,8 +119,9 @@ type CassPath struct {
 
 /****************** Writer *********************/
 type CassandraIndexer struct {
-	db   *dbs.CassandraDB
-	conn *gocql.Session
+	db        *dbs.CassandraDB
+	conn      *gocql.Session
+	indexerId string
 
 	write_list     []repr.StatRepr // buffer the writes so as to do "multi" inserts per query
 	max_write_size int             // size of that buffer before a flush
@@ -158,6 +159,7 @@ func (cass *CassandraIndexer) Stop() {
 		return // already did
 	}
 	cass._accept = false
+	cass.log.Notice("Indexer to Cassandra shutting down: %s", cass.indexerId)
 
 	cass.cache.Stop()
 	if cass.write_queue != nil {
@@ -167,6 +169,7 @@ func (cass *CassandraIndexer) Stop() {
 
 func (cass *CassandraIndexer) Start() {
 	if cass.write_queue == nil {
+		cass.log.Notice("Indexer to Cassandra starting: %s", cass.indexerId)
 		workers := cass.num_workers
 		cass.write_queue = make(chan dispatch.IJob, cass.queue_len)
 		cass.dispatch_queue = make(chan chan dispatch.IJob, workers)
@@ -185,9 +188,9 @@ func (cass *CassandraIndexer) Config(conf map[string]interface{}) (err error) {
 	if gots == nil {
 		return fmt.Errorf("Indexer: `dsn` (server1,server2,server3) is needed for cassandra config")
 	}
-	dsn := gots.(string)
-
-	db, err := dbs.NewDB("cassandra", dsn, conf)
+	cass.indexerId = fmt.Sprintf("%v:%v/%v/%v|%v", gots, conf["port"], conf["keyspace"], conf["path_table"], conf["segment_table"])
+	cass.log.Notice("Connecting Indexer to Cassandra %s", cass.indexerId)
+	db, err := dbs.NewDB("cassandra", cass.indexerId, conf)
 	if err != nil {
 		return err
 	}
@@ -207,7 +210,7 @@ func (cass *CassandraIndexer) Config(conf map[string]interface{}) (err error) {
 		cass.queue_len = int(_qs.(int64))
 	}
 
-	c_key := "indexer:cassandra:" + dsn
+	c_key := "indexer:cassandra:" + cass.indexerId
 	cass.cache, err = getCacherSingleton(c_key)
 	if err != nil {
 		return err
