@@ -159,7 +159,7 @@ func (cass *CassandraIndexer) Stop() {
 		return // already did
 	}
 	cass._accept = false
-	cass.log.Notice("Indexer to Cassandra shutting down: %s", cass.indexerId)
+	cass.log.Notice("shutting down cassandra indexer: %s", cass.Name())
 
 	cass.cache.Stop()
 	if cass.write_queue != nil {
@@ -169,7 +169,7 @@ func (cass *CassandraIndexer) Stop() {
 
 func (cass *CassandraIndexer) Start() {
 	if cass.write_queue == nil {
-		cass.log.Notice("Indexer to Cassandra starting: %s", cass.indexerId)
+		cass.log.Notice("starting down cassandra indexer: %s", cass.Name())
 		workers := cass.num_workers
 		cass.write_queue = make(chan dispatch.IJob, cass.queue_len)
 		cass.dispatch_queue = make(chan chan dispatch.IJob, workers)
@@ -230,6 +230,10 @@ func (cass *CassandraIndexer) Config(conf map[string]interface{}) (err error) {
 	//cass.Start() // fire it up
 
 	return nil
+}
+
+func (cass *CassandraIndexer) Name() string {
+	return cass.indexerId
 }
 
 func (cass *CassandraIndexer) WriteOne(inname repr.StatName) error {

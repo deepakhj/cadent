@@ -18,7 +18,7 @@ func NewNoopIndexer() *NoopIndexer {
 func (my *NoopIndexer) Config(conf map[string]interface{}) error {
 	return nil
 }
-
+func (my *NoopIndexer) Name() string                     { return "noop-indexer" }
 func (my *NoopIndexer) Stop()                            {}
 func (my *NoopIndexer) Start()                           {}
 func (my *NoopIndexer) Delete(name *repr.StatName) error { return nil }

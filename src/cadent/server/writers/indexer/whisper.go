@@ -52,7 +52,9 @@ func (ws *WhisperIndexer) Stop() {
 	//noop
 }
 
-func (my *WhisperIndexer) Delete(name *repr.StatName) error {
+func (ws *WhisperIndexer) Name() string { return "whisper-indexer" }
+
+func (ws *WhisperIndexer) Delete(name *repr.StatName) error {
 	return nil //noop
 }
 

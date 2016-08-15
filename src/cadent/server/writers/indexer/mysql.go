@@ -69,8 +69,9 @@ const (
 
 /****************** Interfaces *********************/
 type MySQLIndexer struct {
-	db   *dbs.MySQLDB
-	conn *sql.DB
+	db        *dbs.MySQLDB
+	conn      *sql.DB
+	indexerId string
 
 	write_lock sync.Mutex
 
@@ -124,8 +125,8 @@ func (my *MySQLIndexer) Config(conf map[string]interface{}) error {
 		my.queue_len = int(_qs.(int64))
 	}
 
-	c_key := "indexer:mysql:" + dsn
-	my.cache, err = getCacherSingleton(c_key)
+	my.indexerId = "indexer:mysql:" + dsn
+	my.cache, err = getCacherSingleton(my.indexerId)
 	if err != nil {
 		return err
 	}
@@ -146,9 +147,12 @@ func (my *MySQLIndexer) Config(conf map[string]interface{}) error {
 
 	return nil
 }
+func (my *MySQLIndexer) Name() string { return my.indexerId }
 
 func (my *MySQLIndexer) Start() {
 	if my.write_queue == nil {
+		my.log.Notice("starting down mysql indexer: %s", my.Name())
+
 		workers := my.num_workers
 		my.write_queue = make(chan dispatch.IJob, my.queue_len)
 		my.dispatch_queue = make(chan chan dispatch.IJob, workers)
@@ -170,7 +174,7 @@ func (my *MySQLIndexer) Stop() {
 		return // already did
 	}
 	my.shutitdown = true
-
+	my.log.Notice("shutting down mysql indexer: %s", my.Name())
 	my.cache.Stop()
 	if my.write_queue != nil {
 		my.write_dispatcher.Shutdown()

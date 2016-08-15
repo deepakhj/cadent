@@ -18,6 +18,9 @@ import "cadent/server/repr"
 type Indexer interface {
 	Config(map[string]interface{}) error
 
+	// some identifier mostly used for logs
+	Name() string
+
 	Write(metric repr.StatName) error // write a metric key
 
 	// reader methods this is an "extra" graphite based entity

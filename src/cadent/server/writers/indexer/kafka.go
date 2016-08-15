@@ -58,6 +58,7 @@ type KafkaIndexer struct {
 	conn        sarama.AsyncProducer
 	write_index bool // if false, we skip the index writing message as well, the stat metric itself has the key in it
 	shutitdown  bool
+	indexerId   string
 	log         *logging.Logger
 }
 
@@ -66,19 +67,8 @@ func NewKafkaIndexer() *KafkaIndexer {
 	kf.log = logging.MustGetLogger("writers.indexer.kafka")
 	kf.write_index = true
 	kf.shutitdown = false
+	kf.indexerId = fmt.Sprintf("kafak:indexer")
 	return kf
-}
-
-func (my *KafkaIndexer) Start() {}
-
-func (kf *KafkaIndexer) Stop() {
-	shutdown.AddToShutdown()
-	defer shutdown.ReleaseFromShutdown()
-	kf.shutitdown = true
-	time.Sleep(time.Second) // wait for any lingering writes
-	if err := kf.conn.Close(); err != nil {
-		kf.log.Error("Failed to shut down producer cleanly %v", err)
-	}
 }
 
 func (kf *KafkaIndexer) Config(conf map[string]interface{}) error {
@@ -103,6 +93,24 @@ func (kf *KafkaIndexer) Config(conf map[string]interface{}) error {
 	return nil
 }
 
+func (kf *KafkaIndexer) Start() {
+	kf.log.Notice("starting kafka indexer: %s", kf.Name())
+}
+
+func (kf *KafkaIndexer) Stop() {
+	kf.log.Notice("shutting down cassandra indexer: %s", kf.Name())
+	shutdown.AddToShutdown()
+	defer shutdown.ReleaseFromShutdown()
+	kf.shutitdown = true
+	time.Sleep(time.Second) // wait for any lingering writes
+	if err := kf.conn.Close(); err != nil {
+		kf.log.Error("Failed to shut down producer cleanly %v", err)
+	}
+}
+
+func (kf *KafkaIndexer) Name() string {
+	return kf.indexerId
+}
 func (kf *KafkaIndexer) Write(skey repr.StatName) error {
 	// noop if not writing indexes
 	if !kf.write_index || kf.shutitdown {

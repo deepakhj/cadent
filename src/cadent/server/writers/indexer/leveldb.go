@@ -318,6 +318,7 @@ func init() {
 /****************** Interfaces *********************/
 type LevelDBIndexer struct {
 	db                *dbs.LevelDB
+	indexerId         string
 	cache             *Cacher // simple cache to rate limit and buffer writes
 	writes_per_second int     // rate limit writer
 
@@ -387,7 +388,13 @@ func (lb *LevelDBIndexer) Config(conf map[string]interface{}) error {
 		lb.queue_len = int(_qs.(int64))
 	}
 
+	lb.indexerId = fmt.Sprintf("leveldb:%s", dsn)
+
 	return nil
+}
+
+func (lp *LevelDBIndexer) Name() string {
+	return lp.indexerId
 }
 
 func (lp *LevelDBIndexer) Stop() {
@@ -396,6 +403,7 @@ func (lp *LevelDBIndexer) Stop() {
 	if !lp._accept {
 		return
 	}
+	lp.log.Notice("Shutting down LevelDB indexer: %s", lp.Name())
 	lp._accept = false
 	lp.shutonce.Do(lp.cache.Stop)
 	if lp.write_queue != nil {
@@ -406,6 +414,7 @@ func (lp *LevelDBIndexer) Stop() {
 
 func (lp *LevelDBIndexer) Start() {
 	if lp.write_queue == nil {
+		lp.log.Notice("Starting LevelDB indexer: %s", lp.Name())
 		workers := lp.num_workers
 		lp.write_queue = make(chan dispatch.IJob, lp.queue_len)
 		lp.dispatch_queue = make(chan chan dispatch.IJob, workers)
