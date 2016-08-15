@@ -86,6 +86,13 @@ type MySQLMetrics struct {
 	blob_max_bytes   int
 	blob_oldest_time time.Duration
 
+	// this is for Render where we may have several caches, but only "one"
+	// cacher get picked for the default render (things share the cache from writers
+	// and the api render, but not all the caches, so we need to be able to get the
+	// caches from other resolutions
+	// cache:mysqlblob:[mysql hosts]:[resolution]
+	// the cache singleton keys
+	cacherPrefix  string
 	cacher        *Cacher
 	cacheOverFlow *broadcast.Listener // on byte overflow of cacher force a write
 
@@ -135,7 +142,8 @@ func (my *MySQLMetrics) Config(conf map[string]interface{}) error {
 	}
 
 	//cacher
-	cache_key := fmt.Sprintf("mysql:cache:%s:%v", dsn, resolution)
+	my.cacherPrefix = fmt.Sprintf("cache:mysqlblob:%s", dsn)
+	cache_key := fmt.Sprintf(my.cacherPrefix, dsn, resolution)
 	my.cacher, err = getCacherSingleton(cache_key)
 	if err != nil {
 		return err
@@ -554,7 +562,13 @@ func (my *MySQLMetrics) RawDataRenderOne(metric *indexer.MetricFindItem, from st
 	*/
 
 	// grab data from the write inflight cache
-	inflight, err := my.cacher.GetAsRawRenderItem(stat_name)
+	// need to pick the "proper" cache
+	cache_db := fmt.Sprintf("%s:%v", my.cacherPrefix, resolution)
+	use_cache := getCacherByName(cache_db)
+	if use_cache == nil {
+		use_cache = my.cacher
+	}
+	inflight, err := use_cache.GetAsRawRenderItem(stat_name)
 
 	// need at LEAST 2 points to get the proper step size
 	if inflight != nil && err == nil && len(inflight.Data) > 1 {

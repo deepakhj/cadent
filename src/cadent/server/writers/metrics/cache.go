@@ -92,7 +92,7 @@ the "render" step will then attempt to backfill those points
 
 // the singleton
 var _CACHER_SINGLETON map[string]*Cacher
-var _cacher_mutex sync.Mutex
+var _cacher_mutex sync.RWMutex
 
 func getCacherSingleton(nm string) (*Cacher, error) {
 	_cacher_mutex.Lock()
@@ -105,6 +105,17 @@ func getCacherSingleton(nm string) (*Cacher, error) {
 	cacher := NewCacher()
 	_CACHER_SINGLETON[nm] = cacher
 	return cacher, nil
+}
+
+// just GET by name if it exists
+func getCacherByName(nm string) *Cacher {
+	_cacher_mutex.RLock()
+	defer _cacher_mutex.RUnlock()
+
+	if val, ok := _CACHER_SINGLETON[nm]; ok {
+		return val
+	}
+	return nil
 }
 
 // special onload init

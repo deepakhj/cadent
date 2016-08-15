@@ -261,6 +261,13 @@ type CassandraMetric struct {
 	blobMaxBytes    int
 	blobOldestTime  time.Duration
 
+	// this is for Render where we may have several caches, but only "one"
+	// cacher get picked for the default render (things share the cache from writers
+	// and the api render, but not all the caches, so we need to be able to get the
+	// caches from other resolutions
+	// cache:cassandrablob:[cassandra hosts]:[resolution]
+	// the cache singleton keys
+	cacherPrefix  string
 	cacher        *Cacher
 	cacheOverFlow *broadcast.Listener // on byte overflow of cacher force a write
 
@@ -297,8 +304,8 @@ func (cass *CassandraMetric) Config(conf map[string]interface{}) (err error) {
 	if resolution == nil {
 		return fmt.Errorf("resolution needed for cassandra writer")
 	}
-
-	cache_key := fmt.Sprintf("cassandrablob:cache:%s:%v", dsn, resolution)
+	cass.cacherPrefix = fmt.Sprintf("cache:cassandrablob:%s", dsn)
+	cache_key := fmt.Sprintf("%s:%v", cass.cacherPrefix, resolution)
 	cass.cacher, err = getCacherSingleton(cache_key)
 	if err != nil {
 		return err
@@ -650,7 +657,13 @@ func (cass *CassandraMetric) RawDataRenderOne(metric *indexer.MetricFindItem, fr
 	stat_name := metric.StatName()
 
 	// grab data from the write inflight cache
-	inflight, err := cass.cacher.GetAsRawRenderItem(stat_name)
+	// need to pick the "proper" cache
+	cache_db := fmt.Sprintf("%s:%v", cass.cacherPrefix, resolution)
+	use_cache := getCacherByName(cache_db)
+	if use_cache == nil {
+		use_cache = cass.cacher
+	}
+	inflight, err := use_cache.GetAsRawRenderItem(stat_name)
 
 	// need at LEAST 2 points to get the proper step size
 	if inflight != nil && err == nil && len(inflight.Data) > 1 {
