@@ -729,14 +729,25 @@ For things like kafka/cassandra, where writes are very fast, these buffers will 
 
 #### "Blob" writers
 
-The timeseries binary blobs are a bit harder to figureout in therms of their exact RAM requirements as some of them
+The timeseries binary blobs are a bit harder to figure out in therms of their exact RAM requirements as some of them
 have variable compression based on the in values themselves (the Gorilla/Gob series for instance).  Others like
 Protobuf/Msgpack have pretty predictable sizes, but they too can use variable bit encodings for things so it's not
 written in stone.  And unlike the flat writers, series are only writen when they fill their `maxBytes` setting.
 
 But a "worse case" is easily derminined as:
 
-`NumResolutions * NumMetrics * 7*64 (7 64bit nums) * 255 (worst metric name size)`
+`NumResolutions * MaxNumMetrics * 7*64 (7 64bit nums) * 255 (worst case metric name size)`
 
-So for 10000 metrics and 3 resolutions that's ~3Gb worse case.  Since the hope is that things are writen and clear out
-the write buffers, one hopes not to get to this point very often (also not all you're metric names will be anywhere near 255).
+That said, the Blob writers will "write for real" when they hit their configured byte threashold. So for an 8kb threashold
+
+`NumResolutions * MaxNumMetrics * 8kb * 255 (worst case metric name size) = TotalRam Consumed` plus the above RAM
+needed for just keeping the current set of aggregates. (And of course there is overhead associated with everything so give at
+least 25% on top of that).
+
+The difference is that all that data is stored in RAM and the qurey engine knows not to even bother with the backend
+storage for the data, so read queries for hot/recent data are very fast.
+
+Random experimentation using the Gorrilla "wide" format (where it needs to store all 8 64 numbers), 120k metrics w/ 2 resolutions
+at 8kb block size is about 3Gb-4Gb for everything.
+
+For those in AWS.  The r3 series is your friend or a big c3/4 as CPU cycles to ingest all the incoming is also important.
