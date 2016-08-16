@@ -73,15 +73,20 @@ var UNDERSCORE_SEPARATOR_BYTES = []byte("_")
 type StatId uint64
 
 type StatName struct {
-	Key        string      `json:"key"`
-	Tags       SortingTags `json:"tags,omitempty"`
-	MetaTags   SortingTags `json:"meta_tags,omitempty"`
-	Resolution uint32      `json:"resolution"`
-	TTL        uint32      `json:"ttl"`
+	Key         string      `json:"key"`
+	Tags        SortingTags `json:"tags,omitempty"`
+	MetaTags    SortingTags `json:"meta_tags,omitempty"`
+	Resolution  uint32      `json:"resolution"`
+	TTL         uint32      `json:"ttl"`
+	uniqueId    StatId
+	uniqueIdstr string
 }
 
 // take the various "parts" (keys, resolution, tags) and return a basic md5 hash of things
 func (s *StatName) UniqueId() StatId {
+	if s.uniqueId > 0 {
+		return s.uniqueId
+	}
 	buf := fnv.New64a()
 
 	byte_buf := utils.GetBytesBuffer()
@@ -89,13 +94,18 @@ func (s *StatName) UniqueId() StatId {
 
 	fmt.Fprintf(byte_buf, "%s:%s", s.Key, s.SortedTags())
 	buf.Write(byte_buf.Bytes())
-	return StatId(buf.Sum64())
+	s.uniqueId = StatId(buf.Sum64())
+	return s.uniqueId
 }
 
 // nice "sqeeuzed" string
+// keep it in the object as the computation can yield many GC things from the Fprintf above
 func (s *StatName) UniqueIdString() string {
-	id := s.UniqueId()
-	return strconv.FormatUint(uint64(id), 36)
+	if s.uniqueIdstr == "" {
+		id := s.UniqueId()
+		s.uniqueIdstr = strconv.FormatUint(uint64(id), 36)
+	}
+	return s.uniqueIdstr
 }
 
 // return an array of [ [name, val] ...] sorted by name
@@ -171,6 +181,9 @@ func (s *StatName) AggFunc() AGG_FUNC {
 
 func (s *StatName) MergeMetric2Tags(itgs SortingTags) {
 	s.Tags, s.MetaTags = MergeMetric2Tags(itgs, s.Tags, s.MetaTags)
+	// need to invalidate the unique ids as the tags may have changed
+	s.uniqueId = 0
+	s.uniqueIdstr = ""
 }
 
 type StatRepr struct {
@@ -185,7 +198,7 @@ type StatRepr struct {
 	Count int64       `json:"count"`
 }
 
-// take the various "parts" (keys, resolution, tags) and return a basic md5 hash of things
+// take the various "parts" (keys, resolution, tags) and return a basic fmv64a hash of things
 func (s *StatRepr) UniqueId() uint64 {
 	buf := fnv.New64a()
 	fmt.Fprintf(buf, "%s:%d:%v", s.Name.Key, s.Name.Resolution, s.Name.SortedTags())
