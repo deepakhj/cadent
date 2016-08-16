@@ -10,6 +10,8 @@ Readers are an attempt to imitate the Graphite API bits and include 3 main endpo
     /{root}/rawrender -- get the actuall metrics in the internal format ( ?target=path.*.to.my.*.metric&from=time&to=time )
     /{root}/cache -- get the actuall metrics stored in writeback cache ( ?target=path.*.to.my.*.metric&from=time&to=time )
 
+For now, all return types are JSON.
+
 Unlike the Whisper file format which keeps "nils" for no data (i.e. a round robin DB with a fixed step size and known counts),
 the mature of the metrics in our various backends write points at what ever the flush time is, and if there is nothing to write
 does not write "nils" so the `/metrics` endpoint has to return an interpolated set of data to attempt to match what graphite expects
@@ -141,3 +143,101 @@ For graphite-api add this to the yaml conf
     finders:
         - cadent.CadentFinder
 
+
+## Outputs
+
+Just some example output from the render apis
+
+### /cache + /rawrender
+
+    [
+        {
+            metric: "graphitetest.there.now.there",
+            id: "3w5dnlrj3clw3",
+            tags: [["env", "prod"], ...],
+            meta_tags: [["foo", "baz"], ...],
+            data_from: 1471359695,
+            data_end: 1471359810,
+            from: 1471359220,
+            to: 1471359820,
+            step: 5,
+            aggfunc: 0,
+            data: [
+                {
+                    time: 1471359695,
+                    sum: 5152590,
+                    min: 75544,
+                    max: 84989,
+                    first: 77966,
+                    last: 82659,
+                    count: 64
+                }, ...
+            ]
+        }, ...
+    ]
+
+### /metrics
+
+    {
+        data_from: 1471363625,
+        data_end: 1471364215,
+        from: 1471363625,
+        to: 1471364220,
+        step: 5,
+        series: {
+            graphitetest.there.now.there: [
+                [
+                    80248.617188,
+                    1471363625
+                ],
+                [
+                    80367.816514,
+                    1471363630
+                ],
+                ...
+            ],
+            graphitetest.there.now.now: [ ... ]
+        }
+    }
+
+### /find
+
+[
+    {
+        text: "there",
+        expandable: 0,
+        leaf: 1,
+        id: "graphitetest.there.now.there",
+        path: "graphitetest.there.now.there",
+        allowChildren: 0,
+        uniqueid: "3w5dnlrj3clw3",
+        tags: [["env", "prod"], ...],
+        meta_tags: [["foo", "baz"], ...]
+    },
+    {
+        text: "there",
+        expandable: 0,
+        leaf: 1,
+        id: "graphitetest.there.now.now",
+        path: "graphitetest.there.now.now",
+        allowChildren: 0,
+        uniqueid: "3w5dnlrj3clw3",
+        tags: [["env", "prod"], ...],
+        meta_tags: [["foo", "baz"], ...]
+    },
+    ...
+]
+
+### /expand
+
+{
+    results: [
+        "graphitetest.there.now.badline",
+        "graphitetest.there.now.cow",
+        "graphitetest.there.now.here",
+        "graphitetest.there.now.house",
+        "graphitetest.there.now.now",
+        "graphitetest.there.now.test",
+        "graphitetest.there.now.there"
+    ]
+}

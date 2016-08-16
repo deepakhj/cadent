@@ -872,25 +872,14 @@ func (cass *CassandraMetric) CacheRender(path string, from string, to string, ta
 	// ye old fan out technique
 	render_one := func(metric *indexer.MetricFindItem, idx int) {
 		defer render_wg.Done()
-		timeout := time.NewTimer(cass.renderTimeout)
-		for {
-			select {
-			case <-timeout.C:
-				cass.writer.log.Error("Render Timeout for %s (%s->%s)", path, from, to)
-				timeout.Stop()
-				return
-			default:
-				_ri, err := cass.GetFromWriteCache(metric, uint32(start), uint32(end), resolution)
+		_ri, err := cass.GetFromWriteCache(metric, uint32(start), uint32(end), resolution)
 
-				if err != nil {
-					cass.writer.log.Error("Read Error for %s (%s->%s) : %v", path, from, to, err)
-					return
-				}
-				rawd[idx] = _ri
-				return
-			}
+		if err != nil {
+			cass.writer.log.Error("Read Error for %s (%s->%s) : %v", path, from, to, err)
+			return
 		}
-
+		rawd[idx] = _ri
+		return
 	}
 
 	for idx, metric := range metrics {

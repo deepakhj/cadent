@@ -21,8 +21,10 @@ limitations under the License.
 package metrics
 
 import (
+	"bytes"
 	"cadent/server/repr"
 	"cadent/server/series"
+	"cadent/server/utils"
 	"fmt"
 	"math"
 	"sort"
@@ -87,6 +89,27 @@ type RawDataPoint struct {
 	First float64 `json:"first"`
 	Last  float64 `json:"last"`
 	Count int64   `json:"count"`
+}
+
+func (d RawDataPoint) floatToJson(buf *bytes.Buffer, name string, end string, val float64) {
+	if math.IsNaN(val) {
+		fmt.Fprintf(buf, name+":null"+end)
+		return
+	}
+	fmt.Fprintf(buf, name+":%f"+end, val)
+}
+
+func (d RawDataPoint) MarshalJSON() ([]byte, error) {
+	buf := utils.GetBytesBuffer()
+	defer utils.PutBytesBuffer(buf)
+
+	fmt.Fprintf(buf, "{\"time\": %d,", d.Time)
+	d.floatToJson(buf, "\"sum\"", ",", d.Sum)
+	d.floatToJson(buf, "\"min\"", ",", d.Min)
+	d.floatToJson(buf, "\"max\"", ",", d.Max)
+	d.floatToJson(buf, "\"first\"", ",", d.First)
+	d.floatToJson(buf, "\"last\"", "}", d.Last)
+	return buf.Bytes(), nil
 }
 
 func NullRawDataPoint(time uint32) RawDataPoint {
