@@ -184,7 +184,7 @@ func (my *MySQLMetrics) Config(conf map[string]interface{}) error {
 		my.cacher.maxKeys = CACHER_METRICS_KEYS
 		_cz := conf["cache_metric_size"]
 		if _cz != nil {
-			my.cacher.maxKeys = _cz.(int)
+			my.cacher.maxKeys = int(_cz.(int64))
 		}
 
 		// unlike the other writers, overflows of cache size are
