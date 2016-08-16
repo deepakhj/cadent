@@ -507,6 +507,32 @@ func (my *MySQLMetrics) GetFromDatabase(metric *indexer.MetricFindItem, resoluti
 
 }
 
+func (my *MySQLMetrics) GetFromWriteCache(metric *indexer.MetricFindItem, start uint32, end uint32, resolution uint32) (*RawRenderItem, error) {
+
+	// grab data from the write inflight cache
+	// need to pick the "proper" cache
+	cache_db := fmt.Sprintf("%s:%v", my.cacherPrefix, resolution)
+	use_cache := getCacherByName(cache_db)
+	if use_cache == nil {
+		use_cache = my.cacher
+	}
+	inflight, err := use_cache.GetAsRawRenderItem(metric.StatName())
+	if err != nil {
+		return nil, err
+	}
+	if inflight == nil {
+		return nil, nil
+	}
+	inflight.Metric = metric.Path
+	inflight.Id = metric.UniqueId
+	inflight.Step = resolution
+	inflight.Start = start
+	inflight.End = end
+	inflight.Tags = metric.Tags
+	inflight.MetaTags = metric.MetaTags
+	return inflight, nil
+}
+
 func (my *MySQLMetrics) RawDataRenderOne(metric *indexer.MetricFindItem, from string, to string) (*RawRenderItem, error) {
 	defer stats.StatsdSlowNanoTimeFunc("reader.mysql.renderraw.get-time-ns", time.Now())
 	rawd := new(RawRenderItem)
@@ -557,45 +583,12 @@ func (my *MySQLMetrics) RawDataRenderOne(metric *indexer.MetricFindItem, from st
 	//cache check
 	// the read cache should have "all" the points from a "start" to "end" if the read cache has been activated for
 	// a while.  If not, then it's a partial list (basically the read cache just started)
-	stat_name := metric.StatName()
-
-	/* no need for this
-	cached, got_cache := my.GetFromReadCache(stat_name.Key, start, end)
-
-	// we assume the "cache" is hot data (by design) so if the num points is "lacking"
-	// we know we need to get to the data store (or at least the inflight) for the rest
-	// add the "step" here as typically we have the "forward" step of data
-	if got_cache && cached.StartInRange(u_start+cached.Step) {
-		stats.StatsdClient.Incr("reader.mysql.render.read.cache.hit", 1)
-		my.log.Debug("Read Cache Hit: %s [%d, %d)", metric.Id, start, end)
-		// need to set the start end to the ones requested before quantization to create the proper
-		// spanning range
-		cached.Start = u_start
-		cached.End = u_end
-		cached.Quantize()
-		return cached, nil
-	}
-	*/
-
-	// grab data from the write inflight cache
-	// need to pick the "proper" cache
-	cache_db := fmt.Sprintf("%s:%v", my.cacherPrefix, resolution)
-	use_cache := getCacherByName(cache_db)
-	if use_cache == nil {
-		use_cache = my.cacher
-	}
-	inflight, err := use_cache.GetAsRawRenderItem(stat_name)
+	inflight, err := my.GetFromWriteCache(metric, u_start, u_end, resolution)
 
 	// need at LEAST 2 points to get the proper step size
 	if inflight != nil && err == nil && len(inflight.Data) > 1 {
 		// all the data we need is in the inflight
 		in_range := inflight.DataInRange(u_start, u_end)
-		inflight.Metric = metric.Path
-		inflight.Id = metric.UniqueId
-		inflight.Step = resolution
-		inflight.Start = u_start
-		inflight.End = u_end
-
 		// if all the data is in this list we don't need to go any further
 		if in_range {
 			// move the times to the "requested" ones and quantize the list
@@ -719,6 +712,79 @@ func (my *MySQLMetrics) RawRender(path string, from string, to string) ([]*RawRe
 	for idx, metric := range metrics {
 		render_wg.Add(1)
 		go render_one(metric, idx)
+	}
+	render_wg.Wait()
+	return rawd, nil
+}
+
+func (my *MySQLMetrics) CacheRender(path string, from string, to string, tags repr.SortingTags) (rawd []*RawRenderItem, err error) {
+
+	defer stats.StatsdSlowNanoTimeFunc("reader.cassandra.cacherender.get-time-ns", time.Now())
+
+	start, err := ParseTime(from)
+	if err != nil {
+		my.log.Error("Invalid from time `%s` :: %v", from, err)
+		return rawd, err
+	}
+
+	end, err := ParseTime(to)
+	if err != nil {
+		my.log.Error("Invalid from time `%s` :: %v", to, err)
+		return rawd, err
+	}
+	if end < start {
+		start, end = end, start
+	}
+
+	//figure out the best res
+	resolution := my.getResolution(start, end)
+
+	start = TruncateTimeTo(start, int(resolution))
+	end = TruncateTimeTo(end, int(resolution))
+
+	paths := strings.Split(path, ",")
+	var metrics []indexer.MetricFindItem
+
+	render_wg := utils.GetWaitGroup()
+	defer utils.PutWaitGroup(render_wg)
+
+	for _, pth := range paths {
+		mets, err := my.indexer.Find(pth)
+		if err != nil {
+			continue
+		}
+		metrics = append(metrics, mets...)
+	}
+
+	rawd = make([]*RawRenderItem, len(metrics), len(metrics))
+
+	// ye old fan out technique
+	render_one := func(metric *indexer.MetricFindItem, idx int) {
+		defer render_wg.Done()
+		timeout := time.NewTimer(my.renderTimeout)
+		for {
+			select {
+			case <-timeout.C:
+				my.log.Error("Render Timeout for %s (%s->%s)", path, from, to)
+				timeout.Stop()
+				return
+			default:
+				_ri, err := my.GetFromWriteCache(metric, uint32(start), uint32(end), resolution)
+
+				if err != nil {
+					my.log.Error("Read Error for %s (%s->%s) : %v", path, from, to, err)
+					return
+				}
+				rawd[idx] = _ri
+				return
+			}
+		}
+
+	}
+
+	for idx, metric := range metrics {
+		render_wg.Add(1)
+		go render_one(&metric, idx)
 	}
 	render_wg.Wait()
 	return rawd, nil

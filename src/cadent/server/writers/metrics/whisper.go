@@ -67,6 +67,7 @@ const (
 
 var errWhisperNotaDataNode = errors.New("Whisper: RawRenderOne: Not a data node")
 var errWhisperNoDataInTimes = errors.New("Whisper: No data between these times")
+var errWhisperNotImplemented = errors.New("Whisper: Not yet implemented")
 
 // the singleton (per DSN) as we really only want one "controller" of writes not many lest we explode the
 // IOwait to death
@@ -864,6 +865,10 @@ func (ws *WhisperMetrics) RawRender(path string, from string, to string) ([]*Raw
 	}
 	render_wg.Wait()
 	return rawd, nil
+}
+
+func (ws *WhisperMetrics) CacheRender(path string, from string, to string, tags repr.SortingTags) ([]*RawRenderItem, error) {
+	return nil, errWhisperNotImplemented
 }
 
 /************************************************************************/

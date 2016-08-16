@@ -39,11 +39,13 @@ limitations under the License.
 package writers
 
 import (
+	"cadent/server/repr"
 	"cadent/server/stats"
 	"cadent/server/utils/shutdown"
 	"cadent/server/writers/indexer"
 	"cadent/server/writers/metrics"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/BurntSushi/toml"
 	"gopkg.in/op/go-logging.v1"
@@ -54,6 +56,8 @@ import (
 	"strings"
 	"time"
 )
+
+var errTargetRequired = errors.New("Target is required")
 
 type ApiMetricConfig struct {
 	Driver  string                 `toml:"driver"`
@@ -292,11 +296,13 @@ func (re *ApiLoop) Expand(w http.ResponseWriter, r *http.Request) {
 	re.OutJson(w, data)
 }
 
-func (re *ApiLoop) parseForRender(w http.ResponseWriter, r *http.Request) (string, string, string, error) {
+func (re *ApiLoop) parseForRender(w http.ResponseWriter, r *http.Request) (string, string, string, repr.SortingTags, error) {
 	r.ParseForm()
 	var target string
 	var from string
 	var to string
+	var _tags string
+	var tags repr.SortingTags
 
 	for _, tar := range r.Form["target"] {
 		target += strings.TrimSpace(tar) + ","
@@ -309,11 +315,18 @@ func (re *ApiLoop) parseForRender(w http.ResponseWriter, r *http.Request) (strin
 		}
 	}
 
+	for _, tgs := range r.Form["tags"] {
+		_tags += strings.TrimSpace(tgs) + ","
+	}
+	if _tags != "" {
+		tags = repr.SortingTagsFromString(_tags)
+	}
+
 	from = strings.TrimSpace(r.Form.Get("from"))
 	to = strings.TrimSpace(r.Form.Get("to"))
 
 	if len(target) == 0 {
-		return "", "", "", fmt.Errorf("Target is required")
+		return "", "", "", tags, errTargetRequired
 
 	}
 
@@ -325,7 +338,7 @@ func (re *ApiLoop) parseForRender(w http.ResponseWriter, r *http.Request) (strin
 		to = "now"
 	}
 
-	return target, from, to, nil
+	return target, from, to, tags, nil
 }
 
 // take a rawrender and make it a graphite api json format
@@ -359,7 +372,7 @@ func (re *ApiLoop) Render(w http.ResponseWriter, r *http.Request) {
 
 	defer stats.StatsdNanoTimeFunc("reader.http.render.get-time-ns", time.Now())
 
-	target, from, to, err := re.parseForRender(w, r)
+	target, from, to, _, err := re.parseForRender(w, r)
 	if err != nil {
 		re.OutError(w, fmt.Sprintf("%v", err), http.StatusBadRequest)
 	}
@@ -389,7 +402,7 @@ func (re *ApiLoop) RawRender(w http.ResponseWriter, r *http.Request) {
 
 	defer stats.StatsdNanoTimeFunc("reader.http.render.get-time-ns", time.Now())
 
-	target, from, to, err := re.parseForRender(w, r)
+	target, from, to, _, err := re.parseForRender(w, r)
 	if err != nil {
 		re.OutError(w, fmt.Sprintf("%v", err), http.StatusBadRequest)
 	}
@@ -413,10 +426,38 @@ func (re *ApiLoop) RawRender(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
+// only return data that's in the write-back caches
+// this is handy if you just want to poll what's currently being aggregated
+// especially useful for the "series" style where writes to a DB system are much
+// less then flat based mechanisms
+func (re *ApiLoop) GetFromCache(w http.ResponseWriter, r *http.Request) {
+
+	defer stats.StatsdNanoTimeFunc("reader.http.cache-render.get-time-ns", time.Now())
+
+	target, from, to, tags, err := re.parseForRender(w, r)
+	if err != nil {
+		re.OutError(w, fmt.Sprintf("%v", err), http.StatusBadRequest)
+	}
+
+	data, err := re.Metrics.CacheRender(target, from, to, tags)
+	if err != nil {
+		re.OutError(w, fmt.Sprintf("%v", err), http.StatusServiceUnavailable)
+		return
+	}
+
+	if data == nil {
+		re.OutError(w, "No data found", http.StatusNoContent)
+		return
+	}
+
+	re.OutJson(w, data)
+	return
+}
+
 func (re *ApiLoop) NoOp(w http.ResponseWriter, r *http.Request) {
 	golog.Printf("No handler for this URL %s", r.URL)
 	http.Error(w,
-		fmt.Sprintf("Nothing here .. try %s/find or %s/render or %s/expand", re.Conf.BasePath, re.Conf.BasePath, re.Conf.BasePath),
+		fmt.Sprintf("Nothing here .. try %s/find or %s/render or %s/expand or %s/cache", re.Conf.BasePath, re.Conf.BasePath, re.Conf.BasePath),
 		http.StatusNotFound,
 	)
 	return
@@ -454,6 +495,9 @@ func (re *ApiLoop) Start() error {
 
 	mux.HandleFunc(re.Conf.BasePath+"rawrender/", re.RawRender)
 	mux.HandleFunc(re.Conf.BasePath+"rawrender", re.RawRender)
+
+	mux.HandleFunc(re.Conf.BasePath+"cache/", re.GetFromCache)
+	mux.HandleFunc(re.Conf.BasePath+"cache", re.GetFromCache)
 
 	mux.HandleFunc("/", re.NoOp)
 	var outlog *os.File

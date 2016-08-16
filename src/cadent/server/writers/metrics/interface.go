@@ -66,17 +66,21 @@ type Metrics interface {
 
 	// /render?target=XXXX&from=-24h&to=now
 	/*
-			{
-		target: "scaleToSeconds(stats.counters.consthash-graphite.all-1-stats-infra-integ.mfpaws.com.writer.cassandra.noncached-writes-path,1)",
-		datapoints: [
-		[
-		0,
-		1456087430
-		],...
-		]}
+		{
+			target: "scaleToSeconds(stats.counters.consthash-graphite.all-1-stats-infra-integ.mfpaws.com.writer.cassandra.noncached-writes-path,1)",
+			datapoints: [
+			[
+			0,
+			1456087430
+			],...
+			]
+		}
 	*/
 	Render(path string, from string, to string) (WhisperRenderItem, error)
 	RawRender(path string, from string, to string) ([]*RawRenderItem, error)
+
+	// just get data in the write-back caches
+	CacheRender(path string, from string, to string, tags repr.SortingTags) ([]*RawRenderItem, error)
 
 	Stop()  // kill stuff
 	Start() // fire it up

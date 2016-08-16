@@ -30,11 +30,14 @@ import (
 	"cadent/server/writers/dbs"
 	"cadent/server/writers/indexer"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/Shopify/sarama"
 	logging "gopkg.in/op/go-logging.v1"
 	"time"
 )
+
+var errKafkaReaderNotImplimented = errors.New("KAFKA READER NOT IMPLMENTED")
 
 /** kafka put object **/
 type KafkaMetricObj struct {
@@ -182,8 +185,11 @@ func (kf *KafkaFlatMetrics) Write(stat repr.StatRepr) error {
 /**** READER ***/
 // needed to match interface, but we obviously cannot do this
 func (kf *KafkaFlatMetrics) Render(path string, from string, to string) (WhisperRenderItem, error) {
-	return WhisperRenderItem{}, fmt.Errorf("KAKFA DRIVER CANNOT DO RENDER")
+	return WhisperRenderItem{}, errKafkaReaderNotImplimented
 }
 func (kf *KafkaFlatMetrics) RawRender(path string, from string, to string) ([]*RawRenderItem, error) {
-	return []*RawRenderItem{}, fmt.Errorf("KAKFA DRIVER CANNOT DO RENDER")
+	return []*RawRenderItem{}, errKafkaReaderNotImplimented
+}
+func (kf *KafkaFlatMetrics) CacheRender(path string, from string, to string, tags repr.SortingTags) ([]*RawRenderItem, error) {
+	return nil, errKafkaReaderNotImplimented
 }

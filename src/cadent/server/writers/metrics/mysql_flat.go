@@ -126,7 +126,6 @@ func (my *MySQLFlatMetrics) Config(conf map[string]interface{}) error {
 	return nil
 }
 
-// TODO
 func (my *MySQLFlatMetrics) Stop() {
 	if my.shutitdown {
 		return
@@ -137,7 +136,6 @@ func (my *MySQLFlatMetrics) Stop() {
 	return
 }
 
-// TODO
 func (my *MySQLFlatMetrics) Start() {
 	go my.PeriodFlush()
 }
@@ -241,4 +239,7 @@ func (my *MySQLFlatMetrics) Render(path string, from string, to string) (Whisper
 }
 func (my *MySQLFlatMetrics) RawRender(path string, from string, to string) ([]*RawRenderItem, error) {
 	return []*RawRenderItem{}, fmt.Errorf("MYSQL READER NOT YET DONE")
+}
+func (cass *MySQLFlatMetrics) CacheRender(path string, from string, to string, tags repr.SortingTags) ([]*RawRenderItem, error) {
+	return nil, fmt.Errorf("MySQLFlatMetrics: CacheRender: NOT YET IMPLIMNETED")
 }

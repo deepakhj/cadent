@@ -561,7 +561,7 @@ func (cass *CassandraMetric) GetFromDatabase(metric *indexer.MetricFindItem, res
 		metric.UniqueId, resolution, nano_start, nano_end,
 	).Iter()
 
-	cass.writer.log.Debug("Select Q for %s: %s (%v, %v, %v, %v)", metric.Id, Q, metric.UniqueId, resolution, nano_start, nano_end)
+	// cass.writer.log.Debug("Select Q for %s: %s (%v, %v, %v, %v)", metric.Id, Q, metric.UniqueId, resolution, nano_start, nano_end)
 
 	// for each "series" we get make a list of points
 	u_start := uint32(start)
@@ -622,6 +622,32 @@ func (cass *CassandraMetric) GetFromDatabase(metric *indexer.MetricFindItem, res
 
 }
 
+func (cass *CassandraMetric) GetFromWriteCache(metric *indexer.MetricFindItem, start uint32, end uint32, resolution uint32) (*RawRenderItem, error) {
+
+	// grab data from the write inflight cache
+	// need to pick the "proper" cache
+	cache_db := fmt.Sprintf("%s:%v", cass.cacherPrefix, resolution)
+	use_cache := getCacherByName(cache_db)
+	if use_cache == nil {
+		use_cache = cass.cacher
+	}
+	inflight, err := use_cache.GetAsRawRenderItem(metric.StatName())
+	if err != nil {
+		return nil, err
+	}
+	if inflight == nil {
+		return nil, nil
+	}
+	inflight.Metric = metric.Path
+	inflight.Id = metric.UniqueId
+	inflight.Step = resolution
+	inflight.Start = start
+	inflight.End = end
+	inflight.Tags = metric.Tags
+	inflight.MetaTags = metric.MetaTags
+	return inflight, nil
+}
+
 func (cass *CassandraMetric) RawDataRenderOne(metric *indexer.MetricFindItem, from string, to string) (*RawRenderItem, error) {
 	defer stats.StatsdSlowNanoTimeFunc("reader.cassandra.renderraw.get-time-ns", time.Now())
 	rawd := new(RawRenderItem)
@@ -669,27 +695,12 @@ func (cass *CassandraMetric) RawDataRenderOne(metric *indexer.MetricFindItem, fr
 		return rawd, errTimeTooSmall
 	}
 
-	//cache writer  check
-	stat_name := metric.StatName()
-
-	// grab data from the write inflight cache
-	// need to pick the "proper" cache
-	cache_db := fmt.Sprintf("%s:%v", cass.cacherPrefix, resolution)
-	use_cache := getCacherByName(cache_db)
-	if use_cache == nil {
-		use_cache = cass.cacher
-	}
-	inflight, err := use_cache.GetAsRawRenderItem(stat_name)
+	inflight, err := cass.GetFromWriteCache(metric, u_start, u_end, resolution)
 
 	// need at LEAST 2 points to get the proper step size
 	if inflight != nil && err == nil && len(inflight.Data) > 1 {
 		// all the data we need is in the inflight
 		in_range := inflight.DataInRange(u_start, u_end)
-		inflight.Metric = metric.Path
-		inflight.Id = metric.UniqueId
-		inflight.Step = resolution
-		inflight.Start = u_start
-		inflight.End = u_end
 
 		// if all the data is in this list we don't need to go any further
 		if in_range {
@@ -714,6 +725,8 @@ func (cass *CassandraMetric) RawDataRenderOne(metric *indexer.MetricFindItem, fr
 	cass_data.Step = resolution
 	cass_data.Start = u_start
 	cass_data.End = u_end
+	cass_data.Tags = metric.Tags
+	cass_data.MetaTags = metric.MetaTags
 
 	if inflight == nil {
 		cass_data.Quantize()
@@ -730,8 +743,8 @@ func (cass *CassandraMetric) RawDataRenderOne(metric *indexer.MetricFindItem, fr
 
 // after the "raw" render we need to yank just the "point" we need from the data which
 // will make the read-cache much smaller (will compress just the Mean value as the count is 1)
-func (cass *CassandraMetric) RawRenderOne(metric indexer.MetricFindItem, from string, to string) (*RawRenderItem, error) {
-	return cass.RawDataRenderOne(&metric, from, to)
+func (cass *CassandraMetric) RawRenderOne(metric *indexer.MetricFindItem, from string, to string) (*RawRenderItem, error) {
+	return cass.RawDataRenderOne(metric, from, to)
 }
 
 func (cass *CassandraMetric) Render(path string, from string, to string) (WhisperRenderItem, error) {
@@ -784,7 +797,7 @@ func (cass *CassandraMetric) RawRender(path string, from string, to string) ([]*
 	rawd := make([]*RawRenderItem, len(metrics), len(metrics))
 
 	// ye old fan out technique
-	render_one := func(metric indexer.MetricFindItem, idx int) {
+	render_one := func(metric *indexer.MetricFindItem, idx int) {
 		defer render_wg.Done()
 		timeout := time.NewTimer(cass.renderTimeout)
 		for {
@@ -809,7 +822,80 @@ func (cass *CassandraMetric) RawRender(path string, from string, to string) ([]*
 
 	for idx, metric := range metrics {
 		render_wg.Add(1)
-		go render_one(metric, idx)
+		go render_one(&metric, idx)
+	}
+	render_wg.Wait()
+	return rawd, nil
+}
+
+func (cass *CassandraMetric) CacheRender(path string, from string, to string, tags repr.SortingTags) (rawd []*RawRenderItem, err error) {
+
+	defer stats.StatsdSlowNanoTimeFunc("reader.cassandra.cacherender.get-time-ns", time.Now())
+
+	start, err := ParseTime(from)
+	if err != nil {
+		cass.writer.log.Error("Invalid from time `%s` :: %v", from, err)
+		return rawd, err
+	}
+
+	end, err := ParseTime(to)
+	if err != nil {
+		cass.writer.log.Error("Invalid from time `%s` :: %v", to, err)
+		return rawd, err
+	}
+	if end < start {
+		start, end = end, start
+	}
+
+	//figure out the best res
+	resolution := cass.getResolution(start, end)
+
+	start = TruncateTimeTo(start, int(resolution))
+	end = TruncateTimeTo(end, int(resolution))
+
+	paths := strings.Split(path, ",")
+	var metrics []indexer.MetricFindItem
+
+	render_wg := utils.GetWaitGroup()
+	defer utils.PutWaitGroup(render_wg)
+
+	for _, pth := range paths {
+		mets, err := cass.indexer.Find(pth)
+		if err != nil {
+			continue
+		}
+		metrics = append(metrics, mets...)
+	}
+
+	rawd = make([]*RawRenderItem, len(metrics), len(metrics))
+
+	// ye old fan out technique
+	render_one := func(metric *indexer.MetricFindItem, idx int) {
+		defer render_wg.Done()
+		timeout := time.NewTimer(cass.renderTimeout)
+		for {
+			select {
+			case <-timeout.C:
+				cass.writer.log.Error("Render Timeout for %s (%s->%s)", path, from, to)
+				timeout.Stop()
+				return
+			default:
+				_ri, err := cass.GetFromWriteCache(metric, uint32(start), uint32(end), resolution)
+
+				if err != nil {
+					cass.writer.log.Error("Read Error for %s (%s->%s) : %v", path, from, to, err)
+					return
+				}
+				rawd[idx] = _ri
+				return
+			}
+		}
+
+	}
+
+	for idx, metric := range metrics {
+		render_wg.Add(1)
+		go render_one(&metric, idx)
 	}
 	render_wg.Wait()
 	return rawd, nil

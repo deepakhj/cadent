@@ -29,6 +29,7 @@ import (
 	"cadent/server/repr"
 	"cadent/server/series"
 	"cadent/server/stats"
+	"cadent/server/utils"
 	"cadent/server/utils/shutdown"
 	"cadent/server/writers/dbs"
 	"cadent/server/writers/indexer"
@@ -36,6 +37,8 @@ import (
 	"fmt"
 	"github.com/Shopify/sarama"
 	logging "gopkg.in/op/go-logging.v1"
+	"math"
+	"strings"
 	"time"
 )
 
@@ -94,6 +97,9 @@ type KafkaMetrics struct {
 
 	resolution uint32
 
+	// used for the /cache endpoint for api readers to get the proper
+	// cache/resolution we want
+	cacherPrefix  string
 	cacher        *Cacher
 	cacheOverFlow *broadcast.Listener
 }
@@ -134,7 +140,8 @@ func (kf *KafkaMetrics) Config(conf map[string]interface{}) error {
 		kf.static_tags = repr.SortingTagsFromString(g_tag.(string))
 	}
 
-	cache_key := fmt.Sprintf("kafka:cache:%s:%v", dsn, kf.resolution)
+	kf.cacherPrefix = fmt.Sprintf("cache:kafka:%s", dsn)
+	cache_key := fmt.Sprintf("%s:%v", kf.cacherPrefix, kf.resolution)
 	kf.cacher, err = getCacherSingleton(cache_key)
 	if err != nil {
 		return err
@@ -233,6 +240,22 @@ func (kf *KafkaMetrics) overFlowWrite() {
 	}
 }
 
+// based on the from/to in seconds get the best resolution
+// from and to should be SECONDS not nano-seconds
+// from and to needs to be > then the TTL as well
+func (kf *KafkaMetrics) getResolution(from int64, to int64) uint32 {
+	diff := int(math.Abs(float64(to - from)))
+	n := int(time.Now().Unix())
+	back_f := n - int(from)
+	back_t := n - int(to)
+	for _, res := range kf.resolutions {
+		if diff < res[1] && back_f < res[1] && back_t < res[1] {
+			return uint32(res[0])
+		}
+	}
+	return uint32(kf.resolutions[len(kf.resolutions)-1][0])
+}
+
 func (kf *KafkaMetrics) SetIndexer(idx indexer.Indexer) error {
 	kf.indexer = idx
 	return nil
@@ -285,10 +308,104 @@ func (kf *KafkaMetrics) PushSeries(name *repr.StatName, points series.TimeSeries
 }
 
 /**** READER ***/
+
+// we can impliment this here as we have timeseries in RAM
+// it's different the other ones as there is no "index" here really to speak of
+func (kf *KafkaMetrics) GetFromWriteCache(metric *repr.StatName, start uint32, end uint32, resolution uint32) (*RawRenderItem, error) {
+
+	// grab data from the write inflight cache
+	// need to pick the "proper" cache
+	cache_db := fmt.Sprintf("%s:%v", kf.cacherPrefix, resolution)
+	use_cache := getCacherByName(cache_db)
+	if use_cache == nil {
+		use_cache = kf.cacher
+	}
+	inflight, err := use_cache.GetAsRawRenderItem(metric)
+	if err != nil {
+		return nil, err
+	}
+	if inflight == nil {
+		return nil, nil
+	}
+	inflight.Metric = metric.Key
+	inflight.Id = metric.UniqueIdString()
+	inflight.Step = resolution
+	inflight.Start = start
+	inflight.End = end
+	inflight.Tags = metric.Tags
+	inflight.MetaTags = metric.MetaTags
+	return inflight, nil
+}
+
 // needed to match interface, but we obviously cannot do this
 func (kf *KafkaMetrics) Render(path string, from string, to string) (WhisperRenderItem, error) {
-	return WhisperRenderItem{}, fmt.Errorf("KAKFA DRIVER CANNOT DO RENDER")
+	return WhisperRenderItem{}, errKafkaReaderNotImplimented
 }
 func (kf *KafkaMetrics) RawRender(path string, from string, to string) ([]*RawRenderItem, error) {
-	return []*RawRenderItem{}, fmt.Errorf("KAKFA DRIVER CANNOT DO RENDER")
+	return []*RawRenderItem{}, errKafkaReaderNotImplimented
+}
+
+// TODO: this one CAN BE implemented
+func (kf *KafkaMetrics) CacheRender(path string, from string, to string, tags repr.SortingTags) (rawd []*RawRenderItem, err error) {
+	defer stats.StatsdSlowNanoTimeFunc("reader.cassandra.cacherender.get-time-ns", time.Now())
+
+	start, err := ParseTime(from)
+	if err != nil {
+		kf.log.Error("Invalid from time `%s` :: %v", from, err)
+		return rawd, err
+	}
+
+	end, err := ParseTime(to)
+	if err != nil {
+		kf.log.Error("Invalid from time `%s` :: %v", to, err)
+		return rawd, err
+	}
+	if end < start {
+		start, end = end, start
+	}
+
+	//figure out the best res
+	resolution := kf.getResolution(start, end)
+
+	start = TruncateTimeTo(start, int(resolution))
+	end = TruncateTimeTo(end, int(resolution))
+
+	paths := strings.Split(path, ",")
+	var metrics []*repr.StatName
+
+	render_wg := utils.GetWaitGroup()
+	defer utils.PutWaitGroup(render_wg)
+
+	for _, pth := range paths {
+		nm := &repr.StatName{
+			Key: pth,
+		}
+		// need to merge in static tags to get UniqueIDs proper
+		nm.MergeMetric2Tags(kf.static_tags)
+		nm.MergeMetric2Tags(tags)
+		metrics = append(metrics, nm)
+	}
+
+	rawd = make([]*RawRenderItem, len(metrics), len(metrics))
+
+	// ye old fan out technique
+	render_one := func(metric *repr.StatName, idx int) {
+		defer render_wg.Done()
+		_ri, err := kf.GetFromWriteCache(metric, uint32(start), uint32(end), resolution)
+
+		if err != nil {
+			kf.log.Error("Read Error for %s (%s->%s) : %v", path, from, to, err)
+			return
+		}
+		rawd[idx] = _ri
+		return
+
+	}
+
+	for idx, metric := range metrics {
+		render_wg.Add(1)
+		go render_one(metric, idx)
+	}
+	render_wg.Wait()
+	return rawd, nil
 }

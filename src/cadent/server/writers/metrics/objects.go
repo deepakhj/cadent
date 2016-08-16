@@ -180,6 +180,8 @@ func (v RawDataPointList) Less(i, j int) bool { return v[i].Time < v[j].Time }
 type RawRenderItem struct {
 	Metric    string           `json:"metric"`
 	Id        string           `json:"id"`
+	Tags      repr.SortingTags `json:"tags"`
+	MetaTags  repr.SortingTags `json:"meta_tags"`
 	RealStart uint32           `json:"data_from"`
 	RealEnd   uint32           `json:"data_end"`
 	Start     uint32           `json:"from"`

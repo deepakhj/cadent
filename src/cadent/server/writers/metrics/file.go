@@ -44,7 +44,7 @@ import (
 )
 
 var errNoFilePointer = errors.New("Cannot write point, no file pointer")
-var errFileReaderNotImplimented = errors.New("FILE READER NOT IMPLMENTED")
+var errFileReaderNotImplemented = errors.New("FILE READER NOT IMPLMENTED")
 
 /****************** Interfaces *********************/
 type FileMetrics struct {
@@ -223,9 +223,12 @@ func (fi *FileMetrics) Write(stat repr.StatRepr) error {
 
 /**** READER ***/
 // XXX TODO
-func (my *FileMetrics) Render(path string, from string, to string) (WhisperRenderItem, error) {
-	return WhisperRenderItem{}, errFileReaderNotImplimented
+func (fi *FileMetrics) Render(path string, from string, to string) (WhisperRenderItem, error) {
+	return WhisperRenderItem{}, errFileReaderNotImplemented
 }
-func (my *FileMetrics) RawRender(path string, from string, to string) ([]*RawRenderItem, error) {
-	return []*RawRenderItem{}, errFileReaderNotImplimented
+func (fi *FileMetrics) RawRender(path string, from string, to string) ([]*RawRenderItem, error) {
+	return nil, errFileReaderNotImplemented
+}
+func (fi *FileMetrics) CacheRender(path string, from string, to string, tags repr.SortingTags) ([]*RawRenderItem, error) {
+	return nil, errFileReaderNotImplemented
 }

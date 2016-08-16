@@ -1099,3 +1099,7 @@ func (cass *CassandraFlatMetric) RawRender(path string, from string, to string) 
 	render_wg.Wait()
 	return rawd, nil
 }
+
+func (cass *CassandraFlatMetric) CacheRender(path string, from string, to string, tags repr.SortingTags) ([]*RawRenderItem, error) {
+	return nil, fmt.Errorf("CassandraFlatMetric: CacheRender: NOT YET IMPLIMNETED")
+}
