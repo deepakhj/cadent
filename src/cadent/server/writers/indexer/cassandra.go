@@ -75,6 +75,7 @@ import (
 	"cadent/server/utils/shutdown"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -129,7 +130,7 @@ type CassandraIndexer struct {
 	write_lock     sync.Mutex
 	num_workers    int
 	queue_len      int
-	_accept        bool //shtdown notice
+	shutitdown     uint32 //shtdown notice
 
 	write_queue      chan dispatch.IJob
 	dispatch_queue   chan chan dispatch.IJob
@@ -146,7 +147,7 @@ type CassandraIndexer struct {
 func NewCassandraIndexer() *CassandraIndexer {
 	cass := new(CassandraIndexer)
 	cass.log = logging.MustGetLogger("indexer.cassandra")
-	cass._accept = true
+	atomic.SwapUint32(&cass.shutitdown, 0)
 	cass.findcache = lrucache.NewTTLLRUCache(CASSANDRA_RESULT_CACHE_SIZE, CASSANDRA_RESULT_CACHE_TTL)
 	return cass
 }
@@ -155,10 +156,9 @@ func (cass *CassandraIndexer) Stop() {
 	shutdown.AddToShutdown()
 	defer shutdown.ReleaseFromShutdown()
 
-	if !cass._accept {
+	if atomic.SwapUint32(&cass.shutitdown, 1) == 1 {
 		return // already did
 	}
-	cass._accept = false
 	cass.log.Notice("shutting down cassandra indexer: %s", cass.Name())
 
 	cass.cache.Stop()
@@ -383,7 +383,7 @@ func (cass *CassandraIndexer) sendToWriters() error {
 	if cass.writes_per_second <= 0 {
 		cass.log.Notice("Starting indexer writer: No rate limiting enabled")
 		for {
-			if !cass._accept {
+			if cass.shutitdown == 1 {
 				return nil
 			}
 			skey := cass.cache.Pop()
@@ -400,7 +400,7 @@ func (cass *CassandraIndexer) sendToWriters() error {
 		cass.log.Notice("Starting indexer writer: limiter every %f nanoseconds (%d writes per second)", sleep_t, cass.writes_per_second)
 		dur := time.Duration(int(sleep_t))
 		for {
-			if !cass._accept {
+			if cass.shutitdown == 1 {
 				return nil
 			}
 			skey := cass.cache.Pop()

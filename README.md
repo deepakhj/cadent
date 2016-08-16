@@ -73,7 +73,7 @@ And then ...
 
 This was designed to be an arbitrary proxy for any "line" that has a representative Key that needs to be forwarded to
 another server consistently (think carbon-relay.py in graphite and proxy.js in statsd) but it's able to handle
-any other "line" that can be regex out a Key.  
+any other "line" that can be regex out a Key, like fowarding loglines to an ELK cluster farm.
 
 And then ...
 

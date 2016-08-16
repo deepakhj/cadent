@@ -416,7 +416,7 @@ func (wc *Cacher) Get(name *repr.StatName) (repr.StatReprSlice, error) {
 
 func (wc *Cacher) GetAsRawRenderItem(name *repr.StatName) (*RawRenderItem, error) {
 
-	data, err := wc.Get(name)
+	name, data, err := wc.GetById(name.UniqueId())
 	if err != nil {
 		return nil, err
 	}
@@ -429,7 +429,7 @@ func (wc *Cacher) GetAsRawRenderItem(name *repr.StatName) (*RawRenderItem, error
 	rawd.End = uint32(data[len(data)-1].Time.Unix())
 	rawd.RealEnd = rawd.End
 	rawd.RealStart = rawd.Start
-	rawd.AggFunc = repr.GuessReprValueFromKey(name.Key)
+	rawd.AggFunc = name.AggType()
 
 	f_t := uint32(0)
 	step_t := uint32(0)

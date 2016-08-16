@@ -58,6 +58,7 @@ import (
 	logging "gopkg.in/op/go-logging.v1"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -86,7 +87,7 @@ type MySQLIndexer struct {
 	cache             *Cacher // simple cache to rate limit and buffer writes
 	writes_per_second int     // rate limit writer
 
-	shutitdown bool
+	shutitdown uint32
 	shutdown   chan bool
 
 	log *logging.Logger
@@ -142,7 +143,7 @@ func (my *MySQLIndexer) Config(conf map[string]interface{}) error {
 		my.writes_per_second = int(_ws.(int64))
 	}
 
-	my.shutitdown = false
+	atomic.StoreUint32(&my.shutitdown, 1)
 	my.shutdown = make(chan bool)
 
 	return nil
@@ -150,8 +151,8 @@ func (my *MySQLIndexer) Config(conf map[string]interface{}) error {
 func (my *MySQLIndexer) Name() string { return my.indexerId }
 
 func (my *MySQLIndexer) Start() {
-	if my.write_queue == nil {
-		my.log.Notice("starting down mysql indexer: %s", my.Name())
+	if my.write_queue == nil && atomic.CompareAndSwapUint32(&my.shutitdown, 1, 0) {
+		my.log.Notice("starting mysql indexer: %s", my.Name())
 
 		workers := my.num_workers
 		my.write_queue = make(chan dispatch.IJob, my.queue_len)
@@ -170,10 +171,10 @@ func (my *MySQLIndexer) Stop() {
 	shutdown.AddToShutdown()
 	defer shutdown.ReleaseFromShutdown()
 
-	if my.shutitdown {
+	if atomic.SwapUint32(&my.shutitdown, 1) == 1 {
 		return // already did
 	}
-	my.shutitdown = true
+
 	my.log.Notice("shutting down mysql indexer: %s", my.Name())
 	my.cache.Stop()
 	if my.write_queue != nil {
@@ -190,7 +191,7 @@ func (my *MySQLIndexer) sendToWriters() error {
 	if my.writes_per_second <= 0 {
 		my.log.Notice("Starting indexer writer: No rate limiting enabled")
 		for {
-			if my.shutitdown {
+			if my.shutitdown == 1 {
 				return nil
 			}
 			skey := my.cache.Pop()
@@ -207,7 +208,7 @@ func (my *MySQLIndexer) sendToWriters() error {
 		my.log.Notice("Starting indexer writer: limiter every %f nanoseconds (%d writes per second)", sleep_t, my.writes_per_second)
 		dur := time.Duration(int(sleep_t))
 		for {
-			if my.shutitdown {
+			if my.shutitdown == 1 {
 				return nil
 			}
 			skey := my.cache.Pop()
@@ -228,8 +229,89 @@ func (my *MySQLIndexer) Write(skey repr.StatName) error {
 	return my.cache.Add(skey)
 }
 
+func (my *MySQLIndexer) WriteTags(inname *repr.StatName, do_main bool, do_meta bool) error {
+
+	have_meta := !inname.MetaTags.IsEmpty()
+	have_tgs := !inname.Tags.IsEmpty()
+	if !have_tgs && !have_meta || (!do_main && !do_meta) {
+		return nil
+	}
+
+	tx, err := my.conn.Begin()
+	if err != nil {
+		my.log.Error("Failure in Index Write getting transations: %v", tx)
+		return err
+	}
+
+	unique_ID := inname.UniqueIdString()
+
+	// Tag Time
+	// the ` ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id)` gives us the id no matter if a dupe or not
+	tagQ := fmt.Sprintf(
+		"INSERT IGNORE INTO %s (name, value, is_meta) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id)",
+		my.db.TagTable(),
+	)
+	var tag_ids []int64
+	if have_tgs && do_main {
+
+		for _, tag := range inname.Tags.Tags() {
+			res, err := tx.Exec(tagQ, tag[0], tag[1], false)
+			if err != nil {
+				my.log.Error("Could not write tag %v: %v", tag, err)
+				continue
+			}
+			id, err := res.LastInsertId()
+			if err != nil {
+				my.log.Error("Could not get insert tag ID %v: %v", tag, err)
+				continue
+			}
+			tag_ids = append(tag_ids, id)
+		}
+	}
+
+	if have_meta && do_meta {
+		for _, tag := range inname.MetaTags.Tags() {
+			res, err := tx.Exec(tagQ, tag[0], tag[1], true)
+			if err != nil {
+				my.log.Error("Could not write tag %v: %v", tag, err)
+				continue
+			}
+			id, err := res.LastInsertId()
+			if err != nil {
+				my.log.Error("Could not get insert tag ID %v: %v", tag, err)
+				continue
+			}
+			tag_ids = append(tag_ids, id)
+		}
+	}
+
+	if len(tag_ids) > 0 {
+		tagQxr := fmt.Sprintf(
+			"INSERT IGNORE INTO %s (tag_id, uid) VALUES ",
+			my.db.TagTableXref(),
+		)
+		var val_q []string
+		var q_bits []interface{}
+		for _, tg := range tag_ids {
+			val_q = append(val_q, "(?,?)")
+			q_bits = append(q_bits, []interface{}{tg, unique_ID}...)
+		}
+		_, err := tx.Exec(tagQxr+strings.Join(val_q, ","), q_bits...)
+		if err != nil {
+			my.log.Error("Could not get insert tag UID-ID: %v", err)
+		}
+	}
+	err = tx.Commit()
+	if err != nil {
+		my.log.Error("Could Tag commit failed: %v", err)
+		return err
+	}
+	// and we are done
+	return nil
+}
+
 // a basic clone of the cassandra indexer
-func (my *MySQLIndexer) WriteOne(inname repr.StatName) error {
+func (my *MySQLIndexer) WriteOne(inname *repr.StatName) error {
 	defer stats.StatsdSlowNanoTimeFunc(fmt.Sprintf("indexer.mysql.write.path-time-ns"), time.Now())
 	stats.StatsdClientSlow.Incr("indexer.mysql.noncached-writes-path", 1)
 
@@ -247,6 +329,7 @@ func (my *MySQLIndexer) WriteOne(inname repr.StatName) error {
 	var _pth string
 	var _len int
 	var _dd bool
+
 	rows, gerr := my.conn.Query(SelQ, p_len-1, skey)
 
 	// already indexed
@@ -254,7 +337,7 @@ func (my *MySQLIndexer) WriteOne(inname repr.StatName) error {
 		for rows.Next() {
 			if err := rows.Scan(&_pth, &_len, &_dd); err != nil {
 				if _pth == skey && _dd && _len == p_len-1 {
-					return nil
+					return my.WriteTags(inname, false, true)
 				}
 			}
 		}
@@ -372,65 +455,15 @@ func (my *MySQLIndexer) WriteOne(inname repr.StatName) error {
 			stats.StatsdClientSlow.Incr("indexer.mysql.path-writes", 1)
 		}
 	}
-
-	// Tag Time
-	// the ` ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id)` gives us the id no matter if a dupe or not
-	tagQ := fmt.Sprintf(
-		"INSERT INTO %s (name, value, is_meta) VALUES  (?, ?, ?) ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id)",
-		my.db.TagTable(),
-	)
-	var tag_ids []int64
-	if !inname.Tags.IsEmpty() {
-
-		for _, tag := range inname.Tags.Tags() {
-			res, err := tx.Exec(tagQ, tag[0], tag[1], false)
-			if err != nil {
-				my.log.Error("Could not write tag %v: %v", tag, err)
-				continue
-			}
-			id, err := res.LastInsertId()
-			if err != nil {
-				my.log.Error("Could not get insert tag ID %v: %v", tag, err)
-				continue
-			}
-			tag_ids = append(tag_ids, id)
-		}
+	if err != nil {
+		my.log.Error("Could not write index", err)
 	}
 
-	if !inname.MetaTags.IsEmpty() {
-
-		for _, tag := range inname.MetaTags.Tags() {
-			res, err := tx.Exec(tagQ, tag[0], tag[1], true)
-			if err != nil {
-				my.log.Error("Could not write tag %v: %v", tag, err)
-				continue
-			}
-			id, err := res.LastInsertId()
-			if err != nil {
-				my.log.Error("Could not get insert tag ID %v: %v", tag, err)
-				continue
-			}
-			tag_ids = append(tag_ids, id)
-		}
+	err = my.WriteTags(inname, true, true)
+	if err != nil {
+		my.log.Error("Could not write tag index", err)
+		return err
 	}
-
-	if len(tag_ids) > 0 {
-		tagQxr := fmt.Sprintf(
-			"INSERT IGNORE INTO %s (tag_id, uid) VALUES ",
-			my.db.TagTableXref(),
-		)
-		var val_q []string
-		var q_bits []interface{}
-		for _, tg := range tag_ids {
-			val_q = append(val_q, "(?,?)")
-			q_bits = append(q_bits, []interface{}{tg, unique_ID}...)
-		}
-		_, err := tx.Exec(tagQxr+strings.Join(val_q, ","), q_bits...)
-		if err != nil {
-			my.log.Error("Could not get insert tag UID-ID %v: %v", err)
-		}
-	}
-	// and we are done
 	err = tx.Commit()
 
 	return err
@@ -438,26 +471,39 @@ func (my *MySQLIndexer) WriteOne(inname repr.StatName) error {
 
 func (my *MySQLIndexer) Delete(name *repr.StatName) error {
 	pthQ := fmt.Sprintf(
-		"DELETE FROM %s WHERE uid=? AND path=? AND length=? ",
+		"DELETE FROM %s WHERE uid=? AND path=? AND length=?",
 		my.db.PathTable(),
 	)
 
-	pvals := []interface{}{name.UniqueId(), name.Key, len(strings.Split(name.Key, "."))}
+	tagQ := fmt.Sprintf(
+		"DELETE FROM %s WHERE uid=?",
+		my.db.TagTableXref(),
+	)
 
-	//prepare the statement
-	stmt, err := my.conn.Prepare(pthQ)
-	if err != nil {
-		my.log.Error("Mysql Driver: Indexer Delete Path prepare failed, %v", err)
-		return err
-	}
-	defer stmt.Close()
+	uid := name.UniqueIdString()
+	pvals := []interface{}{uid, name.Key, len(strings.Split(name.Key, "."))}
+
+	tx, err := my.conn.Begin()
 
 	//format all vals at once
-	_, err = stmt.Exec(pvals...)
+	_, err = tx.Exec(pthQ, pvals...)
 	if err != nil {
 		my.log.Error("Mysql Driver: Delete Path failed, %v", err)
 		return err
 	}
+
+	//format all vals at once
+	_, err = tx.Exec(tagQ, uid)
+	if err != nil {
+		my.log.Error("Mysql Driver: Delete Tags failed, %v", err)
+		return err
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -544,6 +590,38 @@ func (my *MySQLIndexer) Expand(metric string) (MetricExpandItem, error) {
 
 }
 
+func (my *MySQLIndexer) GetTags(unique_id string) (tags repr.SortingTags, metatags repr.SortingTags) {
+
+	tag_table := my.db.TagTable()
+	tag_xr_table := my.db.TagTableXref()
+
+	tgsQ := fmt.Sprintf(
+		"SELECT name,value,is_meta FROM %s WHERE id IN ( SELECT tag_id FROM %s WHERE uid = ? )",
+		tag_table, tag_xr_table,
+	)
+
+	var name string
+	var value string
+	var is_meta bool
+	rows, err := my.conn.Query(tgsQ, unique_id)
+	if err != nil {
+		my.log.Error("Error Getting Tags: %s : %v", tgsQ, err)
+		return
+	}
+	for rows.Next() {
+		err = rows.Scan(&name, &value, &is_meta)
+		if err != nil {
+			my.log.Error("Error Getting Tags Iterator: %s : %v", tgsQ, err)
+		}
+		if is_meta {
+			metatags = metatags.Set(name, value)
+		} else {
+			tags = tags.Set(name, value)
+		}
+	}
+	return tags, metatags
+}
+
 // basic find for non-regex items
 func (my *MySQLIndexer) FindNonRegex(metric string) (MetricFindItems, error) {
 
@@ -557,7 +635,7 @@ func (my *MySQLIndexer) FindNonRegex(metric string) (MetricFindItems, error) {
 
 	// grab all the paths that match this length if there is no regex needed
 	// these are the "data/leaf" nodes
-	cass_Q := fmt.Sprintf(
+	pathQ := fmt.Sprintf(
 		"SELECT uid,path,length,has_data FROM %s WHERE pos=? AND segment=?",
 		my.db.PathTable(),
 	)
@@ -569,7 +647,7 @@ func (my *MySQLIndexer) FindNonRegex(metric string) (MetricFindItems, error) {
 	var id string
 	var has_data bool
 
-	rows, err := my.conn.Query(cass_Q, m_len-1, metric)
+	rows, err := my.conn.Query(pathQ, m_len-1, metric)
 	if err != nil {
 		return mt, err
 	}
@@ -593,6 +671,10 @@ func (my *MySQLIndexer) FindNonRegex(metric string) (MetricFindItems, error) {
 			ms.Leaf = 1
 			ms.AllowChildren = 0
 			ms.UniqueId = id
+
+			// grab ze tags
+			ms.Tags, ms.MetaTags = my.GetTags(id)
+
 		} else {
 			ms.Expandable = 1
 			ms.Leaf = 0
@@ -755,7 +837,7 @@ func (j MysqlIndexerJob) OnRetry() int {
 }
 
 func (j MysqlIndexerJob) DoWork() error {
-	err := j.Msql.WriteOne(j.Stat)
+	err := j.Msql.WriteOne(&j.Stat)
 	if err != nil {
 		j.Msql.log.Error("Insert failed for Index: %v retrying ...", j.Stat)
 	}
