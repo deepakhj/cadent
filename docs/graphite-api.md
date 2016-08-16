@@ -35,7 +35,7 @@ Not everything can implement the APIs due to their nature. Below is a table of w
 | cassandra-flat | Yes  | n/a| No |
 | mysql | Yes  | Yes  |  No |
 | mysql-flat | Yes  | n/a | No |
-| kafka | n/a  | n/a | n/a |
+| kafka | n/a  | Yes | n/a |
 | kafka-flat | n/a  | n/a | n/a |
 | levelDB | No  | No | No |
 | file | n/a | n/a  | n/a |
