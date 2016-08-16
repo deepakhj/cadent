@@ -1,0 +1,75 @@
+##
+##  Cassandra-Series ONLY writer
+##
+##  note the `backend = "BLACKHOLE"` below, this implys the Lines stop at the writer
+##
+##  cadent --config=graphite-config.toml --prereg=graphite-cassandra-series.toml
+##
+##
+
+[graphite-proxy-map]
+listen_server="graphite-proxy" # which listener to sit in front of  (must be in the main config)
+default_backend="graphite-proxy"  # failing a match go here
+
+    [graphite-proxy-map.accumulator]
+    backend = "BLACKHOLE"
+    input_format = "graphite"
+    output_format = "graphite"
+    random_ticker_start = false
+
+    # aggregate bin counts
+    accumulate_flush = "5s"
+    times = ["5s:1h", "1m:168h"]
+
+    # AND write things to the cassandra DB
+    # cassandra api, metrics writer and path indexer
+    [graphite-proxy-map.accumulator.writer.metrics]
+        driver = "cassandra"
+        dsn = "127.0.0.1"
+        [graphite-proxy-map.accumulator.writer.metrics.options]
+            port=9042
+            keyspace="metric"
+            metrics_table="metric_series"
+            write_queue_length=100
+            writes_per_second=500
+            cache_series_type="gorilla"
+            cache_byte_size=128
+
+
+    [graphite-proxy-map.accumulator.writer.indexer]
+        driver = "cassandra"
+        dsn = "127.0.0.1"
+        [graphite-proxy-map.accumulator.writer.indexer.options]
+            writes_per_second=100
+            port=9042
+            keyspace="metric"
+            path_table="path"
+            segment_table="segment"
+
+    [graphite-proxy-map.accumulator.api]
+        base_path = "/graphite/"
+        listen = "0.0.0.0:8083"
+
+        [graphite-proxy-map.accumulator.api.metrics]
+            driver = "cassandra"
+            dsn = "127.0.0.1"
+            [graphite-proxy-map.accumulator.api.metrics.options]
+                port=9042
+                metrics_table="metric_series"
+                keyspace="metric"
+                path_table="path"
+       		    segment_table="segment"
+
+        [graphite-proxy-map.accumulator.api.indexer]
+            driver = "cassandra"
+            dsn = "127.0.0.1"
+            [graphite-proxy-map.accumulator.api.indexer.options]
+                port=9042
+                keyspace="metric"
+                path_table="path"
+                segment_table="segment"
+
+    # Sub string type match
+    [[graphite-proxy-map.map]]
+        substring=".marvel"  # ignore elastic search marvel stuff
+        reject=true

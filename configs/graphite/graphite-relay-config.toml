@@ -1,7 +1,18 @@
 [default]
 
+##
+##  Graphite incoming and a relay backend
+##
+##  This config listens on :2003 (`graphite-proxy`),
+##  maintains another backend-only server set (`graphite-gg-relay`) pointing to :2013
+##  this is ideal for acting like `carbon-relay.py + carbon-aggregator.py`
+##
+##  see `graphite-relay-preg.toml` for the relay setup
+##
+
+
 ## PID file to check if things is running already
-pid_file="/opt/consthash/graphite.pid"
+pid_file="/opt/cadent/graphite.pid"
 
 ## performance tuning suggest that n - 2 is best to avoid over creation
 ## of File Descriptors for the many sockets we need (and thus cause more OS

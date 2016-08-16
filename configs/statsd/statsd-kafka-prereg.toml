@@ -36,9 +36,5 @@ default_backend="statsd-proxy"  # failing a match go here
         metric_topic = "cadent"
 
     [statsd-regex-map.accumulator.writer.indexer]
-        driver = "kafka"
-        dsn = "192.168.99.100:9092"
-        [statsd-regex-map.accumulator.writer.indexer.options]
-        index_topic = "cadent"
-        write_index = false  ## noop indexer writes as we don't need them here
+        driver = "noop" ## noop indexer writes as we don't need them here
 

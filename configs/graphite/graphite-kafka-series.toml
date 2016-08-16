@@ -1,0 +1,46 @@
+##
+##  Kafka-Series ONLY writer
+##
+##  note the `backend = "BLACKHOLE"` below, this implys the Lines stop at the writer
+##  note also there is no "render" API here (unless you have another cadent process that is writing
+##  and you can hook things in here to take advantage of the cached series)
+##  There are 2 flush windows, 5s and 1m. That will be emitted once they hit 1024 bytes as the gorilla series format
+##
+##  cadent --config=graphite-config.toml --prereg=graphite-kafka-series.toml
+##
+##
+
+
+[graphite-proxy-map]
+listen_server="graphite-proxy" # which listener to sit in front of  (must be in the main config)
+default_backend="graphite-proxy"  # failing a match go here
+
+    [graphite-proxy-map.accumulator]
+    backend = "BLACKHOLE"
+    input_format = "graphite"
+    output_format = "graphite"
+    random_ticker_start = false
+
+    # aggregate bin counts
+    accumulate_flush = "5s"
+    times = ["5s:1h", "1m:168h"]
+
+    # AND write things to the cassandra DB
+    # cassandra api, metrics writer and path indexer
+    [graphite-proxy-map.accumulator.writer.metrics]
+        driver = "kafka"
+        dsn = "127.0.0.1:9092"
+        metric_topic="cadent"
+        index_topic="cadent"
+
+        [graphite-proxy-map.accumulator.writer.metrics.options]
+            cache_series_type="gorilla"
+            cache_byte_size=1024
+
+    [graphite-proxy-map.accumulator.writer.indexer]
+        driver = "kafka"
+        dsn = "127.0.0.1:9092"
+        index_topic="cadent"
+        metric_topic="cadent"
+
+
