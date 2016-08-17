@@ -418,7 +418,16 @@ func (kf *KafkaMetrics) CachedSeries(path string, start int64, end int64, tags r
 		return nil, err
 	}
 	if inflight == nil {
-		return nil, nil
+		// try the the path as unique ID
+		gots_int := metric.StringToUniqueId(path)
+		if gots_int != 0 {
+			name, inflight, err = use_cache.GetSeriesById(gots_int)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			return nil, nil
+		}
 	}
 
 	return &TotalTimeSeries{Name: name, Series: inflight}, nil

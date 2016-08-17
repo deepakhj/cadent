@@ -44,6 +44,7 @@ import (
 	"cadent/server/utils/shutdown"
 	"cadent/server/writers/indexer"
 	"cadent/server/writers/metrics"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -317,13 +318,23 @@ func (re *ApiLoop) parseForRender(w http.ResponseWriter, r *http.Request) (strin
 
 	// if no target try "path"
 	if len(target) == 0 {
-		for _, tar := range r.Form["path"] {
-			target += strings.TrimSpace(tar) + ","
+		l = len(r.Form["path"])
+		for idx, tar := range r.Form["path"] {
+			target += strings.TrimSpace(tar)
+			switch {
+			case idx < l-1:
+				target += ","
+			}
 		}
 	}
 
-	for _, tgs := range r.Form["tags"] {
-		_tags += strings.TrimSpace(tgs) + ","
+	l = len(r.Form["tags"])
+	for idx, tgs := range r.Form["tags"] {
+		_tags += strings.TrimSpace(tgs)
+		switch {
+		case idx < l-1:
+			_tags += ","
+		}
 	}
 	if _tags != "" {
 		tags = repr.SortingTagsFromString(_tags)
@@ -497,6 +508,9 @@ func (re *ApiLoop) GetSeriesFromCache(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// see if we want to base64 the beast
+	to_base_64 := r.Form.Get("base64")
+
 	// cache theses things for 60 secs
 	defer stats.StatsdClient.Incr("reader.http.ok", 1)
 
@@ -516,7 +530,20 @@ func (re *ApiLoop) GetSeriesFromCache(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-CadentSeries-Start", fmt.Sprintf("%d", data.Series.StartTime()))
 	w.Header().Set("X-CadentSeries-End", fmt.Sprintf("%d", data.Series.LastTime()))
 	w.Header().Set("X-CadentSeries-Points", fmt.Sprintf("%d", data.Series.Count()))
-	w.Write(data.Series.Bytes())
+
+	switch to_base_64 {
+	case "1":
+		w.Header().Set("Content-Transfer-Encoding", "base64")
+		b_encoder := base64.NewEncoder(base64.RawStdEncoding, w)
+		b_encoder.Write(data.Series.Bytes())
+		b_encoder.Close()
+	default:
+		w.Header().Set("Content-Type", "application/cadent")
+
+		w.Write(data.Series.Bytes())
+
+	}
+
 	return
 }
 

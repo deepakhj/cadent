@@ -104,11 +104,12 @@ func (d RawDataPoint) MarshalJSON() ([]byte, error) {
 	defer utils.PutBytesBuffer(buf)
 
 	fmt.Fprintf(buf, "{\"time\": %d,", d.Time)
-	d.floatToJson(buf, "\"sum\"", ",", d.Sum)
-	d.floatToJson(buf, "\"min\"", ",", d.Min)
-	d.floatToJson(buf, "\"max\"", ",", d.Max)
-	d.floatToJson(buf, "\"first\"", ",", d.First)
-	d.floatToJson(buf, "\"last\"", "}", d.Last)
+	d.floatToJson(buf, "\"sum\"", repr.COMMA_SEPARATOR, d.Sum)
+	d.floatToJson(buf, "\"min\"", repr.COMMA_SEPARATOR, d.Min)
+	d.floatToJson(buf, "\"max\"", repr.COMMA_SEPARATOR, d.Max)
+	d.floatToJson(buf, "\"first\"", repr.COMMA_SEPARATOR, d.First)
+	d.floatToJson(buf, "\"last\"", repr.COMMA_SEPARATOR, d.Last)
+	fmt.Fprintf(buf, "\"count\": %d}", d.Count)
 	return buf.Bytes(), nil
 }
 

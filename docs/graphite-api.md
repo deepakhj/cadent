@@ -208,20 +208,22 @@ as there is no "multi series" binary format.  You can look up things by the Uniq
 The `from` and `to` are just used to pick the proper resolution, the series you get back will be whatever is in the cache
 start and ends are in the Headers.
 
+You can also request a base64 encoded version by including `&base64=1` in the GET.
+
 
     X-Cadentseries-Encoding:gorilla
     X-Cadentseries-End:1471386630000000000
     X-Cadentseries-Key:graphitetest.there.now.there
-    X-Cadentseries-Metatags:null
+    X-Cadentseries-Metatags:[["env", "prod"], ...] | null
     X-Cadentseries-Points:11
     X-Cadentseries-Resolution:5
     X-Cadentseries-Start:1471386590000000000
-    X-Cadentseries-Tags:null
+    X-Cadentseries-Tags:[["moo", "goo"], ...] | null
     X-Cadentseries-Ttl:3600
     X-Cadentseries-Uniqueid:3w5dnlrj3clw3
 
 
-The the acctual binary data blob (in the raw form)
+    ....The the acctual binary data blob (in the raw form)....
 
 
 ### /find

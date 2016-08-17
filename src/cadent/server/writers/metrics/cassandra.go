@@ -887,7 +887,16 @@ func (cass *CassandraMetric) CachedSeries(path string, start int64, end int64, t
 		return nil, err
 	}
 	if inflight == nil {
-		return nil, nil
+		// try the the path as unique ID
+		gots_int := metric.StringToUniqueId(path)
+		if gots_int != 0 {
+			name, inflight, err = use_cache.GetSeriesById(gots_int)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			return nil, nil
+		}
 	}
 
 	return &TotalTimeSeries{Name: name, Series: inflight}, nil
