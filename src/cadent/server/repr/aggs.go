@@ -141,8 +141,8 @@ var ACCUMULATE_FUNC = map[AggType]AGG_FUNC{
 			return 0
 		}
 		sort.Sort(vals)
-		if l_val%2 == 0 {
-			return vals[l_val-1] + vals[l_val+1]/2.0
+		if l_val%2 == 0 && l_val > 3 {
+			return (vals[l_val-1] + vals[l_val+1]) / 2.0
 		}
 
 		return vals[l_val-1]
