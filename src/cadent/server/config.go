@@ -33,6 +33,7 @@ import (
 )
 
 var log = logging.MustGetLogger("config")
+var memStats *stats.MemStats
 
 type ParsedServerConfig struct {
 	// the server name will default to the hashkey if none is given
@@ -183,6 +184,10 @@ func SetUpStatsdClient(cfg *Config) {
 	stats.StatsdClientSlow = statsderslow // slow does not have sample rates enabled
 	log.Notice("Statsd Fast Client to %s, prefix %s, interval %d", cfg.StatsdServer, cfg.StatsdPrefix, cfg.StatsdInterval)
 	log.Notice("Statsd Slow Client to %s, prefix %s, interval %d", cfg.StatsdServer, cfg.StatsdPrefix, cfg.StatsdInterval)
+
+	// start the MemTicker
+	memStats = new(stats.MemStats)
+	memStats.Start()
 	return
 }
 
