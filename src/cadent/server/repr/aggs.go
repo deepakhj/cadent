@@ -145,7 +145,7 @@ var ACCUMULATE_FUNC = map[AggType]AGG_FUNC{
 			return vals[l_val-1] + vals[l_val+1]/2.0
 		}
 
-		return vals[l_val]
+		return vals[l_val-1]
 	},
 	MAX: func(vals AggFloat64) float64 {
 		if len(vals) == 0 {
