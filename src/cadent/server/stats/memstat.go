@@ -57,7 +57,7 @@ func (ms *MemStats) statsTick() {
 	var lastNumGc uint32 = 0
 
 	nsInMs := float64(time.Millisecond)
-	ticker := time.NewTimer(ms.tick)
+	ticker := time.NewTicker(ms.tick)
 	for {
 		select {
 		case <-ticker.C:
