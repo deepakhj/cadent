@@ -1133,7 +1133,8 @@ func (server *Server) ProcessSplitItem(splitem splitter.SplitItem, out_queue cha
 
 	// we cannot have "loopbacks" in this world so we make sure the origin is not the same
 	// as the
-	accumulate := splitem.Phase() != splitter.AccumulatedParsed && server.PreRegFilter.Accumulator != nil
+	//accumulate := splitem.Phase() != splitter.AccumulatedParsed && server.PreRegFilter.Accumulator != nil
+	accumulate := server.PreRegFilter.Accumulator != nil
 	//server.log.Notice("Input %s: %s FROM: %s:: doacc: %v", server.Name, splitem.Line(), splitem.accumulate)
 	if accumulate {
 		//log.Notice("Round One Item: %s", splitem.Line())
@@ -1146,10 +1147,11 @@ func (server *Server) ProcessSplitItem(splitem splitter.SplitItem, out_queue cha
 		return err
 	}
 
-	//server.log.Notice("Input %s: %s", server.Name, splitem.Line())
+	//server.log.Notice("Input %s: Accumulate: %v : %s ", server.Name, accumulate, splitem.Line())
 
 	// match on the KEY not the entire string
 	use_backend, reject, _ := server.PreRegFilter.FirstMatchBackend(splitem.Key())
+	//server.log.Notice("Input %s: Accumulate: %v OutBack: %s : reject: %v %s ", server.Name, accumulate, use_backend, reject, splitem.Line())
 
 	//if server.PreRegFilter
 	if reject {
@@ -1163,7 +1165,10 @@ func (server *Server) ProcessSplitItem(splitem splitter.SplitItem, out_queue cha
 		// this time we need to dis-avow the fact it came from a socket, as it's no longer pinned to the same
 		// socket it came from
 		splitem.SetOrigin(splitter.Other)
-		SERVER_BACKENDS.Send(use_backend, splitem)
+		err := SERVER_BACKENDS.Send(use_backend, splitem)
+		if err != nil {
+			server.log.Error("backend send error: %v", err)
+		}
 	} else {
 		server.SendtoOutputWorkers(splitem, out_queue)
 	}
