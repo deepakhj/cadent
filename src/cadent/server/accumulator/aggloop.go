@@ -259,7 +259,7 @@ func (agg *AggregateLoop) startWriteLooper(duration time.Duration, ttl time.Dura
 	// start up the writers listeners
 	writer.Start()
 
-	post := func(items map[string]repr.StatRepr) {
+	post := func(items map[repr.StatId]*repr.StatRepr) {
 		defer stats.StatsdSlowNanoTimeFunc("aggregator.postwrite-time-ns", time.Now())
 
 		//_mu.Lock()

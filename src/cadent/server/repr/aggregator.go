@@ -21,7 +21,6 @@ limitations under the License.
 package repr
 
 import (
-	"fmt"
 	"sync"
 	"time"
 )
@@ -34,14 +33,14 @@ import (
 type Aggregator struct {
 	mu sync.Mutex
 
-	Items      map[string]StatRepr
+	Items      map[StatId]*StatRepr
 	Resolution time.Duration
 }
 
 func NewAggregator(res time.Duration) *Aggregator {
 	return &Aggregator{
 		Resolution: res,
-		Items:      make(map[string]StatRepr),
+		Items:      make(map[StatId]*StatRepr),
 	}
 }
 
@@ -52,8 +51,8 @@ func (sa *Aggregator) ResolutionTime(t time.Time) time.Time {
 	return t.Truncate(sa.Resolution)
 }
 
-func (sa *Aggregator) MapKey(name string, t time.Time) string {
-	return fmt.Sprintf("%s-%d", name, sa.ResolutionTime(t).UnixNano())
+func (sa *Aggregator) MapKey(id StatId, t time.Time) StatId {
+	return id + StatId(sa.ResolutionTime(t).UnixNano())
 }
 
 func (sa *Aggregator) Len() int {
@@ -61,15 +60,15 @@ func (sa *Aggregator) Len() int {
 }
 
 // get the data and clear out the current cache
-func (sa *Aggregator) GetAndClear() map[string]StatRepr {
+func (sa *Aggregator) GetAndClear() map[StatId]*StatRepr {
 	sa.mu.Lock()
 	defer sa.mu.Unlock()
-	t_items := make(map[string]StatRepr)
+	t_items := make(map[StatId]*StatRepr)
 	for k, v := range sa.Items {
 		t_items[k] = v
 		//delete(sa.Items, k)
 	}
-	sa.Items = make(map[string]StatRepr)
+	sa.Items = make(map[StatId]*StatRepr)
 	return t_items
 }
 
@@ -78,10 +77,10 @@ func (sa *Aggregator) Add(stat StatRepr) error {
 	defer sa.mu.Unlock()
 
 	res_time := sa.ResolutionTime(stat.Time)
-	m_k := sa.MapKey(stat.Name.UniqueIdString(), stat.Time)
+	m_k := sa.MapKey(stat.Name.UniqueId(), stat.Time)
 	element, ok := sa.Items[m_k]
 	if !ok {
-		sa.Items[m_k] = stat
+		sa.Items[m_k] = &stat
 		return nil
 	}
 
@@ -98,14 +97,14 @@ func (sa *Aggregator) Add(stat StatRepr) error {
 	element.Sum += stat.Sum
 	element.Time = res_time
 	element.Name.Resolution = uint32(sa.Resolution.Seconds())
-	sa.Items[m_k] = element
+	//sa.Items[m_k] = element
 	return nil
 }
 
 func (sa *Aggregator) Clear() {
 	sa.mu.Lock()
 	defer sa.mu.Unlock()
-	sa.Items = make(map[string]StatRepr)
+	sa.Items = make(map[StatId]*StatRepr)
 	/*
 		for k := range sa.Items {
 			delete(sa.Items, k)

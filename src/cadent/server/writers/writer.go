@@ -112,8 +112,8 @@ type WriterLoop struct {
 	name         string
 	metrics      metrics.Metrics
 	indexer      indexer.Indexer
-	write_chan   chan repr.StatRepr
-	indexer_chan chan repr.StatRepr
+	write_chan   chan *repr.StatRepr
+	indexer_chan chan *repr.StatName
 	shutdowner   *broadcast.Broadcaster
 	write_queue  *WriteQueue
 	MetricQLen   int
@@ -169,7 +169,7 @@ func (loop *WriterLoop) SetIndexer(idx indexer.Indexer) error {
 	return nil
 }
 
-func (loop *WriterLoop) WriterChan() chan repr.StatRepr {
+func (loop *WriterLoop) WriterChan() chan *repr.StatRepr {
 	return loop.write_chan
 }
 
@@ -183,7 +183,7 @@ func (loop *WriterLoop) indexLoop() {
 			if !more {
 				return
 			}
-			loop.indexer.Write(stat.Name)
+			loop.indexer.Write(*stat)
 		case <-shut.Ch:
 			return
 		}
@@ -251,9 +251,9 @@ func (loop *WriterLoop) Full() bool {
 
 func (loop *WriterLoop) Start() {
 	loop.log.Notice("Starting Writer `%s`", loop.name)
-	loop.write_chan = make(chan repr.StatRepr, loop.MetricQLen)
+	loop.write_chan = make(chan *repr.StatRepr, loop.MetricQLen)
 	// indexing is slow, so we'll need to buffer things a bit more
-	loop.indexer_chan = make(chan repr.StatRepr, loop.IndexerQLen)
+	loop.indexer_chan = make(chan *repr.StatName, loop.IndexerQLen)
 
 	go loop.metrics.Start()
 	go loop.indexer.Start()
@@ -338,14 +338,14 @@ func (q *WriteQueue) Len() int {
 
 //	Pushes/inserts a value at the end/tail of the queue.
 //	Note: this function does mutate the queue.
-func (q *WriteQueue) Push(item repr.StatRepr) error {
+func (q *WriteQueue) Push(item *repr.StatRepr) error {
 	q.lock.Lock()
 	defer q.lock.Unlock()
 
 	if q.count >= q.queuemax {
 		return fmt.Errorf("Max write queue hit (max: %d) .. cannot push", q.queuemax)
 	}
-	n := &WriteNode{data: &item}
+	n := &WriteNode{data: item}
 
 	if q.tail == nil {
 		q.tail = n

@@ -56,7 +56,7 @@ func (ms *MemStats) statsTick() {
 	var lastPauseNs uint64 = 0
 	var lastNumGc uint32 = 0
 
-	nsInMs := float64(time.Millisecond)
+	nsInmS := float64(time.Millisecond)
 	ticker := time.NewTicker(ms.tick)
 	for {
 		select {
@@ -66,19 +66,25 @@ func (ms *MemStats) statsTick() {
 			ms.statsd.Gauge(fmt.Sprintf("%s.memory.allocated", ms.prefix), int64(memStats.Alloc))
 			ms.statsd.Gauge(fmt.Sprintf("%s.memory.mallocs", ms.prefix), int64(memStats.Mallocs))
 			ms.statsd.Gauge(fmt.Sprintf("%s.memory.frees", ms.prefix), int64(memStats.Frees))
-			ms.statsd.Gauge(fmt.Sprintf("%s.memory.heap", ms.prefix), int64(memStats.HeapAlloc))
+			ms.statsd.Gauge(fmt.Sprintf("%s.memory.heap.alloc", ms.prefix), int64(memStats.HeapAlloc))
+			ms.statsd.Gauge(fmt.Sprintf("%s.memory.heap.sys", ms.prefix), int64(memStats.HeapSys))
+			ms.statsd.Gauge(fmt.Sprintf("%s.memory.heap.released", ms.prefix), int64(memStats.HeapReleased))
+			ms.statsd.Gauge(fmt.Sprintf("%s.memory.heap.inuse", ms.prefix), int64(memStats.HeapInuse))
+			ms.statsd.Gauge(fmt.Sprintf("%s.memory.heap.objects", ms.prefix), int64(memStats.HeapObjects))
+			ms.statsd.Gauge(fmt.Sprintf("%s.memory.heap.idle", ms.prefix), int64(memStats.HeapIdle))
 			ms.statsd.Gauge(fmt.Sprintf("%s.memory.stack", ms.prefix), int64(memStats.StackInuse))
 
 			ms.statsd.FGauge(
-				fmt.Sprintf("%s.memory.gc.total_pause", ms.prefix),
-				float64(memStats.PauseTotalNs)/float64(nsInMs),
+				fmt.Sprintf("%s.memory.gc.total_pause_ns", ms.prefix),
+				float64(memStats.PauseTotalNs),
 			)
+			ms.statsd.Incr(fmt.Sprintf("%s.memory.gc.gcs", ms.prefix), int64(memStats.NumGC))
 
 			if lastPauseNs > 0 {
 				pauseSinceLastSample := memStats.PauseTotalNs - lastPauseNs
 				ms.statsd.FGauge(
-					fmt.Sprintf("%s.memory.gc.pause_per_second", ms.prefix),
-					float64(pauseSinceLastSample)/float64(nsInMs)/ms.tick.Seconds(),
+					fmt.Sprintf("%s.memory.gc.pause_ms_per_second", ms.prefix),
+					float64(pauseSinceLastSample)/nsInmS/ms.tick.Seconds(),
 				)
 			}
 			lastPauseNs = memStats.PauseTotalNs
