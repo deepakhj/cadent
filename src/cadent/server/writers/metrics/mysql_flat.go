@@ -234,12 +234,15 @@ func (my *MySQLFlatMetrics) Write(stat repr.StatRepr) error {
 
 /**** READER ***/
 // XXX TODO
-func (my *MySQLFlatMetrics) Render(path string, from string, to string) (WhisperRenderItem, error) {
+func (my *MySQLFlatMetrics) Render(path string, from int64, to int64) (WhisperRenderItem, error) {
 	return WhisperRenderItem{}, fmt.Errorf("MYSQL READER NOT YET DONE")
 }
-func (my *MySQLFlatMetrics) RawRender(path string, from string, to string) ([]*RawRenderItem, error) {
+func (my *MySQLFlatMetrics) RawRender(path string, from int64, to int64) ([]*RawRenderItem, error) {
 	return []*RawRenderItem{}, fmt.Errorf("MYSQL READER NOT YET DONE")
 }
-func (cass *MySQLFlatMetrics) CacheRender(path string, from string, to string, tags repr.SortingTags) ([]*RawRenderItem, error) {
+func (my *MySQLFlatMetrics) CacheRender(path string, from int64, to int64, tags repr.SortingTags) ([]*RawRenderItem, error) {
 	return nil, fmt.Errorf("MySQLFlatMetrics: CacheRender: NOT YET IMPLIMNETED")
+}
+func (my *MySQLFlatMetrics) CachedSeries(path string, from int64, to int64, tags repr.SortingTags) (*TotalTimeSeries, error) {
+	return nil, fmt.Errorf("MySQLFlatMetrics: CachedSeries: NOT YET IMPLIMNETED")
 }

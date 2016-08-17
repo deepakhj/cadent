@@ -234,6 +234,7 @@ func (re *ApiLoop) OutError(w http.ResponseWriter, msg string, code int) {
 
 	defer stats.StatsdClient.Incr("reader.http.errors", 1)
 	w.Header().Set("Cache-Control", "private, max-age=0, no-cache")
+	w.Header().Set("Content-Type", "text/plain")
 	http.Error(w, msg, code)
 	re.log.Error(msg)
 }
@@ -242,6 +243,7 @@ func (re *ApiLoop) OutJson(w http.ResponseWriter, data interface{}) {
 	// cache theses things for 60 secs
 	defer stats.StatsdClient.Incr("reader.http.ok", 1)
 	w.Header().Set("Cache-Control", "public, max-age=60, cache")
+	w.Header().Set("Content-Type", "application/json")
 
 	stats, err := json.Marshal(data)
 	if err != nil {
@@ -296,7 +298,7 @@ func (re *ApiLoop) Expand(w http.ResponseWriter, r *http.Request) {
 	re.OutJson(w, data)
 }
 
-func (re *ApiLoop) parseForRender(w http.ResponseWriter, r *http.Request) (string, string, string, repr.SortingTags, error) {
+func (re *ApiLoop) parseForRender(w http.ResponseWriter, r *http.Request) (string, int64, int64, repr.SortingTags, error) {
 	r.ParseForm()
 	var target string
 	var from string
@@ -304,8 +306,13 @@ func (re *ApiLoop) parseForRender(w http.ResponseWriter, r *http.Request) (strin
 	var _tags string
 	var tags repr.SortingTags
 
-	for _, tar := range r.Form["target"] {
-		target += strings.TrimSpace(tar) + ","
+	l := len(r.Form["target"])
+	for idx, tar := range r.Form["target"] {
+		target += strings.TrimSpace(tar)
+		switch {
+		case idx < l-1:
+			target += ","
+		}
 	}
 
 	// if no target try "path"
@@ -326,7 +333,7 @@ func (re *ApiLoop) parseForRender(w http.ResponseWriter, r *http.Request) (strin
 	to = strings.TrimSpace(r.Form.Get("to"))
 
 	if len(target) == 0 {
-		return "", "", "", tags, errTargetRequired
+		return "", 0, 0, tags, errTargetRequired
 
 	}
 
@@ -338,7 +345,20 @@ func (re *ApiLoop) parseForRender(w http.ResponseWriter, r *http.Request) (strin
 		to = "now"
 	}
 
-	return target, from, to, tags, nil
+	start, err := metrics.ParseTime(from)
+	if err != nil {
+		return "", 0, 0, tags, fmt.Errorf("Invalid from time `%s` :: %v", from, err)
+	}
+
+	end, err := metrics.ParseTime(to)
+	if err != nil {
+		return "", 0, 0, tags, fmt.Errorf("Invalid from time `%s` :: %v", from, err)
+	}
+	if end < start {
+		start, end = end, start
+	}
+
+	return target, start, end, tags, nil
 }
 
 // take a rawrender and make it a graphite api json format
@@ -454,6 +474,52 @@ func (re *ApiLoop) GetFromCache(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
+// this will return the Raw BINARY series for metrics in the write-caches
+// Note that ONLY ONE metric can be queries in this fashion as there is
+// multi-series binary format ... yet
+func (re *ApiLoop) GetSeriesFromCache(w http.ResponseWriter, r *http.Request) {
+
+	defer stats.StatsdNanoTimeFunc("reader.http.cache-render.get-time-ns", time.Now())
+
+	target, from, to, tags, err := re.parseForRender(w, r)
+	if err != nil {
+		re.OutError(w, fmt.Sprintf("%v", err), http.StatusBadRequest)
+	}
+
+	data, err := re.Metrics.CachedSeries(target, from, to, tags)
+	if err != nil {
+		re.OutError(w, fmt.Sprintf("%v", err), http.StatusServiceUnavailable)
+		return
+	}
+
+	if data == nil {
+		re.OutError(w, "No data found", http.StatusNoContent)
+		return
+	}
+
+	// cache theses things for 60 secs
+	defer stats.StatsdClient.Incr("reader.http.ok", 1)
+
+	w.Header().Set("Cache-Control", "public, max-age=60, cache")
+	w.Header().Set("Content-Type", "application/cadent")
+	w.Header().Set("X-CadentSeries-Key", data.Name.Key)
+	w.Header().Set("X-CadentSeries-UniqueId", data.Name.UniqueIdString())
+
+	t_str, _ := json.Marshal(data.Name.SortedTags())
+	w.Header().Set("X-CadentSeries-Tags", string(t_str))
+	t_str, _ = json.Marshal(data.Name.SortedMetaTags())
+	w.Header().Set("X-CadentSeries-MetaTags", string(t_str))
+
+	w.Header().Set("X-CadentSeries-Resolution", fmt.Sprintf("%d", data.Name.Resolution))
+	w.Header().Set("X-CadentSeries-TTL", fmt.Sprintf("%d", data.Name.TTL))
+	w.Header().Set("X-CadentSeries-Encoding", data.Series.Name())
+	w.Header().Set("X-CadentSeries-Start", fmt.Sprintf("%d", data.Series.StartTime()))
+	w.Header().Set("X-CadentSeries-End", fmt.Sprintf("%d", data.Series.LastTime()))
+	w.Header().Set("X-CadentSeries-Points", fmt.Sprintf("%d", data.Series.Count()))
+	w.Write(data.Series.Bytes())
+	return
+}
+
 func (re *ApiLoop) NoOp(w http.ResponseWriter, r *http.Request) {
 	golog.Printf("No handler for this URL %s", r.URL)
 	http.Error(w,
@@ -495,6 +561,9 @@ func (re *ApiLoop) Start() error {
 
 	mux.HandleFunc(re.Conf.BasePath+"rawrender/", re.RawRender)
 	mux.HandleFunc(re.Conf.BasePath+"rawrender", re.RawRender)
+
+	mux.HandleFunc(re.Conf.BasePath+"cached/series/", re.GetSeriesFromCache)
+	mux.HandleFunc(re.Conf.BasePath+"cached/series", re.GetSeriesFromCache)
 
 	mux.HandleFunc(re.Conf.BasePath+"cache/", re.GetFromCache)
 	mux.HandleFunc(re.Conf.BasePath+"cache", re.GetFromCache)

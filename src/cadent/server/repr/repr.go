@@ -108,6 +108,14 @@ func (s *StatName) UniqueIdString() string {
 	return s.uniqueIdstr
 }
 
+func (s *StatName) StringToUniqueId(inid string) StatId {
+	t_int, err := strconv.ParseUint(inid, 36, 64)
+	if err != nil {
+		return StatId(0)
+	}
+	return StatId(t_int)
+}
+
 // return an array of [ [name, val] ...] sorted by name
 func (s *StatName) SortedTags() SortingTags {
 	sort.Sort(s.Tags)

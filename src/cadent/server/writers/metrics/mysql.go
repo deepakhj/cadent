@@ -533,26 +533,10 @@ func (my *MySQLMetrics) GetFromWriteCache(metric *indexer.MetricFindItem, start 
 	return inflight, nil
 }
 
-func (my *MySQLMetrics) RawDataRenderOne(metric *indexer.MetricFindItem, from string, to string) (*RawRenderItem, error) {
+func (my *MySQLMetrics) RawDataRenderOne(metric *indexer.MetricFindItem, start int64, end int64) (*RawRenderItem, error) {
 	defer stats.StatsdSlowNanoTimeFunc("reader.mysql.renderraw.get-time-ns", time.Now())
 	rawd := new(RawRenderItem)
 
-	start, err := ParseTime(from)
-	if err != nil {
-		my.log.Error("Invalid from time `%s` :: %v", from, err)
-		return rawd, err
-	}
-
-	end, err := ParseTime(to)
-	if err != nil {
-		my.log.Error("Invalid from time `%s` :: %v", to, err)
-		return rawd, err
-	}
-	if end < start {
-		start, end = end, start
-	}
-
-	//figure out the best res
 	resolution := my.getResolution(start, end)
 
 	start = TruncateTimeTo(start, int(resolution))
@@ -636,11 +620,11 @@ func (my *MySQLMetrics) RawDataRenderOne(metric *indexer.MetricFindItem, from st
 
 // after the "raw" render we need to yank just the "point" we need from the data which
 // will make the read-cache much smaller (will compress just the Mean value as the count is 1)
-func (my *MySQLMetrics) RawRenderOne(metric indexer.MetricFindItem, from string, to string) (*RawRenderItem, error) {
+func (my *MySQLMetrics) RawRenderOne(metric indexer.MetricFindItem, from int64, to int64) (*RawRenderItem, error) {
 	return my.RawDataRenderOne(&metric, from, to)
 }
 
-func (my *MySQLMetrics) Render(path string, from string, to string) (WhisperRenderItem, error) {
+func (my *MySQLMetrics) Render(path string, from int64, to int64) (WhisperRenderItem, error) {
 	raw_data, err := my.RawRender(path, from, to)
 
 	if err != nil {
@@ -666,7 +650,7 @@ func (my *MySQLMetrics) Render(path string, from string, to string) (WhisperRend
 	return whis, err
 }
 
-func (my *MySQLMetrics) RawRender(path string, from string, to string) ([]*RawRenderItem, error) {
+func (my *MySQLMetrics) RawRender(path string, from int64, to int64) ([]*RawRenderItem, error) {
 	defer stats.StatsdSlowNanoTimeFunc("reader.mysql.rawrender.get-time-ns", time.Now())
 
 	paths := strings.Split(path, ",")
@@ -692,14 +676,14 @@ func (my *MySQLMetrics) RawRender(path string, from string, to string) ([]*RawRe
 		for {
 			select {
 			case <-timeout.C:
-				my.log.Error("Render Timeout for %s (%s->%s)", path, from, to)
+				my.log.Error("Render Timeout for %s (%d->%d)", path, from, to)
 				timeout.Stop()
 				return
 			default:
 				_ri, err := my.RawRenderOne(metric, from, to)
 
 				if err != nil {
-					my.log.Error("Read Error for %s (%s->%s) : %v", path, from, to, err)
+					my.log.Error("Read Error for %s (%d->%d) : %v", path, from, to, err)
 					return
 				}
 				rawd[idx] = _ri
@@ -717,24 +701,9 @@ func (my *MySQLMetrics) RawRender(path string, from string, to string) ([]*RawRe
 	return rawd, nil
 }
 
-func (my *MySQLMetrics) CacheRender(path string, from string, to string, tags repr.SortingTags) (rawd []*RawRenderItem, err error) {
+func (my *MySQLMetrics) CacheRender(path string, start int64, end int64, tags repr.SortingTags) (rawd []*RawRenderItem, err error) {
 
 	defer stats.StatsdSlowNanoTimeFunc("reader.cassandra.cacherender.get-time-ns", time.Now())
-
-	start, err := ParseTime(from)
-	if err != nil {
-		my.log.Error("Invalid from time `%s` :: %v", from, err)
-		return rawd, err
-	}
-
-	end, err := ParseTime(to)
-	if err != nil {
-		my.log.Error("Invalid from time `%s` :: %v", to, err)
-		return rawd, err
-	}
-	if end < start {
-		start, end = end, start
-	}
 
 	//figure out the best res
 	resolution := my.getResolution(start, end)
@@ -761,24 +730,14 @@ func (my *MySQLMetrics) CacheRender(path string, from string, to string, tags re
 	// ye old fan out technique
 	render_one := func(metric *indexer.MetricFindItem, idx int) {
 		defer render_wg.Done()
-		timeout := time.NewTimer(my.renderTimeout)
-		for {
-			select {
-			case <-timeout.C:
-				my.log.Error("Render Timeout for %s (%s->%s)", path, from, to)
-				timeout.Stop()
-				return
-			default:
-				_ri, err := my.GetFromWriteCache(metric, uint32(start), uint32(end), resolution)
+		_ri, err := my.GetFromWriteCache(metric, uint32(start), uint32(end), resolution)
 
-				if err != nil {
-					my.log.Error("Read Error for %s (%s->%s) : %v", path, from, to, err)
-					return
-				}
-				rawd[idx] = _ri
-				return
-			}
+		if err != nil {
+			my.log.Error("Read Error for %s (%d->%d) : %v", path, start, end, err)
+			return
 		}
+		rawd[idx] = _ri
+		return
 
 	}
 
@@ -788,4 +747,43 @@ func (my *MySQLMetrics) CacheRender(path string, from string, to string, tags re
 	}
 	render_wg.Wait()
 	return rawd, nil
+}
+
+func (my *MySQLMetrics) CachedSeries(path string, start int64, end int64, tags repr.SortingTags) (series *TotalTimeSeries, err error) {
+
+	defer stats.StatsdSlowNanoTimeFunc("reader.cassandra.seriesrender.get-time-ns", time.Now())
+
+	paths := strings.Split(path, ",")
+	if len(paths) > 1 {
+		return series, errMultiTargetsNotAllowed
+	}
+
+	metric := &repr.StatName{Key: path}
+	metric.MergeMetric2Tags(tags)
+	metric.MergeMetric2Tags(my.static_tags)
+
+	resolution := my.getResolution(start, end)
+	cache_db := fmt.Sprintf("%s:%v", my.cacherPrefix, resolution)
+	use_cache := getCacherByName(cache_db)
+	if use_cache == nil {
+		use_cache = my.cacher
+	}
+	name, inflight, err := use_cache.GetSeries(metric)
+	if err != nil {
+		return nil, err
+	}
+	if inflight == nil {
+		// try the the path as unique ID
+		gots_int := metric.StringToUniqueId(path)
+		if gots_int != 0 {
+			name, inflight, err = use_cache.GetSeriesById(gots_int)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			return nil, nil
+		}
+	}
+
+	return &TotalTimeSeries{Name: name, Series: inflight}, nil
 }

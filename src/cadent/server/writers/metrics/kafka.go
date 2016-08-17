@@ -338,31 +338,15 @@ func (kf *KafkaMetrics) GetFromWriteCache(metric *repr.StatName, start uint32, e
 }
 
 // needed to match interface, but we obviously cannot do this
-func (kf *KafkaMetrics) Render(path string, from string, to string) (WhisperRenderItem, error) {
+func (kf *KafkaMetrics) Render(path string, from int64, to int64) (WhisperRenderItem, error) {
 	return WhisperRenderItem{}, errKafkaReaderNotImplimented
 }
-func (kf *KafkaMetrics) RawRender(path string, from string, to string) ([]*RawRenderItem, error) {
+func (kf *KafkaMetrics) RawRender(path string, from int64, to int64) ([]*RawRenderItem, error) {
 	return []*RawRenderItem{}, errKafkaReaderNotImplimented
 }
 
-// TODO: this one CAN BE implemented
-func (kf *KafkaMetrics) CacheRender(path string, from string, to string, tags repr.SortingTags) (rawd []*RawRenderItem, err error) {
+func (kf *KafkaMetrics) CacheRender(path string, start int64, end int64, tags repr.SortingTags) (rawd []*RawRenderItem, err error) {
 	defer stats.StatsdSlowNanoTimeFunc("reader.cassandra.cacherender.get-time-ns", time.Now())
-
-	start, err := ParseTime(from)
-	if err != nil {
-		kf.log.Error("Invalid from time `%s` :: %v", from, err)
-		return rawd, err
-	}
-
-	end, err := ParseTime(to)
-	if err != nil {
-		kf.log.Error("Invalid from time `%s` :: %v", to, err)
-		return rawd, err
-	}
-	if end < start {
-		start, end = end, start
-	}
 
 	//figure out the best res
 	resolution := kf.getResolution(start, end)
@@ -394,7 +378,7 @@ func (kf *KafkaMetrics) CacheRender(path string, from string, to string, tags re
 		_ri, err := kf.GetFromWriteCache(metric, uint32(start), uint32(end), resolution)
 
 		if err != nil {
-			kf.log.Error("Read Error for %s (%s->%s) : %v", path, from, to, err)
+			kf.log.Error("Read Error for %s (%d->%d) : %v", path, start, end, err)
 			return
 		}
 		rawd[idx] = _ri
@@ -408,4 +392,34 @@ func (kf *KafkaMetrics) CacheRender(path string, from string, to string, tags re
 	}
 	render_wg.Wait()
 	return rawd, nil
+}
+
+func (kf *KafkaMetrics) CachedSeries(path string, start int64, end int64, tags repr.SortingTags) (*TotalTimeSeries, error) {
+
+	defer stats.StatsdSlowNanoTimeFunc("reader.cassandra.seriesrender.get-time-ns", time.Now())
+
+	paths := strings.Split(path, ",")
+	if len(paths) > 1 {
+		return nil, errMultiTargetsNotAllowed
+	}
+
+	metric := &repr.StatName{Key: path}
+	metric.MergeMetric2Tags(tags)
+	metric.MergeMetric2Tags(kf.static_tags)
+
+	resolution := kf.getResolution(start, end)
+	cache_db := fmt.Sprintf("%s:%v", kf.cacherPrefix, resolution)
+	use_cache := getCacherByName(cache_db)
+	if use_cache == nil {
+		use_cache = kf.cacher
+	}
+	name, inflight, err := use_cache.GetSeries(metric)
+	if err != nil {
+		return nil, err
+	}
+	if inflight == nil {
+		return nil, nil
+	}
+
+	return &TotalTimeSeries{Name: name, Series: inflight}, nil
 }

@@ -8,6 +8,7 @@ Readers are an attempt to imitate the Graphite API bits and include 3 main endpo
     /{root}/expand -- expand a tree ( ?query=path.*.to.my.*.metric )
     /{root}/metrics -- get metrics in the format graphite needs ( ?target=path.*.to.my.*.metric&from=time&to=time )
     /{root}/rawrender -- get the actuall metrics in the internal format ( ?target=path.*.to.my.*.metric&from=time&to=time )
+    /{root}/cached/series -- get the BINARY blob of data only ONE metric allowed here ( ?to=now&from=-10m&target=graphitetest.there.now.there )
     /{root}/cache -- get the actuall metrics stored in writeback cache ( ?target=path.*.to.my.*.metric&from=time&to=time )
 
 For now, all return types are JSON.
@@ -31,7 +32,7 @@ Not everything can implement the APIs due to their nature. Below is a table of w
 
 ##### Metrics
 
-| Driver   | /rawrender + /metrics | /cache  | TagSupport |
+| Driver   | /rawrender + /metrics | /cache + /cached/series  | TagSupport |
 |---|---|---|---|
 | cassandra | Yes | Yes | No |
 | cassandra-flat | Yes  | n/a| No |
@@ -200,9 +201,32 @@ Just some example output from the render apis
         }
     }
 
+### /cached/series
+
+Note this one returns BINARY data in the body, but w/ some nice headers.  Multiple targets are not allowed here
+as there is no "multi series" binary format.  You can look up things by the UniqueId as well `target=3w5dnlrj3clw3`.
+The `from` and `to` are just used to pick the proper resolution, the series you get back will be whatever is in the cache
+start and ends are in the Headers.
+
+
+    X-Cadentseries-Encoding:gorilla
+    X-Cadentseries-End:1471386630000000000
+    X-Cadentseries-Key:graphitetest.there.now.there
+    X-Cadentseries-Metatags:null
+    X-Cadentseries-Points:11
+    X-Cadentseries-Resolution:5
+    X-Cadentseries-Start:1471386590000000000
+    X-Cadentseries-Tags:null
+    X-Cadentseries-Ttl:3600
+    X-Cadentseries-Uniqueid:3w5dnlrj3clw3
+
+
+The the acctual binary data blob (in the raw form)
+
+
 ### /find
 
-[
+    [
     {
         text: "there",
         expandable: 0,
@@ -226,11 +250,11 @@ Just some example output from the render apis
         meta_tags: [["foo", "baz"], ...]
     },
     ...
-]
+    ]
 
 ### /expand
 
-{
+    {
     results: [
         "graphitetest.there.now.badline",
         "graphitetest.there.now.cow",
@@ -240,4 +264,4 @@ Just some example output from the render apis
         "graphitetest.there.now.test",
         "graphitetest.there.now.there"
     ]
-}
+    }

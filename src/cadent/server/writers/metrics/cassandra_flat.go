@@ -784,7 +784,7 @@ func (cass *CassandraFlatMetric) getResolution(from int64, to int64) uint32 {
 	return uint32(cass.resolutions[len(cass.resolutions)-1][0])
 }
 
-func (cass *CassandraFlatMetric) RawRenderOne(metric indexer.MetricFindItem, from string, to string) (*RawRenderItem, error) {
+func (cass *CassandraFlatMetric) RawRenderOne(metric indexer.MetricFindItem, start int64, end int64) (*RawRenderItem, error) {
 	defer stats.StatsdSlowNanoTimeFunc("reader.cassandraflat.renderraw.get-time-ns", time.Now())
 
 	rawd := new(RawRenderItem)
@@ -793,20 +793,6 @@ func (cass *CassandraFlatMetric) RawRenderOne(metric indexer.MetricFindItem, fro
 		return rawd, fmt.Errorf("Cassandra: RawRenderOne: Not a data node")
 	}
 
-	start, err := ParseTime(from)
-	if err != nil {
-		cass.writer.log.Error("Invalid from time `%s` :: %v", from, err)
-		return rawd, err
-	}
-
-	end, err := ParseTime(to)
-	if err != nil {
-		cass.writer.log.Error("Invalid from time `%s` :: %v", to, err)
-		return rawd, err
-	}
-	if end < start {
-		start, end = end, start
-	}
 	//figure out the best res
 	resolution := cass.getResolution(start, end)
 
@@ -883,7 +869,7 @@ func (cass *CassandraFlatMetric) RawRenderOne(metric indexer.MetricFindItem, fro
 	return rawd, nil
 }
 
-func (cass *CassandraFlatMetric) RenderOne(metric indexer.MetricFindItem, from string, to string) (WhisperRenderItem, error) {
+func (cass *CassandraFlatMetric) RenderOne(metric indexer.MetricFindItem, from int64, to int64) (WhisperRenderItem, error) {
 
 	defer stats.StatsdSlowNanoTimeFunc("reader.cassandraflat.renderone.get-time-ns", time.Now())
 
@@ -998,7 +984,7 @@ func (cass *CassandraFlatMetric) RenderOne(metric indexer.MetricFindItem, from s
 	return whis, nil
 }
 
-func (cass *CassandraFlatMetric) Render(path string, from string, to string) (WhisperRenderItem, error) {
+func (cass *CassandraFlatMetric) Render(path string, from int64, to int64) (WhisperRenderItem, error) {
 
 	defer stats.StatsdSlowNanoTimeFunc("reader.cassandraflat.render.get-time-ns", time.Now())
 
@@ -1028,7 +1014,7 @@ func (cass *CassandraFlatMetric) Render(path string, from string, to string) (Wh
 		for {
 			select {
 			case <-timeout.C:
-				cass.writer.log.Error("Render Timeout for %s (%s->%s)", path, from, to)
+				cass.writer.log.Error("Render Timeout for %s (%d->%d)", path, from, to)
 				timeout.Stop()
 				return
 			default:
@@ -1061,7 +1047,7 @@ func (cass *CassandraFlatMetric) Render(path string, from string, to string) (Wh
 	return whis, nil
 }
 
-func (cass *CassandraFlatMetric) RawRender(path string, from string, to string) ([]*RawRenderItem, error) {
+func (cass *CassandraFlatMetric) RawRender(path string, from int64, to int64) ([]*RawRenderItem, error) {
 
 	defer stats.StatsdSlowNanoTimeFunc("reader.cassandraflat.rawrender.get-time-ns", time.Now())
 
@@ -1100,6 +1086,9 @@ func (cass *CassandraFlatMetric) RawRender(path string, from string, to string) 
 	return rawd, nil
 }
 
-func (cass *CassandraFlatMetric) CacheRender(path string, from string, to string, tags repr.SortingTags) ([]*RawRenderItem, error) {
+func (cass *CassandraFlatMetric) CacheRender(path string, from int64, to int64, tags repr.SortingTags) ([]*RawRenderItem, error) {
 	return nil, fmt.Errorf("CassandraFlatMetric: CacheRender: NOT YET IMPLIMNETED")
+}
+func (cass *CassandraFlatMetric) CachedSeries(path string, from int64, to int64, tags repr.SortingTags) (*TotalTimeSeries, error) {
+	return nil, fmt.Errorf("CassandraFlatMetric: CachedSeries: NOT YET IMPLIMNETED")
 }

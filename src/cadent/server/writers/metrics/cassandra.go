@@ -101,6 +101,7 @@ import (
 	"cadent/server/utils"
 	"cadent/server/utils/shutdown"
 	"cadent/server/writers/indexer"
+	"errors"
 	"math"
 	"strings"
 	"sync"
@@ -113,6 +114,8 @@ const (
 	CASSANDRA_DEFAULT_SERIES_CHUNK   = 16 * 1024 * 1024 // 16kb
 	CASSANDRA_DEFAULT_RENDER_TIMEOUT = "5s"
 )
+
+var errMultiTargetsNotAllowed = errors.New("Multiple Targets are not allowed")
 
 /*** set up "one" real writer (per dsn) .. need just a single cassandra DB connection for all the time resoltuions
 
@@ -648,24 +651,9 @@ func (cass *CassandraMetric) GetFromWriteCache(metric *indexer.MetricFindItem, s
 	return inflight, nil
 }
 
-func (cass *CassandraMetric) RawDataRenderOne(metric *indexer.MetricFindItem, from string, to string) (*RawRenderItem, error) {
+func (cass *CassandraMetric) RawDataRenderOne(metric *indexer.MetricFindItem, start int64, end int64) (*RawRenderItem, error) {
 	defer stats.StatsdSlowNanoTimeFunc("reader.cassandra.renderraw.get-time-ns", time.Now())
 	rawd := new(RawRenderItem)
-
-	start, err := ParseTime(from)
-	if err != nil {
-		cass.writer.log.Error("Invalid from time `%s` :: %v", from, err)
-		return rawd, err
-	}
-
-	end, err := ParseTime(to)
-	if err != nil {
-		cass.writer.log.Error("Invalid from time `%s` :: %v", to, err)
-		return rawd, err
-	}
-	if end < start {
-		start, end = end, start
-	}
 
 	//figure out the best res
 	resolution := cass.getResolution(start, end)
@@ -743,15 +731,15 @@ func (cass *CassandraMetric) RawDataRenderOne(metric *indexer.MetricFindItem, fr
 
 // after the "raw" render we need to yank just the "point" we need from the data which
 // will make the read-cache much smaller (will compress just the Mean value as the count is 1)
-func (cass *CassandraMetric) RawRenderOne(metric *indexer.MetricFindItem, from string, to string) (*RawRenderItem, error) {
+func (cass *CassandraMetric) RawRenderOne(metric *indexer.MetricFindItem, from int64, to int64) (*RawRenderItem, error) {
 	return cass.RawDataRenderOne(metric, from, to)
 }
 
-func (cass *CassandraMetric) Render(path string, from string, to string) (WhisperRenderItem, error) {
+func (cass *CassandraMetric) Render(path string, start int64, end int64) (WhisperRenderItem, error) {
 
 	defer stats.StatsdSlowNanoTimeFunc("reader.cassandra.render.get-time-ns", time.Now())
 
-	raw_data, err := cass.RawRender(path, from, to)
+	raw_data, err := cass.RawRender(path, start, end)
 
 	if err != nil {
 		return WhisperRenderItem{}, err
@@ -776,7 +764,7 @@ func (cass *CassandraMetric) Render(path string, from string, to string) (Whispe
 	return whis, err
 }
 
-func (cass *CassandraMetric) RawRender(path string, from string, to string) ([]*RawRenderItem, error) {
+func (cass *CassandraMetric) RawRender(path string, start int64, end int64) ([]*RawRenderItem, error) {
 
 	defer stats.StatsdSlowNanoTimeFunc("reader.cassandra.rawrender.get-time-ns", time.Now())
 
@@ -803,14 +791,14 @@ func (cass *CassandraMetric) RawRender(path string, from string, to string) ([]*
 		for {
 			select {
 			case <-timeout.C:
-				cass.writer.log.Error("Render Timeout for %s (%s->%s)", path, from, to)
+				cass.writer.log.Error("Render Timeout for %s (%s->%s)", path, start, end)
 				timeout.Stop()
 				return
 			default:
-				_ri, err := cass.RawRenderOne(metric, from, to)
+				_ri, err := cass.RawRenderOne(metric, start, end)
 
 				if err != nil {
-					cass.writer.log.Error("Read Error for %s (%s->%s) : %v", path, from, to, err)
+					cass.writer.log.Error("Read Error for %s (%s->%s) : %v", path, start, end, err)
 					return
 				}
 				rawd[idx] = _ri
@@ -828,24 +816,9 @@ func (cass *CassandraMetric) RawRender(path string, from string, to string) ([]*
 	return rawd, nil
 }
 
-func (cass *CassandraMetric) CacheRender(path string, from string, to string, tags repr.SortingTags) (rawd []*RawRenderItem, err error) {
+func (cass *CassandraMetric) CacheRender(path string, start int64, end int64, tags repr.SortingTags) (rawd []*RawRenderItem, err error) {
 
 	defer stats.StatsdSlowNanoTimeFunc("reader.cassandra.cacherender.get-time-ns", time.Now())
-
-	start, err := ParseTime(from)
-	if err != nil {
-		cass.writer.log.Error("Invalid from time `%s` :: %v", from, err)
-		return rawd, err
-	}
-
-	end, err := ParseTime(to)
-	if err != nil {
-		cass.writer.log.Error("Invalid from time `%s` :: %v", to, err)
-		return rawd, err
-	}
-	if end < start {
-		start, end = end, start
-	}
 
 	//figure out the best res
 	resolution := cass.getResolution(start, end)
@@ -875,7 +848,7 @@ func (cass *CassandraMetric) CacheRender(path string, from string, to string, ta
 		_ri, err := cass.GetFromWriteCache(metric, uint32(start), uint32(end), resolution)
 
 		if err != nil {
-			cass.writer.log.Error("Read Error for %s (%s->%s) : %v", path, from, to, err)
+			cass.writer.log.Error("Read Error for %s (%s->%s) : %v", path, start, end, err)
 			return
 		}
 		rawd[idx] = _ri
@@ -888,4 +861,34 @@ func (cass *CassandraMetric) CacheRender(path string, from string, to string, ta
 	}
 	render_wg.Wait()
 	return rawd, nil
+}
+
+func (cass *CassandraMetric) CachedSeries(path string, start int64, end int64, tags repr.SortingTags) (series *TotalTimeSeries, err error) {
+
+	defer stats.StatsdSlowNanoTimeFunc("reader.cassandra.seriesrender.get-time-ns", time.Now())
+
+	paths := strings.Split(path, ",")
+	if len(paths) > 1 {
+		return series, errMultiTargetsNotAllowed
+	}
+
+	metric := &repr.StatName{Key: path}
+	metric.MergeMetric2Tags(tags)
+	metric.MergeMetric2Tags(cass.static_tags)
+
+	resolution := cass.getResolution(start, end)
+	cache_db := fmt.Sprintf("%s:%v", cass.cacherPrefix, resolution)
+	use_cache := getCacherByName(cache_db)
+	if use_cache == nil {
+		use_cache = cass.cacher
+	}
+	name, inflight, err := use_cache.GetSeries(metric)
+	if err != nil {
+		return nil, err
+	}
+	if inflight == nil {
+		return nil, nil
+	}
+
+	return &TotalTimeSeries{Name: name, Series: inflight}, nil
 }

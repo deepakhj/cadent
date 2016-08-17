@@ -489,7 +489,7 @@ func (wc *Cacher) GetById(metric_id repr.StatId) (*repr.StatName, repr.StatReprS
 	return nil, nil, nil
 }
 
-func (wc *Cacher) GetSeries(name *repr.StatName) (series.TimeSeries, error) {
+func (wc *Cacher) GetSeries(name *repr.StatName) (*repr.StatName, series.TimeSeries, error) {
 	stats.StatsdClientSlow.Incr("cacher.read.cache-series-gets", 1)
 
 	wc.mu.RLock()
@@ -497,10 +497,10 @@ func (wc *Cacher) GetSeries(name *repr.StatName) (series.TimeSeries, error) {
 
 	if gots, ok := wc.Cache[name.UniqueId()]; ok {
 		stats.StatsdClientSlow.Incr("cacher.read.cache-series-gets.values", 1)
-		return gots, nil
+		return wc.NameCache[name.UniqueId()], gots, nil
 	}
 	stats.StatsdClientSlow.Incr("cacher.read.cache-series-gets.empty", 1)
-	return nil, nil
+	return nil, nil, nil
 }
 
 func (wc *Cacher) GetSeriesById(metric_id repr.StatId) (*repr.StatName, series.TimeSeries, error) {

@@ -184,12 +184,15 @@ func (kf *KafkaFlatMetrics) Write(stat repr.StatRepr) error {
 
 /**** READER ***/
 // needed to match interface, but we obviously cannot do this
-func (kf *KafkaFlatMetrics) Render(path string, from string, to string) (WhisperRenderItem, error) {
+func (kf *KafkaFlatMetrics) Render(path string, from int64, to int64) (WhisperRenderItem, error) {
 	return WhisperRenderItem{}, errKafkaReaderNotImplimented
 }
-func (kf *KafkaFlatMetrics) RawRender(path string, from string, to string) ([]*RawRenderItem, error) {
+func (kf *KafkaFlatMetrics) RawRender(path string, from int64, to int64) ([]*RawRenderItem, error) {
 	return []*RawRenderItem{}, errKafkaReaderNotImplimented
 }
-func (kf *KafkaFlatMetrics) CacheRender(path string, from string, to string, tags repr.SortingTags) ([]*RawRenderItem, error) {
+func (kf *KafkaFlatMetrics) CacheRender(path string, from int64, to int64, tags repr.SortingTags) ([]*RawRenderItem, error) {
+	return nil, errKafkaReaderNotImplimented
+}
+func (kf *KafkaFlatMetrics) CachedSeries(path string, from int64, to int64, tags repr.SortingTags) (*TotalTimeSeries, error) {
 	return nil, errKafkaReaderNotImplimented
 }

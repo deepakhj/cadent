@@ -76,11 +76,15 @@ type Metrics interface {
 			]
 		}
 	*/
-	Render(path string, from string, to string) (WhisperRenderItem, error)
-	RawRender(path string, from string, to string) ([]*RawRenderItem, error)
+	Render(path string, from int64, to int64) (WhisperRenderItem, error)
+	RawRender(path string, from int64, to int64) ([]*RawRenderItem, error)
 
 	// just get data in the write-back caches
-	CacheRender(path string, from string, to string, tags repr.SortingTags) ([]*RawRenderItem, error)
+	CacheRender(path string, from int64, to int64, tags repr.SortingTags) ([]*RawRenderItem, error)
+
+	// return the cached data as the raw binary series
+	// note for now only ONE metric can be returned using this method
+	CachedSeries(path string, from int64, to int64, tags repr.SortingTags) (*TotalTimeSeries, error)
 
 	Stop()  // kill stuff
 	Start() // fire it up

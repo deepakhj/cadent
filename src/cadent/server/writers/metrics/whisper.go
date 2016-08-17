@@ -658,28 +658,13 @@ func (ws *WhisperMetrics) GetFromReadCache(metric string, start int64, end int64
 	return rawd, false
 }
 
-func (ws *WhisperMetrics) RawDataRenderOne(metric indexer.MetricFindItem, from string, to string) (*RawRenderItem, error) {
+func (ws *WhisperMetrics) RawDataRenderOne(metric indexer.MetricFindItem, start int64, end int64) (*RawRenderItem, error) {
 	defer stats.StatsdSlowNanoTimeFunc("reader.whisper.renderraw.get-time-ns", time.Now())
 	rawd := new(RawRenderItem)
 
 	if metric.Leaf == 0 {
 		//data only
 		return rawd, errWhisperNotaDataNode
-	}
-
-	start, err := ParseTime(from)
-	if err != nil {
-		ws.writer.log.Error("Invalid from time `%s` :: %v", from, err)
-		return rawd, err
-	}
-
-	end, err := ParseTime(to)
-	if err != nil {
-		ws.writer.log.Error("Invalid from time `%s` :: %v", to, err)
-		return rawd, err
-	}
-	if end < start {
-		start, end = end, start
 	}
 
 	rawd.Start = uint32(start)
@@ -795,13 +780,13 @@ func (ws *WhisperMetrics) RawDataRenderOne(metric indexer.MetricFindItem, from s
 // after the "raw" render we need to yank just the "point" we need from the data which
 // will make the read-cache much smaller (will compress just the Sum value as the count is 1)
 // we set the "mean" as thats the value the graphite out render uses
-func (ws *WhisperMetrics) RawRenderOne(metric indexer.MetricFindItem, from string, to string) (*RawRenderItem, error) {
+func (ws *WhisperMetrics) RawRenderOne(metric indexer.MetricFindItem, from int64, to int64) (*RawRenderItem, error) {
 
 	return ws.RawDataRenderOne(metric, from, to)
 
 }
 
-func (ws *WhisperMetrics) Render(path string, from string, to string) (WhisperRenderItem, error) {
+func (ws *WhisperMetrics) Render(path string, from int64, to int64) (WhisperRenderItem, error) {
 
 	raw_data, err := ws.RawRender(path, from, to)
 
@@ -828,7 +813,7 @@ func (ws *WhisperMetrics) Render(path string, from string, to string) (WhisperRe
 	return whis, err
 }
 
-func (ws *WhisperMetrics) RawRender(path string, from string, to string) ([]*RawRenderItem, error) {
+func (ws *WhisperMetrics) RawRender(path string, from int64, to int64) ([]*RawRenderItem, error) {
 	defer stats.StatsdSlowNanoTimeFunc("reader.whisper.rawrender.get-time-ns", time.Now())
 
 	paths := strings.Split(path, ",")
@@ -867,8 +852,11 @@ func (ws *WhisperMetrics) RawRender(path string, from string, to string) ([]*Raw
 	return rawd, nil
 }
 
-func (ws *WhisperMetrics) CacheRender(path string, from string, to string, tags repr.SortingTags) ([]*RawRenderItem, error) {
+func (ws *WhisperMetrics) CacheRender(path string, from int64, to int64, tags repr.SortingTags) ([]*RawRenderItem, error) {
 	return nil, errWhisperNotImplemented
+}
+func (cass *WhisperMetrics) CachedSeries(path string, from int64, to int64, tags repr.SortingTags) (*TotalTimeSeries, error) {
+	return nil, fmt.Errorf("WhisperMetrics: CachedSeries: NOT YET IMPLIMNETED")
 }
 
 /************************************************************************/

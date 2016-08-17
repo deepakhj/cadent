@@ -223,12 +223,15 @@ func (fi *FileMetrics) Write(stat repr.StatRepr) error {
 
 /**** READER ***/
 // XXX TODO
-func (fi *FileMetrics) Render(path string, from string, to string) (WhisperRenderItem, error) {
+func (fi *FileMetrics) Render(path string, from int64, to int64) (WhisperRenderItem, error) {
 	return WhisperRenderItem{}, errFileReaderNotImplemented
 }
-func (fi *FileMetrics) RawRender(path string, from string, to string) ([]*RawRenderItem, error) {
+func (fi *FileMetrics) RawRender(path string, from int64, to int64) ([]*RawRenderItem, error) {
 	return nil, errFileReaderNotImplemented
 }
-func (fi *FileMetrics) CacheRender(path string, from string, to string, tags repr.SortingTags) ([]*RawRenderItem, error) {
+func (fi *FileMetrics) CacheRender(path string, from int64, to int64, tags repr.SortingTags) ([]*RawRenderItem, error) {
+	return nil, errFileReaderNotImplemented
+}
+func (fi *FileMetrics) CachedSeries(path string, from int64, to int64, tags repr.SortingTags) (*TotalTimeSeries, error) {
 	return nil, errFileReaderNotImplemented
 }
