@@ -1131,10 +1131,17 @@ func (server *Server) ProcessSplitItem(splitem splitter.SplitItem, out_queue cha
 		return nil
 	}
 
-	// we cannot have "loopbacks" in this world so we make sure the origin is not the same
-	// as the
-	//accumulate := splitem.Phase() != splitter.AccumulatedParsed && server.PreRegFilter.Accumulator != nil
+	// we need to reg the incoming keys for re-direction or rejection
+	// match on the KEY not the entire string
+	use_backend, reject, _ := server.PreRegFilter.FirstMatchBackend(splitem.Key())
+	if reject {
+		stats.StatsdClient.Incr(fmt.Sprintf("prereg.backend.reject.%s", use_backend), 1)
+		server.RejectedLinesCount.Up(1)
+		return nil
+	}
 	accumulate := server.PreRegFilter.Accumulator != nil
+	//server.log.Notice("Input %s: Accumulate: %v OutBack: %s : reject: %v %s ", server.Name, accumulate, use_backend, reject, splitem.Line())
+
 	//server.log.Notice("Input %s: %s FROM: %s:: doacc: %v", server.Name, splitem.Line(), splitem.accumulate)
 	if accumulate {
 		//log.Notice("Round One Item: %s", splitem.Line())
@@ -1147,31 +1154,25 @@ func (server *Server) ProcessSplitItem(splitem splitter.SplitItem, out_queue cha
 		return err
 	}
 
-	//server.log.Notice("Input %s: Accumulate: %v : %s ", server.Name, accumulate, splitem.Line())
-
-	// match on the KEY not the entire string
-	use_backend, reject, _ := server.PreRegFilter.FirstMatchBackend(splitem.Key())
-	//server.log.Notice("Input %s: Accumulate: %v OutBack: %s : reject: %v %s ", server.Name, accumulate, use_backend, reject, splitem.Line())
-
 	//if server.PreRegFilter
-	if reject {
-		stats.StatsdClient.Incr(fmt.Sprintf("prereg.backend.reject.%s", use_backend), 1)
-		server.RejectedLinesCount.Up(1)
-	} else if use_backend != server.Name && server.PreRegFilter.Accumulator != nil {
+	if use_backend != server.Name && accumulate {
 		// redirect to another input queue
 		stats.StatsdClient.Incr(fmt.Sprintf("prereg.backend.redirect.%s", use_backend), 1)
 		server.RedirectedLinesCount.Up(1)
 		// send to different backend to "repeat" this process
 		// this time we need to dis-avow the fact it came from a socket, as it's no longer pinned to the same
 		// socket it came from
+		//log.Debug("Acc:%v UseBack: %v FromBack: %v Line: %s ", server.PreRegFilter.Accumulator.Name, use_backend, server.Name, splitem.Line())
 		splitem.SetOrigin(splitter.Other)
 		err := SERVER_BACKENDS.Send(use_backend, splitem)
 		if err != nil {
 			server.log.Error("backend send error: %v", err)
 		}
 	} else {
+		// otherwise just farm out as normal
 		server.SendtoOutputWorkers(splitem, out_queue)
 	}
+
 	return nil
 
 }
