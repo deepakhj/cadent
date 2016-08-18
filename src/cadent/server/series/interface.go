@@ -26,7 +26,7 @@ import (
 
 type TimeSeries interface {
 	UnmarshalBinary([]byte) error
-	AddPoint(t int64, min float64, max float64, first float64, last float64, sum float64, count int64) error
+	AddPoint(t int64, min float64, max float64, last float64, sum float64, count int64) error
 	AddStat(*repr.StatRepr) error
 
 	//NOTE these two methods render the write buffer dead, and thus the "time series" complete
@@ -51,7 +51,7 @@ type TimeSeries interface {
 
 type TimeSeriesIter interface {
 	Next() bool
-	Values() (int64, float64, float64, float64, float64, float64, int64)
+	Values() (int64, float64, float64, float64, float64, int64)
 	ReprValue() *repr.StatRepr
 	Error() error
 }

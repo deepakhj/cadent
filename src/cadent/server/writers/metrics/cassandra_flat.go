@@ -35,7 +35,6 @@ limitations under the License.
             max double,
             min double,
             sum double,
-            first double,
             last double,
             count int
         );
@@ -141,7 +140,6 @@ const (
         max double,
         min double,
         sum double,
-        first double,
         last double,
         count int
     );
@@ -151,7 +149,6 @@ type CassMetricPoint struct {
 	Max   float64
 	Min   float64
 	Sum   float64
-	First float64
 	Last  float64
 	Count int
 }
@@ -350,17 +347,17 @@ func NewCassandraFlatWriter(conf map[string]interface{}) (*CassandraFlatWriter, 
 	}
 
 	cass._insert_query = fmt.Sprintf(
-		"INSERT INTO %s (id, mpath, time, point) VALUES  (?, {path: ?, resolution: ?}, ?, {sum: ?, min: ?, max: ?, first: ?, last: ?, count: ?})",
+		"INSERT INTO %s (id, mpath, time, point) VALUES  (?, {path: ?, resolution: ?}, ?, {sum: ?, min: ?, max: ?, last: ?, count: ?})",
 		cass.db.MetricTable(),
 	)
 
 	cass._select_time_query = fmt.Sprintf(
-		"SELECT point.max, point.min, point.sum, point.first, point.last, point.count, time FROM %s WHERE id=? and mpath={path: ?, resolution: ?} AND time <= ? and time >= ?",
+		"SELECT point.max, point.min, point.sum, point.last, point.count, time FROM %s WHERE id=? and mpath={path: ?, resolution: ?} AND time <= ? and time >= ?",
 		cass.db.MetricTable(),
 	)
 
 	cass._get_query = fmt.Sprintf(
-		"SELECT point.max, point.min, point.sum, point.first, point.last, point.count, time FROM %s WHERE id=? and mpath={path: ?, resolution: ?} and time = ?",
+		"SELECT point.max, point.min, point.sum, point.last, point.count, time FROM %s WHERE id=? and mpath={path: ?, resolution: ?} and time = ?",
 		cass.db.MetricTable(),
 	)
 
@@ -452,14 +449,13 @@ func (cass *CassandraFlatWriter) mergeWrite(stat *repr.StatRepr) *repr.StatRepr 
 	).Iter()
 
 	var t, count int64
-	var min, max, sum, last, first float64
+	var min, max, sum, last float64
 
-	for iter.Scan(&max, &min, &sum, &first, &last, &count, &t) {
+	for iter.Scan(&max, &min, &sum, &last, &count, &t) {
 		// only one here
 		n_stat := &repr.StatRepr{
 			Time:  stat.Time,
 			Last:  repr.JsonFloat64(last),
-			First: repr.JsonFloat64(first),
 			Count: count,
 			Sum:   repr.JsonFloat64(sum),
 			Min:   repr.JsonFloat64(min),
@@ -530,7 +526,6 @@ func (cass *CassandraFlatWriter) InsertMulti(name *repr.StatName, points repr.St
 			float64(stat.Sum),
 			float64(stat.Min),
 			float64(stat.Max),
-			float64(stat.First),
 			float64(stat.Last),
 			stat.Count,
 		)
@@ -570,7 +565,6 @@ func (cass *CassandraFlatWriter) InsertOne(name *repr.StatName, stat *repr.StatR
 		float64(write_stat.Sum),
 		float64(write_stat.Min),
 		float64(write_stat.Max),
-		float64(write_stat.First),
 		float64(write_stat.Last),
 		write_stat.Count,
 		ttl,
@@ -819,7 +813,7 @@ func (cass *CassandraFlatMetric) RawRenderOne(metric indexer.MetricFindItem, sta
 	).Iter()
 
 	var t, count int64
-	var min, max, sum, first, last float64
+	var min, max, sum, last float64
 
 	m_key := metric.Id
 
@@ -828,7 +822,7 @@ func (cass *CassandraFlatMetric) RawRenderOne(metric indexer.MetricFindItem, sta
 	ct := uint32(0)
 	// sorting order for the table is time ASC (i.e. first_t == first entry)
 
-	for iter.Scan(&max, &min, &sum, &first, &last, &count, &t) {
+	for iter.Scan(&max, &min, &sum, &last, &count, &t) {
 		on_t := uint32(t / nano) // back convert to seconds
 
 		d_points = append(d_points, RawDataPoint{
@@ -837,7 +831,6 @@ func (cass *CassandraFlatMetric) RawRenderOne(metric indexer.MetricFindItem, sta
 			Max:   max,
 			Min:   min,
 			Last:  last,
-			First: first,
 			Time:  on_t,
 		})
 		//cass.log.Critical("POINT %s time:%d data:%f", metric.Id, on_t, sum)

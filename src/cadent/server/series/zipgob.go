@@ -136,7 +136,7 @@ func (s *ZipGobTimeSeries) Iter() (TimeSeriesIter, error) {
 }
 
 // the t is the "time we want to add
-func (s *ZipGobTimeSeries) AddPoint(t int64, min float64, max float64, first float64, last float64, sum float64, count int64) error {
+func (s *ZipGobTimeSeries) AddPoint(t int64, min float64, max float64, last float64, sum float64, count int64) error {
 	use_t := t
 	if !s.fullResolution {
 		tt, _ := splitNano(t)
@@ -152,14 +152,13 @@ func (s *ZipGobTimeSeries) AddPoint(t int64, min float64, max float64, first flo
 	s.curTime = use_t
 	s.mu.Lock()
 	s.encoder.Encode(s.curDelta)
-	if count == 1 || sameFloatVals(min, max, first, last, sum) {
+	if count == 1 || sameFloatVals(min, max, last, sum) {
 		s.encoder.Encode(false)
 		s.encoder.Encode(sum) // just the sum
 	} else {
 		s.encoder.Encode(true)
 		s.encoder.Encode(min)
 		s.encoder.Encode(max)
-		s.encoder.Encode(first)
 		s.encoder.Encode(last)
 		s.encoder.Encode(sum)
 		s.encoder.Encode(count)
@@ -170,7 +169,7 @@ func (s *ZipGobTimeSeries) AddPoint(t int64, min float64, max float64, first flo
 }
 
 func (s *ZipGobTimeSeries) AddStat(stat *repr.StatRepr) error {
-	return s.AddPoint(stat.Time.UnixNano(), float64(stat.Min), float64(stat.Max), float64(stat.First), float64(stat.Last), float64(stat.Sum), stat.Count)
+	return s.AddPoint(stat.Time.UnixNano(), float64(stat.Min), float64(stat.Max), float64(stat.Last), float64(stat.Sum), stat.Count)
 }
 
 ///// ITERATOR

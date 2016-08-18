@@ -295,7 +295,7 @@ There is also a special `listen` called `backend_only` which is simply a place w
 
  - note: regex need a `(?P<Key>...)` group to function as that will be the hashing key, other fields are ignored
 
-#### some notes on Carbon2
+#### some notes on Carbon2/Metrics2
 
     - has TWO SPACES between the <tag> and <meta_tag> section
     - Don't put `.|,|=|\s` in the value of a tag (or any other punctuation really, if you need punctuation
@@ -304,6 +304,40 @@ There is also a special `listen` called `backend_only` which is simply a place w
     - the "<key>" we unique idenfity a metric is a SORTED by name string of the form
 
         `nameA=value.nameB=value.nameC=value`
+
+    - there are some "fixed" "intrinsict" tags defined for the metrics2.0 layout, these tags
+      are used to determin the <key> and unique ID of a given Stat
+
+
+        "host"
+        "http_method"
+        "http_code"
+        "device"
+        "unit"
+        "what"
+        "type"
+        "result"
+        "stat"
+        "bin_max"
+        "direction"
+        "mtype"
+        "unit"
+        "file"
+        "line"
+        "env"
+
+
+    - all other tags are concidered "metatags" and not included in the Unique identifier of a given metric
+    - there are 2 required "tags" for Metrics2.0 to be "proper" `mtype` and `unit`
+
+        mytype = rate|count|counter|gauge|timestamp
+        unit = (k|M|T...)B|jiff|Hz|...
+
+    - the `stat` tag is used for aggregation choosing, if none is present `mean` is the default agg method
+
+        stat = max|min|std|mean|sum|upper_\d+|lower_\d+|min_\d+|max_\d+|count_\d+|median|median_\d+
+
+
 
 ### Input line types for using accumulator
 
@@ -338,7 +372,7 @@ It will also emit it's owns stats to statsd as well using a buffered internal st
 
 #### Handy "what are the URL" reference (because i always forget myself)
 
-    http://localhost:6060/servers
+    http://localhost:6061/servers
 
 
 ### Status

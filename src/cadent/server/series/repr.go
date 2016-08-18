@@ -100,14 +100,13 @@ func (s *ReprTimeSeries) LastTime() int64 {
 }
 
 // the t is the "time we want to add
-func (s *ReprTimeSeries) AddPoint(t int64, min float64, max float64, first float64, last float64, sum float64, count int64) error {
+func (s *ReprTimeSeries) AddPoint(t int64, min float64, max float64, last float64, sum float64, count int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.Stats = append(s.Stats, &repr.StatRepr{
 		Time:  time.Unix(0, t),
 		Min:   repr.JsonFloat64(min),
 		Max:   repr.JsonFloat64(max),
-		First: repr.JsonFloat64(first),
 		Last:  repr.JsonFloat64(last),
 		Sum:   repr.JsonFloat64(sum),
 		Count: count,
@@ -122,7 +121,7 @@ func (s *ReprTimeSeries) AddPoint(t int64, min float64, max float64, first float
 }
 
 func (s *ReprTimeSeries) AddStat(stat *repr.StatRepr) error {
-	return s.AddPoint(stat.Time.UnixNano(), float64(stat.Min), float64(stat.Max), float64(stat.First), float64(stat.Last), float64(stat.Sum), stat.Count)
+	return s.AddPoint(stat.Time.UnixNano(), float64(stat.Min), float64(stat.Max), float64(stat.Last), float64(stat.Sum), stat.Count)
 }
 
 // Iter lets you iterate over a series.  It is not concurrency-safe.
@@ -136,7 +135,6 @@ type ReprIter struct {
 	curTime int64
 	min     repr.JsonFloat64
 	max     repr.JsonFloat64
-	first   repr.JsonFloat64
 	last    repr.JsonFloat64
 	sum     repr.JsonFloat64
 	count   int64
@@ -172,11 +170,10 @@ func (it *ReprIter) Next() bool {
 	return true
 }
 
-func (it *ReprIter) Values() (int64, float64, float64, float64, float64, float64, int64) {
+func (it *ReprIter) Values() (int64, float64, float64, float64, float64, int64) {
 	return it.curStat.Time.UnixNano(),
 		float64(it.curStat.Min),
 		float64(it.curStat.Max),
-		float64(it.curStat.First),
 		float64(it.curStat.Last),
 		float64(it.curStat.Sum),
 		it.curStat.Count
@@ -188,7 +185,6 @@ func (it *ReprIter) ReprValue() *repr.StatRepr {
 		Min:   it.curStat.Min,
 		Max:   it.curStat.Max,
 		Last:  it.curStat.Last,
-		First: it.curStat.First,
 		Sum:   it.curStat.Sum,
 		Count: it.curStat.Count,
 	}

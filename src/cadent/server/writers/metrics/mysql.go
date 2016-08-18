@@ -469,7 +469,7 @@ func (my *MySQLMetrics) GetFromDatabase(metric *indexer.MetricFindItem, resoluti
 		}
 
 		for s_iter.Next() {
-			to, mi, mx, fi, ls, su, ct := s_iter.Values()
+			to, mi, mx, ls, su, ct := s_iter.Values()
 
 			t := uint32(time.Unix(0, to).Unix())
 
@@ -484,7 +484,6 @@ func (my *MySQLMetrics) GetFromDatabase(metric *indexer.MetricFindItem, resoluti
 				Max:   mx,
 				Min:   mi,
 				Last:  ls,
-				First: fi,
 				Time:  t,
 			})
 

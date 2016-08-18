@@ -19,7 +19,7 @@ limitations under the License.
 
 	This simply is a binary buffer of
 
-	deltaT, min, max, first, last, sum, count
+	deltaT, min, max, last, sum, count
 
 	DeltaT is the time delta deltas from a start time
 
@@ -27,7 +27,7 @@ limitations under the License.
 
 	format is
 
-	[tag][T0][fullbit, deltaT, min, max, first, last, sum, count],[ ....]
+	[tag][T0][fullbit, deltaT, min, max, last, sum, count],[ ....]
 
 	if fullbit == false/0
 
@@ -182,7 +182,7 @@ func (s *GobTimeSeries) HighResolution() bool {
 }
 
 // the t is the "time we want to add
-func (s *GobTimeSeries) AddPoint(t int64, min float64, max float64, first float64, last float64, sum float64, count int64) error {
+func (s *GobTimeSeries) AddPoint(t int64, min float64, max float64, last float64, sum float64, count int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -200,14 +200,13 @@ func (s *GobTimeSeries) AddPoint(t int64, min float64, max float64, first float6
 
 	s.curTime = use_t
 	s.encoder.Encode(s.curDelta)
-	if count == 1 || sameFloatVals(min, max, first, last, sum) {
+	if count == 1 || sameFloatVals(min, max, last, sum) {
 		s.encoder.Encode(false)
 		s.encoder.Encode(sum) // just the sum
 	} else {
 		s.encoder.Encode(true)
 		s.encoder.Encode(min)
 		s.encoder.Encode(max)
-		s.encoder.Encode(first)
 		s.encoder.Encode(last)
 		s.encoder.Encode(sum)
 		s.encoder.Encode(count)
@@ -217,7 +216,7 @@ func (s *GobTimeSeries) AddPoint(t int64, min float64, max float64, first float6
 }
 
 func (s *GobTimeSeries) AddStat(stat *repr.StatRepr) error {
-	return s.AddPoint(stat.Time.UnixNano(), float64(stat.Min), float64(stat.Max), float64(stat.First), float64(stat.Last), float64(stat.Sum), stat.Count)
+	return s.AddPoint(stat.Time.UnixNano(), float64(stat.Min), float64(stat.Max), float64(stat.Last), float64(stat.Sum), stat.Count)
 }
 
 // Iter lets you iterate over a series.  It is not concurrency-safe.
@@ -230,7 +229,6 @@ type GobIter struct {
 	tDelta int64
 	min    float64
 	max    float64
-	first  float64
 	last   float64
 	sum    float64
 	count  int64
@@ -301,7 +299,6 @@ func (it *GobIter) Next() bool {
 		}
 		it.min = val
 		it.max = val
-		it.first = val
 		it.last = val
 		it.count = 1
 		it.sum = val
@@ -315,12 +312,6 @@ func (it *GobIter) Next() bool {
 		return false
 	}
 	err = it.decoder.Decode(&it.max)
-	if err != nil {
-		it.finished = true
-		it.err = err
-		return false
-	}
-	err = it.decoder.Decode(&it.first)
 	if err != nil {
 		it.finished = true
 		it.err = err
@@ -347,12 +338,12 @@ func (it *GobIter) Next() bool {
 	return true
 }
 
-func (it *GobIter) Values() (int64, float64, float64, float64, float64, float64, int64) {
+func (it *GobIter) Values() (int64, float64, float64, float64, float64, int64) {
 	t := it.curTime
 	if !it.fullResolution {
 		t = combineSecNano(uint32(it.curTime), 0)
 	}
-	return t, it.min, it.max, it.first, it.last, it.sum, it.count
+	return t, it.min, it.max, it.last, it.sum, it.count
 }
 
 func (it *GobIter) ReprValue() *repr.StatRepr {
@@ -367,7 +358,6 @@ func (it *GobIter) ReprValue() *repr.StatRepr {
 		Min:   repr.JsonFloat64(it.min),
 		Max:   repr.JsonFloat64(it.max),
 		Last:  repr.JsonFloat64(it.last),
-		First: repr.JsonFloat64(it.first),
 		Sum:   repr.JsonFloat64(it.sum),
 		Count: it.count,
 	}

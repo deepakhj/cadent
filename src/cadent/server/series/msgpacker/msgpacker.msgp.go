@@ -1,19 +1,3 @@
-/*
-Copyright 2016 Under Armour, Inc.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
 package msgpacker
 
 // NOTE: THIS FILE WAS PRODUCED BY THE
@@ -60,11 +44,6 @@ func (z *FullStat) DecodeMsg(dc *msgp.Reader) (err error) {
 			if err != nil {
 				return
 			}
-		case "f":
-			z.First, err = dc.ReadFloat64()
-			if err != nil {
-				return
-			}
 		case "l":
 			z.Last, err = dc.ReadFloat64()
 			if err != nil {
@@ -87,9 +66,9 @@ func (z *FullStat) DecodeMsg(dc *msgp.Reader) (err error) {
 
 // EncodeMsg implements msgp.Encodable
 func (z *FullStat) EncodeMsg(en *msgp.Writer) (err error) {
-	// map header, size 7
+	// map header, size 6
 	// write "t"
-	err = en.Append(0x87, 0xa1, 0x74)
+	err = en.Append(0x86, 0xa1, 0x74)
 	if err != nil {
 		return err
 	}
@@ -124,15 +103,6 @@ func (z *FullStat) EncodeMsg(en *msgp.Writer) (err error) {
 	if err != nil {
 		return
 	}
-	// write "f"
-	err = en.Append(0xa1, 0x66)
-	if err != nil {
-		return err
-	}
-	err = en.WriteFloat64(z.First)
-	if err != nil {
-		return
-	}
 	// write "l"
 	err = en.Append(0xa1, 0x6c)
 	if err != nil {
@@ -157,9 +127,9 @@ func (z *FullStat) EncodeMsg(en *msgp.Writer) (err error) {
 // MarshalMsg implements msgp.Marshaler
 func (z *FullStat) MarshalMsg(b []byte) (o []byte, err error) {
 	o = msgp.Require(b, z.Msgsize())
-	// map header, size 7
+	// map header, size 6
 	// string "t"
-	o = append(o, 0x87, 0xa1, 0x74)
+	o = append(o, 0x86, 0xa1, 0x74)
 	o = msgp.AppendInt64(o, z.Time)
 	// string "n"
 	o = append(o, 0xa1, 0x6e)
@@ -170,9 +140,6 @@ func (z *FullStat) MarshalMsg(b []byte) (o []byte, err error) {
 	// string "s"
 	o = append(o, 0xa1, 0x73)
 	o = msgp.AppendFloat64(o, z.Sum)
-	// string "f"
-	o = append(o, 0xa1, 0x66)
-	o = msgp.AppendFloat64(o, z.First)
 	// string "l"
 	o = append(o, 0xa1, 0x6c)
 	o = msgp.AppendFloat64(o, z.Last)
@@ -218,11 +185,6 @@ func (z *FullStat) UnmarshalMsg(bts []byte) (o []byte, err error) {
 			if err != nil {
 				return
 			}
-		case "f":
-			z.First, bts, err = msgp.ReadFloat64Bytes(bts)
-			if err != nil {
-				return
-			}
 		case "l":
 			z.Last, bts, err = msgp.ReadFloat64Bytes(bts)
 			if err != nil {
@@ -246,7 +208,7 @@ func (z *FullStat) UnmarshalMsg(bts []byte) (o []byte, err error) {
 
 // Msgsize returns an upper bound estimate of the number of bytes occupied by the serialized message
 func (z *FullStat) Msgsize() (s int) {
-	s = 1 + 2 + msgp.Int64Size + 2 + msgp.Float64Size + 2 + msgp.Float64Size + 2 + msgp.Float64Size + 2 + msgp.Float64Size + 2 + msgp.Float64Size + 2 + msgp.Int64Size
+	s = 1 + 2 + msgp.Int64Size + 2 + msgp.Float64Size + 2 + msgp.Float64Size + 2 + msgp.Float64Size + 2 + msgp.Float64Size + 2 + msgp.Int64Size
 	return
 }
 

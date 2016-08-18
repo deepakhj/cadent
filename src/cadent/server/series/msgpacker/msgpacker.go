@@ -26,7 +26,6 @@ type FullStat struct {
 	Min   float64 `json:"n"  codec:"n" msg:"n"`
 	Max   float64 `json:"m"  codec:"m" msg:"m"`
 	Sum   float64 `json:"s"  codec:"s" msg:"s"`
-	First float64 `json:"f"  codec:"f" msg:"f"`
 	Last  float64 `json:"l"  codec:"l" msg:"l"`
 	Count int64   `json:"c"  codec:"c" msg:"c"`
 }

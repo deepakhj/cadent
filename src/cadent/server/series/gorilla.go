@@ -113,7 +113,7 @@ type GorillaTimeSeries struct {
 	trailingMs uint8
 
 	numValues uint8
-	curVals   []float64 //want 6 vals, min, max, sum, first, last, count
+	curVals   []float64 //want 6 vals, min, max, sum, last, count
 	leading   []uint8
 	trailing  []uint8
 
@@ -343,7 +343,7 @@ func (s *GorillaTimeSeries) AddTime(t int64) error {
 	return nil
 }
 
-func (s *GorillaTimeSeries) AddPoint(t int64, min float64, max float64, first float64, last float64, sum float64, count int64) error {
+func (s *GorillaTimeSeries) AddPoint(t int64, min float64, max float64, last float64, sum float64, count int64) error {
 	s.Lock()
 	defer s.Unlock()
 
@@ -355,10 +355,10 @@ func (s *GorillaTimeSeries) AddPoint(t int64, min float64, max float64, first fl
 	// now for the smarty pants
 	if s.smartEncoding {
 		// we have to write a true/false bit for the value to see if "false" not small
-		if count == 1 || sameFloatVals(min, max, first, last, sum) {
+		if count == 1 || sameFloatVals(min, max, last, sum) {
 			s.bw.WriteBit(utils.ZeroBit)
-			// use the sum 4th slot in case we get another
-			s.addValue(4, sum, start)
+			// use the sum 3th slot in case we get another
+			s.addValue(3, sum, start)
 			s.curCount++
 			return nil
 		} else {
@@ -367,28 +367,21 @@ func (s *GorillaTimeSeries) AddPoint(t int64, min float64, max float64, first fl
 	}
 
 	switch s.numValues {
-	case 6:
-		s.addValue(0, min, start)
-		s.addValue(1, max, start)
-		s.addValue(2, first, start)
-		s.addValue(3, last, start)
-		s.addValue(4, sum, start)
-		s.addValue(5, float64(count), start)
 	case 5:
 		s.addValue(0, min, start)
 		s.addValue(1, max, start)
-		s.addValue(2, first, start)
-		s.addValue(3, last, start)
-		s.addValue(4, sum, start)
+		s.addValue(2, last, start)
+		s.addValue(3, sum, start)
+		s.addValue(4, float64(count), start)
 	case 4:
 		s.addValue(0, min, start)
 		s.addValue(1, max, start)
-		s.addValue(2, first, start)
-		s.addValue(3, last, start)
+		s.addValue(2, last, start)
+		s.addValue(3, sum, start)
 	case 3:
 		s.addValue(0, min, start)
 		s.addValue(1, max, start)
-		s.addValue(2, first, start)
+		s.addValue(2, last, start)
 	case 2:
 		s.addValue(0, min, start)
 		s.addValue(1, max, start)
@@ -401,7 +394,7 @@ func (s *GorillaTimeSeries) AddPoint(t int64, min float64, max float64, first fl
 }
 
 func (s *GorillaTimeSeries) AddStat(stat *repr.StatRepr) error {
-	return s.AddPoint(stat.Time.UnixNano(), float64(stat.Min), float64(stat.Max), float64(stat.First), float64(stat.Last), float64(stat.Sum), stat.Count)
+	return s.AddPoint(stat.Time.UnixNano(), float64(stat.Min), float64(stat.Max), float64(stat.Last), float64(stat.Sum), stat.Count)
 }
 
 type GorillaIter struct {
@@ -693,7 +686,7 @@ func (it *GorillaIter) Next() bool {
 	}
 	if it.curSmartEnc == utils.ZeroBit {
 		// the "4" is the sum index
-		ok = it.readValue(4)
+		ok = it.readValue(3)
 		if !ok {
 			return false
 		}
@@ -711,24 +704,23 @@ func (it *GorillaIter) Next() bool {
 	return true
 }
 
-func (it *GorillaIter) Values() (int64, float64, float64, float64, float64, float64, int64) {
+func (it *GorillaIter) Values() (int64, float64, float64, float64, float64, int64) {
 	//log.Printf("Values Time: %v : %v", it.curTime, it.curTimeMs)
 	if it.curSmartEnc == utils.ZeroBit {
-		v := it.curVals[4]
-		return combineSecNano(it.curTime, uint32(it.curTimeMs)), v, v, v, v, v, 1
+		v := it.curVals[3]
+		return combineSecNano(it.curTime, uint32(it.curTimeMs)), v, v, v, v, 1
 	}
-	return combineSecNano(it.curTime, uint32(it.curTimeMs)), it.curVals[0], it.curVals[1], it.curVals[2], it.curVals[3], it.curVals[4], int64(it.curVals[5])
+	return combineSecNano(it.curTime, uint32(it.curTimeMs)), it.curVals[0], it.curVals[1], it.curVals[2], it.curVals[3], int64(it.curVals[4])
 }
 
 func (it *GorillaIter) ReprValue() *repr.StatRepr {
 	if it.curSmartEnc == utils.ZeroBit {
-		v := repr.JsonFloat64(it.curVals[4])
+		v := repr.JsonFloat64(it.curVals[3])
 		return &repr.StatRepr{
 			Time:  time.Unix(int64(it.curTime), int64(it.curTimeMs)),
 			Min:   v,
 			Max:   v,
 			Last:  v,
-			First: v,
 			Sum:   v,
 			Count: 1,
 		}
@@ -738,9 +730,8 @@ func (it *GorillaIter) ReprValue() *repr.StatRepr {
 		Min:   repr.JsonFloat64(it.curVals[0]),
 		Max:   repr.JsonFloat64(it.curVals[1]),
 		Last:  repr.JsonFloat64(it.curVals[2]),
-		First: repr.JsonFloat64(it.curVals[3]),
-		Sum:   repr.JsonFloat64(it.curVals[4]),
-		Count: int64(it.curVals[5]),
+		Sum:   repr.JsonFloat64(it.curVals[3]),
+		Count: int64(it.curVals[4]),
 	}
 }
 

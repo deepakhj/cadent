@@ -49,7 +49,6 @@ type KafkaMetricObj struct {
 	Max        repr.JsonFloat64 `json:"max"`
 	Count      int64            `json:"count"`
 	Last       repr.JsonFloat64 `json:"last"`
-	First      repr.JsonFloat64 `json:"first"`
 	Resolution uint32           `json:"resolution"`
 	Id         repr.StatId      `json:"id"`
 	Uid        string           `json:"uid"`
@@ -159,7 +158,6 @@ func (kf *KafkaFlatMetrics) Write(stat repr.StatRepr) error {
 		Metric:     stat.Name.Key,
 		Time:       time.Now().UnixNano(),
 		Sum:        stat.Sum,
-		First:      stat.First,
 		Last:       stat.Last,
 		Count:      stat.Count,
 		Max:        stat.Max,

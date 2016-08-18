@@ -112,7 +112,7 @@ func (s *MsgpackTimeSeries) LastTime() int64 {
 }
 
 // the t is the "time we want to add
-func (s *MsgpackTimeSeries) AddPoint(t int64, min float64, max float64, first float64, last float64, sum float64, count int64) (err error) {
+func (s *MsgpackTimeSeries) AddPoint(t int64, min float64, max float64, last float64, sum float64, count int64) (err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	use_t := t
@@ -143,7 +143,6 @@ func (s *MsgpackTimeSeries) AddPoint(t int64, min float64, max float64, first fl
 			Time:  use_t,
 			Min:   min,
 			Max:   max,
-			First: first,
 			Last:  last,
 			Sum:   sum,
 			Count: count,
@@ -170,7 +169,7 @@ func (s *MsgpackTimeSeries) AddPoint(t int64, min float64, max float64, first fl
 }
 
 func (s *MsgpackTimeSeries) AddStat(stat *repr.StatRepr) error {
-	return s.AddPoint(stat.Time.UnixNano(), float64(stat.Min), float64(stat.Max), float64(stat.First), float64(stat.Last), float64(stat.Sum), stat.Count)
+	return s.AddPoint(stat.Time.UnixNano(), float64(stat.Min), float64(stat.Max), float64(stat.Last), float64(stat.Sum), stat.Count)
 }
 
 // Iter lets you iterate over a series.  It is not concurrency-safe.
@@ -241,7 +240,7 @@ func (it *MsgpackIter) Next() bool {
 	return true
 }
 
-func (it *MsgpackIter) Values() (int64, float64, float64, float64, float64, float64, int64) {
+func (it *MsgpackIter) Values() (int64, float64, float64, float64, float64, int64) {
 
 	if it.curStat.StatType {
 		t := it.curStat.Stat.Time
@@ -251,7 +250,6 @@ func (it *MsgpackIter) Values() (int64, float64, float64, float64, float64, floa
 		return t,
 			float64(it.curStat.Stat.Min),
 			float64(it.curStat.Stat.Max),
-			float64(it.curStat.Stat.First),
 			float64(it.curStat.Stat.Last),
 			float64(it.curStat.Stat.Sum),
 			it.curStat.Stat.Count
@@ -263,7 +261,6 @@ func (it *MsgpackIter) Values() (int64, float64, float64, float64, float64, floa
 		t = combineSecNano(uint32(t), 0)
 	}
 	return t,
-		v,
 		v,
 		v,
 		v,
@@ -284,7 +281,6 @@ func (it *MsgpackIter) ReprValue() *repr.StatRepr {
 			Min:   repr.JsonFloat64(it.curStat.Stat.Min),
 			Max:   repr.JsonFloat64(it.curStat.Stat.Max),
 			Last:  repr.JsonFloat64(it.curStat.Stat.Last),
-			First: repr.JsonFloat64(it.curStat.Stat.First),
 			Sum:   repr.JsonFloat64(it.curStat.Stat.Sum),
 			Count: it.curStat.Stat.Count,
 		}
@@ -301,7 +297,6 @@ func (it *MsgpackIter) ReprValue() *repr.StatRepr {
 		Min:   v,
 		Max:   v,
 		Last:  v,
-		First: v,
 		Sum:   v,
 		Count: 1,
 	}

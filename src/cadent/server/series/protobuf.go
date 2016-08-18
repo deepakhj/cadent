@@ -105,7 +105,7 @@ func (s *ProtobufTimeSeries) LastTime() int64 {
 }
 
 // the t is the "time we want to add
-func (s *ProtobufTimeSeries) AddPoint(t int64, min float64, max float64, first float64, last float64, sum float64, count int64) error {
+func (s *ProtobufTimeSeries) AddPoint(t int64, min float64, max float64, last float64, sum float64, count int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	use_t := t
@@ -114,7 +114,7 @@ func (s *ProtobufTimeSeries) AddPoint(t int64, min float64, max float64, first f
 		use_t = int64(ts)
 	}
 	// if the count is 1, then we only have "one" value that makes any sense .. the sum
-	if count == 1 || sameFloatVals(min, max, first, last, sum) {
+	if count == 1 || sameFloatVals(min, max, last, sum) {
 		tmp := &ProtStatSmall{
 			Time: use_t,
 			Val:  sum,
@@ -131,7 +131,6 @@ func (s *ProtobufTimeSeries) AddPoint(t int64, min float64, max float64, first f
 			Time:  use_t,
 			Min:   min,
 			Max:   max,
-			First: first,
 			Last:  last,
 			Sum:   sum,
 			Count: count,
@@ -152,7 +151,7 @@ func (s *ProtobufTimeSeries) AddPoint(t int64, min float64, max float64, first f
 }
 
 func (s *ProtobufTimeSeries) AddStat(stat *repr.StatRepr) error {
-	return s.AddPoint(stat.Time.UnixNano(), float64(stat.Min), float64(stat.Max), float64(stat.First), float64(stat.Last), float64(stat.Sum), stat.Count)
+	return s.AddPoint(stat.Time.UnixNano(), float64(stat.Min), float64(stat.Max), float64(stat.Last), float64(stat.Sum), stat.Count)
 }
 
 // Iter lets you iterate over a series.  It is not concurrency-safe.
@@ -204,7 +203,7 @@ func (it *ProtobufIter) Next() bool {
 	return true
 }
 
-func (it *ProtobufIter) Values() (int64, float64, float64, float64, float64, float64, int64) {
+func (it *ProtobufIter) Values() (int64, float64, float64, float64, float64, int64) {
 
 	if it.curStat.GetStatType() {
 		t := it.curStat.GetStat().GetTime()
@@ -214,7 +213,6 @@ func (it *ProtobufIter) Values() (int64, float64, float64, float64, float64, flo
 		return t,
 			float64(it.curStat.GetStat().GetMin()),
 			float64(it.curStat.GetStat().GetMax()),
-			float64(it.curStat.GetStat().GetFirst()),
 			float64(it.curStat.GetStat().GetLast()),
 			float64(it.curStat.GetStat().GetSum()),
 			it.curStat.GetStat().GetCount()
@@ -226,7 +224,6 @@ func (it *ProtobufIter) Values() (int64, float64, float64, float64, float64, flo
 		t = combineSecNano(uint32(t), 0)
 	}
 	return t,
-		v,
 		v,
 		v,
 		v,
@@ -247,7 +244,6 @@ func (it *ProtobufIter) ReprValue() *repr.StatRepr {
 			Min:   repr.JsonFloat64(it.curStat.GetStat().GetMin()),
 			Max:   repr.JsonFloat64(it.curStat.GetStat().GetMax()),
 			Last:  repr.JsonFloat64(it.curStat.GetStat().GetLast()),
-			First: repr.JsonFloat64(it.curStat.GetStat().GetFirst()),
 			Sum:   repr.JsonFloat64(it.curStat.GetStat().GetSum()),
 			Count: it.curStat.GetStat().GetCount(),
 		}
@@ -264,7 +260,6 @@ func (it *ProtobufIter) ReprValue() *repr.StatRepr {
 		Min:   v,
 		Max:   v,
 		Last:  v,
-		First: v,
 		Sum:   v,
 		Count: 1,
 	}

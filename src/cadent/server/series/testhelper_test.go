@@ -48,7 +48,6 @@ func dummyStat() (*repr.StatRepr, time.Time) {
 		Min:   repr.JsonFloat64(rand.Float64()),
 		Max:   repr.JsonFloat64(rand.Float64()),
 		Last:  repr.JsonFloat64(rand.Float64()),
-		First: repr.JsonFloat64(rand.Float64()),
 		Count: 123123123,
 	}
 	n := time.Now()
@@ -72,7 +71,6 @@ func dummyStatInt() (*repr.StatRepr, time.Time) {
 		Min:   repr.JsonFloat64(rand.Int63n(100)),
 		Max:   repr.JsonFloat64(rand.Int63n(100)),
 		Last:  repr.JsonFloat64(rand.Int63n(100)),
-		First: repr.JsonFloat64(rand.Int63n(100)),
 		Count: rand.Int63n(100),
 	}
 	n := time.Now()
@@ -91,7 +89,6 @@ func getSeries(stat *repr.StatRepr, num_s int, randomize bool) ([]int64, []*repr
 			stat.Time = stat.Time.Add(dd)
 			stat.Max = repr.JsonFloat64(rand.Float64() * 20000.0)
 			stat.Min = repr.JsonFloat64(rand.Float64() * 20000.0)
-			stat.First = repr.JsonFloat64(rand.Float64() * 20000.0)
 			stat.Last = repr.JsonFloat64(rand.Float64() * 20000.0)
 			stat.Sum = repr.JsonFloat64(float64(stat.Sum) + float64(i))
 			stat.Count = rand.Int63n(1000)
@@ -100,7 +97,6 @@ func getSeries(stat *repr.StatRepr, num_s int, randomize bool) ([]int64, []*repr
 			stat.Time = stat.Time.Add(dd)
 			stat.Max += repr.JsonFloat64(1 + i)
 			stat.Min += repr.JsonFloat64(1 + i)
-			stat.First += repr.JsonFloat64(1 + i)
 			stat.Last += repr.JsonFloat64(1 + i)
 			stat.Sum += repr.JsonFloat64(1 + i)
 			stat.Count += int64(1 + i)
@@ -122,7 +118,6 @@ func addStats(ser TimeSeries, stat *repr.StatRepr, num_s int, randomize bool) ([
 			stat.Time = stat.Time.Add(dd)
 			stat.Max = repr.JsonFloat64(rand.Float64() * 20000.0)
 			stat.Min = repr.JsonFloat64(rand.Float64() * 20000.0)
-			stat.First = repr.JsonFloat64(rand.Float64() * 20000.0)
 			stat.Last = repr.JsonFloat64(rand.Float64() * 20000.0)
 			stat.Sum = repr.JsonFloat64(float64(stat.Sum) + float64(i))
 			stat.Count = rand.Int63n(1000)
@@ -131,7 +126,6 @@ func addStats(ser TimeSeries, stat *repr.StatRepr, num_s int, randomize bool) ([
 			stat.Time = stat.Time.Add(dd)
 			stat.Max += repr.JsonFloat64(1 + i)
 			stat.Min += repr.JsonFloat64(1 + i)
-			stat.First += repr.JsonFloat64(1 + i)
 			stat.Last += repr.JsonFloat64(1 + i)
 			stat.Sum += repr.JsonFloat64(1 + i)
 			stat.Count += int64(1 + i)
@@ -529,7 +523,7 @@ func genericTestSeries(t *testing.T, stype string, options *Options) {
 			}
 			idx := 0
 			for it.Next() {
-				to, mi, mx, fi, ls, su, ct := it.Values()
+				to, mi, mx, ls, su, ct := it.Values()
 				// just the second portion test
 				test_to := time.Unix(0, to)
 				test_lt := time.Unix(0, times[idx])
@@ -542,7 +536,6 @@ func genericTestSeries(t *testing.T, stype string, options *Options) {
 				So(stats[idx].Max, ShouldEqual, mx)
 				So(stats[idx].Last, ShouldEqual, ls)
 				So(stats[idx].Count, ShouldEqual, ct)
-				So(stats[idx].First, ShouldEqual, fi)
 				So(stats[idx].Min, ShouldEqual, mi)
 				So(stats[idx].Sum, ShouldEqual, su)
 
@@ -597,7 +590,7 @@ func genericTestSeries(t *testing.T, stype string, options *Options) {
 				nit, _ := nser.Iter()
 				idx := 0
 				for nit.Next() {
-					to, _, _, _, _, su, ct := nit.Values()
+					to, _, _, _, su, ct := nit.Values()
 
 					test_to := time.Unix(0, to)
 					test_lt := time.Unix(0, n_times[idx])
@@ -634,7 +627,7 @@ func genericTestSeries(t *testing.T, stype string, options *Options) {
 				}
 				idx = 0
 				for n_iter.Next() {
-					to, mi, mx, fi, ls, su, ct := n_iter.Values()
+					to, mi, mx, ls, su, ct := n_iter.Values()
 					test_to := time.Unix(0, to)
 					test_lt := time.Unix(0, times[idx])
 					if ser.HighResolution() {
@@ -645,7 +638,6 @@ func genericTestSeries(t *testing.T, stype string, options *Options) {
 					So(stats[idx].Max, ShouldEqual, mx)
 					So(stats[idx].Last, ShouldEqual, ls)
 					So(stats[idx].Count, ShouldEqual, ct)
-					So(stats[idx].First, ShouldEqual, fi)
 					So(stats[idx].Min, ShouldEqual, mi)
 					So(stats[idx].Sum, ShouldEqual, su)
 					idx++
@@ -680,7 +672,7 @@ func genericTestSeries(t *testing.T, stype string, options *Options) {
 				}
 				idx = 0
 				for n_iter.Next() {
-					to, mi, mx, fi, ls, su, ct := n_iter.Values()
+					to, mi, mx, ls, su, ct := n_iter.Values()
 					test_to := time.Unix(0, to)
 					test_lt := time.Unix(0, times[idx])
 					if ser.HighResolution() {
@@ -691,7 +683,6 @@ func genericTestSeries(t *testing.T, stype string, options *Options) {
 					So(stats[idx].Max, ShouldEqual, mx)
 					So(stats[idx].Last, ShouldEqual, ls)
 					So(stats[idx].Count, ShouldEqual, ct)
-					So(stats[idx].First, ShouldEqual, fi)
 					So(stats[idx].Min, ShouldEqual, mi)
 					So(stats[idx].Sum, ShouldEqual, su)
 					idx++
@@ -725,7 +716,7 @@ func genericTestSeries(t *testing.T, stype string, options *Options) {
 				}
 				idx = 0
 				for n_iter.Next() {
-					to, mi, mx, fi, ls, su, ct := n_iter.Values()
+					to, mi, mx, ls, su, ct := n_iter.Values()
 					test_to := time.Unix(0, to)
 					test_lt := time.Unix(0, times[idx])
 					if ser.HighResolution() {
@@ -736,7 +727,6 @@ func genericTestSeries(t *testing.T, stype string, options *Options) {
 					So(stats[idx].Max, ShouldEqual, mx)
 					So(stats[idx].Last, ShouldEqual, ls)
 					So(stats[idx].Count, ShouldEqual, ct)
-					So(stats[idx].First, ShouldEqual, fi)
 					So(stats[idx].Min, ShouldEqual, mi)
 					So(stats[idx].Sum, ShouldEqual, su)
 					idx++

@@ -261,7 +261,7 @@ func TestCarbonTwoRunner(t *testing.T) {
 		So(spl, ShouldNotEqual, nil)
 		So(err, ShouldEqual, nil)
 		// host=me type=monkey stat=last mtype=counter
-		So(spl.Key(), ShouldEqual, "host=me.mtype=counter.stat=last.type=monkey")
+		So(spl.Key(), ShouldEqual, "host=me type=monkey stat=last mtype=counter")
 		So(spl.Timestamp().Unix(), ShouldEqual, 1465866540)
 		So(spl.Tags(), ShouldResemble, [][]string{})
 

@@ -10,7 +10,7 @@ and the line "ends" with the Accumulator stage.
 
 Writers should hold more then just the "aggregated data point" but a few useful things like
 
-    Min, Max, Sum, First, Last and Count
+    Min, Max, Sum, Last and Count
 
 because who's to say what you really want from aggregated values.
 `Count` is just actually how many data points arrived in the aggregation window (for those wanting `Mean` = (Sum / Count))
@@ -56,7 +56,6 @@ Metrics: The base "unit" of a metric is this
         Time int64
         Min float64
         Max float64
-        First float64
         Last float64
         Sum float64
         Count int64
@@ -105,7 +104,7 @@ Not everything is "done" .. as there are many things to write and verify, this i
 
 `SeriesSupport` means the driver can support the TimeSeries binary blobs.
 
-`LineSupport` support means the driver can write and/or read the raw first/last/sum set from the Database backend.
+`LineSupport` support means the driver can write and/or read the raw last/sum set from the Database backend.
 
 `n/a` implies it will not be done, or the backend just does not support it.
 
@@ -200,7 +199,6 @@ useful for key space lookups
       `sum` float NOT NULL,
       `min` float NOT NULL,
       `max` float NOT NULL,
-      `first` float NOT NULL,
       `last` float NOT NULL,
       `count` float NOT NULL,
       `time` datetime(6) NOT NULL,
@@ -286,7 +284,7 @@ Config OPtions
 Good for just testing stuff or, well, other random inputs not yet supported
 This will dump a TAB delimited file per `times` item of
 
-    statname uniqueid sum min max first last count resolution nano_timestamp nano_ttl
+    statname uniqueid sum min max last count resolution nano_timestamp nano_ttl
 
 If your for times are `times = ["10s", "1m", "10m"]` you will get 3 files of the names.
 
@@ -313,7 +311,7 @@ Config Options
 
 NOTE: there are 2 cassandra "modes" .. Flat and Blob
 
-Flat: store every "time, min, max, sun, count, first, last" in a single row
+Flat: store every "time, min, max, sun, count, last" in a single row
 Blob: store a "chunk" of a byte size (16kb default) in a bit packed compressed blob (a "TimeSeries")
 
 Regardless of choice ...
@@ -358,7 +356,6 @@ If you want to allow 24h windows, simply raise `max_sstable_age_days` to â€˜1.0â
             max double,
             min double,
             sum double,
-            first double,
             last double,
             count int
         );
@@ -618,7 +615,6 @@ The "Flat" format is
     	    sum: float64,
     	    min: float64,
     	    max: float64,
-    	    first: float64,
     	    last: float64,
     	    count: int64,
     	    resolution: float64,

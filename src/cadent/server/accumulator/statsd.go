@@ -59,7 +59,6 @@ type StatsdBaseStatItem struct {
 	Min        float64
 	Max        float64
 	Sum        float64
-	First      float64
 	Last       float64
 	InType     string
 	start_time int64
@@ -74,7 +73,6 @@ func (s *StatsdBaseStatItem) Repr() *repr.StatRepr {
 		Max:   repr.CheckFloat(repr.JsonFloat64(s.Max)),
 		Count: s.Count,
 		Sum:   repr.CheckFloat(repr.JsonFloat64(s.Sum)),
-		First: repr.CheckFloat(repr.JsonFloat64(s.First)),
 		Last:  repr.CheckFloat(repr.JsonFloat64(s.Last)),
 	}
 }
@@ -91,7 +89,6 @@ func (s *StatsdBaseStatItem) ZeroOut() error {
 	s.Sum = 0.0
 	s.Count = 0
 	s.start_time = 0
-	s.First = STATSD_ACC_MIN_FLAG
 	s.Last = STATSD_ACC_MIN_FLAG
 	return nil
 }
@@ -216,9 +213,7 @@ func (s *StatsdBaseStatItem) Accumulate(val float64, sample float64, stattime ti
 	if s.Max == STATSD_ACC_MIN_FLAG || s.Max < val {
 		s.Max = val
 	}
-	if s.First == STATSD_ACC_MIN_FLAG {
-		s.First = val
-	}
+
 	s.Last = val
 	s.Count += 1
 	return nil
@@ -233,7 +228,6 @@ type StatsdTimerStatItem struct {
 	Min       float64
 	Max       float64
 	Sum       float64
-	First     float64
 	Last      float64
 	SampleSum float64 // sample rate sum
 	Values    statdFloat64arr
@@ -253,7 +247,6 @@ func (s *StatsdTimerStatItem) Repr() *repr.StatRepr {
 		Max:   repr.CheckFloat(repr.JsonFloat64(s.Max)),
 		Count: s.Count,
 		Sum:   repr.CheckFloat(repr.JsonFloat64(s.Sum)),
-		First: repr.CheckFloat(repr.JsonFloat64(s.First)),
 		Last:  repr.CheckFloat(repr.JsonFloat64(s.Last)),
 	}
 }
@@ -284,9 +277,6 @@ func (s *StatsdTimerStatItem) Accumulate(val float64, sample float64, stattime t
 	}
 
 	s.Last = val
-	if s.First == STATSD_ACC_MIN_FLAG {
-		s.First = val
-	}
 
 	//log.Debug("SUM: %v VAL: %v COUNT %v", s.Sum, val, s.Count)
 	s.SampleSum += sample
@@ -301,7 +291,6 @@ func (s *StatsdTimerStatItem) ZeroOut() error {
 	s.Max = STATSD_ACC_MIN_FLAG
 	s.Sum = 0.0
 	s.Count = 0
-	s.First = STATSD_ACC_MIN_FLAG
 	s.Last = STATSD_ACC_MIN_FLAG
 	s.start_time = 0
 	s.SampleSum = 0
@@ -661,7 +650,6 @@ func (a *StatsdAccumulate) ProcessLine(line string) (err error) {
 				Sum:              0,
 				Min:              STATSD_ACC_MIN_FLAG,
 				Max:              STATSD_ACC_MIN_FLAG,
-				First:            STATSD_ACC_MIN_FLAG,
 				Last:             STATSD_ACC_MIN_FLAG,
 				Count:            0,
 				InKey:            repr.StatName{Key: key},
@@ -674,7 +662,6 @@ func (a *StatsdAccumulate) ProcessLine(line string) (err error) {
 				Sum:    0.0,
 				Min:    STATSD_ACC_MIN_FLAG,
 				Max:    STATSD_ACC_MIN_FLAG,
-				First:  STATSD_ACC_MIN_FLAG,
 				Last:   STATSD_ACC_MIN_FLAG,
 				InKey:  repr.StatName{Key: key},
 			}

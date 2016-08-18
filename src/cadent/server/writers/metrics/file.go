@@ -18,7 +18,7 @@ limitations under the License.
 	The File write
 
 	will dump to an appended file
-	stat\tsum\tmin\tmax\tcount\tfirst\tlast\tresoltion\ttime
+	stat\tsum\tmin\tmax\tcount\tlast\tresoltion\ttime
 
 
 	OPTIONS: For `Config`
@@ -210,8 +210,8 @@ func (fi *FileMetrics) Write(stat repr.StatRepr) error {
 	// stat\tuid\tsum\tmin\tmax\tlast\tcount\tresoltion\ttime\tttl
 
 	line := fmt.Sprintf(
-		"%s\t%s\t%0.6f\t%0.6f\t%0.6f\t%0.6f\t%0.6f\t%d\t%d\t%d\t%d\n",
-		stat.Name.Key, stat.Name.UniqueIdString(), stat.Sum, stat.Min, stat.Max, stat.First, stat.Last, stat.Count,
+		"%s\t%s\t%0.6f\t%0.6f\t%0.6f\t%0.6f\t%d\t%d\t%d\t%d\n",
+		stat.Name.Key, stat.Name.UniqueIdString(), stat.Sum, stat.Min, stat.Max, stat.Last, stat.Count,
 		stat.Name.Resolution, stat.Time.UnixNano(), stat.Name.TTL,
 	)
 

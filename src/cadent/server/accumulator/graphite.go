@@ -50,7 +50,6 @@ type GraphiteBaseStatItem struct {
 	Min   float64
 	Max   float64
 	Sum   float64
-	First float64
 	Last  float64
 	Count int64
 
@@ -65,7 +64,6 @@ func (s *GraphiteBaseStatItem) Repr() *repr.StatRepr {
 		Max:   repr.CheckFloat(repr.JsonFloat64(s.Max)),
 		Count: s.Count,
 		Sum:   repr.CheckFloat(repr.JsonFloat64(s.Sum)),
-		First: repr.CheckFloat(repr.JsonFloat64(s.First)),
 		Last:  repr.CheckFloat(repr.JsonFloat64(s.Last)),
 	}
 }
@@ -81,7 +79,6 @@ func (s *GraphiteBaseStatItem) ZeroOut() error {
 	s.Max = GRAPHITE_ACC_MIN_FLAG
 	s.Sum = 0.0
 	s.Count = 0
-	s.First = GRAPHITE_ACC_MIN_FLAG
 	s.Last = GRAPHITE_ACC_MIN_FLAG
 	return nil
 }
@@ -119,9 +116,6 @@ func (s *GraphiteBaseStatItem) Accumulate(val float64, sample float64, stattime 
 	s.Count += 1
 	s.Sum += val
 	s.Last = val
-	if s.First == GRAPHITE_ACC_MIN_FLAG {
-		s.First = val
-	}
 	return nil
 }
 
@@ -278,7 +272,6 @@ func (a *GraphiteAccumulate) ProcessLine(line string) (err error) {
 			InKey:      repr.StatName{Key: key, MetaTags: tags},
 			Min:        GRAPHITE_ACC_MIN_FLAG,
 			Max:        GRAPHITE_ACC_MIN_FLAG,
-			First:      GRAPHITE_ACC_MIN_FLAG,
 			Last:       GRAPHITE_ACC_MIN_FLAG,
 			ReduceFunc: repr.GuessAggFuncFromKey(key),
 		}

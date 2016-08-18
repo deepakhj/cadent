@@ -97,13 +97,13 @@ func (rc *ReadCacheItem) Add(stat *repr.StatRepr) {
 	}
 }
 
-func (rc *ReadCacheItem) AddValues(t time.Time, min float64, max float64, first float64, last float64, sum float64, count int64) {
+func (rc *ReadCacheItem) AddValues(t time.Time, min float64, max float64, last float64, sum float64, count int64) {
 
 	if rc.Data.Len() > rc.MaxBytes {
 		rc.Data.Stats.Stats = rc.Data.Stats.Stats[1:]
 	}
 
-	rc.Data.AddPoint(t.UnixNano(), min, max, first, last, sum, count)
+	rc.Data.AddPoint(t.UnixNano(), min, max, last, sum, count)
 
 	if t.After(rc.EndTime) {
 		rc.EndTime = t
@@ -129,7 +129,7 @@ func (rc *ReadCacheItem) PutRenderedSeries(data []RawDataPoint) {
 		if s.Count < 1 {
 			s.Count = 1
 		}
-		rc.AddValues(time.Unix(int64(s.Time), 0), s.Min, s.Max, s.First, s.Last, s.Sum, s.Count)
+		rc.AddValues(time.Unix(int64(s.Time), 0), s.Min, s.Max, s.Last, s.Sum, s.Count)
 	}
 }
 

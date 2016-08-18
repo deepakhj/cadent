@@ -18,8 +18,11 @@ package repr
 
 import (
 	"encoding/json"
+	"fmt"
 	. "github.com/smartystreets/goconvey/convey"
+	"hash/fnv"
 	"math"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -49,15 +52,24 @@ func TestStatAccumulatorRepr(t *testing.T) {
 	Convey("Stat Names", t, func() {
 		Convey("tags should sort", func() {
 			org := goo_nm.Tags.String()
-			So(org, ShouldEqual, "nameZ=value1.nameA=value2")
+			So(org, ShouldEqual, "nameZ=value1 nameA=value2")
 			tags_str := goo_nm.SortedTags().String()
-			So(tags_str, ShouldEqual, "nameA=value2.nameZ=value1")
+			So(tags_str, ShouldEqual, "nameA=value2 nameZ=value1")
 		})
 		Convey("unique IDs should be correct", func() {
-			So(goo_nm.UniqueId(), ShouldEqual, 3220740871601082034) // fnv64a(key+:+sortedNames(tags))
-			So(moo_nm.UniqueId(), ShouldEqual, 962860623706201084)
-			So(goo_nm.UniqueIdString(), ShouldEqual, "ogwpcqgu97zm") // fnv64a(key+:+sortedNames(tags))
-			So(moo_nm.UniqueIdString(), ShouldEqual, "7bcpls2e2ubg")
+			buf := fnv.New64a()
+			fmt.Fprintf(buf, "%s:%s", goo_nm.Key, goo_nm.SortedTags())
+			u_1 := buf.Sum64()
+
+			So(goo_nm.UniqueId(), ShouldEqual, u_1) // fnv64a(key+:+sortedNames(tags))
+			So(goo_nm.UniqueIdString(), ShouldEqual, strconv.FormatUint(uint64(u_1), 36))
+
+			buf = fnv.New64a()
+			fmt.Fprintf(buf, "%s:%s", moo_nm.Key, moo_nm.SortedTags())
+			u_2 := buf.Sum64()
+
+			So(moo_nm.UniqueId(), ShouldEqual, u_2)
+			So(moo_nm.UniqueIdString(), ShouldEqual, strconv.FormatUint(uint64(u_2), 36))
 		})
 		Convey("Graphite names should be correct", func() {
 			So(goo_nm.Name(), ShouldEqual, "goo.nameA=value2.nameZ=value1")

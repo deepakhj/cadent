@@ -86,7 +86,6 @@ type RawDataPoint struct {
 	Sum   float64 `json:"sum"`
 	Min   float64 `json:"min"`
 	Max   float64 `json:"max"`
-	First float64 `json:"first"`
 	Last  float64 `json:"last"`
 	Count int64   `json:"count"`
 }
@@ -107,7 +106,6 @@ func (d RawDataPoint) MarshalJSON() ([]byte, error) {
 	d.floatToJson(buf, "\"sum\"", repr.COMMA_SEPARATOR, d.Sum)
 	d.floatToJson(buf, "\"min\"", repr.COMMA_SEPARATOR, d.Min)
 	d.floatToJson(buf, "\"max\"", repr.COMMA_SEPARATOR, d.Max)
-	d.floatToJson(buf, "\"first\"", repr.COMMA_SEPARATOR, d.First)
 	d.floatToJson(buf, "\"last\"", repr.COMMA_SEPARATOR, d.Last)
 	fmt.Fprintf(buf, "\"count\": %d}", d.Count)
 	return buf.Bytes(), nil
@@ -119,14 +117,13 @@ func NullRawDataPoint(time uint32) RawDataPoint {
 		Sum:   math.NaN(),
 		Min:   math.NaN(),
 		Max:   math.NaN(),
-		First: math.NaN(),
 		Last:  math.NaN(),
 		Count: math.MinInt64,
 	}
 }
 
 func (r *RawDataPoint) IsNull() bool {
-	return r.Count == math.MinInt64 && math.IsNaN(r.Sum) && math.IsNaN(r.First) && math.IsNaN(r.Last) && math.IsNaN(r.Min) && math.IsNaN(r.Max)
+	return r.Count == math.MinInt64 && math.IsNaN(r.Sum) && math.IsNaN(r.Last) && math.IsNaN(r.Min) && math.IsNaN(r.Max)
 }
 
 func (r *RawDataPoint) String() string {
@@ -147,8 +144,6 @@ func (r *RawDataPoint) AggValue(aggfunc repr.AggType) float64 {
 		return r.Min
 	case repr.MAX:
 		return r.Max
-	case repr.FIRST:
-		return r.First
 	case repr.LAST:
 		return r.Last
 	default:
@@ -173,10 +168,6 @@ func (r *RawDataPoint) Merge(d *RawDataPoint) {
 		r.Sum = d.Sum
 	} else if !math.IsNaN(r.Sum) && !math.IsNaN(d.Sum) {
 		r.Sum += d.Sum
-	}
-
-	if d.Time != 0 && d.Time < r.Time && !math.IsNaN(d.First) {
-		r.First = d.First
 	}
 
 	if d.Time != 0 && d.Time > r.Time && !math.IsNaN(d.Last) {

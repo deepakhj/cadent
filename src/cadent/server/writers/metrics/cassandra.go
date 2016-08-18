@@ -586,7 +586,7 @@ func (cass *CassandraMetric) GetFromDatabase(metric *indexer.MetricFindItem, res
 		}
 
 		for s_iter.Next() {
-			to, mi, mx, fi, ls, su, ct := s_iter.Values()
+			to, mi, mx, ls, su, ct := s_iter.Values()
 
 			t := uint32(time.Unix(0, to).Unix())
 
@@ -601,7 +601,6 @@ func (cass *CassandraMetric) GetFromDatabase(metric *indexer.MetricFindItem, res
 				Max:   mx,
 				Min:   mi,
 				Last:  ls,
-				First: fi,
 				Time:  t,
 			})
 

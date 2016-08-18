@@ -458,7 +458,6 @@ func (wc *Cacher) GetAsRawRenderItem(name *repr.StatName) (*RawRenderItem, error
 			Count: pt.Count,
 			Min:   float64(pt.Min),
 			Max:   float64(pt.Max),
-			First: float64(pt.First),
 			Last:  float64(pt.Last),
 			Sum:   float64(pt.Sum),
 		}

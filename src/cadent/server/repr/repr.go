@@ -201,7 +201,6 @@ type StatRepr struct {
 	Min   JsonFloat64 `json:"min"`
 	Max   JsonFloat64 `json:"max"`
 	Sum   JsonFloat64 `json:"sum"`
-	First JsonFloat64 `json:"first"`
 	Last  JsonFloat64 `json:"last"`
 	Count int64       `json:"count"`
 }
@@ -235,8 +234,6 @@ func (s *StatRepr) AggValue(aggfunc AggType) float64 {
 		return float64(s.Min)
 	case MAX:
 		return float64(s.Max)
-	case FIRST:
-		return float64(s.First)
 	case LAST:
 		return float64(s.Last)
 	default:
@@ -249,11 +246,10 @@ func (s *StatRepr) AggValue(aggfunc AggType) float64 {
 
 // merge a stat together,
 // the "time" is chosen as the most future time
-// And the First and Last according to that order
+// and Last according to that order
 func (s *StatRepr) Merge(stat *StatRepr) *StatRepr {
 	if stat.Time.UnixNano() <= s.Time.UnixNano() {
 		out := s.Copy()
-		out.First = stat.First
 		if out.Min > stat.Min {
 			out.Min = stat.Min
 		}
@@ -266,7 +262,6 @@ func (s *StatRepr) Merge(stat *StatRepr) *StatRepr {
 	}
 
 	out := stat.Copy()
-	out.First = s.First
 	if out.Min > s.Min {
 		out.Min = s.Min
 	}

@@ -146,15 +146,20 @@ func (g *CarbonTwoSplitter) ProcessLine(line string) (SplitItem, error) {
 
 	line = CARBONTWO_REPLACER.Replace(line)
 
-	stats_arr := strings.Split(line, "  ")
+	stats_arr := strings.Split(line, repr.DOUBLE_SPACE_SEPARATOR)
 	var key string
 	var vals []string
 
-	if len(stats_arr) == 1 {
-		key = stats_arr[0]
+	if len(stats_arr) == 1 { // the <tag> <tag> <tag> <value> <time> case
 		t_vs := strings.Fields(line)
-		vals = t_vs[1:]
-	} else {
+		l_f := len(t_vs)
+		if l_f < 3 {
+			return nil, errCarbonTwoNotValid
+		}
+		key = strings.Join(t_vs[0:l_f-2], repr.SPACE_SEPARATOR)
+		vals = t_vs[l_f-2:]
+
+	} else { // the <tag> <tag> <tag>  <meta> ... <value> <time> case
 		key = stats_arr[0]
 		vals = strings.Fields(stats_arr[1])
 	}
@@ -189,7 +194,6 @@ func (g *CarbonTwoSplitter) ProcessLine(line string) (SplitItem, error) {
 		}
 	}
 
-	// log.Printf("IN GRAPHITE: %s ARR: %v  t_idx: %d, time: %s", graphite_array, line, graphite_array[job.time_index], t.String())
 	gi := &CarbonTwoSplitItem{
 		inkey:    key,
 		inline:   line,

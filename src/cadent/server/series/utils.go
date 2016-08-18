@@ -46,6 +46,6 @@ func combineSecNano(ts uint32, tns uint32) int64 {
 }
 
 // see if all the floats are the same
-func sameFloatVals(min float64, max float64, first float64, last float64, sum float64) bool {
-	return min == max && min == first && min == last && min == sum
+func sameFloatVals(min float64, max float64, last float64, sum float64) bool {
+	return min == max && min == last && min == sum
 }

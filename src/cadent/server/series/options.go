@@ -37,7 +37,7 @@ func NewOptions(values int64, high_res bool) *Options {
 
 func NewDefaultOptions() *Options {
 	return &Options{
-		NumValues:          6,
+		NumValues:          5,
 		HighTimeResolution: false,
 		Handler:            "n/a",
 	}

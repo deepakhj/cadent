@@ -9,8 +9,7 @@ message ProtStatFull {
     required double min = 2;
     required double max = 3;
     required double sum = 4;
-    required double first = 5;
-    required double last = 6;
+    required double last = 5;
 }
 
 // object for just int32 time and one value

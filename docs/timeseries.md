@@ -2,6 +2,24 @@
 
 ### TimeSeries
 
+
+#### Basic "Series" Point
+
+A point is really a collection of 6 different numbers plus a time stamp
+
+
+    StatPoint{
+        Time int64
+        Min float64
+        Max float64
+        Sum float64
+        Last float64
+        Count int64
+    }
+
+
+#### Definitions
+
 The core of things for writers/caching (not really used at all in the simply Constist Hashing or Statsd modes).
 
 There are a number of ways for store things.  Some are very good a RAM compression and others are good for ease of use
