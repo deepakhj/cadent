@@ -21,6 +21,7 @@ limitations under the License.
 package repr
 
 import (
+	"fmt"
 	"sync"
 	"time"
 )
@@ -33,14 +34,14 @@ import (
 type Aggregator struct {
 	mu sync.Mutex
 
-	Items      map[StatId]*StatRepr
+	Items      map[string]*StatRepr
 	Resolution time.Duration
 }
 
 func NewAggregator(res time.Duration) *Aggregator {
 	return &Aggregator{
 		Resolution: res,
-		Items:      make(map[StatId]*StatRepr),
+		Items:      make(map[string]*StatRepr),
 	}
 }
 
@@ -51,8 +52,8 @@ func (sa *Aggregator) ResolutionTime(t time.Time) time.Time {
 	return t.Truncate(sa.Resolution)
 }
 
-func (sa *Aggregator) MapKey(id StatId, t time.Time) StatId {
-	return id + StatId(sa.ResolutionTime(t).UnixNano())
+func (sa *Aggregator) MapKey(id string, t time.Time) string {
+	return id + fmt.Sprintf("-%d", sa.ResolutionTime(t).UnixNano())
 }
 
 func (sa *Aggregator) Len() int {
@@ -60,15 +61,15 @@ func (sa *Aggregator) Len() int {
 }
 
 // get the data and clear out the current cache
-func (sa *Aggregator) GetAndClear() map[StatId]*StatRepr {
+func (sa *Aggregator) GetAndClear() map[string]*StatRepr {
 	sa.mu.Lock()
 	defer sa.mu.Unlock()
-	t_items := make(map[StatId]*StatRepr)
+	t_items := make(map[string]*StatRepr)
 	for k, v := range sa.Items {
 		t_items[k] = v
 		//delete(sa.Items, k)
 	}
-	sa.Items = make(map[StatId]*StatRepr)
+	sa.Items = make(map[string]*StatRepr)
 	return t_items
 }
 
@@ -77,7 +78,7 @@ func (sa *Aggregator) Add(stat StatRepr) error {
 	defer sa.mu.Unlock()
 
 	res_time := sa.ResolutionTime(stat.Time)
-	m_k := sa.MapKey(stat.Name.UniqueId(), stat.Time)
+	m_k := sa.MapKey(stat.Name.UniqueIdString(), stat.Time)
 	element, ok := sa.Items[m_k]
 	if !ok {
 		sa.Items[m_k] = &stat
@@ -85,7 +86,6 @@ func (sa *Aggregator) Add(stat StatRepr) error {
 	}
 
 	element.Last = stat.Last
-	element.First = stat.First
 
 	element.Count += stat.Count
 	if element.Max < stat.Max {
@@ -104,7 +104,7 @@ func (sa *Aggregator) Add(stat StatRepr) error {
 func (sa *Aggregator) Clear() {
 	sa.mu.Lock()
 	defer sa.mu.Unlock()
-	sa.Items = make(map[StatId]*StatRepr)
+	sa.Items = make(map[string]*StatRepr)
 	/*
 		for k := range sa.Items {
 			delete(sa.Items, k)
