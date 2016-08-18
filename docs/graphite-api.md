@@ -169,7 +169,6 @@ Just some example output from the render apis
                     sum: 5152590,
                     min: 75544,
                     max: 84989,
-                    first: 77966,
                     last: 82659,
                     count: 64
                 }, ...
