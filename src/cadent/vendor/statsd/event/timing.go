@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 )
@@ -91,40 +90,28 @@ func (e Timing) Stats(tick time.Duration) []string {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	numInThreshold := int64(len(e.Values))
-	val_len := numInThreshold
-
 	std := float64(0)
 	avg := float64(e.Value / e.Count)
 	cumulativeValues := []int64{e.Min}
 
 	sort.Sort(statdInt64arr(e.Values))
 
-	use_count := numInThreshold
 
 	for idx, v := range e.Values {
 		std += math.Pow((float64(v) - avg), 2.0)
 		if idx > 0 {
 			cumulativeValues = append(cumulativeValues, v+cumulativeValues[idx-1])
 		}
-
 	}
-	std = math.Sqrt(std / float64(e.Count))
 
 	base := []string{
-		fmt.Sprintf("%s.count:%d|c", e.Name, int64(use_count)), // note: the final "client" actually injects the |@{samplerate} to the final outgoing lines
-		fmt.Sprintf("%s.count_ps:%d|c", e.Name, int64((float64(use_count) * float64(time.Second))/float64(tick))),
-		fmt.Sprintf("%s.mean:%d|c", e.Name, int64(avg)), // make sure e.Count != 0
-		fmt.Sprintf("%s.lower:%d|c", e.Name, e.Min),
-		fmt.Sprintf("%s.upper:%d|c", e.Name, e.Max),
-		fmt.Sprintf("%s.std:%d|c", e.Name, int64(std)),
+		fmt.Sprintf("%s.count:%d|c", e.Name, e.Count),
+		fmt.Sprintf("%s.min:%d|ms", e.Name, e.Min),
+		fmt.Sprintf("%s.max:%d|ms", e.Name, e.Max),
 		fmt.Sprintf("%s.sum:%d|c", e.Name, int64(e.Value)),
 	}
-	if e.Count > 0 {
-		sum := e.Min
-		mean := e.Min
-		thresholdBoundary := e.Max
 
+	if e.Count > 0 {
 		mid := int(math.Floor(float64(e.Count) / 2.0))
 		median := int64(0)
 		if mid < len(e.Values) {
@@ -134,48 +121,13 @@ func (e Timing) Stats(tick time.Duration) []string {
 				median = (e.Values[mid-1] + e.Values[mid]) / 2.0
 			}
 		}
+		std = math.Sqrt(std / float64(e.Count))
 		base = append(base,
-			fmt.Sprintf("%s.median:%d|c", e.Name, int64(median)),
+			fmt.Sprintf("%s.median:%d|ms", e.Name, int64(median)),
+			fmt.Sprintf("%s.std:%d|ms", e.Name, int64(e.Value)),
 		)
-		for _, pct := range e.PercentThreshold {
-			// handle 0.90 or 90%
-			multi := 1.0 / 100.0
-			per_mul := 1.0
-			if math.Abs(pct) < 1 {
-				multi = 1.0
-				per_mul = 100.0
-			}
-
-			p_name := strings.Replace(fmt.Sprintf("%d", int(math.Abs(pct)*per_mul)), ".", "", -1)
-			if val_len > 1 {
-				numInThreshold := int64(round(float64(math.Abs(pct) * multi * float64(val_len))))
-				if numInThreshold == 0 {
-					continue
-				}
-				if pct > 0 {
-					//fmt.Printf("%s thr:%d ct: %d vL: %d Cl: %d\n", e.Name, numInThreshold, e.Count, len(e.Values), len(cumulativeValues))
-					thresholdBoundary = e.Values[numInThreshold-1]
-					sum = cumulativeValues[numInThreshold-1]
-				} else {
-					thresholdBoundary = e.Values[val_len-numInThreshold]
-					sum = cumulativeValues[val_len-1] - cumulativeValues[e.Count-numInThreshold-1]
-				}
-
-				mean = sum / numInThreshold
-			}
-			base = append(base,
-				[]string{
-					fmt.Sprintf("%s.count_%s:%d|c", e.Name, p_name, int64(numInThreshold)),
-					fmt.Sprintf("%s.mean_%s:%d|c", e.Name, p_name, int64(mean)),
-				}...,
-			)
-			if pct > 0 {
-				base = append(base, fmt.Sprintf("%s.upper_%s:%d|c", e.Name, p_name, int64(thresholdBoundary)))
-			} else {
-				base = append(base, fmt.Sprintf("%s.lower_%s:%d|c", e.Name, p_name, int64(thresholdBoundary)))
-			}
-		}
 	}
+
 	return base
 }
 
