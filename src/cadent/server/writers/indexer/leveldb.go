@@ -460,7 +460,7 @@ func (lp *LevelDBIndexer) sendToWriters() error {
 				time.Sleep(time.Second)
 			default:
 				stats.StatsdClient.Incr(fmt.Sprintf("indexer.leveldb.write.send-to-writers"), 1)
-				lp.write_queue <- LevelDBIndexerJob{LD: lp, Name: skey}
+				lp.write_queue <- &LevelDBIndexerJob{LD: lp, Name: skey}
 			}
 		}
 	} else {
@@ -477,7 +477,7 @@ func (lp *LevelDBIndexer) sendToWriters() error {
 				time.Sleep(time.Second)
 			default:
 				stats.StatsdClient.Incr(fmt.Sprintf("indexer.leveldb.write.send-to-writers"), 1)
-				lp.write_queue <- LevelDBIndexerJob{LD: lp, Name: skey}
+				lp.write_queue <- &LevelDBIndexerJob{LD: lp, Name: skey}
 				time.Sleep(dur)
 			}
 		}
@@ -688,15 +688,15 @@ type LevelDBIndexerJob struct {
 	retry int
 }
 
-func (j LevelDBIndexerJob) IncRetry() int {
+func (j *LevelDBIndexerJob) IncRetry() int {
 	j.retry++
 	return j.retry
 }
-func (j LevelDBIndexerJob) OnRetry() int {
+func (j *LevelDBIndexerJob) OnRetry() int {
 	return j.retry
 }
 
-func (j LevelDBIndexerJob) DoWork() error {
+func (j *LevelDBIndexerJob) DoWork() error {
 	err := j.LD.WriteOne(j.Name)
 	if err != nil {
 		j.LD.log.Error("Insert failed for Index: %v retrying ...", j.Name.Key)

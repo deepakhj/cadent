@@ -216,7 +216,7 @@ func (my *MySQLIndexer) sendToWriters() error {
 				time.Sleep(time.Second)
 			default:
 				stats.StatsdClient.Incr(fmt.Sprintf("indexer.cassandra.write.send-to-writers"), 1)
-				my.write_queue <- MysqlIndexerJob{Msql: my, Stat: skey}
+				my.write_queue <- &MysqlIndexerJob{Msql: my, Stat: skey}
 			}
 		}
 	} else {
@@ -233,7 +233,7 @@ func (my *MySQLIndexer) sendToWriters() error {
 				time.Sleep(time.Second)
 			default:
 				stats.StatsdClient.Incr(fmt.Sprintf("indexer.cassandra.write.send-to-writers"), 1)
-				my.write_queue <- MysqlIndexerJob{Msql: my, Stat: skey}
+				my.write_queue <- &MysqlIndexerJob{Msql: my, Stat: skey}
 				time.Sleep(dur)
 			}
 		}
@@ -844,15 +844,15 @@ type MysqlIndexerJob struct {
 	retry int
 }
 
-func (j MysqlIndexerJob) IncRetry() int {
+func (j *MysqlIndexerJob) IncRetry() int {
 	j.retry++
 	return j.retry
 }
-func (j MysqlIndexerJob) OnRetry() int {
+func (j *MysqlIndexerJob) OnRetry() int {
 	return j.retry
 }
 
-func (j MysqlIndexerJob) DoWork() error {
+func (j *MysqlIndexerJob) DoWork() error {
 	err := j.Msql.WriteOne(&j.Stat)
 	if err != nil {
 		j.Msql.log.Error("Insert failed for Index: %v retrying ...", j.Stat)

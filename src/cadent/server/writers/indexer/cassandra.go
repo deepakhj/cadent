@@ -408,7 +408,7 @@ func (cass *CassandraIndexer) sendToWriters() error {
 				time.Sleep(time.Second)
 			default:
 				stats.StatsdClient.Incr(fmt.Sprintf("indexer.cassandra.write.send-to-writers"), 1)
-				cass.write_queue <- CassandraIndexerJob{Cass: cass, Stat: skey}
+				cass.write_queue <- &CassandraIndexerJob{Cass: cass, Stat: skey}
 			}
 		}
 	} else {
@@ -425,7 +425,7 @@ func (cass *CassandraIndexer) sendToWriters() error {
 				time.Sleep(time.Second)
 			default:
 				stats.StatsdClient.Incr(fmt.Sprintf("indexer.cassandra.write.send-to-writers"), 1)
-				cass.write_queue <- CassandraIndexerJob{Cass: cass, Stat: skey}
+				cass.write_queue <- &CassandraIndexerJob{Cass: cass, Stat: skey}
 				time.Sleep(dur)
 			}
 		}
@@ -715,15 +715,15 @@ type CassandraIndexerJob struct {
 	retry int
 }
 
-func (j CassandraIndexerJob) IncRetry() int {
+func (j *CassandraIndexerJob) IncRetry() int {
 	j.retry++
 	return j.retry
 }
-func (j CassandraIndexerJob) OnRetry() int {
+func (j *CassandraIndexerJob) OnRetry() int {
 	return j.retry
 }
 
-func (j CassandraIndexerJob) DoWork() error {
+func (j *CassandraIndexerJob) DoWork() error {
 	err := j.Cass.WriteOne(j.Stat)
 	if err != nil {
 		j.Cass.log.Error("Insert failed for Index: %v retrying ...", j.Stat)
