@@ -36,7 +36,7 @@ import (
 const (
 	WRITER_DEFAULT_INDEX_QUEUE_LENGTH  = 1024 * 20
 	WRITER_DEFAULT_METRIC_QUEUE_LENGTH = 1024 * 10
-	WRITER_MAX_WRITE_QUEUE             = 1024 * 1024
+	WRITER_MAX_WRITE_QUEUE             = 10 * 1024 * 1024
 )
 
 // toml config for Metrics
