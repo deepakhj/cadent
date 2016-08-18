@@ -278,6 +278,7 @@ type CassandraMetric struct {
 
 	series_encoding string
 	blobMaxBytes    int
+	blobMaxMetrics  int
 	blobOldestTime  time.Duration
 
 	// this is for Render where we may have several caches, but only "one"
@@ -363,6 +364,11 @@ func (cass *CassandraMetric) Config(conf map[string]interface{}) (err error) {
 	if _ps != nil {
 		cass.blobMaxBytes = int(_ps.(int64))
 	}
+	_ms := conf["cache_metric_size"]
+	cass.blobMaxMetrics = CACHER_METRICS_KEYS
+	if _ms != nil {
+		cass.blobMaxMetrics = int(_ms.(int64))
+	}
 
 	rdur, err := time.ParseDuration(CASSANDRA_DEFAULT_RENDER_TIMEOUT)
 	if err != nil {
@@ -372,12 +378,7 @@ func (cass *CassandraMetric) Config(conf map[string]interface{}) (err error) {
 
 	if !cass.cacher.started && !cass.cacher.inited {
 		// set the cacher bits
-		_ms := conf["cache_metric_size"]
-		if _ms != nil {
-			cass.cacher.maxKeys = int(_ms.(int64))
-		} else {
-			cass.cacher.maxKeys = CACHER_METRICS_KEYS
-		}
+		cass.cacher.maxKeys = cass.blobMaxMetrics
 
 		// match blob types
 		cass.cacher.seriesType = cass.series_encoding
@@ -395,6 +396,7 @@ func (cass *CassandraMetric) Start() {
 	/**** dispatcher queue ***/
 	cass.writer.log.Notice("Starting cassandra series writer for %s at %d bytes per series", cass.writer.db.MetricTable(), cass.blobMaxBytes)
 	cass.cacher.maxBytes = cass.blobMaxBytes
+	//cass.cacher.maxKeys = cass.blobMaxMetrics
 	cass.cacher.Start()
 
 	// register the overflower

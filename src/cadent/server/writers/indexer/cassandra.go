@@ -185,7 +185,7 @@ func (cass *CassandraIndexer) Stop() {
 
 func (cass *CassandraIndexer) Start() {
 	if cass.write_queue == nil {
-		cass.log.Notice("starting down cassandra indexer: %s", cass.Name())
+		cass.log.Notice("starting up cassandra indexer: %s", cass.Name())
 		workers := cass.num_workers
 		cass.write_queue = make(chan dispatch.IJob, cass.queue_len)
 		cass.dispatch_queue = make(chan chan dispatch.IJob, workers)
