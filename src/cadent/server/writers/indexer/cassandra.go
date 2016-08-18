@@ -88,6 +88,7 @@ import (
 	"github.com/gocql/gocql"
 	logging "gopkg.in/op/go-logging.v1"
 
+	"cadent/server/utils"
 	"cadent/server/utils/shutdown"
 	"strings"
 	"sync"
@@ -147,6 +148,7 @@ type CassandraIndexer struct {
 	num_workers    int
 	queue_len      int
 	shutitdown     uint32 //shtdown notice
+	startstop      utils.StartStop
 
 	write_queue      chan dispatch.IJob
 	dispatch_queue   chan chan dispatch.IJob
@@ -168,24 +170,9 @@ func NewCassandraIndexer() *CassandraIndexer {
 	return cass
 }
 
-func (cass *CassandraIndexer) Stop() {
-	shutdown.AddToShutdown()
-	defer shutdown.ReleaseFromShutdown()
-
-	if atomic.SwapUint32(&cass.shutitdown, 1) == 1 {
-		return // already did
-	}
-	cass.log.Notice("shutting down cassandra indexer: %s", cass.Name())
-
-	cass.cache.Stop()
-	if cass.write_queue != nil {
-		cass.write_dispatcher.Shutdown()
-	}
-}
-
 func (cass *CassandraIndexer) Start() {
-	if cass.write_queue == nil {
-		cass.log.Notice("starting down cassandra indexer: %s", cass.Name())
+	cass.startstop.Start(func() {
+		cass.log.Notice("starting up cassandra indexer: %s", cass.Name())
 		workers := cass.num_workers
 		cass.write_queue = make(chan dispatch.IJob, cass.queue_len)
 		cass.dispatch_queue = make(chan chan dispatch.IJob, workers)
@@ -196,7 +183,24 @@ func (cass *CassandraIndexer) Start() {
 		cass.cache.Start() //start cacher
 
 		go cass.sendToWriters() // the dispatcher
-	}
+	})
+}
+
+func (cass *CassandraIndexer) Stop() {
+	cass.startstop.Stop(func() {
+		shutdown.AddToShutdown()
+		defer shutdown.ReleaseFromShutdown()
+
+		if atomic.SwapUint32(&cass.shutitdown, 1) == 1 {
+			return // already did
+		}
+		cass.log.Notice("shutting down cassandra indexer: %s", cass.Name())
+
+		cass.cache.Stop()
+		if cass.write_queue != nil {
+			cass.write_dispatcher.Shutdown()
+		}
+	})
 }
 
 func (cass *CassandraIndexer) Config(conf map[string]interface{}) (err error) {
@@ -408,7 +412,7 @@ func (cass *CassandraIndexer) sendToWriters() error {
 				time.Sleep(time.Second)
 			default:
 				stats.StatsdClient.Incr(fmt.Sprintf("indexer.cassandra.write.send-to-writers"), 1)
-				cass.write_queue <- CassandraIndexerJob{Cass: cass, Stat: skey}
+				cass.write_queue <- &CassandraIndexerJob{Cass: cass, Stat: skey}
 			}
 		}
 	} else {
@@ -425,7 +429,7 @@ func (cass *CassandraIndexer) sendToWriters() error {
 				time.Sleep(time.Second)
 			default:
 				stats.StatsdClient.Incr(fmt.Sprintf("indexer.cassandra.write.send-to-writers"), 1)
-				cass.write_queue <- CassandraIndexerJob{Cass: cass, Stat: skey}
+				cass.write_queue <- &CassandraIndexerJob{Cass: cass, Stat: skey}
 				time.Sleep(dur)
 			}
 		}
@@ -715,15 +719,15 @@ type CassandraIndexerJob struct {
 	retry int
 }
 
-func (j CassandraIndexerJob) IncRetry() int {
+func (j *CassandraIndexerJob) IncRetry() int {
 	j.retry++
 	return j.retry
 }
-func (j CassandraIndexerJob) OnRetry() int {
+func (j *CassandraIndexerJob) OnRetry() int {
 	return j.retry
 }
 
-func (j CassandraIndexerJob) DoWork() error {
+func (j *CassandraIndexerJob) DoWork() error {
 	err := j.Cass.WriteOne(j.Stat)
 	if err != nil {
 		j.Cass.log.Error("Insert failed for Index: %v retrying ...", j.Stat)

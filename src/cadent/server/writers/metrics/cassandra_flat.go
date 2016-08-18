@@ -228,18 +228,18 @@ type CassandraFlatMetricJob struct {
 	Cass  *CassandraFlatWriter
 	Name  *repr.StatName
 	Stats repr.StatReprSlice // where the point list live
-	retry int
+	Retry int
 }
 
-func (j CassandraFlatMetricJob) IncRetry() int {
-	j.retry++
-	return j.retry
+func (j *CassandraFlatMetricJob) IncRetry() int {
+	j.Retry++
+	return j.Retry
 }
-func (j CassandraFlatMetricJob) OnRetry() int {
-	return j.retry
+func (j *CassandraFlatMetricJob) OnRetry() int {
+	return j.Retry
 }
 
-func (j CassandraFlatMetricJob) DoWork() error {
+func (j *CassandraFlatMetricJob) DoWork() error {
 	_, err := j.Cass.InsertMulti(j.Name, j.Stats)
 	return err
 }
@@ -257,8 +257,10 @@ type CassandraFlatWriter struct {
 	cacher                *Cacher
 	cacheOverFlowListener *broadcast.Listener // on byte overflow of cacher force a write
 
-	shutitdown        bool // just a flag
-	writes_per_second int  // allowed writes per second
+	shutitdown bool // just a flag
+	startstop  utils.StartStop
+
+	writes_per_second int // allowed writes per second
 	num_workers       int
 	queue_len         int
 	max_write_size    int           // size of that buffer before a flush
@@ -365,40 +367,42 @@ func NewCassandraFlatWriter(conf map[string]interface{}) (*CassandraFlatWriter, 
 }
 
 func (cass *CassandraFlatWriter) Stop() {
-	shutdown.AddToShutdown()
-	defer shutdown.ReleaseFromShutdown()
+	cass.startstop.Stop(func() {
+		shutdown.AddToShutdown()
+		defer shutdown.ReleaseFromShutdown()
 
-	cass.log.Warning("Starting Shutdown of writer")
-	if cass.shutitdown {
-		return // already did
-	}
-	cass.shutitdown = true
-
-	cass.cacher.Stop()
-
-	mets := cass.cacher.Queue
-	mets_l := len(mets)
-	cass.log.Warning("Shutting down, exhausting the queue (%d items) and quiting", mets_l)
-	// full tilt write out
-	did := 0
-	for _, queueitem := range mets {
-		if did%100 == 0 {
-			cass.log.Warning("shutdown purge: written %d/%d...", did, mets_l)
+		cass.log.Warning("Starting Shutdown of writer")
+		if cass.shutitdown {
+			return // already did
 		}
-		name, points, _ := cass.cacher.GetById(queueitem.metric)
-		if points != nil {
-			stats.StatsdClient.Incr(fmt.Sprintf("writer.cassandraflat.write.send-to-writers"), 1)
-			cass.InsertMulti(name, points)
+		cass.shutitdown = true
+
+		cass.cacher.Stop()
+
+		mets := cass.cacher.Queue
+		mets_l := len(mets)
+		cass.log.Warning("Shutting down, exhausting the queue (%d items) and quiting", mets_l)
+		// full tilt write out
+		did := 0
+		for _, queueitem := range mets {
+			if did%100 == 0 {
+				cass.log.Warning("shutdown purge: written %d/%d...", did, mets_l)
+			}
+			name, points, _ := cass.cacher.GetById(queueitem.metric)
+			if points != nil {
+				stats.StatsdClient.Incr(fmt.Sprintf("writer.cassandraflat.write.send-to-writers"), 1)
+				cass.InsertMulti(name, points)
+			}
+			did++
 		}
-		did++
-	}
-	cass.log.Warning("shutdown purge: written %d/%d...", did, mets_l)
-	cass.log.Warning("Shutdown finished ... quiting cassandra writer")
+		cass.log.Warning("shutdown purge: written %d/%d...", did, mets_l)
+		cass.log.Warning("Shutdown finished ... quiting cassandra writer")
+	})
 }
 
 func (cass *CassandraFlatWriter) Start() {
 	/**** dispatcher queue ***/
-	if cass.write_queue == nil {
+	cass.startstop.Start(func() {
 		workers := cass.num_workers
 		cass.write_queue = make(chan dispatch.IJob, cass.queue_len)
 		cass.dispatch_queue = make(chan chan dispatch.IJob, workers)
@@ -407,7 +411,7 @@ func (cass *CassandraFlatWriter) Start() {
 		cass.write_dispatcher.Run()
 		cass.cacher.Start()
 		go cass.sendToWriters() // the dispatcher
-	}
+	})
 }
 
 func (cass *CassandraFlatWriter) TrapExit() {
@@ -603,7 +607,7 @@ func (cass *CassandraFlatWriter) sendToWriters() error {
 				time.Sleep(time.Second)
 			default:
 				stats.StatsdClient.Incr(fmt.Sprintf("writer.cassandraflat.write.send-to-writers"), 1)
-				cass.write_queue <- CassandraFlatMetricJob{Cass: cass, Stats: points, Name: name}
+				cass.write_queue <- &CassandraFlatMetricJob{Cass: cass, Stats: points, Name: name}
 			}
 		}
 	} else {
@@ -625,7 +629,7 @@ func (cass *CassandraFlatWriter) sendToWriters() error {
 			default:
 
 				stats.StatsdClient.Incr(fmt.Sprintf("writer.cassandraflat.write.send-to-writers"), 1)
-				cass.write_queue <- CassandraFlatMetricJob{Cass: cass, Stats: points, Name: name}
+				cass.write_queue <- &CassandraFlatMetricJob{Cass: cass, Stats: points, Name: name}
 				time.Sleep(dur)
 			}
 

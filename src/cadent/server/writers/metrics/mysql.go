@@ -112,9 +112,11 @@ type MySQLMetrics struct {
 	cacher        *Cacher
 	cacheOverFlow *broadcast.Listener // on byte overflow of cacher force a write
 
-	shutitdown        bool      // just a flag
-	shutdown          chan bool // just a flag
-	writes_per_second int       // allowed writes per second
+	shutitdown bool      // just a flag
+	shutdown   chan bool // just a flag
+	startstop  utils.StartStop
+
+	writes_per_second int // allowed writes per second
 	num_workers       int
 	queue_len         int
 
@@ -220,45 +222,49 @@ func (my *MySQLMetrics) Config(conf map[string]interface{}) error {
 }
 
 func (my *MySQLMetrics) Start() {
-	my.log.Notice("Starting mysql writer for %s at %d bytes per series", my.db.Tablename(), my.blob_max_bytes)
-	my.cacher.maxBytes = my.blob_max_bytes
-	my.cacher.Start()
+	my.startstop.Start(func() {
+		my.log.Notice("Starting mysql writer for %s at %d bytes per series", my.db.Tablename(), my.blob_max_bytes)
+		my.cacher.maxBytes = my.blob_max_bytes
+		my.cacher.Start()
 
-	// only register this when we start as we really want to consume
-	my.cacheOverFlow = my.cacher.GetOverFlowChan()
-	go my.overFlowWrite()
+		// only register this when we start as we really want to consume
+		my.cacheOverFlow = my.cacher.GetOverFlowChan()
+		go my.overFlowWrite()
+	})
 }
 
 func (my *MySQLMetrics) Stop() {
-	shutdown.AddToShutdown()
-	defer shutdown.ReleaseFromShutdown()
-	my.log.Warning("Starting Shutdown of writer")
+	my.startstop.Stop(func() {
+		shutdown.AddToShutdown()
+		defer shutdown.ReleaseFromShutdown()
+		my.log.Warning("Starting Shutdown of writer")
 
-	if my.shutitdown {
-		return // already did
-	}
-	my.shutitdown = true
-
-	my.cacher.Stop()
-
-	mets := my.cacher.Queue
-	mets_l := len(mets)
-	my.log.Warning("Shutting down, exhausting the queue (%d items) and quiting", mets_l)
-	// full tilt write out
-	did := 0
-	for _, queueitem := range mets {
-		if did%100 == 0 {
-			my.log.Warning("shutdown purge: written %d/%d...", did, mets_l)
+		if my.shutitdown {
+			return // already did
 		}
-		name, series, _ := my.cacher.GetSeriesById(queueitem.metric)
-		if series != nil {
-			stats.StatsdClient.Incr(fmt.Sprintf("writer.mysql.write.send-to-writers"), 1)
-			my.InsertSeries(name, series)
+		my.shutitdown = true
+
+		my.cacher.Stop()
+
+		mets := my.cacher.Queue
+		mets_l := len(mets)
+		my.log.Warning("Shutting down, exhausting the queue (%d items) and quiting", mets_l)
+		// full tilt write out
+		did := 0
+		for _, queueitem := range mets {
+			if did%100 == 0 {
+				my.log.Warning("shutdown purge: written %d/%d...", did, mets_l)
+			}
+			name, series, _ := my.cacher.GetSeriesById(queueitem.metric)
+			if series != nil {
+				stats.StatsdClient.Incr(fmt.Sprintf("writer.mysql.write.send-to-writers"), 1)
+				my.InsertSeries(name, series)
+			}
+			did++
 		}
-		did++
-	}
-	my.log.Warning("shutdown purge: written %d/%d...", did, mets_l)
-	my.log.Warning("Shutdown finished ... quiting mysql blob writer")
+		my.log.Warning("shutdown purge: written %d/%d...", did, mets_l)
+		my.log.Warning("Shutdown finished ... quiting mysql blob writer")
+	})
 
 }
 

@@ -33,6 +33,7 @@ package metrics
 import (
 	"cadent/server/broadcast"
 	"cadent/server/repr"
+	"cadent/server/utils"
 	"cadent/server/utils/shutdown"
 	"cadent/server/writers/indexer"
 	"errors"
@@ -58,6 +59,7 @@ type FileMetrics struct {
 	write_lock    sync.Mutex
 	rotate_check  time.Duration
 	shutdown      *broadcast.Broadcaster
+	startstop     utils.StartStop
 
 	log *logging.Logger
 }
@@ -72,13 +74,17 @@ func NewFileMetrics() *FileMetrics {
 
 // TODO
 func (fi *FileMetrics) Stop() {
-	shutdown.AddToShutdown()
+	fi.startstop.Stop(func() {
+		shutdown.AddToShutdown()
 
-	fi.shutdown.Send(true)
+		fi.shutdown.Send(true)
+	})
 }
 
 func (fi *FileMetrics) Start() {
-	go fi.PeriodicRotate()
+	fi.startstop.Start(func() {
+		go fi.PeriodicRotate()
+	})
 }
 
 func (fi *FileMetrics) SetIndexer(idx indexer.Indexer) error {

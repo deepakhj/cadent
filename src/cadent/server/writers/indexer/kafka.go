@@ -26,6 +26,7 @@ package indexer
 import (
 	"cadent/server/repr"
 	"cadent/server/stats"
+	"cadent/server/utils"
 	"cadent/server/utils/shutdown"
 	"cadent/server/writers/dbs"
 	"encoding/json"
@@ -76,6 +77,7 @@ type KafkaIndexer struct {
 	shutitdown  bool
 	indexerId   string
 	log         *logging.Logger
+	startstop   utils.StartStop
 }
 
 func NewKafkaIndexer() *KafkaIndexer {
@@ -110,18 +112,23 @@ func (kf *KafkaIndexer) Config(conf map[string]interface{}) error {
 }
 
 func (kf *KafkaIndexer) Start() {
-	kf.log.Notice("starting kafka indexer: %s", kf.Name())
+	kf.startstop.Start(func() {
+		kf.log.Notice("starting kafka indexer: %s", kf.Name())
+	})
 }
 
 func (kf *KafkaIndexer) Stop() {
-	kf.log.Notice("shutting down cassandra indexer: %s", kf.Name())
-	shutdown.AddToShutdown()
-	defer shutdown.ReleaseFromShutdown()
-	kf.shutitdown = true
-	time.Sleep(time.Second) // wait for any lingering writes
-	if err := kf.conn.Close(); err != nil {
-		kf.log.Error("Failed to shut down producer cleanly %v", err)
-	}
+	kf.startstop.Stop(func() {
+		kf.log.Notice("shutting down cassandra indexer: %s", kf.Name())
+
+		shutdown.AddToShutdown()
+		defer shutdown.ReleaseFromShutdown()
+		kf.shutitdown = true
+		time.Sleep(time.Second) // wait for any lingering writes
+		if err := kf.conn.Close(); err != nil {
+			kf.log.Error("Failed to shut down producer cleanly %v", err)
+		}
+	})
 }
 
 func (kf *KafkaIndexer) Name() string {
