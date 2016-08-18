@@ -1,3 +1,19 @@
+/*
+Copyright 2016 Under Armour, Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package accumulator
 
 import (
@@ -12,7 +28,6 @@ import (
 
 func TestAccumualtorAccumulator(t *testing.T) {
 	// Only pass t into top-level Convey calls
-
 	//profiler
 	//go http.ListenAndServe(":6065", nil)
 
@@ -93,7 +108,7 @@ func TestAccumualtorAccumulator(t *testing.T) {
 		})
 	})
 
-	tickC := make(chan splitter.SplitItem)
+	tickC := make(chan splitter.SplitItem, 128)
 	statsd_acc.Accumulate.SetOptions([][]string{
 		{"legacyNamespace", "true"},
 		{"prefixGauge", "gauges"},
@@ -139,7 +154,6 @@ func TestAccumualtorAccumulator(t *testing.T) {
 					t.Logf("FlushLine %s", l.Line())
 				}
 			}
-			return
 		}
 		t_f()
 		Convey("should have 30 flushed lines", func() {
@@ -201,7 +215,6 @@ func TestAccumualtorAccumulator(t *testing.T) {
 					t.Logf("FlushLine %s", l.Line())
 				}
 			}
-			return
 		}
 		t_f()
 		Convey("should have 72 flushed lines", func() {
@@ -247,7 +260,6 @@ func TestAccumualtorAccumulator(t *testing.T) {
 					t.Logf("FlushLine %s", l.Line())
 				}
 			}
-			return
 		}
 
 		t_f()

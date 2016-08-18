@@ -1,4 +1,20 @@
 /*
+Copyright 2016 Under Armour, Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+/*
 	UDP clients
 */
 
@@ -82,7 +98,7 @@ func NewUDPClient(server *Server, hashers *[]*ConstHasher, conn net.PacketConn, 
 }
 
 func (client *UDPClient) ShutDown() {
-	client.shutdowner.Send(true)
+	client.shutdowner.Close()
 }
 
 func (client *UDPClient) SetBufferSize(size int) error {
@@ -140,7 +156,6 @@ func (client *UDPClient) consume(inchan chan splitter.SplitItem, out_queue chan 
 			return
 		}
 	}
-	return
 }
 
 // pick a channel to push the stat to
@@ -192,7 +207,7 @@ func (client *UDPClient) procLines(line string, job_queue chan dispatch.IJob, ou
 	return
 }
 
-func (client *UDPClient) run(out_queue chan splitter.SplitItem) {
+func (client *UDPClient) run(out_queue chan splitter.SplitItem, close_client chan bool) {
 	shuts := client.shutdowner.Listen()
 	defer shuts.Close()
 
@@ -202,9 +217,10 @@ func (client *UDPClient) run(out_queue chan splitter.SplitItem) {
 			client.server.ProcessSplitItem(splitem, out_queue)
 		case <-shuts.Ch:
 			return
+		case <-close_client:
+			return
 		}
 	}
-	return
 }
 
 func (client *UDPClient) getLines(job_queue chan dispatch.IJob, out_queue chan splitter.SplitItem) {
@@ -225,17 +241,16 @@ func (client *UDPClient) getLines(job_queue chan dispatch.IJob, out_queue chan s
 			}
 		}
 	}
-	return
 }
 
-func (client UDPClient) handleRequest(out_queue chan splitter.SplitItem) {
+func (client UDPClient) handleRequest(out_queue chan splitter.SplitItem, close_client chan bool) {
 
 	// UDP clients are basically "one" uber client (at least per socket)
 	// DO NOT use work counts here, the UDP sockets are "multiplexed" using SO_CONNREUSE
 	// so we have kernel level toggling between the various sockets so each "worker" is really
 	// it's own little UDP listener land
-	go client.run(out_queue)
-	go client.run(client.out_queue) // bleed out non-socket inputs
+	go client.run(out_queue, close_client)
+	go client.run(client.out_queue, close_client) // bleed out non-socket inputs
 	go client.getLines(nil, out_queue)
 
 	return

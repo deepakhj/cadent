@@ -1,4 +1,20 @@
 /*
+Copyright 2016 Under Armour, Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+/*
 	The Cassandra Index Writer/Reader
 
 	The table should have this schema to match the repr item
@@ -15,6 +31,49 @@
 		pass: ""
 
 
+
+	a "brief" schema ..
+
+	CREATE TYPE metric.segment_pos (
+    		pos int,
+    		segment text
+	);
+
+	CREATE TABLE metric.segment (
+   		pos int,
+   		segment text,
+   		PRIMARY KEY (pos, segment)
+	) WITH COMPACT STORAGE AND CLUSTERING ORDER BY (segment ASC)
+
+
+	CREATE TABLE metric.path (
+    		segment frozen<segment_pos>,
+    		path text,
+    		length int,
+    		has_data boolean,
+ 		id varchar,  # repr.StatName.UniqueIDString()
+  		PRIMARY KEY ((segment, length), path, id)
+	) WITH CLUSTERING ORDER BY (path ASC)
+
+	CREATE INDEX ON metric.path (id);
+
+	CREATE TABLE metric.tag (
+    		id varchar,  # see repr.StatName.UniqueId()
+    		tags list<text>  # this will be a [ "name=val", "name=val", ...] so we can do `IN "moo=goo" in tag`
+    		PRIMARY KEY (id)
+	);
+	CREATE INDEX ON metric.tag (tags);
+
+	# an index of tags basically to do name="{regex}" things
+	# get a list of name=values and then Q the metric.tag for id lists
+	CREATE TABLE metric.tag_list (
+		name text
+    		value text
+    		PRIMARY KEY (name)
+	);
+	CREATE INDEX ON metric.tag_list (value);
+
+
 */
 
 package indexer
@@ -29,8 +88,10 @@ import (
 	"github.com/gocql/gocql"
 	logging "gopkg.in/op/go-logging.v1"
 
+	"cadent/server/utils/shutdown"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -45,11 +106,10 @@ const (
 /** Being Cassandra we need some mappings to match the schemas **/
 
 /*
- 	metric.segment (
-       pos int,
-       segment text,
-   	   PRIMARY KEY (pos, segment)
-    )
+ 	CREATE TYPE metric.segment_pos (
+    		pos int,
+    		segment text
+	);
 */
 type CassSegment struct {
 	Pos     int
@@ -57,55 +117,36 @@ type CassSegment struct {
 }
 
 /*
- 	metric.path (
-		segment frozen<segment_pos>,
-		path text,
-		length int,
-		has_data bool,
-		PRIMARY KEY (segment, path, has_data)
+ 	CREATE TABLE metric.path (
+            segment frozen<segment_pos>,
+            length int,
+            path text,
+            id varchar,
+            has_data boolean,
+            PRIMARY KEY (segment, length, path, id)
+        )
 */
 type CassPath struct {
 	Segment CassSegment
 	Path    string
+	Id      string
 	Length  int
 	Hasdata bool
 }
 
-// the singleton
-var _CASS_CACHER_SINGLETON map[string]*Cacher
-var _cass_cacher_mutex sync.Mutex
-
-func _get_cacher_signelton(nm string) (*Cacher, error) {
-	_cass_cacher_mutex.Lock()
-	defer _cass_cacher_mutex.Unlock()
-
-	if val, ok := _CASS_CACHER_SINGLETON[nm]; ok {
-		return val, nil
-	}
-
-	cacher := NewCacher()
-	_CASS_CACHER_SINGLETON[nm] = cacher
-	return cacher, nil
-}
-
-// special onload init
-func init() {
-	_CASS_CACHER_SINGLETON = make(map[string]*Cacher)
-}
-
 /****************** Writer *********************/
 type CassandraIndexer struct {
-	db   *dbs.CassandraDB
-	conn *gocql.Session
+	db        *dbs.CassandraDB
+	conn      *gocql.Session
+	indexerId string
 
 	write_list     []repr.StatRepr // buffer the writes so as to do "multi" inserts per query
 	max_write_size int             // size of that buffer before a flush
 	max_idle       time.Duration   // either max_write_size will trigger a write or this time passing will
 	write_lock     sync.Mutex
-	shutonce       sync.Once
 	num_workers    int
 	queue_len      int
-	_accept        bool //shtdown notice
+	shutitdown     uint32 //shtdown notice
 
 	write_queue      chan dispatch.IJob
 	dispatch_queue   chan chan dispatch.IJob
@@ -122,24 +163,38 @@ type CassandraIndexer struct {
 func NewCassandraIndexer() *CassandraIndexer {
 	cass := new(CassandraIndexer)
 	cass.log = logging.MustGetLogger("indexer.cassandra")
-	cass._accept = true
+	atomic.SwapUint32(&cass.shutitdown, 0)
 	cass.findcache = lrucache.NewTTLLRUCache(CASSANDRA_RESULT_CACHE_SIZE, CASSANDRA_RESULT_CACHE_TTL)
 	return cass
 }
 
 func (cass *CassandraIndexer) Stop() {
-	cass._accept = false
-	cass.shutonce.Do(cass.cache.Stop)
+	shutdown.AddToShutdown()
+	defer shutdown.ReleaseFromShutdown()
+
+	if atomic.SwapUint32(&cass.shutitdown, 1) == 1 {
+		return // already did
+	}
+	cass.log.Notice("shutting down cassandra indexer: %s", cass.Name())
+
+	cass.cache.Stop()
+	if cass.write_queue != nil {
+		cass.write_dispatcher.Shutdown()
+	}
 }
 
 func (cass *CassandraIndexer) Start() {
 	if cass.write_queue == nil {
+		cass.log.Notice("starting down cassandra indexer: %s", cass.Name())
 		workers := cass.num_workers
 		cass.write_queue = make(chan dispatch.IJob, cass.queue_len)
 		cass.dispatch_queue = make(chan chan dispatch.IJob, workers)
 		cass.write_dispatcher = dispatch.NewDispatch(workers, cass.dispatch_queue, cass.write_queue)
 		cass.write_dispatcher.SetRetries(2)
 		cass.write_dispatcher.Run()
+
+		cass.cache.Start() //start cacher
+
 		go cass.sendToWriters() // the dispatcher
 	}
 }
@@ -149,16 +204,16 @@ func (cass *CassandraIndexer) Config(conf map[string]interface{}) (err error) {
 	if gots == nil {
 		return fmt.Errorf("Indexer: `dsn` (server1,server2,server3) is needed for cassandra config")
 	}
-	dsn := gots.(string)
-
-	db, err := dbs.NewDB("cassandra", dsn, conf)
+	cass.indexerId = fmt.Sprintf("%v:%v/%v/%v|%v", gots, conf["port"], conf["keyspace"], conf["path_table"], conf["segment_table"])
+	cass.log.Notice("Connecting Indexer to Cassandra %s", cass.indexerId)
+	db, err := dbs.NewDB("cassandra", cass.indexerId, conf)
 	if err != nil {
 		return err
 	}
 	cass.db = db.(*dbs.CassandraDB)
 	cass.conn = db.Connection().(*gocql.Session)
 
-	// tweak queus and worker sizes
+	// tweak queues and worker sizes
 	_workers := conf["write_workers"]
 	cass.num_workers = CASSANDRA_INDEXER_WORKERS
 	if _workers != nil {
@@ -171,7 +226,8 @@ func (cass *CassandraIndexer) Config(conf map[string]interface{}) (err error) {
 		cass.queue_len = int(_qs.(int64))
 	}
 
-	cass.cache, err = _get_cacher_signelton(dsn)
+	c_key := "indexer:cassandra:" + cass.indexerId
+	cass.cache, err = getCacherSingleton(c_key)
 	if err != nil {
 		return err
 	}
@@ -187,15 +243,20 @@ func (cass *CassandraIndexer) Config(conf map[string]interface{}) (err error) {
 		cass.writes_per_second = int(_ws.(int64))
 	}
 
-	cass.Start() // fire it up
+	//cass.Start() // fire it up
 
 	return nil
 }
 
-func (cass *CassandraIndexer) WriteOne(skey string) error {
+func (cass *CassandraIndexer) Name() string {
+	return cass.indexerId
+}
+
+func (cass *CassandraIndexer) WriteOne(inname repr.StatName) error {
 	defer stats.StatsdSlowNanoTimeFunc(fmt.Sprintf("indexer.cassandra.write.path-time-ns"), time.Now())
 	stats.StatsdClientSlow.Incr("indexer.cassandra.noncached-writes-path", 1)
 
+	skey := inname.Key
 	s_parts := strings.Split(skey, ".")
 	p_len := len(s_parts)
 
@@ -223,6 +284,7 @@ func (cass *CassandraIndexer) WriteOne(skey string) error {
 	cur_part := ""
 	segments := []CassSegment{}
 	paths := []CassPath{}
+	unique_ID := inname.UniqueIdString()
 
 	for idx, part := range s_parts {
 		if len(cur_part) > 1 {
@@ -236,6 +298,7 @@ func (cass *CassandraIndexer) WriteOne(skey string) error {
 		segments = append(segments, on_segment)
 
 		on_path := CassPath{
+			Id:      unique_ID,
 			Segment: on_segment,
 			Path:    skey,
 			Length:  p_len - 1, // starts at 0
@@ -280,11 +343,11 @@ func (cass *CassandraIndexer) WriteOne(skey string) error {
 		*/
 		if skey != seg.Segment && idx < len(paths)-2 {
 			Q = fmt.Sprintf(
-				"INSERT INTO %s (segment, path, length, has_data) VALUES  ({pos: ?, segment: ?}, ?, ?, ?)",
+				"INSERT INTO %s (segment, path, id, length, has_data) VALUES  ({pos: ?, segment: ?}, ?, ?, ?, ?)",
 				cass.db.PathTable(),
 			)
 			err = cass.conn.Query(Q,
-				seg.Pos, seg.Segment, seg.Segment+"."+s_parts[idx+1], seg.Pos+1, false,
+				seg.Pos, seg.Segment, seg.Segment+"."+s_parts[idx+1], unique_ID, seg.Pos+1, false,
 			).Exec()
 			//cass.log.Critical("NODATA:: Seg INS: %s PATH: %s Len: %d", seg.Segment, seg.Segment+"."+s_parts[idx+1], seg.Pos)
 		}
@@ -303,7 +366,7 @@ func (cass *CassandraIndexer) WriteOne(skey string) error {
 
 		*/
 		Q = fmt.Sprintf(
-			"INSERT INTO %s (segment, path, length, has_data) VALUES  ({pos: ?, segment: ?}, ?, ?, ?)",
+			"INSERT INTO %s (segment, path, id, length, has_data) VALUES  ({pos: ?, segment: ?}, ?, ?, ?, ?)",
 			cass.db.PathTable(),
 		)
 
@@ -313,12 +376,12 @@ func (cass *CassandraIndexer) WriteOne(skey string) error {
 			length int
 		*/
 		err = cass.conn.Query(Q,
-			seg.Pos, seg.Segment, skey, p_len-1, true,
+			seg.Pos, seg.Segment, skey, unique_ID, p_len-1, true,
 		).Exec()
 		//cass.log.Critical("DATA:: Seg INS: %s PATH: %s Len: %d", seg.Segment, skey, p_len-1)
 
 		if err != nil {
-			cass.log.Error("Could not insert path %v :: %v", last_path, err)
+			cass.log.Error("Could not insert path %v (%v) :: %v", last_path, unique_ID, err)
 			stats.StatsdClientSlow.Incr("indexer.cassandra.path-failures", 1)
 		} else {
 			stats.StatsdClientSlow.Incr("indexer.cassandra.path-writes", 1)
@@ -336,12 +399,12 @@ func (cass *CassandraIndexer) sendToWriters() error {
 	if cass.writes_per_second <= 0 {
 		cass.log.Notice("Starting indexer writer: No rate limiting enabled")
 		for {
-			if !cass._accept {
+			if cass.shutitdown == 1 {
 				return nil
 			}
 			skey := cass.cache.Pop()
-			switch skey {
-			case "":
+			switch skey.IsBlank() {
+			case true:
 				time.Sleep(time.Second)
 			default:
 				stats.StatsdClient.Incr(fmt.Sprintf("indexer.cassandra.write.send-to-writers"), 1)
@@ -353,12 +416,12 @@ func (cass *CassandraIndexer) sendToWriters() error {
 		cass.log.Notice("Starting indexer writer: limiter every %f nanoseconds (%d writes per second)", sleep_t, cass.writes_per_second)
 		dur := time.Duration(int(sleep_t))
 		for {
-			if !cass._accept {
+			if cass.shutitdown == 1 {
 				return nil
 			}
 			skey := cass.cache.Pop()
-			switch skey {
-			case "":
+			switch skey.IsBlank() {
+			case true:
 				time.Sleep(time.Second)
 			default:
 				stats.StatsdClient.Incr(fmt.Sprintf("indexer.cassandra.write.send-to-writers"), 1)
@@ -370,7 +433,7 @@ func (cass *CassandraIndexer) sendToWriters() error {
 }
 
 // keep an index of the stat keys and their fragments so we can look up
-func (cass *CassandraIndexer) Write(skey string) error {
+func (cass *CassandraIndexer) Write(skey repr.StatName) error {
 	return cass.cache.Add(skey)
 }
 
@@ -462,7 +525,7 @@ func (cass *CassandraIndexer) FindNonRegex(metric string) (MetricFindItems, erro
 	// grab all the paths that match this length if there is no regex needed
 	// these are the "data/leaf" nodes
 	cass_Q := fmt.Sprintf(
-		"SELECT path,length,has_data FROM %s WHERE segment={pos: ?, segment: ?} ",
+		"SELECT id,path,length,has_data FROM %s WHERE segment={pos: ?, segment: ?} ",
 		cass.db.PathTable(),
 	)
 	iter := cass.conn.Query(cass_Q,
@@ -473,10 +536,11 @@ func (cass *CassandraIndexer) FindNonRegex(metric string) (MetricFindItems, erro
 	var ms MetricFindItem
 	var on_pth string
 	var pth_len int
+	var id string
 	var has_data bool
 
 	// just grab the "n+1" length ones
-	for iter.Scan(&on_pth, &pth_len, &has_data) {
+	for iter.Scan(&id, &on_pth, &pth_len, &has_data) {
 		if pth_len > m_len {
 			continue
 		}
@@ -491,6 +555,7 @@ func (cass *CassandraIndexer) FindNonRegex(metric string) (MetricFindItems, erro
 			ms.Expandable = 0
 			ms.Leaf = 1
 			ms.AllowChildren = 0
+			ms.UniqueId = id
 		} else {
 			ms.Expandable = 1
 			ms.Leaf = 0
@@ -527,7 +592,7 @@ func (cass *CassandraIndexer) FindRoot() (MetricFindItems, error) {
 		ms.Text = seg
 		ms.Id = seg
 		ms.Path = seg
-
+		ms.UniqueId = ""
 		ms.Expandable = 1
 		ms.Leaf = 0
 		ms.AllowChildren = 1
@@ -622,13 +687,31 @@ func (cass *CassandraIndexer) Find(metric string) (MetricFindItems, error) {
 	return mt, nil
 }
 
+// delete a path from the index
+// TODO
+func (cass *CassandraIndexer) Delete(name *repr.StatName) (err error) {
+	return nil
+	/*
+		// just remove the
+		cass_Q := fmt.Sprintf(
+			"DELETE FROM %s WHERE segment={pos: ?, segment: ?} AND has_data=1 AND length=? AND id=?",
+			cass.db.PathTable(),
+		)
+
+		err = cass.conn.Query(cass_Q,
+			m_len-1, metric,
+		).Exec()
+		return err
+	*/
+}
+
 /************************************************************************/
 /**********  Standard Worker Dispatcher JOB   ***************************/
 /************************************************************************/
 // insert job queue workers
 type CassandraIndexerJob struct {
 	Cass  *CassandraIndexer
-	Stat  string
+	Stat  repr.StatName
 	retry int
 }
 

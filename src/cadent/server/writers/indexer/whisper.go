@@ -1,4 +1,20 @@
 /*
+Copyright 2016 Under Armour, Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+/*
 	THe Whisper "indexer"
 
 	Does not "index" as the metrics writer will do that, but does do the globing matcher
@@ -8,6 +24,7 @@
 package indexer
 
 import (
+	"cadent/server/repr"
 	"cadent/server/stats"
 	"fmt"
 	logging "gopkg.in/op/go-logging.v1"
@@ -43,12 +60,22 @@ func (ws *WhisperIndexer) Config(conf map[string]interface{}) error {
 	return nil
 }
 
+func (ws *WhisperIndexer) Start() {
+	//noop
+}
+
 func (ws *WhisperIndexer) Stop() {
 	//noop
 }
 
+func (ws *WhisperIndexer) Name() string { return "whisper-indexer" }
+
+func (ws *WhisperIndexer) Delete(name *repr.StatName) error {
+	return nil //noop
+}
+
 //noop
-func (ws *WhisperIndexer) Write(skey string) error {
+func (ws *WhisperIndexer) Write(skey repr.StatName) error {
 	return nil
 }
 
@@ -116,10 +143,13 @@ func (ws *WhisperIndexer) Find(metric string) (MetricFindItems, error) {
 		ms.Id = p   // ID is whatever we want
 		ms.Path = t // "path" is what our interface expects to be the "moo.goo.blaa" thing
 
+		stat_name := repr.StatName{Key: p}
 		if is_data {
+			uid := stat_name.UniqueIdString()
 			ms.Expandable = 0
 			ms.Leaf = 1
 			ms.AllowChildren = 0
+			ms.UniqueId = uid
 		} else {
 			ms.Expandable = 1
 			ms.Leaf = 0

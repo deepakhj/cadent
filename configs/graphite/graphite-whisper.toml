@@ -1,0 +1,63 @@
+##
+##  Whisper ONLY writer
+##
+##  a basic "carbon" like config
+##
+##  note the `backend = "BLACKHOLE"` below, this implies the Lines stop at the writer
+##
+##  cadent --config=graphite.toml --prereg=graphite-whisper.toml
+##
+
+[graphite-proxy-map]
+listen_server="graphite-proxy" # which listener to sit in front of  (must be in the main config)
+default_backend="graphite-proxy"  # failing a match go here
+
+    [graphite-proxy-map.accumulator]
+    backend = "BLACKHOLE"
+    input_format = "graphite"
+    output_format = "graphite"
+    accumulate_flush = "5s"
+    random_ticker_start = false
+
+    # aggregate bin counts
+    times = ["5s:1h", "1m:168h"]
+
+    # Whisper writer
+    [graphite-proxy-map.accumulator.writer.metrics]
+        driver = "whisper"
+        dsn = "/tmp/graphite/whisper"
+        [graphite-proxy-map.accumulator.writer.metrics.options]
+        write_queue_length=100
+        writes_per_second=100
+        cache_series_type="gorilla"
+        cache_byte_size=2048
+        cache_overflow_method="drop"
+
+
+    # no need to index for whisper style, as it's just "on the file system" globs
+    #  see api.indexer section
+    [graphite-proxy-map.accumulator.writer.indexer]
+        driver = "noop"
+
+
+    # Render http APIs
+
+    [graphite-proxy-map.accumulator.api]
+        base_path = "/graphite/"
+        listen = "0.0.0.0:8083"
+        # this is the read cache that will keep the latest goods in ram
+        read_cache_total_bytes=16384000
+        read_cache_max_bytes_per_metric=16384
+
+            [graphite-proxy-map.accumulator.api.metrics]
+            driver = "whisper"
+            dsn = "/tmp/graphite/whisper"
+
+            [graphite-proxy-map.accumulator.api.indexer]
+            driver = "leveldb"
+            dsn = "/tmp/graphite/idx"
+
+    # Sub string type match
+    [[graphite-proxy-map.map]]
+        substring=".marvel"  # ignore elastic search marvel stuff
+        reject=true

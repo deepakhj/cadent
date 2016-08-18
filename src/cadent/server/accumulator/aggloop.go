@@ -1,4 +1,20 @@
 /*
+Copyright 2016 Under Armour, Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+/*
    The accumulators first pass is to do the first flush time for incoming stats
    after that it's past to this object where it manages the multiple "keeper" loops
    for various time snapshots (i.e. 10s, 1m, 10m, etc)
@@ -54,7 +70,7 @@ func (t StatJob) DoWork() error {
 }
 
 type AggregateLoop struct {
-	mus []sync.Mutex
+	mus []*sync.Mutex
 
 	// these are assigned from the config file in the PreReg config file
 	FlushTimes []time.Duration `json:"flush_time"`
@@ -95,7 +111,7 @@ func NewAggregateLoop(flushtimes []time.Duration, ttls []time.Duration, name str
 		Name:                name,
 		FlushTimes:          flushtimes,
 		TTLTimes:            ttls,
-		mus:                 make([]sync.Mutex, len(flushtimes)),
+		mus:                 make([]*sync.Mutex, len(flushtimes)),
 		Shutdown:            broadcast.New(1),
 		Aggregators:         repr.NewMulti(flushtimes),
 		InputChan:           make(chan repr.StatRepr, AGGLOOP_DEFAULT_QUEUE_LENGTH),
@@ -184,14 +200,14 @@ func (agg *AggregateLoop) SetWriter(conf writers.WriterConfig) error {
 		wr.SetIndexer(idx)
 
 		agg.OutWriters = append(agg.OutWriters, wr)
-		agg.log.Notice("Started duration %s Aggregator writer", dur.String())
+		agg.log.Notice("Set Aggregator writer @ %s", dur.String())
 		if num_writers == metrics.FirstResolution {
 			agg.log.Notice("Only one writer needed for this writer driver")
 			break
 		}
 
 	}
-	agg.log.Notice("Started %d Aggregator writers", len(agg.OutWriters))
+	agg.log.Notice("Set %d Aggregator writers", len(agg.OutWriters))
 	return nil
 }
 
@@ -203,6 +219,7 @@ func (agg *AggregateLoop) startInputLooper() {
 		agg.stat_write_queue = make(chan dispatch.IJob, AGGLOOP_DEFAULT_QUEUE_LENGTH)
 		agg.stat_dispatch_queue = make(chan chan dispatch.IJob, workers)
 		agg.stat_dispatcher = dispatch.NewDispatch(workers, agg.stat_dispatch_queue, agg.stat_write_queue)
+		agg.stat_dispatcher.Name = "aggloop"
 		agg.stat_dispatcher.Run()
 	}
 
@@ -216,7 +233,6 @@ func (agg *AggregateLoop) startInputLooper() {
 			return
 		}
 	}
-	return
 }
 
 // this is a helper function to get things to "start" on nicely "rounded"
@@ -228,7 +244,7 @@ func (agg *AggregateLoop) delayRoundedTicker(duration time.Duration) *time.Ticke
 }
 
 // start the looper for each flush time as well as the writers
-func (agg *AggregateLoop) startWriteLooper(duration time.Duration, ttl time.Duration, writer *writers.WriterLoop, mu sync.Mutex) {
+func (agg *AggregateLoop) startWriteLooper(duration time.Duration, ttl time.Duration, writer *writers.WriterLoop, mu *sync.Mutex) {
 	if agg.shutitdown {
 		agg.log.Warning("Got shutdown signal, not starting writers")
 		return
@@ -238,11 +254,12 @@ func (agg *AggregateLoop) startWriteLooper(duration time.Duration, ttl time.Dura
 
 	_dur := duration
 	_ttl := ttl
+
 	//_mu := mu
 	// start up the writers listeners
-	go writer.Start()
+	writer.Start()
 
-	post := func(items map[string]repr.StatRepr) {
+	post := func(items map[string]*repr.StatRepr) {
 		defer stats.StatsdSlowNanoTimeFunc("aggregator.postwrite-time-ns", time.Now())
 
 		//_mu.Lock()
@@ -258,8 +275,8 @@ func (agg *AggregateLoop) startWriteLooper(duration time.Duration, ttl time.Dura
 		}
 		for _, stat := range items {
 			// agg.log.Critical("FLUSH POST: %s", stat)
-			stat.Resolution = _dur.Seconds()
-			stat.TTL = int64(_ttl.Seconds()) // need to add in the TTL
+			stat.Name.Resolution = uint32(_dur.Seconds())
+			stat.Name.TTL = uint32(_ttl.Seconds()) // need to add in the TTL
 			writer.WriterChan() <- stat
 		}
 		//agg.log.Critical("CHAN WRITE: LEN: %d Items: %d", len(writer.WriterChan()), m_items)
@@ -306,12 +323,17 @@ func (agg *AggregateLoop) startWriteLooper(duration time.Duration, ttl time.Dura
 			return
 		}
 	}
-	return
 }
 
 // For every flus time, start a new timer loop to perform writes
 func (agg *AggregateLoop) Start() error {
 	agg.log.Notice("Starting Aggregator Loop for `%s`", agg.Name)
+
+	if agg.shutitdown {
+		agg.log.Warning("Got shutdown signal, not starting loop")
+		return nil
+	}
+
 	//start the input loop acceptor
 	go agg.startInputLooper()
 	for idx, writ := range agg.OutWriters {
@@ -326,17 +348,25 @@ func (agg *AggregateLoop) Start() error {
 }
 
 func (agg *AggregateLoop) Stop() {
-	agg.log.Warning("Initiating shutdown of aggregator for `%s`", agg.Name)
-	go func() {
-		agg.Shutdown.Send(true)
-		agg.shutitdown = true
-		if agg.OutReader != nil {
-			go agg.OutReader.Stop()
-		}
-		for idx := range agg.OutWriters {
-			go agg.OutWriters[idx].Stop()
-		}
-		agg.log.Warning("Shutdown of aggregator `%s`", agg.Name)
+	if agg.shutitdown {
 		return
-	}()
+	}
+	agg.log.Warning("Initiating shutdown of aggregator for `%s`", agg.Name)
+
+	if agg.stat_dispatcher != nil {
+		agg.stat_dispatcher.Shutdown()
+	}
+
+	agg.Shutdown.Send(true)
+	agg.shutitdown = true
+
+	if agg.OutReader != nil {
+		agg.OutReader.Stop()
+	}
+
+	for idx := range agg.OutWriters {
+		agg.log.Warning("Starting Shutdown of writer `%s:%s`", agg.Name, agg.OutWriters[idx].GetName())
+		agg.OutWriters[idx].Stop()
+	}
+	agg.log.Warning("Shutdown of aggregator `%s`", agg.Name)
 }

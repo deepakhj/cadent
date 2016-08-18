@@ -1,4 +1,20 @@
 /*
+Copyright 2016 Under Armour, Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+/*
    Graphite data runner, <key> <value> <time> <thigns> ...
    we allow there to be more <things> after value, so this is really "graphite style"
    space based line entries with the key as the first item
@@ -7,6 +23,7 @@
 package splitter
 
 import (
+	"cadent/server/repr"
 	"fmt"
 	"strconv"
 	"strings"
@@ -39,10 +56,15 @@ type GraphiteSplitItem struct {
 	inphase  Phase
 	inorigin Origin
 	inoname  string
+	tags     [][]string
 }
 
 func (g *GraphiteSplitItem) Key() string {
 	return g.inkey
+}
+
+func (g *GraphiteSplitItem) Tags() [][]string {
+	return g.tags
 }
 
 func (g *GraphiteSplitItem) HasTime() bool {
@@ -122,7 +144,7 @@ func (g *GraphiteSplitter) ProcessLine(line string) (SplitItem, error) {
 	//graphite_array := strings.Fields(line)
 	// clean the string of bad chars
 	line = GRAHITE_REPLACER.Replace(line)
-	graphite_array := strings.Split(line, " ")
+	graphite_array := strings.Split(line, repr.SPACE_SEPARATOR)
 	if len(graphite_array) > g.key_index {
 
 		// graphite timestamps are in unix seconds
@@ -130,7 +152,12 @@ func (g *GraphiteSplitter) ProcessLine(line string) (SplitItem, error) {
 		if len(graphite_array) >= g.time_index {
 			i, err := strconv.ParseInt(graphite_array[g.time_index], 10, 64)
 			if err == nil {
-				t = time.Unix(i, 0)
+				// nano or second tstamps
+				if i > 2147483647 {
+					t = time.Unix(0, i)
+				} else {
+					t = time.Unix(i, 0)
+				}
 			}
 		}
 		// log.Printf("IN GRAPHITE: %s ARR: %v  t_idx: %d, time: %s", graphite_array, line, graphite_array[job.time_index], t.String())

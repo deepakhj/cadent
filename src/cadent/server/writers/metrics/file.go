@@ -1,8 +1,24 @@
 /*
+Copyright 2016 Under Armour, Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+/*
 	The File write
 
 	will dump to an appended file
-	stat\tsum\tmean\tmin\tmax\tcount\tresoltion\ttime
+	stat\tsum\tmin\tmax\tcount\tlast\tresoltion\ttime
 
 
 	OPTIONS: For `Config`
@@ -17,13 +33,18 @@ package metrics
 import (
 	"cadent/server/broadcast"
 	"cadent/server/repr"
+	"cadent/server/utils/shutdown"
 	"cadent/server/writers/indexer"
+	"errors"
 	"fmt"
 	logging "gopkg.in/op/go-logging.v1"
 	"os"
 	"sync"
 	"time"
 )
+
+var errNoFilePointer = errors.New("Cannot write point, no file pointer")
+var errFileReaderNotImplemented = errors.New("FILE READER NOT IMPLMENTED")
 
 /****************** Interfaces *********************/
 type FileMetrics struct {
@@ -51,7 +72,13 @@ func NewFileMetrics() *FileMetrics {
 
 // TODO
 func (fi *FileMetrics) Stop() {
+	shutdown.AddToShutdown()
+
 	fi.shutdown.Send(true)
+}
+
+func (fi *FileMetrics) Start() {
+	go fi.PeriodicRotate()
 }
 
 func (fi *FileMetrics) SetIndexer(idx indexer.Indexer) error {
@@ -98,8 +125,6 @@ func (fi *FileMetrics) Config(conf map[string]interface{}) error {
 	fi.fp = nil
 	fi.Rotate()
 
-	go fi.PeriodicRotate()
-
 	return nil
 }
 
@@ -119,7 +144,8 @@ func (fi *FileMetrics) PeriodicRotate() (err error) {
 				fi.fp.Close()
 				fi.fp = nil
 			}
-			break
+			shutdown.ReleaseFromShutdown()
+			return
 		case <-ticks.C:
 			err := fi.Rotate()
 			if err != nil {
@@ -127,7 +153,6 @@ func (fi *FileMetrics) PeriodicRotate() (err error) {
 			}
 		}
 	}
-	return nil
 }
 
 // Perform the actual act of rotating and reopening file.
@@ -169,30 +194,28 @@ func (fi *FileMetrics) Rotate() (err error) {
 
 		return err
 	}
-
-	return
 }
 
 func (fi *FileMetrics) WriteLine(line string) (int, error) {
 	fi.write_lock.Lock()
 	defer fi.write_lock.Unlock()
 	if fi.fp == nil {
-		return 0, fmt.Errorf("Cannot write point, no file pointer")
+		return 0, errNoFilePointer
 	}
 	return fi.fp.Write([]byte(line))
 }
 
 func (fi *FileMetrics) Write(stat repr.StatRepr) error {
 
-	// stat\tsum\tmean\tmin\tmax\tlast\tcount\tresoltion\ttime\tttl
+	// stat\tuid\tsum\tmin\tmax\tlast\tcount\tresoltion\ttime\tttl
 
 	line := fmt.Sprintf(
-		"%s\t%0.6f\t%0.6f\t%0.6f\t%0.6f\t%0.6f\t%d\t%0.2f\t%d\t%d\n",
-		stat.Key, stat.Sum, stat.Mean, stat.Min, stat.Max, stat.Last, stat.Count,
-		stat.Resolution, stat.Time.UnixNano(), stat.TTL,
+		"%s\t%s\t%0.6f\t%0.6f\t%0.6f\t%0.6f\t%d\t%d\t%d\t%d\n",
+		stat.Name.Key, stat.Name.UniqueIdString(), stat.Sum, stat.Min, stat.Max, stat.Last, stat.Count,
+		stat.Name.Resolution, stat.Time.UnixNano(), stat.Name.TTL,
 	)
 
-	fi.indexer.Write(stat.Key) // index me
+	fi.indexer.Write(stat.Name) // index me
 	_, err := fi.WriteLine(line)
 
 	return err
@@ -200,9 +223,15 @@ func (fi *FileMetrics) Write(stat repr.StatRepr) error {
 
 /**** READER ***/
 // XXX TODO
-func (my *FileMetrics) Render(path string, from string, to string) (WhisperRenderItem, error) {
-	return WhisperRenderItem{}, fmt.Errorf("FILE READER NOT YET DONE")
+func (fi *FileMetrics) Render(path string, from int64, to int64) (WhisperRenderItem, error) {
+	return WhisperRenderItem{}, errFileReaderNotImplemented
 }
-func (my *FileMetrics) RawRender(path string, from string, to string) ([]*RawRenderItem, error) {
-	return []*RawRenderItem{}, fmt.Errorf("FILE READER NOT YET DONE")
+func (fi *FileMetrics) RawRender(path string, from int64, to int64) ([]*RawRenderItem, error) {
+	return nil, errFileReaderNotImplemented
+}
+func (fi *FileMetrics) CacheRender(path string, from int64, to int64, tags repr.SortingTags) ([]*RawRenderItem, error) {
+	return nil, errFileReaderNotImplemented
+}
+func (fi *FileMetrics) CachedSeries(path string, from int64, to int64, tags repr.SortingTags) (*TotalTimeSeries, error) {
+	return nil, errFileReaderNotImplemented
 }

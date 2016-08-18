@@ -1,4 +1,20 @@
 /*
+Copyright 2016 Under Armour, Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+/*
 	TCP Client handling
 	this also does UnixSocket connections too
 */
@@ -78,6 +94,7 @@ type TCPClient struct {
 	done           chan Client
 	worker_queue   chan *OutputMessage
 	close          chan bool
+	shutitdown     bool
 }
 
 func NewTCPClient(server *Server,
@@ -105,12 +122,14 @@ func NewTCPClient(server *Server,
 	client.out_queue = server.ProcessedQueue
 
 	client.done = done
+	client.shutitdown = false
 	client.close = make(chan bool)
 
 	return client
 }
 
 func (client *TCPClient) ShutDown() {
+	client.shutitdown = true
 	client.close <- true
 }
 
@@ -144,7 +163,7 @@ func (client *TCPClient) InputQueue() chan splitter.SplitItem {
 // close the 2 hooks, channel and connection
 func (client *TCPClient) Close() {
 	defer stats.StatsdClient.Incr(fmt.Sprintf("worker.%s.tcp.connection.close", client.server.Name), 1)
-	defer log.Debug("Closing conn %v", client.Connection.RemoteAddr())
+	defer log.Debug("TCP client: Closing conn %v", client.Connection.RemoteAddr())
 	//client.close <- true
 	client.reader = nil
 	if client.Connection != nil {
@@ -155,12 +174,20 @@ func (client *TCPClient) Close() {
 	client.hashers = nil
 }
 
-func (client *TCPClient) handleRequest(outqueue chan splitter.SplitItem) {
+func (client *TCPClient) handleRequest(outqueue chan splitter.SplitItem, close_client chan bool) {
 	//spin up the splitters
 
 	//client.Connection.SetReadDeadline(time.Now().Add(TCP_READ_TIMEOUT))
 	buf := bufio.NewReaderSize(client.Connection, client.BufferSize)
 	for {
+		select {
+		case <-client.close:
+			break
+		case <-close_client:
+			client.Connection.Close()
+			return
+		default:
+		}
 		line, err := buf.ReadString('\n')
 
 		if err != nil {
@@ -175,6 +202,9 @@ func (client *TCPClient) handleRequest(outqueue chan splitter.SplitItem) {
 		client.server.AllLinesCount.Up(1)
 		splitem, err := client.server.SplitterProcessor.ProcessLine(line)
 		if err == nil {
+			if client.shutitdown {
+				break
+			}
 			//this will block once the queue is full
 			splitem.SetOrigin(splitter.TCP)
 			splitem.SetOriginName(client.server.Name)
@@ -187,15 +217,12 @@ func (client *TCPClient) handleRequest(outqueue chan splitter.SplitItem) {
 			stats.StatsdClient.Incr("incoming.tcp.invalidlines", 1)
 			log.Warning("Invalid Line: %s (%s)", err, line)
 		}
+
 	}
 
-	//buf = nil
-	//close it and end the send routing
-	//outqueue <- splitter.BlankSplitterItem()
 	if client.done != nil {
 		client.done <- client
 	}
-	//client.close <- true
 
 	return
 }
@@ -215,6 +242,4 @@ func (client *TCPClient) handleSend(outqueue chan splitter.SplitItem) {
 			return
 		}
 	}
-
-	return
 }

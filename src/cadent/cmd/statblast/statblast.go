@@ -1,3 +1,19 @@
+/*
+Copyright 2016 Under Armour, Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package main
 
 // a little "blaster of stats" to stress test te consthasher
@@ -7,6 +23,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math"
 	"math/rand"
 	"net"
 	"net/url"
@@ -17,8 +34,16 @@ import (
 	"time"
 )
 
+var t_now time.Time
+
+func init() {
+	rand.Seed(time.Now().Unix())
+	t_now = time.Now()
+}
+
 var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 var randWords = []string{"test", "house", "here", "badline", "cow", "now"}
+var randTagName = []string{"unit", "mytpe", "host", "code", "direction", "type"}
 var sentLines int64
 var numWords int = 3
 var startTime = time.Now().Unix()
@@ -43,11 +68,15 @@ func RandItem(strs []string) string {
 }
 
 func GraphiteStr(ct int) string {
+	// use the key string to determine "int scale" of things
+	key := sprinter(numWords)
+	tn := int(time.Now().Hour())
+	offset := 5000*len(key) - 1000*int(math.Sin(float64(tn/24)))
 	return fmt.Sprintf(
 		"graphitetest.%s %d %d\n",
-		sprinter(numWords),
-		ct,
-		int32(time.Now().Unix()),
+		key,
+		offset+ct,
+		time.Now().Unix(),
 	)
 }
 
@@ -60,6 +89,18 @@ func sprinter(ct int) string {
 	return strings.Join(r_ws, ".")
 }
 
+func sprinterTag(ct int) string {
+	r_wor := []string{RandItem(randWords)}
+	r_tgs := []string{RandItem(randTagName)}
+
+	r_ws := []string{r_tgs[0] + "=" + r_wor[0]}
+
+	for i := 0; i < ct-1; i++ {
+		r_ws = append(r_ws, RandItem(randTagName)+"="+RandItem(randWords))
+	}
+	return strings.Join(r_ws, " ")
+}
+
 func StatsdStr(ct int) string {
 	cc := Statsdtypes[rand.Intn(len(Statsdtypes))]
 	sample := float32(rand.Intn(1000)) / float32(1000)
@@ -69,6 +110,19 @@ func StatsdStr(ct int) string {
 		ct,
 		cc,
 		sample,
+	)
+}
+
+func Carbon2Str(ct int) string {
+	// use the key string to determine "int scale" of things
+	key := sprinterTag(numWords)
+	tn := int(time.Now().Hour())
+	offset := 5000*len(key) - 1000*int(math.Sin(float64(tn/24)))
+	return fmt.Sprintf(
+		"%s %d %d\n",
+		key,
+		offset+ct,
+		time.Now().Unix(),
 	)
 }
 
@@ -130,11 +184,21 @@ func SendMsg(i_url *url.URL, msg string) {
 func Runner(server string, intype string, rate string, buffer int) {
 
 	rand_bounds := 10000
-	i_url, err := url.Parse(server)
-	if err != nil {
-		log.Printf("Error in URL: %s", err)
-		os.Exit(1)
+	var err error
+	var i_url *url.URL
+	to_stdout := false
+
+	switch server {
+	case "stdout":
+		to_stdout = true
+	default:
+		i_url, err = url.Parse(server)
+		if err != nil {
+			log.Printf("Error in URL: %s", err)
+			os.Exit(1)
+		}
 	}
+
 	var msg string = ""
 	sleeper, err := time.ParseDuration(rate)
 	if err != nil {
@@ -145,29 +209,43 @@ func Runner(server string, intype string, rate string, buffer int) {
 	for {
 		ct := rand.Intn(rand_bounds)
 		var oneline string = ""
-		if intype == "graphite" {
+		switch intype {
+		case "graphite":
 			oneline = GraphiteStr(ct)
-		} else {
+		case "statsd":
 			oneline = StatsdStr(ct)
+		case "carbon2":
+			oneline = Carbon2Str(ct)
+		default:
+			log.Fatalf("Invalid stat type %s", intype)
 		}
 
-		if len(msg+oneline) >= buffer {
-			SendMsg(i_url, msg)
-			msg = oneline
-			time.Sleep(sleeper)
-		} else {
-			msg = msg + oneline
-			sentLines = sentLines + 1
+		switch to_stdout {
+		case true:
+			fmt.Print(oneline)
+			sentLines++
+		default:
+			if len(msg+oneline) >= buffer {
+				SendMsg(i_url, msg)
+				msg = oneline
+				time.Sleep(sleeper)
+			} else {
+				msg = msg + oneline
+				sentLines++
+			}
 		}
+
 	}
 }
 
-func StatTick() {
+func StatTick(print_stats bool) {
 	for {
 		s_delta := time.Now().UnixNano() - startTime
 		t_sec := s_delta / 1000000000
 		rate := (float64)(sentLines) / float64(t_sec)
-		log.Printf("Sent %d lines in %ds - rate: %0.2f lines/s", sentLines, t_sec, rate)
+		if print_stats {
+			log.Printf("Sent %d lines in %ds - rate: %0.2f lines/s", sentLines, t_sec, rate)
+		}
 		tick_sleep, _ := time.ParseDuration("5s")
 		time.Sleep(tick_sleep)
 	}
@@ -177,13 +255,14 @@ func main() {
 	setUlimits()
 	rand.Seed(time.Now().UnixNano())
 	startTime = time.Now().UnixNano()
-	serverList := flag.String("servers", "tcp://127.0.0.1:8125", "list of servers to open (tcp://127.0.0.1:6002,tcp://127.0.0.1:6003), you can choose tcp://, udp://, http://, unix://")
-	intype := flag.String("type", "statsd", "statsd or graphite")
+	serverList := flag.String("servers", "tcp://127.0.0.1:8125", "list of servers to open (stdout,tcp://127.0.0.1:6002,tcp://127.0.0.1:6003), you can choose tcp://, udp://, http://, unix://")
+	intype := flag.String("type", "statsd", "statsd or graphite or carbon2")
 	rate := flag.String("rate", "0.1s", "fire rate for stat lines")
 	buffer := flag.Int("buffer", 512, "send buffer")
 	concur := flag.Int("forks", 2, "number of concurrent senders")
 	words := flag.String("words", "test,house,here,there,badline,cow,now", "compose the stat keys from these words")
 	words_p_str := flag.Int("words_per_stat", 3, "make stat keys this long (moo.goo.loo)")
+	print_stats := flag.Bool("notick", false, "don't print the stats of the number of lines sent (if servers==stdout this is true)")
 
 	flag.Parse()
 
@@ -202,5 +281,9 @@ func main() {
 			go Runner(serv, *intype, *rate, *buffer)
 		}
 	}
-	StatTick()
+	to_print := *print_stats
+	if *serverList == "stdout" {
+		to_print = true
+	}
+	StatTick(!to_print)
 }

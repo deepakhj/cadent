@@ -1,0 +1,29 @@
+##
+##  A simple Relay
+##
+##  Will accept incoming lines from the `graphite-proxy` farm, accumulate things
+##  and flush to another backend `graphite-gg-relay` at 5 second intervals
+##
+##  note the `backend = "BLACKHOLE"` below, this implies the Lines stop at the writer
+##
+##  cadent --config=graphite-relay.toml --prereg=graphite-relay-prereg.toml
+##
+
+[graphite-proxy-map]
+listen_server="graphite-proxy" # which listener to sit in front of  (must be in the main config)
+default_backend="graphite-gg-relay"  # failing a match go here
+
+    [graphite-proxy-map.accumulator]
+    backend = "graphite-gg-relay"
+    input_format = "graphite"
+    output_format = "graphite"
+    random_ticker_start = false
+
+    # aggregate bin counts
+    accumulate_flush = "5s"
+    times = ["5s"]
+
+    # Sub string type match
+    [[graphite-proxy-map.map]]
+        substring=".marvel"  # ignore elastic search marvel stuff
+        reject=true

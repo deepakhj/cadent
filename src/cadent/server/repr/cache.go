@@ -1,4 +1,20 @@
 /*
+Copyright 2016 Under Armour, Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+/*
 	FIFO cacher elements
 
 	will keep the last REPR_CACHE_ITEMS metrics with REPR_CACHE_POINTS data points in RAM
@@ -26,7 +42,7 @@ type cacherItem struct {
 type ReprCache struct {
 	MaxSize  int
 	itemList *list.List
-	cache    map[string]*cacherItem
+	cache    map[StatId]*cacherItem
 
 	mu sync.Mutex
 }
@@ -37,7 +53,7 @@ func NewReprCache(size int) *ReprCache {
 	}
 	return &ReprCache{
 		MaxSize:  size,
-		cache:    make(map[string]*cacherItem),
+		cache:    make(map[StatId]*cacherItem),
 		itemList: list.New(),
 	}
 }
@@ -46,7 +62,7 @@ func (s *ReprCache) Len() int {
 	return s.itemList.Len()
 }
 
-func (s *ReprCache) Delete(key string) *ReprList {
+func (s *ReprCache) Delete(key StatId) *ReprList {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	element := s.cache[key]
@@ -64,7 +80,7 @@ func (s *ReprCache) Pop() *ReprList {
 	defer s.mu.Unlock()
 
 	k := s.itemList.Front()
-	kk := k.Value.(string)
+	kk := k.Value.(StatId)
 
 	if k != nil {
 		element := s.cache[kk]
@@ -80,7 +96,7 @@ func (s *ReprCache) Add(stat StatRepr) *ReprList {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	k := stat.StatKey
+	k := stat.Name.UniqueId()
 	gots := s.cache[k]
 	if gots == nil {
 		old := s.checkSize()
@@ -99,7 +115,7 @@ func (s *ReprCache) Add(stat StatRepr) *ReprList {
 	return nil
 }
 
-func (s *ReprCache) Get(key string) *ReprList {
+func (s *ReprCache) Get(key StatId) *ReprList {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	element := s.cache[key]
@@ -113,7 +129,7 @@ func (s *ReprCache) checkSize() *ReprList {
 	//locking outside this function please
 	if s.itemList.Len() >= s.MaxSize {
 		k := s.itemList.Front()
-		key := k.Value.(string)
+		key := k.Value.(StatId)
 		element := s.cache[key]
 		s.itemList.Remove(element.keyele)
 		element.keyele = nil

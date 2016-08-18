@@ -1,4 +1,20 @@
 /*
+Copyright 2016 Under Armour, Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+/*
    The accumulator aggrigator, based on a config
 
     THe "line" flow (for a given item) goes something like this
@@ -23,12 +39,14 @@
 package accumulator
 
 import (
+	"bytes"
 	repr "cadent/server/repr"
 	splitter "cadent/server/splitter"
 	stats "cadent/server/stats"
 	writers "cadent/server/writers"
 	"fmt"
 	logging "gopkg.in/op/go-logging.v1"
+	"io"
 	"sync"
 	"time"
 )
@@ -94,7 +112,6 @@ func NewAccumlator(inputtype string, outputtype string, keepkeys bool, name stri
 		Name:              name,
 		FlushTimes:        []time.Duration{time.Duration(time.Second)},
 		AccumulateTime:    time.Duration(time.Second),
-		Shutdown:          make(chan bool, 0),
 		LineQueue:         make(chan string, 10000),
 		shutitdown:        false,
 		timer:             nil,
@@ -146,7 +163,9 @@ func (acc *Accumulator) ProcessSplitItem(sp splitter.SplitItem) error {
 
 func (acc *Accumulator) ProcessLine(sp string) error {
 	stats.StatsdClient.Incr("accumulator.lines.incoming", 1)
-	acc.LineQueue <- sp
+	if !acc.shutitdown {
+		acc.LineQueue <- sp
+	}
 	return nil
 }
 
@@ -189,8 +208,15 @@ func (acc *Accumulator) Start() error {
 			acc.timer = acc.delayRoundedTicker(acc.AccumulateTime)
 		}
 	}
+
 	if acc.LineQueue == nil {
 		acc.LineQueue = make(chan string, 10000)
+	}
+
+	// here again as a stop can hit in the middle of the delay timer
+	if acc.shutitdown {
+		acc.log.Warning("Shutting down, will not start `%s`", acc.Name)
+		return nil
 	}
 
 	acc.log.Notice("Starting accumulator loop for `%s`", acc.Name)
@@ -203,13 +229,16 @@ func (acc *Accumulator) Start() error {
 
 	defer func() {
 		close(acc.LineQueue)
-		acc.LineQueue = nil
 	}()
 
+	acc.Shutdown = make(chan bool, 5)
 	for {
 
 		select {
-		case line := <-acc.LineQueue:
+		case line, more := <-acc.LineQueue:
+			if !more {
+				return nil
+			}
 			acc.Accumulate.ProcessLine(line)
 			stats.StatsdClient.Incr("accumulator.lines.processed", 1)
 		case dd := <-acc.timer.C:
@@ -218,25 +247,21 @@ func (acc *Accumulator) Start() error {
 		case <-acc.Shutdown:
 			acc.timer.Stop()
 			acc.log.Warning("Shutting down final flush of accumulator `%s`", acc.Name)
-			acc.FlushAndPost(time.Now())
-			if acc.Aggregators != nil {
-				acc.Aggregators.Stop()
-			}
 			return nil
 		}
 	}
-
-	return nil
 }
 
 func (acc *Accumulator) Stop() {
 	acc.log.Warning("Initiating shutdown of accumulator `%s`", acc.Name)
-	go func() {
-		acc.shutitdown = true
+	acc.shutitdown = true
+	if acc.Shutdown != nil {
 		acc.Shutdown <- true
-		return
-	}()
-	return
+	}
+	acc.FlushAndPost(time.Now())
+	if acc.Aggregators != nil {
+		acc.Aggregators.Stop()
+	}
 }
 
 // move back into Main Server loop
@@ -248,22 +273,37 @@ func (acc *Accumulator) PushLine(spl splitter.SplitItem) {
 }
 
 // move into Aggregator land
-func (acc *Accumulator) PushStat(spl repr.StatRepr) {
+func (acc *Accumulator) PushStat(spl *repr.StatRepr) {
 	stats.StatsdClient.Incr("accumulator.stats.repr.outgoing", 1)
-	acc.Aggregators.InputChan <- spl
+	acc.Aggregators.InputChan <- *spl
 }
 
 func (acc *Accumulator) FlushAndPost(attime time.Time) ([]splitter.SplitItem, error) {
 	defer stats.StatsdSlowNanoTimeFunc(fmt.Sprintf("accumulator.flushpost-time-ns"), time.Now())
-	items := acc.Accumulate.Flush()
+
+	buffer := new(bytes.Buffer)
+	items := acc.Accumulate.Flush(buffer)
 	//log.Notice("Flush: %s", items)
 	//return []splitter.SplitItem{}, nil
 	//t := time.Now()
-	out_spl := make([]splitter.SplitItem, len(items.Lines), len(items.Lines))
-	for idx, item := range items.Lines {
-		spl, err := acc.OutSplitter.ProcessLine(item)
+	out_spl := make([]splitter.SplitItem, 0)
+	for {
+		line, err := buffer.ReadString(repr.NEWLINE_SEPARATOR_BYTE)
+		if err == io.EOF {
+			break
+		}
 		if err != nil {
-			acc.log.Error("Invalid Line post flush accumulate `%s` Err:%s", item, err)
+			acc.log.Error("Buffer read error", err)
+			continue
+		}
+		if line == "" {
+			continue
+		}
+
+		spl, err := acc.OutSplitter.ProcessLine(line)
+
+		if err != nil {
+			acc.log.Error("Invalid Line post flush accumulate `%s` Err:%s", line, err)
 			continue
 		}
 		// this tells the server backends to NOT send to the accumulator anymore
@@ -272,9 +312,10 @@ func (acc *Accumulator) FlushAndPost(attime time.Time) ([]splitter.SplitItem, er
 		spl.SetPhase(splitter.AccumulatedParsed)
 		spl.SetOrigin(splitter.Other)
 		spl.SetOriginName(acc.FromBackend) // where we are from
-		out_spl[idx] = spl
+		out_spl = append(out_spl, spl)
 		//log.Notice("sending: %s Len:%d", spl.Line(), len(acc.OutputQueue))
 		acc.PushLine(spl)
+		//log.Notice("SENT: %s Len:%d", spl.Line(), len(acc.OutputQueue))
 	}
 
 	if acc.Aggregators != nil {
@@ -297,12 +338,25 @@ func (acc *Accumulator) FlushAndPost(attime time.Time) ([]splitter.SplitItem, er
 func (acc *Accumulator) Flush() ([]splitter.SplitItem, error) {
 	defer stats.StatsdSlowNanoTimeFunc(fmt.Sprintf("accumulator.flush-time-ns"), time.Now())
 
-	items := acc.Accumulate.Flush()
+	buffer := new(bytes.Buffer)
+	acc.Accumulate.Flush(buffer)
+
 	var out_spl []splitter.SplitItem
-	for _, item := range items.Lines {
-		spl, err := acc.OutSplitter.ProcessLine(item)
+	for {
+		line, err := buffer.ReadString(repr.NEWLINE_SEPARATOR_BYTE)
+		if err == io.EOF {
+			break
+		}
 		if err != nil {
-			acc.log.Error("Invalid Line post flush accumulate `%s` Err:%s", item, err)
+			acc.log.Error("Buffer read error", err)
+			continue
+		}
+		if line == "" {
+			continue
+		}
+		spl, err := acc.OutSplitter.ProcessLine(line)
+		if err != nil {
+			acc.log.Error("Invalid Line post flush accumulate `%s` Err:%s", line, err)
 			continue
 		}
 		// this tells the server backends to NOT send to the accumulator anymore
@@ -310,8 +364,8 @@ func (acc *Accumulator) Flush() ([]splitter.SplitItem, error) {
 		spl.SetPhase(splitter.AccumulatedParsed)
 		spl.SetOrigin(splitter.Other)
 		out_spl = append(out_spl, spl)
+
 	}
-	items = nil // GC me
 	stats.StatsdClientSlow.Incr("accumulator.flushes", 1)
 	return out_spl, nil
 }
@@ -339,10 +393,10 @@ func (acc *Accumulator) CurrentStats() *repr.ReprList {
 
 	for idx, stat := range stats {
 		rr := stat.Repr()
-		rr.StatKey = idx
+		rr.Name.Key = idx
 		rr.Time = t
-		rr.Resolution = acc.FlushTimes[0].Seconds()
-		s_rep.Add(rr)
+		rr.Name.Resolution = uint32(acc.FlushTimes[0].Seconds())
+		s_rep.Add(*rr)
 	}
 	return s_rep
 }

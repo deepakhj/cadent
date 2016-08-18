@@ -1,4 +1,20 @@
 /*
+Copyright 2016 Under Armour, Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+/*
    Simple make of new objects
 */
 
@@ -12,14 +28,20 @@ func NewMetrics(name string) (Metrics, error) {
 	switch {
 	case name == "mysql":
 		return NewMySQLMetrics(), nil
+	case name == "mysql-flat":
+		return NewMySQLFlatMetrics(), nil
 	case name == "file":
 		return NewFileMetrics(), nil
 	case name == "cassandra":
 		return NewCassandraMetrics(), nil
+	case name == "cassandra-flat":
+		return NewCassandraFlatMetrics(), nil
 	case name == "whisper" || name == "carbon" || name == "graphite":
 		return NewWhisperMetrics(), nil
 	case name == "kafka":
 		return NewKafkaMetrics(), nil
+	case name == "kafka-flat":
+		return NewKafkaFlatMetrics(), nil
 	default:
 		return nil, fmt.Errorf("Invalid metrics `%s`", name)
 	}
@@ -29,11 +51,15 @@ func ResolutionsNeeded(name string) (WritersNeeded, error) {
 	switch {
 	case name == "mysql":
 		return AllResolutions, nil
+	case name == "mysql-flat":
+		return AllResolutions, nil
 	case name == "file":
 		return AllResolutions, nil
 	case name == "cassandra":
 		return AllResolutions, nil
-	case name == "kafka":
+	case name == "cassandra-flat":
+		return AllResolutions, nil
+	case name == "kafka" || name == "kafka-flat":
 		return AllResolutions, nil
 	case name == "whisper" || name == "carbon" || name == "graphite":
 		return FirstResolution, nil

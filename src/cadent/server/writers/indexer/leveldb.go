@@ -1,4 +1,20 @@
 /*
+Copyright 2016 Under Armour, Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+/*
 
 LevelDB key/value store for local saving for indexes on the stat key space
 and how it maps to files on disk.
@@ -8,10 +24,11 @@ and single files for each series.
 
 We have "3" dbs
 {segments} -> {position} mappings
-{segments} -> {path} mappings
-{tags} -> {path} mappings
+{segments} -> {id}:{path} mappings
+{tags} -> {id}:{path} mappings
+{id} -> {path} mappings
 
-If no tags are used (i.e. graphite like) then the tags will basically be emptyy
+If no tags are used (i.e. graphite like) then the tags will basically be empty
 
 We follow a data pattern alot like the Cassandra one, as we attempting to get a similar glob matcher
 when tags enter (not really done yet) the tag thing will be important
@@ -24,7 +41,7 @@ so we can do
 
 the segment DB
 
-things like `find.startswith({length}:{longest.non.regex.part}) -> path`
+things like `find.startswith({length}:{longest.non.regex.part}) -> id:path`
 and do the regex on the iterator
 
 the segment DB
@@ -44,7 +61,9 @@ package indexer
 import (
 	"bytes"
 	"cadent/server/dispatch"
+	"cadent/server/repr"
 	"cadent/server/stats"
+	"cadent/server/utils/shutdown"
 	"cadent/server/writers/dbs"
 	"fmt"
 	"github.com/syndtr/goleveldb/leveldb"
@@ -70,13 +89,13 @@ Segment index
 level DB keys
 
 This one is for "finds"
-i.e.  consthash.zipperwork.local.writer.cassandra.write.metric-time-ns.upper_99 -> consthash.zipperwork.local.writer.cassandra.write.metric-time-ns.upper_99
-- SEG:{length}:{segment} -> {path}
+i.e.  cadent.zipperwork.local.writer.cassandra.write.metric-time-ns.upper_99 -> cadent.zipperwork.local.writer.cassandra.write.metric-time-ns.upper_99
+- SEG:{length}:{segment} -> {id}:{path}
 
 This is used for "expands"
-"has data" is when  segment+1 == path
-i.e consthash.zipperwork.local.writer -> consthash.zipperwork.local.writer.cassandra
-- POS:{pos}:{segment} -> {segment+1}:{has_data} used for expand
+"has data" is when segment+1 == path
+i.e cadent.zipperwork.local.writer -> cadent.zipperwork.local.writer.cassandra
+- POS:{pos}:{segment}:{has_data} -> {id}:{segment+1}:{has_data} used for expand
 
 for reverse lookups basically for deletion purposes
 Second set :: PATH:{path} -> {length}:{segment}
@@ -90,10 +109,11 @@ type LevelDBSegment struct {
 	Segment     string
 	NextSegment string
 	Path        string
+	Id          string
 }
 
 // given a path get all the various segment datas
-func ParsePath(stat_key string) (segments []LevelDBSegment) {
+func ParsePath(stat_key string, id string) (segments []LevelDBSegment) {
 
 	s_parts := strings.Split(stat_key, ".")
 	p_len := len(s_parts)
@@ -140,6 +160,7 @@ func ParsePath(stat_key string) (segments []LevelDBSegment) {
 			Path:        stat_key,
 			Length:      p_len - 1,
 			Pos:         idx, // starts at 0
+			Id:          id,
 		}
 	}
 
@@ -151,7 +172,15 @@ func (ls *LevelDBSegment) SegmentKey(segment string, len int) []byte {
 }
 
 func (ls *LevelDBSegment) SegmentData() ([]byte, []byte) {
-	return []byte(ls.SegmentKey(ls.Segment, ls.Length)), []byte(ls.Path)
+	return []byte(ls.SegmentKey(ls.Segment, ls.Length)), []byte(fmt.Sprintf("%s|%s", ls.Id, ls.Path))
+}
+
+func (ls *LevelDBSegment) IdKey(id string) []byte {
+	return []byte(fmt.Sprintf("ID:%s", id))
+}
+
+func (ls *LevelDBSegment) IdData() ([]byte, []byte) {
+	return []byte(ls.IdKey(ls.Id)), []byte(ls.Path)
 }
 
 func (ls *LevelDBSegment) PathKey(path string) []byte {
@@ -162,17 +191,23 @@ func (ls *LevelDBSegment) ReverseSegmentData() ([]byte, []byte) {
 }
 
 func (ls *LevelDBSegment) PosSegmentKey(path string, pos int) []byte {
-	return []byte(fmt.Sprintf("POS:%d:%s", pos, path))
+	has_data := "0"
+	if ls.NextSegment == ls.Path {
+		has_data = "1"
+	}
+	return []byte(fmt.Sprintf("POS:%d:%s:%s", pos, path, has_data))
 }
 
 // POS:{pos}:{segment} -> {segment+1}:{has_data}
 func (ls *LevelDBSegment) PosSegmentData() ([]byte, []byte) {
 	has_data := "0"
+	use_id := "" //paths w/ no data have no id
 	if ls.NextSegment == ls.Path {
 		has_data = "1"
+		use_id = ls.Id
 	}
 	return []byte(ls.PosSegmentKey(ls.Segment, ls.Pos)),
-		[]byte(fmt.Sprintf("%s:%s", ls.NextSegment, has_data))
+		[]byte(fmt.Sprintf("%s:%s:%s", use_id, ls.NextSegment, has_data))
 
 }
 
@@ -186,6 +221,8 @@ func (ls *LevelDBSegment) InsertAllIntoBatch(batch *leveldb.Batch) {
 		batch.Put(k, v)
 		k1, v1 := ls.ReverseSegmentData()
 		batch.Put(k1, v1)
+		k2, v2 := ls.IdData()
+		batch.Put(k2, v2)
 	}
 	k, v := ls.PosSegmentData()
 	batch.Put(k, v)
@@ -218,7 +255,7 @@ func (ls *LevelDBSegment) DeletePath(segdb *leveldb.DB) (err error) {
 	// log.Printf("DEL: GotPath: Path: %s :: data: %s", path_key, val)
 
 	// grab all the segments
-	segs := ParsePath(string(ls.Path))
+	segs := ParsePath(string(ls.Path), ls.Id)
 	l_segs := len(segs)
 	errs := make([]error, 0)
 	// remove all things that point to this path
@@ -297,6 +334,7 @@ func init() {
 /****************** Interfaces *********************/
 type LevelDBIndexer struct {
 	db                *dbs.LevelDB
+	indexerId         string
 	cache             *Cacher // simple cache to rate limit and buffer writes
 	writes_per_second int     // rate limit writer
 
@@ -366,24 +404,40 @@ func (lb *LevelDBIndexer) Config(conf map[string]interface{}) error {
 		lb.queue_len = int(_qs.(int64))
 	}
 
-	lb.Start() // fire it up
+	lb.indexerId = fmt.Sprintf("leveldb:%s", dsn)
 
 	return nil
 }
 
+func (lp *LevelDBIndexer) Name() string {
+	return lp.indexerId
+}
+
 func (lp *LevelDBIndexer) Stop() {
+	shutdown.AddToShutdown()
+	defer shutdown.ReleaseFromShutdown()
+	if !lp._accept {
+		return
+	}
+	lp.log.Notice("Shutting down LevelDB indexer: %s", lp.Name())
 	lp._accept = false
 	lp.shutonce.Do(lp.cache.Stop)
+	if lp.write_queue != nil {
+		lp.write_dispatcher.Shutdown()
+	}
+	lp.db.Close()
 }
 
 func (lp *LevelDBIndexer) Start() {
 	if lp.write_queue == nil {
+		lp.log.Notice("Starting LevelDB indexer: %s", lp.Name())
 		workers := lp.num_workers
 		lp.write_queue = make(chan dispatch.IJob, lp.queue_len)
 		lp.dispatch_queue = make(chan chan dispatch.IJob, workers)
 		lp.write_dispatcher = dispatch.NewDispatch(workers, lp.dispatch_queue, lp.write_queue)
 		lp.write_dispatcher.SetRetries(2)
 		lp.write_dispatcher.Run()
+		lp.cache.Start()
 		go lp.sendToWriters() // the dispatcher
 	}
 }
@@ -401,12 +455,12 @@ func (lp *LevelDBIndexer) sendToWriters() error {
 				return nil
 			}
 			skey := lp.cache.Pop()
-			switch skey {
-			case "":
+			switch skey.IsBlank() {
+			case true:
 				time.Sleep(time.Second)
 			default:
 				stats.StatsdClient.Incr(fmt.Sprintf("indexer.leveldb.write.send-to-writers"), 1)
-				lp.write_queue <- LevelDBIndexerJob{LD: lp, Stat: skey}
+				lp.write_queue <- LevelDBIndexerJob{LD: lp, Name: skey}
 			}
 		}
 	} else {
@@ -418,12 +472,12 @@ func (lp *LevelDBIndexer) sendToWriters() error {
 				return nil
 			}
 			skey := lp.cache.Pop()
-			switch skey {
-			case "":
+			switch skey.IsBlank() {
+			case true:
 				time.Sleep(time.Second)
 			default:
 				stats.StatsdClient.Incr(fmt.Sprintf("indexer.leveldb.write.send-to-writers"), 1)
-				lp.write_queue <- LevelDBIndexerJob{LD: lp, Stat: skey}
+				lp.write_queue <- LevelDBIndexerJob{LD: lp, Name: skey}
 				time.Sleep(dur)
 			}
 		}
@@ -431,15 +485,16 @@ func (lp *LevelDBIndexer) sendToWriters() error {
 }
 
 // keep an index of the stat keys and their fragments so we can look up
-func (lp *LevelDBIndexer) Write(skey string) error {
+func (lp *LevelDBIndexer) Write(skey repr.StatName) error {
 	return lp.cache.Add(skey)
 }
 
-func (lb *LevelDBIndexer) WriteOne(skey string) error {
+func (lb *LevelDBIndexer) WriteOne(name repr.StatName) error {
 	defer stats.StatsdSlowNanoTimeFunc(fmt.Sprintf("indexer.leveldb.write.path-time-ns"), time.Now())
 	stats.StatsdClientSlow.Incr("indexer.leveldb.noncached-writes-path", 1)
 
-	segments := ParsePath(skey)
+	skey := name.Key
+	segments := ParsePath(skey, name.UniqueIdString())
 
 	for _, seg := range segments {
 		err := seg.InsertAll(lb.db.SegmentConn())
@@ -507,17 +562,21 @@ func (lp *LevelDBIndexer) Find(metric string) (mt MetricFindItems, err error) {
 		var ms MetricFindItem
 		// Remember that the contents of the returned slice should not be modified, and
 		// only valid until the next call to Next.
-		value := iter.Value() // should be {path}:{has_data:0|1}
+		value := iter.Value() // should be {id}:{path}:{has_data:0|1}
 		value_arr := strings.Split(string(value), ":")
 		has_data := value_arr[len(value_arr)-1]
-		on_path := value_arr[0]
+		on_path := value_arr[1]
+		on_path_byte := []byte(on_path)
+		on_id := value_arr[0]
+
 		spl := strings.Split(on_path, ".")
 
 		if reged != nil {
-			if reged.Match(value) {
+			if reged.Match(on_path_byte) {
 				ms.Text = spl[len(spl)-1]
 				ms.Id = on_path
 				ms.Path = on_path
+				ms.UniqueId = on_id
 
 				if has_data == "1" {
 					ms.Expandable = 0
@@ -536,6 +595,7 @@ func (lp *LevelDBIndexer) Find(metric string) (mt MetricFindItems, err error) {
 			ms.Text = spl[len(spl)-1]
 			ms.Id = on_path
 			ms.Path = on_path
+			ms.UniqueId = on_id
 
 			if has_data == "1" {
 				ms.Expandable = 0
@@ -564,9 +624,9 @@ func (lp *LevelDBIndexer) FindRoot() (mt MetricFindItems, err error) {
 	iter := lp.db.SegmentConn().NewIterator(leveldb_util.BytesPrefix([]byte(prefix)), nil)
 
 	for iter.Next() {
-		value := iter.Value() // should be {path}:{has_data:0|1}
+		value := iter.Value() // should be {id}:{path}:{has_data:0|1}
 		value_arr := strings.Split(string(value), ":")
-		on_path := value_arr[0]
+		on_path := value_arr[1]
 
 		var ms MetricFindItem
 		ms.Text = on_path
@@ -611,13 +671,20 @@ func (lp *LevelDBIndexer) Expand(metric string) (me MetricExpandItem, err error)
 	return me, err
 }
 
+func (lp *LevelDBIndexer) Delete(name *repr.StatName) error {
+	segment := LevelDBSegment{Path: name.Key}
+	segment.DeletePath(lp.db.SegmentConn())
+
+	return nil
+}
+
 /************************************************************************/
 /**********  Standard Worker Dispatcher JOB   ***************************/
 /************************************************************************/
 // insert job queue workers
 type LevelDBIndexerJob struct {
 	LD    *LevelDBIndexer
-	Stat  string
+	Name  repr.StatName
 	retry int
 }
 
@@ -630,9 +697,9 @@ func (j LevelDBIndexerJob) OnRetry() int {
 }
 
 func (j LevelDBIndexerJob) DoWork() error {
-	err := j.LD.WriteOne(j.Stat)
+	err := j.LD.WriteOne(j.Name)
 	if err != nil {
-		j.LD.log.Error("Insert failed for Index: %v retrying ...", j.Stat)
+		j.LD.log.Error("Insert failed for Index: %v retrying ...", j.Name.Key)
 	}
 	return err
 }

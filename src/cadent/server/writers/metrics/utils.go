@@ -1,4 +1,20 @@
 /*
+Copyright 2016 Under Armour, Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+/*
    Writers/Readers of stats
 
    We are attempting to mimic the Graphite API json blobs throughout the process here
@@ -14,6 +30,7 @@ package metrics
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -89,4 +106,22 @@ func ParseTime(st string) (int64, error) {
 
 	return 0, fmt.Errorf("Time `%s` could not be parsed :: %v", st, err)
 
+}
+
+// based on a start/end int and a step, determine just how many points we
+// should be returning
+func PointsInInterval(start int64, end int64, step int64) int64 {
+	if step <= 0 {
+		return math.MaxInt64 // basically "way too many"
+	}
+	return (end - start) / step
+}
+
+// based on the resolution attempt to round start/end nicely by the resolutions
+func TruncateTimeTo(num int64, mod int) int64 {
+	_mods := int(math.Mod(float64(num), float64(mod)))
+	if _mods < mod/2 {
+		return num - int64(_mods)
+	}
+	return num + int64(mod-_mods)
 }
