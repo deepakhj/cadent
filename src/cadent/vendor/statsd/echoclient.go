@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-//impliment a "echo" statsd for debuging statsd
+//implement a "echo" statsd for debuging statsd
 type StatsdEcho struct{}
 
 func prit(stat string, val interface{}) error {
