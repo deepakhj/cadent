@@ -228,18 +228,18 @@ type CassandraFlatMetricJob struct {
 	Cass  *CassandraFlatWriter
 	Name  *repr.StatName
 	Stats repr.StatReprSlice // where the point list live
-	retry int
+	Retry int
 }
 
-func (j CassandraFlatMetricJob) IncRetry() int {
-	j.retry++
-	return j.retry
+func (j *CassandraFlatMetricJob) IncRetry() int {
+	j.Retry++
+	return j.Retry
 }
-func (j CassandraFlatMetricJob) OnRetry() int {
-	return j.retry
+func (j *CassandraFlatMetricJob) OnRetry() int {
+	return j.Retry
 }
 
-func (j CassandraFlatMetricJob) DoWork() error {
+func (j *CassandraFlatMetricJob) DoWork() error {
 	_, err := j.Cass.InsertMulti(j.Name, j.Stats)
 	return err
 }
@@ -603,7 +603,7 @@ func (cass *CassandraFlatWriter) sendToWriters() error {
 				time.Sleep(time.Second)
 			default:
 				stats.StatsdClient.Incr(fmt.Sprintf("writer.cassandraflat.write.send-to-writers"), 1)
-				cass.write_queue <- CassandraFlatMetricJob{Cass: cass, Stats: points, Name: name}
+				cass.write_queue <- &CassandraFlatMetricJob{Cass: cass, Stats: points, Name: name}
 			}
 		}
 	} else {
@@ -625,7 +625,7 @@ func (cass *CassandraFlatWriter) sendToWriters() error {
 			default:
 
 				stats.StatsdClient.Incr(fmt.Sprintf("writer.cassandraflat.write.send-to-writers"), 1)
-				cass.write_queue <- CassandraFlatMetricJob{Cass: cass, Stats: points, Name: name}
+				cass.write_queue <- &CassandraFlatMetricJob{Cass: cass, Stats: points, Name: name}
 				time.Sleep(dur)
 			}
 

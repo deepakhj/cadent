@@ -457,7 +457,7 @@ func (server *Server) WorkerOutput() {
 				return
 			}*/
 
-			server.OutputDispatcher.JobsQueue() <- OutputDispatchJob{
+			server.OutputDispatcher.JobsQueue() <- &OutputDispatchJob{
 				Message: j,
 				Writer:  server.Writer,
 			}

@@ -528,7 +528,7 @@ func (ws *WhisperWriter) sendToWriters() error {
 		case <-ticker.C:
 			if ws.write_queue != nil {
 				stats.StatsdClient.Incr("writer.whisper.write.send-to-writers", 1)
-				ws.write_queue <- WhisperMetricsJob{Whis: ws}
+				ws.write_queue <- &WhisperMetricsJob{Whis: ws}
 			}
 		case <-ws.shutdown:
 			ws.log.Warning("Whisper shutdown received, stopping write loop")
@@ -865,18 +865,18 @@ func (cass *WhisperMetrics) CachedSeries(path string, from int64, to int64, tags
 // insert job queue workers
 type WhisperMetricsJob struct {
 	Whis  *WhisperWriter
-	retry int
+	Retry int
 }
 
-func (j WhisperMetricsJob) IncRetry() int {
-	j.retry++
-	return j.retry
+func (j *WhisperMetricsJob) IncRetry() int {
+	j.Retry++
+	return j.Retry
 }
-func (j WhisperMetricsJob) OnRetry() int {
-	return j.retry
+func (j *WhisperMetricsJob) OnRetry() int {
+	return j.Retry
 }
 
-func (j WhisperMetricsJob) DoWork() error {
+func (j *WhisperMetricsJob) DoWork() error {
 	_, err := j.Whis.InsertNext()
 	if err != nil {
 		j.Whis.log.Error("Insert failed for Metric: %v retrying ...", err)
