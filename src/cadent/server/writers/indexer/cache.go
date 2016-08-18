@@ -42,6 +42,7 @@ import (
 	"fmt"
 
 	"cadent/server/repr"
+	"cadent/server/utils"
 	"cadent/server/utils/shutdown"
 	logging "gopkg.in/op/go-logging.v1"
 	"sync"
@@ -87,6 +88,7 @@ type Cacher struct {
 	log                 *logging.Logger
 	AlreadyWrittenCache map[repr.StatId]bool
 	Cache               map[repr.StatId]repr.StatName
+	starstop            utils.StartStop
 }
 
 func NewCacher() *Cacher {
@@ -102,12 +104,16 @@ func NewCacher() *Cacher {
 }
 
 func (wc *Cacher) Start() {
-	go wc.statsTick()
+	wc.starstop.Start(func() {
+		go wc.statsTick()
+	})
 }
 
 func (wc *Cacher) Stop() {
-	shutdown.AddToShutdown()
-	wc.shutdown <- true
+	wc.starstop.Stop(func() {
+		shutdown.AddToShutdown()
+		wc.shutdown <- true
+	})
 }
 
 func (wc *Cacher) statsTick() {

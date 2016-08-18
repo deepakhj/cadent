@@ -120,6 +120,7 @@ func getCacherSingleton(nm string) (*Cacher, error) {
 
 	cacher := NewCacher()
 	_CACHER_SINGLETON[nm] = cacher
+	cacher.Name = nm
 	return cacher, nil
 }
 
@@ -185,6 +186,7 @@ type Cacher struct {
 	Queue        CacheQueue
 	NameCache    map[repr.StatId]*repr.StatName
 	Cache        map[repr.StatId]series.TimeSeries
+	Name         string // just a human name for things
 
 	//overflow pieces
 	overFlowMethod string
@@ -223,7 +225,7 @@ func NewCacher() *Cacher {
 func (wc *Cacher) Start() {
 	if !wc.started {
 		wc.started = true
-		wc.log.Notice("Starting Metric Cache sorter tick (%d max metrics, %d max bytes per metric)", wc.maxKeys, wc.maxBytes)
+		wc.log.Notice("Starting Metric Cache sorter tick (%d max metrics, %d max bytes per metric) [%s]", wc.maxKeys, wc.maxBytes, wc.Name)
 		go wc.startUpdateTick()
 	}
 }

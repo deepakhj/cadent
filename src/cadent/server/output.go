@@ -178,25 +178,25 @@ func (p *SingleWriter) Write(j *OutputMessage) error {
 type OutputDispatchJob struct {
 	Writer  OutMessageWriter
 	Message *OutputMessage
-	retry   int
+	Retry   int
 }
 
-func (o OutputDispatchJob) IncRetry() int {
-	o.retry++
-	return o.retry
+func (o *OutputDispatchJob) IncRetry() int {
+	o.Retry++
+	return o.Retry
 }
 
-func (o OutputDispatchJob) OnRetry() int {
-	return o.retry
+func (o *OutputDispatchJob) OnRetry() int {
+	return o.Retry
 }
 
-func (o OutputDispatchJob) DoWork() error {
+func (o *OutputDispatchJob) DoWork() error {
 	err := o.Writer.Write(o.Message)
 
 	if err != nil {
 		o.Message.server.log.Error("%s", err)
 		if o.OnRetry() < 2 {
-			o.Message.server.log.Warning("Retrying message: %s", o.Message.param)
+			o.Message.server.log.Warning("Retrying message: %s retry #%d", o.Message.param, o.OnRetry())
 		}
 	}
 	return err

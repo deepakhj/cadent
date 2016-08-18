@@ -94,6 +94,7 @@ type KafkaMetrics struct {
 
 	shutitdown bool
 	shutdown   chan bool
+	startstop  utils.StartStop
 
 	resolution uint32
 
@@ -182,47 +183,51 @@ func (kf *KafkaMetrics) Config(conf map[string]interface{}) error {
 }
 
 func (kf *KafkaMetrics) Start() {
-	kf.log.Notice("Starting Kafka writer for %s at %d bytes per series", kf.db.DataTopic(), kf.cacher.maxBytes)
-	kf.cacher.Start()
-	// only register this if we are really going to consume it
-	kf.cacheOverFlow = kf.cacher.GetOverFlowChan()
-	go kf.overFlowWrite()
+	kf.startstop.Start(func() {
+		kf.log.Notice("Starting Kafka writer for %s at %d bytes per series", kf.db.DataTopic(), kf.cacher.maxBytes)
+		kf.cacher.Start()
+		// only register this if we are really going to consume it
+		kf.cacheOverFlow = kf.cacher.GetOverFlowChan()
+		go kf.overFlowWrite()
+	})
 }
 
 func (kf *KafkaMetrics) Stop() {
-	shutdown.AddToShutdown()
-	defer shutdown.ReleaseFromShutdown()
+	kf.startstop.Stop(func() {
+		shutdown.AddToShutdown()
+		defer shutdown.ReleaseFromShutdown()
 
-	if kf.shutitdown {
-		return // already did
-	}
-	kf.shutitdown = true
-	kf.shutdown <- true
-	kf.cacher.Stop()
+		if kf.shutitdown {
+			return // already did
+		}
+		kf.shutitdown = true
+		kf.shutdown <- true
+		kf.cacher.Stop()
 
-	mets := kf.cacher.Queue
-	mets_l := len(mets)
-	kf.log.Warning("Shutting down, exhausting the queue (%d items) and quiting", mets_l)
-	// full tilt write out
-	did := 0
-	for _, queueitem := range mets {
-		if did%100 == 0 {
-			kf.log.Warning("shutdown purge: written %d/%d...", did, mets_l)
+		mets := kf.cacher.Queue
+		mets_l := len(mets)
+		kf.log.Warning("Shutting down, exhausting the queue (%d items) and quiting", mets_l)
+		// full tilt write out
+		did := 0
+		for _, queueitem := range mets {
+			if did%100 == 0 {
+				kf.log.Warning("shutdown purge: written %d/%d...", did, mets_l)
+			}
+			name, points, _ := kf.cacher.GetSeriesById(queueitem.metric)
+			if points != nil {
+				stats.StatsdClient.Incr(fmt.Sprintf("writer.cassandra.write.send-to-writers"), 1)
+				kf.PushSeries(name, points)
+			}
+			did++
 		}
-		name, points, _ := kf.cacher.GetSeriesById(queueitem.metric)
-		if points != nil {
-			stats.StatsdClient.Incr(fmt.Sprintf("writer.cassandra.write.send-to-writers"), 1)
-			kf.PushSeries(name, points)
+		err := kf.conn.Close()
+		if err != nil {
+			kf.log.Error("shutdown of kafka connection failed: %v", err)
 		}
-		did++
-	}
-	err := kf.conn.Close()
-	if err != nil {
-		kf.log.Error("shutdown of kafka connection failed: %v", err)
-	}
-	kf.log.Warning("shutdown purge: written %d/%d...", did, mets_l)
-	kf.log.Warning("Shutdown finished ... quiting kafka writer")
-	return
+		kf.log.Warning("shutdown purge: written %d/%d...", did, mets_l)
+		kf.log.Warning("Shutdown finished ... quiting kafka writer")
+		return
+	})
 }
 
 // listen to the overflow chan from the cache and attempt to write "now"
