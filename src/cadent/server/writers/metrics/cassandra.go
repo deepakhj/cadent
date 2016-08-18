@@ -297,6 +297,7 @@ type CassandraMetric struct {
 
 	shutitdown bool
 	shutdown   chan bool
+	startstop  utils.StartStop
 }
 
 func NewCassandraMetrics() *CassandraMetric {
@@ -393,50 +394,54 @@ func (cass *CassandraMetric) Config(conf map[string]interface{}) (err error) {
 }
 
 func (cass *CassandraMetric) Start() {
-	/**** dispatcher queue ***/
-	cass.writer.log.Notice("Starting cassandra series writer for %s at %d bytes per series", cass.writer.db.MetricTable(), cass.blobMaxBytes)
-	cass.cacher.maxBytes = cass.blobMaxBytes
-	//cass.cacher.maxKeys = cass.blobMaxMetrics
-	cass.cacher.Start()
+	cass.startstop.Start(func() {
+		/**** dispatcher queue ***/
+		cass.writer.log.Notice("Starting cassandra series writer for %s at %d bytes per series", cass.writer.db.MetricTable(), cass.blobMaxBytes)
+		cass.cacher.maxBytes = cass.blobMaxBytes
+		//cass.cacher.maxKeys = cass.blobMaxMetrics
+		cass.cacher.Start()
 
-	// register the overflower
-	cass.cacheOverFlow = cass.cacher.GetOverFlowChan()
+		// register the overflower
+		cass.cacheOverFlow = cass.cacher.GetOverFlowChan()
 
-	cass.shutitdown = false
-	go cass.overFlowWrite()
+		cass.shutitdown = false
+		go cass.overFlowWrite()
+	})
 }
 
 func (cass *CassandraMetric) Stop() {
-	shutdown.AddToShutdown()
-	defer shutdown.ReleaseFromShutdown()
-	cass.writer.log.Warning("Starting Shutdown of cassandra series writer")
+	cass.startstop.Stop(func() {
+		shutdown.AddToShutdown()
+		defer shutdown.ReleaseFromShutdown()
+		cass.writer.log.Warning("Starting Shutdown of cassandra series writer")
 
-	if cass.shutitdown {
-		return // already did
-	}
-	cass.shutitdown = true
-
-	cass.cacher.Stop()
-
-	mets := cass.cacher.Queue
-	mets_l := len(mets)
-	cass.writer.log.Warning("Shutting down, exhausting the queue (%d items) and quiting", mets_l)
-	// full tilt write out
-	did := 0
-	for _, queueitem := range mets {
-		if did%100 == 0 {
-			cass.writer.log.Warning("shutdown purge: written %d/%d...", did, mets_l)
+		if cass.shutitdown {
+			return // already did
 		}
-		name, series, _ := cass.cacher.GetSeriesById(queueitem.metric)
-		if series != nil {
-			stats.StatsdClient.Incr(fmt.Sprintf("writer.cassandra.write.send-to-writers"), 1)
-			cass.writer.InsertSeries(name, series)
+		cass.shutitdown = true
+
+		cass.cacher.Stop()
+
+		mets := cass.cacher.Queue
+		mets_l := len(mets)
+		cass.writer.log.Warning("Shutting down, exhausting the queue (%d items) and quiting", mets_l)
+		// full tilt write out
+		did := 0
+		for _, queueitem := range mets {
+			if did%100 == 0 {
+				cass.writer.log.Warning("shutdown purge: written %d/%d...", did, mets_l)
+			}
+			name, series, _ := cass.cacher.GetSeriesById(queueitem.metric)
+			if series != nil {
+				stats.StatsdClient.Incr(fmt.Sprintf("writer.cassandra.write.send-to-writers"), 1)
+				cass.writer.InsertSeries(name, series)
+			}
+			did++
 		}
-		did++
-	}
-	cass.writer.log.Warning("shutdown purge: written %d/%d...", did, mets_l)
-	cass.writer.log.Warning("Shutdown finished ... quiting cassandra series writer")
-	return
+		cass.writer.log.Warning("shutdown purge: written %d/%d...", did, mets_l)
+		cass.writer.log.Warning("Shutdown finished ... quiting cassandra series writer")
+		return
+	})
 }
 
 func (cass *CassandraMetric) SetIndexer(idx indexer.Indexer) error {

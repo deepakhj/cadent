@@ -26,6 +26,7 @@ package metrics
 import (
 	"cadent/server/repr"
 	"cadent/server/stats"
+	"cadent/server/utils"
 	"cadent/server/utils/shutdown"
 	"cadent/server/writers/dbs"
 	"cadent/server/writers/indexer"
@@ -85,8 +86,10 @@ type KafkaFlatMetrics struct {
 	static_tags repr.SortingTags
 
 	shutitdown bool
-	batches    int // number of stats to "batch" per message (default 0)
-	log        *logging.Logger
+	startstop  utils.StartStop
+
+	batches int // number of stats to "batch" per message (default 0)
+	log     *logging.Logger
 }
 
 func NewKafkaFlatMetrics() *KafkaFlatMetrics {
@@ -123,13 +126,15 @@ func (kf *KafkaFlatMetrics) Start() {
 }
 
 func (kf *KafkaFlatMetrics) Stop() {
-	shutdown.AddToShutdown()
-	defer shutdown.ReleaseFromShutdown()
-	kf.shutitdown = true
-	time.Sleep(time.Second) // wait to get things written if pending
-	if err := kf.conn.Close(); err != nil {
-		kf.log.Error("Failed to shut down producer cleanly %v", err)
-	}
+	kf.startstop.Stop(func() {
+		shutdown.AddToShutdown()
+		defer shutdown.ReleaseFromShutdown()
+		kf.shutitdown = true
+		time.Sleep(time.Second) // wait to get things written if pending
+		if err := kf.conn.Close(); err != nil {
+			kf.log.Error("Failed to shut down producer cleanly %v", err)
+		}
+	})
 }
 
 func (kf *KafkaFlatMetrics) SetIndexer(idx indexer.Indexer) error {

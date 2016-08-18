@@ -66,6 +66,7 @@ import (
 	"cadent/server/dispatch"
 	"cadent/server/repr"
 	"cadent/server/stats"
+	"cadent/server/utils"
 	"cadent/server/utils/shutdown"
 	"cadent/server/writers/dbs"
 	"database/sql"
@@ -105,6 +106,7 @@ type MySQLIndexer struct {
 
 	shutitdown uint32
 	shutdown   chan bool
+	startstop  utils.StartStop
 
 	log *logging.Logger
 }
@@ -167,35 +169,39 @@ func (my *MySQLIndexer) Config(conf map[string]interface{}) error {
 func (my *MySQLIndexer) Name() string { return my.indexerId }
 
 func (my *MySQLIndexer) Start() {
-	if my.write_queue == nil && atomic.CompareAndSwapUint32(&my.shutitdown, 1, 0) {
-		my.log.Notice("starting mysql indexer: %s", my.Name())
+	my.startstop.Start(func() {
+		if atomic.CompareAndSwapUint32(&my.shutitdown, 1, 0) {
+			my.log.Notice("starting mysql indexer: %s", my.Name())
 
-		workers := my.num_workers
-		my.write_queue = make(chan dispatch.IJob, my.queue_len)
-		my.dispatch_queue = make(chan chan dispatch.IJob, workers)
-		my.write_dispatcher = dispatch.NewDispatch(workers, my.dispatch_queue, my.write_queue)
-		my.write_dispatcher.SetRetries(2)
-		my.write_dispatcher.Run()
+			workers := my.num_workers
+			my.write_queue = make(chan dispatch.IJob, my.queue_len)
+			my.dispatch_queue = make(chan chan dispatch.IJob, workers)
+			my.write_dispatcher = dispatch.NewDispatch(workers, my.dispatch_queue, my.write_queue)
+			my.write_dispatcher.SetRetries(2)
+			my.write_dispatcher.Run()
 
-		my.cache.Start() //start cacher
+			my.cache.Start() //start cacher
 
-		go my.sendToWriters() // the dispatcher
-	}
+			go my.sendToWriters() // the dispatcher
+		}
+	})
 }
 
 func (my *MySQLIndexer) Stop() {
-	shutdown.AddToShutdown()
-	defer shutdown.ReleaseFromShutdown()
+	my.startstop.Stop(func() {
+		shutdown.AddToShutdown()
+		defer shutdown.ReleaseFromShutdown()
 
-	if atomic.SwapUint32(&my.shutitdown, 1) == 1 {
-		return // already did
-	}
+		if atomic.SwapUint32(&my.shutitdown, 1) == 1 {
+			return // already did
+		}
 
-	my.log.Notice("shutting down mysql indexer: %s", my.Name())
-	my.cache.Stop()
-	if my.write_queue != nil {
-		my.write_dispatcher.Shutdown()
-	}
+		my.log.Notice("shutting down mysql indexer: %s", my.Name())
+		my.cache.Stop()
+		if my.write_queue != nil {
+			my.write_dispatcher.Shutdown()
+		}
+	})
 }
 
 // pop from the cache and send to actual writers

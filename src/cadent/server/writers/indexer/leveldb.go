@@ -63,6 +63,7 @@ import (
 	"cadent/server/dispatch"
 	"cadent/server/repr"
 	"cadent/server/stats"
+	"cadent/server/utils"
 	"cadent/server/utils/shutdown"
 	"cadent/server/writers/dbs"
 	"fmt"
@@ -346,6 +347,8 @@ type LevelDBIndexer struct {
 	num_workers int
 	queue_len   int
 	_accept     bool //shtdown notice
+	start       utils.Once
+	stop        utils.Once
 
 	log *logging.Logger
 }
@@ -414,22 +417,25 @@ func (lp *LevelDBIndexer) Name() string {
 }
 
 func (lp *LevelDBIndexer) Stop() {
-	shutdown.AddToShutdown()
-	defer shutdown.ReleaseFromShutdown()
-	if !lp._accept {
-		return
-	}
-	lp.log.Notice("Shutting down LevelDB indexer: %s", lp.Name())
-	lp._accept = false
-	lp.shutonce.Do(lp.cache.Stop)
-	if lp.write_queue != nil {
-		lp.write_dispatcher.Shutdown()
-	}
-	lp.db.Close()
+	lp.stop.Do(func() {
+		shutdown.AddToShutdown()
+		defer shutdown.ReleaseFromShutdown()
+		if !lp._accept {
+			return
+		}
+		lp.log.Notice("Shutting down LevelDB indexer: %s", lp.Name())
+		lp._accept = false
+		lp.shutonce.Do(lp.cache.Stop)
+		if lp.write_queue != nil {
+			lp.write_dispatcher.Shutdown()
+		}
+		lp.db.Close()
+		lp.start.Reset()
+	})
 }
 
 func (lp *LevelDBIndexer) Start() {
-	if lp.write_queue == nil {
+	lp.start.Do(func() {
 		lp.log.Notice("Starting LevelDB indexer: %s", lp.Name())
 		workers := lp.num_workers
 		lp.write_queue = make(chan dispatch.IJob, lp.queue_len)
@@ -438,8 +444,9 @@ func (lp *LevelDBIndexer) Start() {
 		lp.write_dispatcher.SetRetries(2)
 		lp.write_dispatcher.Run()
 		lp.cache.Start()
+		lp.stop.Reset()
 		go lp.sendToWriters() // the dispatcher
-	}
+	})
 }
 
 // pop from the cache and send to actual writers

@@ -113,6 +113,7 @@ type WhisperWriter struct {
 
 	shutdown   chan bool // when triggered, we skip the rate limiter and go full out till the queue is done
 	shutitdown bool      // just a flag
+	startstop  utils.StartStop
 
 	write_queue       chan dispatch.IJob
 	dispatch_queue    chan chan dispatch.IJob
@@ -318,58 +319,60 @@ func (ws *WhisperWriter) TrapExit() {
 
 // shutdown the writer, purging all cache to files as fast as we can
 func (ws *WhisperWriter) Stop() {
-	shutdown.AddToShutdown()
-	defer shutdown.ReleaseFromShutdown()
+	ws.startstop.Stop(func() {
+		shutdown.AddToShutdown()
+		defer shutdown.ReleaseFromShutdown()
 
-	ws.log.Warning("Whisper: Shutting down")
+		ws.log.Warning("Whisper: Shutting down")
 
-	if ws.shutitdown {
-		return // already did
-	}
-
-	ws.shutitdown = true
-	if ws.write_dispatcher != nil {
-		ws.write_dispatcher.Shutdown()
-	}
-	ws.shutdown <- true
-
-	ws.cache_queue.Stop()
-
-	if ws.cache_queue == nil {
-		ws.log.Warning("Whisper: Shutdown finished, nothing in queue to write")
-		return
-	}
-	mets := ws.cache_queue.Queue
-	mets_l := len(mets)
-	ws.log.Warning("Whisper: Shutting down, exhausting the queue (%d items) and quiting", mets_l)
-	// full tilt write out
-	did := 0
-	for _, queueitem := range mets {
-		if did%100 == 0 {
-			ws.log.Warning("Whisper: shutdown purge: written %d/%d...", did, mets_l)
+		if ws.shutitdown {
+			return // already did
 		}
-		name, points, _ := ws.cache_queue.GetById(queueitem.metric)
-		if points != nil {
-			stats.StatsdClient.Incr(fmt.Sprintf("writer.cassandraflat.write.send-to-writers"), 1)
-			ws.InsertMulti(name, points)
+
+		ws.shutitdown = true
+		if ws.write_dispatcher != nil {
+			ws.write_dispatcher.Shutdown()
 		}
-		did++
-	}
+		ws.shutdown <- true
 
-	r_cache := GetReadCache()
-	if r_cache != nil {
-		ws.log.Warning("Whisper: shutdown read cache")
-		r_cache.Stop()
-	}
+		ws.cache_queue.Stop()
 
-	ws.log.Warning("Whisper: shutdown purge: written %d/%d...", did, mets_l)
-	ws.log.Warning("Whisper: Shutdown finished ... quiting whisper writer")
+		if ws.cache_queue == nil {
+			ws.log.Warning("Whisper: Shutdown finished, nothing in queue to write")
+			return
+		}
+		mets := ws.cache_queue.Queue
+		mets_l := len(mets)
+		ws.log.Warning("Whisper: Shutting down, exhausting the queue (%d items) and quiting", mets_l)
+		// full tilt write out
+		did := 0
+		for _, queueitem := range mets {
+			if did%100 == 0 {
+				ws.log.Warning("Whisper: shutdown purge: written %d/%d...", did, mets_l)
+			}
+			name, points, _ := ws.cache_queue.GetById(queueitem.metric)
+			if points != nil {
+				stats.StatsdClient.Incr(fmt.Sprintf("writer.cassandraflat.write.send-to-writers"), 1)
+				ws.InsertMulti(name, points)
+			}
+			did++
+		}
+
+		r_cache := GetReadCache()
+		if r_cache != nil {
+			ws.log.Warning("Whisper: shutdown read cache")
+			r_cache.Stop()
+		}
+
+		ws.log.Warning("Whisper: shutdown purge: written %d/%d...", did, mets_l)
+		ws.log.Warning("Whisper: Shutdown finished ... quiting whisper writer")
+	})
 }
 
 func (ws *WhisperWriter) Start() {
 
 	/**** start the acctuall disk writer dispatcher queue ***/
-	if ws.write_queue == nil {
+	ws.startstop.Start(func() {
 		workers := ws.num_workers
 		ws.write_queue = make(chan dispatch.IJob, ws.queue_len)
 		ws.dispatch_queue = make(chan chan dispatch.IJob, workers)
@@ -385,7 +388,7 @@ func (ws *WhisperWriter) Start() {
 			ws.cacheOverFlow = ws.cache_queue.GetOverFlowChan()
 			go ws.overFlowWrite()
 		}
-	}
+	})
 
 }
 

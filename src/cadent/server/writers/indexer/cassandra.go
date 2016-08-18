@@ -88,6 +88,7 @@ import (
 	"github.com/gocql/gocql"
 	logging "gopkg.in/op/go-logging.v1"
 
+	"cadent/server/utils"
 	"cadent/server/utils/shutdown"
 	"strings"
 	"sync"
@@ -147,6 +148,7 @@ type CassandraIndexer struct {
 	num_workers    int
 	queue_len      int
 	shutitdown     uint32 //shtdown notice
+	startstop      utils.StartStop
 
 	write_queue      chan dispatch.IJob
 	dispatch_queue   chan chan dispatch.IJob
@@ -168,23 +170,8 @@ func NewCassandraIndexer() *CassandraIndexer {
 	return cass
 }
 
-func (cass *CassandraIndexer) Stop() {
-	shutdown.AddToShutdown()
-	defer shutdown.ReleaseFromShutdown()
-
-	if atomic.SwapUint32(&cass.shutitdown, 1) == 1 {
-		return // already did
-	}
-	cass.log.Notice("shutting down cassandra indexer: %s", cass.Name())
-
-	cass.cache.Stop()
-	if cass.write_queue != nil {
-		cass.write_dispatcher.Shutdown()
-	}
-}
-
 func (cass *CassandraIndexer) Start() {
-	if cass.write_queue == nil {
+	cass.startstop.Start(func() {
 		cass.log.Notice("starting up cassandra indexer: %s", cass.Name())
 		workers := cass.num_workers
 		cass.write_queue = make(chan dispatch.IJob, cass.queue_len)
@@ -196,7 +183,24 @@ func (cass *CassandraIndexer) Start() {
 		cass.cache.Start() //start cacher
 
 		go cass.sendToWriters() // the dispatcher
-	}
+	})
+}
+
+func (cass *CassandraIndexer) Stop() {
+	cass.startstop.Stop(func() {
+		shutdown.AddToShutdown()
+		defer shutdown.ReleaseFromShutdown()
+
+		if atomic.SwapUint32(&cass.shutitdown, 1) == 1 {
+			return // already did
+		}
+		cass.log.Notice("shutting down cassandra indexer: %s", cass.Name())
+
+		cass.cache.Stop()
+		if cass.write_queue != nil {
+			cass.write_dispatcher.Shutdown()
+		}
+	})
 }
 
 func (cass *CassandraIndexer) Config(conf map[string]interface{}) (err error) {
