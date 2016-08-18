@@ -112,9 +112,9 @@ func TestCarbontwoAccumulator(t *testing.T) {
 		}
 
 		strs := strings.Split(buf.String(), "\n")
-		So(strs, ShouldContain, "mtype=gauge.stat=max.unit=B.what=house 10.000000 123123 moo=goo house=spam")
-		So(strs, ShouldContain, "mtype=gauge.stat=min.unit=B.what=house 2.000000 123123 moo=goo house=spam")
-		So(strs, ShouldContain, "mtype=gauge.stat=mean.unit=B.what=house 5.666667 123123 moo=goo house=spam")
+		So(strs, ShouldContain, "mtype=gauge.stat=max.unit=B.what=house 10.000000 123123 mtype=gauge stat=max unit=B what=house  moo=goo house=spam")
+		So(strs, ShouldContain, "mtype=gauge.stat=min.unit=B.what=house 2.000000 123123 mtype=gauge stat=min unit=B what=house  moo=goo house=spam")
+		So(strs, ShouldContain, "mtype=gauge.stat=mean.unit=B.what=house 5.666667 123123 mtype=gauge stat=mean unit=B what=house  moo=goo house=spam")
 
 	})
 	stsfmt, err := NewFormatterItem("statsd")
@@ -161,7 +161,8 @@ func TestCarbontwoAccumulator(t *testing.T) {
 		err = statter.ProcessLine("stat=mean unit=B mtype=rate what=house  moo=goo house=spam 5 123123")
 		err = statter.ProcessLine("stat=mean unit=B mtype=rate what=house  moo=goo house=spam 10 123123")
 
-		err = statter.ProcessLine("stat=mean unit=B mtype=rate what=monkey  10 123123")
+		err = statter.ProcessLine("stat=count unit=B mtype=rate what=monkey  10 123123")
+		err = statter.ProcessLine("stat=count unit=B mtype=rate what=monkey  12 123123")
 
 		buf := new(bytes.Buffer)
 		b_arr := statter.Flush(buf)
@@ -169,10 +170,11 @@ func TestCarbontwoAccumulator(t *testing.T) {
 			So(len(b_arr.Stats), ShouldEqual, 4)
 		})
 		strs := strings.Split(buf.String(), "\n")
-		So(strs, ShouldContain, "mtype=counter stat=max unit=B what=house  moo=goo house=spam 10.000000 123123")
-		So(strs, ShouldContain, "mtype=gauge stat=min unit=B what=house  moo=goo house=spam 2.000000 123123")
-		So(strs, ShouldContain, "mtype=rate stat=mean unit=B what=house  moo=goo house=spam 5.666667 123123")
-		So(strs, ShouldContain, "mtype=rate stat=mean unit=B what=monkey 10.000000 123123")
+		t.Logf("MOO: %v", buf.String())
+		So(strs, ShouldContain, "mtype=rate stat=count unit=B what=monkey 22.000000 123123")
+		So(strs, ShouldContain, "mtype=gauge stat=min unit=B what=house  house=spam moo=goo 2.000000 123123")
+		So(strs, ShouldContain, "mtype=rate stat=mean unit=B what=house  house=spam moo=goo 5.666667 123123")
+		So(strs, ShouldContain, "mtype=counter stat=max unit=B what=house  house=spam moo=goo 10.000000 123123")
 
 	})
 }

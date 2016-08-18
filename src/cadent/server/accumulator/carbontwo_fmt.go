@@ -94,7 +94,7 @@ func (g *CarbonTwoFormatter) Write(buf io.Writer, name *repr.StatName, val float
 		}
 	}
 
-	fmt.Printf("IN: %v OUT: %v", tags, name.Tags)
+	//fmt.Printf("IN: %v OUT: %v", tags, name.Tags)
 
 	// if there are "tags" we use the Tags for the name, otherwise, we just the Key
 	if !tags_empty {

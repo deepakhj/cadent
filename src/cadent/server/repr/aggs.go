@@ -33,6 +33,8 @@ var _upperMaxReg *regexp.Regexp
 var _lowerReg *regexp.Regexp
 var _lowerMinReg *regexp.Regexp
 var _medianReg *regexp.Regexp
+var _countReg *regexp.Regexp
+var _stdReg *regexp.Regexp
 
 func init() {
 	_upperReg, _ = regexp.Compile(".*upper_[0-9]+$")
@@ -40,6 +42,8 @@ func init() {
 	_lowerReg, _ = regexp.Compile(".*lower_[0-9]+$")
 	_lowerMinReg, _ = regexp.Compile(".*min_[0-9]+$")
 	_medianReg, _ = regexp.Compile(".*median_[0-9]+$")
+	_countReg, _ = regexp.Compile(".*count_[0-9]+$")
+	_stdReg, _ = regexp.Compile(".*std_[0-9]+$")
 }
 
 type AggType uint8
@@ -62,13 +66,13 @@ func AggTypeFromTag(stat string) AggType {
 		return MIN
 	case stat == "max" || stat == "upper" || _upperReg.MatchString(stat) || _upperMaxReg.MatchString(stat):
 		return MAX
-	case stat == "sum" || stat == "count" || stat == "requests":
+	case stat == "sum" || stat == "count" || stat == "counter" || stat == "requests" || _countReg.MatchString(stat):
 		return SUM
 	case stat == "gauge" || stat == "abs" || stat == "absolute":
 		return LAST
-	case stat == "std":
+	case stat == "std" || _stdReg.MatchString(stat):
 		return STD
-	case stat == "median" || stat == "middle":
+	case stat == "median" || stat == "middle" || _medianReg.MatchString(stat):
 		return MEDIAN
 	default:
 		return MEAN
@@ -86,7 +90,7 @@ func GuessReprValueFromKey(metric string) AggType {
 
 	// statsd like things are "mean_XX", "upper_XX", "lower_XX", "count_XX"
 	switch {
-	case last_path == "count" || strings.HasPrefix(metric, "stats.count"):
+	case last_path == "count" || strings.HasPrefix(metric, "stats.count") || _countReg.MatchString(metric):
 		return SUM
 	case last_path == "last" || last_path == "gauge" || strings.HasPrefix(metric, "stats.gauge"):
 		return LAST
