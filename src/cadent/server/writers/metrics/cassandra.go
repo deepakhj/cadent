@@ -377,18 +377,14 @@ func (cass *CassandraMetric) Config(conf map[string]interface{}) (err error) {
 	}
 	cass.renderTimeout = rdur
 
-	if !cass.cacher.started && !cass.cacher.inited {
-		// set the cacher bits
-		cass.cacher.maxKeys = cass.blobMaxMetrics
+	// match blob types
+	cass.cacher.seriesType = cass.series_encoding
+	cass.cacher.maxBytes = cass.blobMaxBytes
+	cass.cacher.maxKeys = cass.blobMaxMetrics
 
-		// match blob types
-		cass.cacher.seriesType = cass.series_encoding
-		cass.cacher.maxBytes = cass.blobMaxBytes
-
-		// unlike the other writers, overflows of cache size are
-		// exactly what we want to write
-		cass.cacher.overFlowMethod = "chan"
-	}
+	// unlike the other writers, overflows of cache size are
+	// exactly what we want to write
+	cass.cacher.overFlowMethod = "chan"
 
 	return nil
 }
@@ -397,8 +393,11 @@ func (cass *CassandraMetric) Start() {
 	cass.startstop.Start(func() {
 		/**** dispatcher queue ***/
 		cass.writer.log.Notice("Starting cassandra series writer for %s at %d bytes per series", cass.writer.db.MetricTable(), cass.blobMaxBytes)
+
 		cass.cacher.maxBytes = cass.blobMaxBytes
-		//cass.cacher.maxKeys = cass.blobMaxMetrics
+		cass.cacher.maxKeys = cass.blobMaxMetrics
+		cass.cacher.overFlowMethod = "chan"
+
 		cass.cacher.Start()
 
 		// register the overflower
