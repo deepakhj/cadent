@@ -1,99 +1,57 @@
 /*
-  Indexer Reader/Writer
+Copyright 2016 Under Armour, Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+/*
+  Indexer Reader/Writer to match the GraphiteAPI .. but contains other things that may be useful for other API
+  things
 */
 
 package indexer
 
 import (
-	"regexp"
-	"strings"
+	"cadent/server/repr"
 )
-
-var _upperReg *regexp.Regexp
-var _upperMaxReg *regexp.Regexp
-var _lowerReg *regexp.Regexp
-var _lowerMinReg *regexp.Regexp
-
-func init() {
-	_upperReg, _ = regexp.Compile(".*upper_[0-9]+$")
-	_upperMaxReg, _ = regexp.Compile(".*max_[0-9]+$")
-	_lowerReg, _ = regexp.Compile(".*lower_[0-9]+$")
-	_lowerMinReg, _ = regexp.Compile(".*min_[0-9]+$")
-}
-
-func GuessAggregateType(metric string) string {
-	spl := strings.Split(metric, ".")
-	last_path := spl[len(spl)-1]
-
-	// statsd like things are "mean_XX", "upper_XX", "lower_XX", "count_XX"
-	if strings.Contains(last_path, "mean") {
-		return "mean"
-	}
-	if strings.Contains(last_path, "avg") {
-		return "mean"
-	}
-	// specials for "counts"
-	if strings.HasSuffix(metric, "count") || strings.HasPrefix(metric, "stats.count") {
-		return "sum"
-	}
-	// last/gauges use the last val
-	if strings.HasSuffix(metric, "last") {
-		return "last"
-	}
-	if strings.HasSuffix(metric, "gauge") || strings.HasPrefix(metric, "stats.gauge") {
-		return "last"
-	}
-
-	// specials for "requests"
-	if strings.HasSuffix(metric, "requests") {
-		return "sum"
-	}
-	if strings.Contains(last_path, "sum") {
-		return "sum"
-	}
-	if strings.HasSuffix(last_path, "errors") || strings.HasSuffix(last_path, "error") {
-		return "sum"
-	}
-	if strings.Contains(last_path, "std") { // standard deviation
-		return "mean"
-	}
-	if strings.Contains(last_path, "average") {
-		return "mean"
-	}
-	if _upperReg.Match([]byte(last_path)) {
-		return "max"
-	}
-	if strings.HasSuffix(last_path, "max") || _upperMaxReg.MatchString(last_path) {
-		return "max"
-	}
-	if strings.HasSuffix(last_path, "min") || _lowerMinReg.MatchString(last_path) {
-		return "min"
-	}
-	if _lowerReg.MatchString(last_path) {
-		return "min"
-	}
-	if strings.HasSuffix(last_path, "lower") || _lowerReg.MatchString(last_path) {
-		return "min"
-	}
-	return "mean"
-}
 
 // the basic metric json blob for find
 type MetricFindItem struct {
-	Text          string `json:"text"`
-	Expandable    int    `json:"expandable"`
-	Leaf          int    `json:"leaf"`
-	Id            string `json:"id"`
-	Path          string `json:"path"`
-	AllowChildren int    `json:"allowChildren"`
+	Text          string           `json:"text" `
+	Expandable    int              `json:"expandable"`
+	Leaf          int              `json:"leaf"`
+	Id            string           `json:"id"`
+	Path          string           `json:"path"`
+	AllowChildren int              `json:"allowChildren"`
+	UniqueId      string           `json:"uniqueid"` // can be nil
+	Tags          repr.SortingTags `json:"tags"`
+	MetaTags      repr.SortingTags `json:"meta_tags"`
 }
 
 // attempt to pick the "correct" metric based on the stats name
-func (m *MetricFindItem) SelectValue() string {
+func (m *MetricFindItem) SelectValue() repr.AggType {
 	if m.Leaf == 0 {
-		return "sum" // not data
+		return repr.SUM // not data
 	}
-	return GuessAggregateType(m.Id)
+	// stat wins
+	tg := m.Tags.Stat()
+	if tg != "" {
+		return repr.AggTypeFromTag(tg)
+	}
+	return repr.GuessReprValueFromKey(m.Id)
+}
+func (m *MetricFindItem) StatName() *repr.StatName {
+	return &repr.StatName{Key: m.Id, Tags: m.Tags, MetaTags: m.MetaTags}
 }
 
 type MetricFindItems []MetricFindItem

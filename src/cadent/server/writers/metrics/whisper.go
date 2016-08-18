@@ -1,4 +1,20 @@
 /*
+Copyright 2016 Under Armour, Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+/*
 	The whisper file writer
 
 	NOTE:: the whisper file ITSELF takes care of rollups, NOT, so unlike the DB/CSV ones, we DO NOT
@@ -11,8 +27,9 @@
 		xFilesFactor=0.3
 		write_workers=8
 		write_queue_length=102400
+		cache_series_type="protobuf"
 		cache_metric_size=102400  # the "internal carbon-like-cache" size (ram is your friend)
-		cache_points_size=1024 # number of points per metric to cache above to keep before we drop (this * cache_metric_size * 32 * 128 bytes == your better have that ram)
+		cache_byte_size=8192 # number of bytes per metric to cache above to keep before we drop (ram requirements cache_metric_size*cache_byte_size)
 		cache_low_fruit_rate=0.25 # every 1/4 of the time write "low count" metrics to at least persist them
 		writes_per_second=1000 # allowed physical writes per second
 
@@ -29,6 +46,10 @@ import (
 	"os/signal"
 	"syscall"
 
+	"cadent/server/broadcast"
+	"cadent/server/utils"
+	"cadent/server/utils/shutdown"
+	"errors"
 	whisper "github.com/robyoung/go-whisper"
 	logging "gopkg.in/op/go-logging.v1"
 	"os"
@@ -41,8 +62,12 @@ import (
 const (
 	WHISPER_METRIC_WORKERS    = 8
 	WHISPER_METRIC_QUEUE_LEN  = 1024 * 100
-	WHISPER_WRITES_PER_SECOND = 1000
+	WHISPER_WRITES_PER_SECOND = 1024
 )
+
+var errWhisperNotaDataNode = errors.New("Whisper: RawRenderOne: Not a data node")
+var errWhisperNoDataInTimes = errors.New("Whisper: No data between these times")
+var errWhisperNotImplemented = errors.New("Whisper: Not yet implemented")
 
 // the singleton (per DSN) as we really only want one "controller" of writes not many lest we explode the
 // IOwait to death
@@ -81,8 +106,10 @@ type WhisperWriter struct {
 	xFilesFactor float32
 	resolutions  [][]int
 	retentions   whisper.Retention
+	indexer      indexer.Indexer
 
-	cache_queue *Cacher
+	cache_queue   *Cacher
+	cacheOverFlow *broadcast.Listener // on byte overflow of cacher force a write
 
 	shutdown   chan bool // when triggered, we skip the rate limiter and go full out till the queue is done
 	shutitdown bool      // just a flag
@@ -92,7 +119,7 @@ type WhisperWriter struct {
 	write_dispatcher  *dispatch.Dispatch
 	num_workers       int
 	queue_len         int
-	writes_per_second int // number of acctuall writes we will do per second assuming "INF" writes allowed
+	writes_per_second int // number of actuall writes we will do per second assuming "INF" writes allowed
 
 	write_lock sync.Mutex
 	log        *logging.Logger
@@ -135,25 +162,38 @@ func NewWhisperWriter(conf map[string]interface{}) (*WhisperWriter, error) {
 		return nil, fmt.Errorf("Whisper Metrics: counld not find base path %s", err)
 	}
 	if !info.IsDir() {
-		return nil, fmt.Errorf("Whisper Metrics: base path %s is not a directory", err)
+		return nil, fmt.Errorf("Whisper Metrics: base path %s is not a directory", ws.base_path)
 	}
 
 	// set up the cacher
-	ws.cache_queue = NewCacher()
+	ws.cache_queue, err = getCacherSingleton("whisper")
+	if !ws.cache_queue.started && !ws.cache_queue.inited {
+		ws.cache_queue.inited = true
+		_ms := conf["cache_metric_size"]
+		if _ms != nil {
+			ws.cache_queue.maxKeys = int(_ms.(int64))
+		}
 
-	_ms := conf["cache_metric_size"]
-	if _ms != nil {
-		ws.cache_queue.maxKeys = int(_ms.(int64))
-	}
+		_ps := conf["cache_byte_size"]
+		if _ps != nil {
+			ws.cache_queue.maxBytes = int(_ps.(int64))
+		}
 
-	_ps := conf["cache_points_size"]
-	if _ps != nil {
-		ws.cache_queue.maxPoints = int(_ps.(int64))
-	}
+		_st := conf["cache_series_type"]
+		if _st != nil {
+			ws.cache_queue.seriesType = _st.(string)
+		}
 
-	_lf := conf["cache_low_fruit_rate"]
-	if _lf != nil {
-		ws.cache_queue.lowFruitRate = _lf.(float64)
+		_ov := conf["cache_overflow_method"]
+		if _ov != nil {
+			ws.cache_queue.overFlowMethod = _ov.(string)
+
+		}
+
+		_lf := conf["cache_low_fruit_rate"]
+		if _lf != nil {
+			ws.cache_queue.lowFruitRate = _lf.(float64)
+		}
 	}
 
 	_rs := conf["writes_per_second"]
@@ -161,10 +201,10 @@ func NewWhisperWriter(conf map[string]interface{}) (*WhisperWriter, error) {
 	if _rs != nil {
 		ws.writes_per_second = int(_rs.(int64))
 	}
-	ws.shutdown = make(chan bool, 1)
+	ws.shutdown = make(chan bool, 5)
 	ws.shutitdown = false
-	go ws.TrapExit()
-
+	//go ws.TrapExit()
+	//go ws.Start()
 	return ws, nil
 }
 
@@ -184,41 +224,46 @@ func (ws *WhisperWriter) getRetentions() (whisper.Retentions, error) {
 }
 
 func (ws *WhisperWriter) getAggregateType(key string) whisper.AggregationMethod {
-	agg_type := indexer.GuessAggregateType(key)
+	agg_type := repr.GuessReprValueFromKey(key)
 	switch agg_type {
-	case "sum":
+	case repr.SUM:
 		return whisper.Sum
-	case "max":
+	case repr.MAX:
 		return whisper.Max
-	case "min":
+	case repr.MIN:
 		return whisper.Min
-	case "last":
+	case repr.LAST:
 		return whisper.Last
 	default:
 		return whisper.Average
 	}
-	return whisper.Average
 }
 
 func (ws *WhisperWriter) getxFileFactor(key string) float32 {
-	agg_type := indexer.GuessAggregateType(key)
+	agg_type := repr.GuessReprValueFromKey(key)
 	switch agg_type {
-	case "sum":
+	case repr.SUM:
 		return 0.0
-	case "max":
+	case repr.MAX:
 		return 0.1
-	case "min":
+	case repr.MIN:
 		return 0.1
-	case "last":
+	case repr.LAST:
 		return 0.1
 	default:
 		return ws.xFilesFactor
 	}
-	return ws.xFilesFactor
+}
+
+func (ws *WhisperWriter) getFilePath(metric string) string {
+	if strings.Contains(metric, "/") {
+		return metric
+	}
+	return filepath.Join(ws.base_path, strings.Replace(metric, ".", "/", -1)) + ".wsp"
 }
 
 func (ws *WhisperWriter) getFile(metric string) (*whisper.Whisper, error) {
-	path := filepath.Join(ws.base_path, strings.Replace(metric, ".", "/", -1)) + ".wsp"
+	path := ws.getFilePath(metric)
 	_, err := os.Stat(path)
 	if err != nil {
 		retentions, err := ws.getRetentions()
@@ -236,25 +281,15 @@ func (ws *WhisperWriter) getFile(metric string) (*whisper.Whisper, error) {
 		return whisper.Create(path, retentions, agg, ws.xFilesFactor)
 	}
 
+	// need a recover in case files is corrupt and thus start over
+	defer func() {
+		if r := recover(); r != nil {
+			ws.log.Critical("Whisper Failure (panic) %v :: need to remove file", r)
+			ws.DeleteByName(metric)
+		}
+	}()
+
 	return whisper.Open(path)
-}
-
-func (ws *WhisperWriter) guessValue(metric string, stat *repr.StatRepr) float64 {
-
-	use_metric := indexer.GuessAggregateType(metric)
-
-	switch use_metric {
-	case "sum":
-		return float64(stat.Sum)
-	case "max":
-		return float64(stat.Max)
-	case "min":
-		return float64(stat.Min)
-	case "last":
-		return float64(stat.Last)
-	default:
-		return float64(stat.Mean)
-	}
 }
 
 func (ws *WhisperWriter) TrapExit() {
@@ -283,16 +318,23 @@ func (ws *WhisperWriter) TrapExit() {
 
 // shutdown the writer, purging all cache to files as fast as we can
 func (ws *WhisperWriter) Stop() {
+	shutdown.AddToShutdown()
+	defer shutdown.ReleaseFromShutdown()
+
+	ws.log.Warning("Whisper: Shutting down")
 
 	if ws.shutitdown {
 		return // already did
 	}
+
 	ws.shutitdown = true
-	ws.shutdown <- true
-	ws.cache_queue.Stop()
 	if ws.write_dispatcher != nil {
 		ws.write_dispatcher.Shutdown()
 	}
+	ws.shutdown <- true
+
+	ws.cache_queue.Stop()
+
 	if ws.cache_queue == nil {
 		ws.log.Warning("Whisper: Shutdown finished, nothing in queue to write")
 		return
@@ -302,58 +344,118 @@ func (ws *WhisperWriter) Stop() {
 	ws.log.Warning("Whisper: Shutting down, exhausting the queue (%d items) and quiting", mets_l)
 	// full tilt write out
 	did := 0
-	for {
-		met, pts := ws.cache_queue.Pop()
-		if met == "" {
-			break
-		}
+	for _, queueitem := range mets {
 		if did%100 == 0 {
 			ws.log.Warning("Whisper: shutdown purge: written %d/%d...", did, mets_l)
 		}
-		if pts != nil {
-			stats.StatsdClient.Incr("writer.whisper.write.send-to-writers", 1)
-			ws.InsertMulti(met, pts)
+		name, points, _ := ws.cache_queue.GetById(queueitem.metric)
+		if points != nil {
+			stats.StatsdClient.Incr(fmt.Sprintf("writer.cassandraflat.write.send-to-writers"), 1)
+			ws.InsertMulti(name, points)
 		}
 		did++
 	}
 
+	r_cache := GetReadCache()
+	if r_cache != nil {
+		ws.log.Warning("Whisper: shutdown read cache")
+		r_cache.Stop()
+	}
+
 	ws.log.Warning("Whisper: shutdown purge: written %d/%d...", did, mets_l)
 	ws.log.Warning("Whisper: Shutdown finished ... quiting whisper writer")
-	return
 }
 
-func (ws *WhisperWriter) InsertMulti(metric string, points []*repr.StatRepr) (int, error) {
-	whis, err := ws.getFile(metric)
+func (ws *WhisperWriter) Start() {
+
+	/**** start the acctuall disk writer dispatcher queue ***/
+	if ws.write_queue == nil {
+		workers := ws.num_workers
+		ws.write_queue = make(chan dispatch.IJob, ws.queue_len)
+		ws.dispatch_queue = make(chan chan dispatch.IJob, workers)
+		ws.write_dispatcher = dispatch.NewDispatch(workers, ws.dispatch_queue, ws.write_queue)
+		ws.write_dispatcher.SetRetries(2)
+		ws.write_dispatcher.Run()
+
+		ws.cache_queue.Start()
+		go ws.sendToWriters() // fire up queue puller
+
+		// set th overflow chan, and start the listener for that channel
+		if ws.cache_queue.overFlowMethod == "chan" {
+			ws.cacheOverFlow = ws.cache_queue.GetOverFlowChan()
+			go ws.overFlowWrite()
+		}
+	}
+
+}
+
+// listen to the overflow chan from the cache and attempt to write "now"
+func (ws *WhisperWriter) overFlowWrite() {
+	for {
+		select {
+		case item, more := <-ws.cacheOverFlow.Ch:
+
+			// bail
+			if ws.shutitdown || !more {
+				return
+			}
+			statitem := item.(*TotalTimeSeries)
+			// need to make a list of points from the series
+			iter, err := statitem.Series.Iter()
+			if err != nil {
+				ws.log.Error("error in overflow writer %v", err)
+				continue
+			}
+			pts := make(repr.StatReprSlice, 0)
+			for iter.Next() {
+				pts = append(pts, iter.ReprValue())
+			}
+			if iter.Error() != nil {
+				ws.log.Error("error in overflow iterator %v", iter.Error())
+			}
+			ws.log.Debug("Cache overflow force write for %s you may want to do something about that", statitem.Name.Key)
+			ws.InsertMulti(statitem.Name, pts)
+		}
+	}
+}
+
+func (ws *WhisperWriter) InsertMulti(metric *repr.StatName, points repr.StatReprSlice) (npts int, err error) {
+
+	whis, err := ws.getFile(metric.Key)
 	if err != nil {
 		ws.log.Error("Whisper:InsertMetric write error: %s", err)
 		stats.StatsdClientSlow.Incr("writer.whisper.update-metric-errors", 1)
 		return 0, err
 	}
 
-	/* ye old debuggin
-	if strings.Contains(metric, "flushesposts") {
-		ws.cache_queue.DumpPoints(points)
-	} */
-
 	// convert "points" to a whisper object
 	whisp_points := make([]*whisper.TimeSeriesPoint, 0)
+	agg_func := repr.GuessReprValueFromKey(metric.Key)
 	for _, pt := range points {
-
 		whisp_points = append(whisp_points,
 			&whisper.TimeSeriesPoint{
-				Time: int(pt.Time.Unix()), Value: ws.guessValue(metric, pt),
+				Time: int(pt.Time.Unix()), Value: pt.AggValue(agg_func),
 			},
 		)
 	}
 
-	if points != nil {
+	// need a recover in case files is corrupt and thus start over
+	defer func() {
+		if r := recover(); r != nil {
+			ws.log.Critical("Whisper Failure (panic) '%v' :: Corrupt :: need to remove file: %s", r, metric.Key)
+			ws.DeleteByName(metric.Key)
+			err = r.(error)
+		}
+	}()
+
+	if points != nil && len(whisp_points) > 0 {
 		stats.StatsdClientSlow.GaugeAvg("writer.whisper.points-per-update", int64(len(points)))
 		whis.UpdateMany(whisp_points)
 	}
 	stats.StatsdClientSlow.Incr("writer.whisper.update-many-writes", 1)
 
 	whis.Close()
-	return len(points), nil
+	return len(points), err
 }
 
 // insert the metrics from the cache
@@ -361,7 +463,7 @@ func (ws *WhisperWriter) InsertNext() (int, error) {
 	defer stats.StatsdSlowNanoTimeFunc("writer.whisper.update-time-ns", time.Now())
 
 	metric, points := ws.cache_queue.Pop()
-	if points == nil {
+	if metric == nil || points == nil || len(points) == 0 {
 		return 0, nil
 	}
 	return ws.InsertMulti(metric, points)
@@ -370,7 +472,7 @@ func (ws *WhisperWriter) InsertNext() (int, error) {
 // the "simple" insert one metric at a time model
 func (ws *WhisperWriter) InsertOne(stat repr.StatRepr) (int, error) {
 
-	whis, err := ws.getFile(stat.Key)
+	whis, err := ws.getFile(stat.Name.Key)
 	if err != nil {
 		ws.log.Error("Whisper write error: %s", err)
 		stats.StatsdClientSlow.Incr("writer.whisper.metric-errors", 1)
@@ -392,19 +494,22 @@ func (ws *WhisperWriter) Write(stat repr.StatRepr) error {
 		return nil
 	}
 
-	/**** start the acctuall disk writer dispatcher queue ***/
-	if ws.write_queue == nil {
-		workers := ws.num_workers
-		ws.write_queue = make(chan dispatch.IJob, ws.queue_len)
-		ws.dispatch_queue = make(chan chan dispatch.IJob, workers)
-		ws.write_dispatcher = dispatch.NewDispatch(workers, ws.dispatch_queue, ws.write_queue)
-		ws.write_dispatcher.SetRetries(2)
-		ws.write_dispatcher.Run()
-		go ws.sendToWriters() // fireup queue puller
+	// add to the writeback cache only
+	ws.cache_queue.Add(&stat.Name, &stat)
+	agg_func := repr.GuessReprValueFromKey(stat.Name.Key)
+	// and now add it to the readcache iff it's been activated
+	r_cache := GetReadCache()
+	if r_cache != nil {
+		// add only the "value" we need count==1 makes some timeseries much smaller in cache
+		p_val := stat.AggValue(agg_func)
+		t_stat := &repr.StatRepr{
+			Time:  stat.Time,
+			Sum:   repr.JsonFloat64(p_val),
+			Count: 1,
+			Name:  stat.Name,
+		}
+		r_cache.InsertQueue <- t_stat
 	}
-
-	// add to the cache only
-	ws.cache_queue.Add(stat.Key, &stat)
 	//ws.write_queue <- WhisperMetricsJob{Stat: stat, Whis: ws}
 	return nil
 }
@@ -427,10 +532,23 @@ func (ws *WhisperWriter) sendToWriters() error {
 			}
 		case <-ws.shutdown:
 			ws.log.Warning("Whisper shutdown received, stopping write loop")
-			break
+			return nil
 		}
 	}
-	return nil
+}
+
+// the only recourse to handle "corrupt" files is to nuke it and start again
+// otherwise panics all around for no good reason
+func (ws *WhisperWriter) DeleteByName(name string) (err error) {
+	path := ws.getFilePath(name)
+	err = os.Remove(path)
+	if err != nil {
+		return err
+	}
+	if ws.indexer == nil {
+		return nil
+	}
+	return ws.indexer.Delete(&repr.StatName{Key: name})
 }
 
 /****************** Main Writer Interfaces *********************/
@@ -438,8 +556,6 @@ type WhisperMetrics struct {
 	writer      *WhisperWriter
 	resolutions [][]int
 	indexer     indexer.Indexer
-	render_wg   sync.WaitGroup
-	render_mu   sync.Mutex
 
 	shutonce sync.Once // just shutdown "once and only once ever"
 
@@ -452,8 +568,11 @@ func NewWhisperMetrics() *WhisperMetrics {
 	return ws
 }
 
+func (ws *WhisperMetrics) Start() {
+	ws.writer.Start()
+}
 func (ws *WhisperMetrics) Stop() {
-	ws.shutonce.Do(ws.writer.Stop)
+	ws.writer.Stop()
 }
 
 func (ws *WhisperMetrics) Config(conf map[string]interface{}) error {
@@ -467,6 +586,7 @@ func (ws *WhisperMetrics) Config(conf map[string]interface{}) error {
 
 func (ws *WhisperMetrics) SetIndexer(idx indexer.Indexer) error {
 	ws.indexer = idx
+	ws.writer.indexer = idx // needed for "delete" actions
 	return nil
 }
 
@@ -480,165 +600,193 @@ func (ws *WhisperMetrics) SetResolutions(res [][]int) int {
 }
 
 func (ws *WhisperMetrics) Write(stat repr.StatRepr) error {
-	ws.indexer.Write(stat.Key) // write an index for the key
+	ws.indexer.Write(stat.Name) // write an index for the key
 	err := ws.writer.Write(stat)
+
 	return err
 }
 
 /**** READER ***/
 
-// convert moo.goo.og -> /basepath/moo/goo/og.wsp
-func (ws *WhisperMetrics) ToPath(metric string) string {
-	// asume done already
-	if strings.Contains(metric, "/") {
-		return metric
+func (ws *WhisperMetrics) GetFromReadCache(metric string, start int64, end int64) (rawd *RawRenderItem, got bool) {
+	rawd = new(RawRenderItem)
+
+	// check read cache
+	r_cache := GetReadCache()
+	if r_cache == nil {
+		stats.StatsdClient.Incr("reader.whisper.render.cache.miss", 1)
+		return rawd, false
 	}
-	return filepath.Join(ws.writer.base_path, strings.Replace(metric, ".", "/", -1)+".wsp")
+
+	t_start := time.Unix(int64(start), 0)
+	t_end := time.Unix(int64(end), 0)
+	cached_stats, _, _ := r_cache.Get(metric, t_start, t_end)
+	var d_points []RawDataPoint
+	step := uint32(0)
+	if cached_stats != nil && len(cached_stats) > 0 {
+		stats.StatsdClient.Incr("reader.whisper.render.cache.hits", 1)
+		rawd.AggFunc = repr.GuessReprValueFromKey(metric)
+
+		f_t := uint32(0)
+		for _, stat := range cached_stats {
+			t := uint32(stat.Time.Unix())
+			d_points = append(d_points, RawDataPoint{
+				Sum:   stat.AggValue(rawd.AggFunc),
+				Count: 1,
+				Time:  t,
+			})
+			if f_t <= 0 {
+				f_t = t
+			}
+			if step <= 0 && f_t >= 0 {
+				step = t - f_t
+			}
+		}
+
+		rawd.RealEnd = d_points[len(d_points)-1].Time
+		rawd.RealStart = d_points[0].Time
+		rawd.Start = rawd.RealStart
+		rawd.End = rawd.RealEnd + step
+		rawd.Metric = metric
+		rawd.Step = step
+		rawd.Data = d_points
+		return rawd, len(d_points) > 0
+	} else {
+		stats.StatsdClient.Incr("reader.whisper.render.cache.miss", 1)
+	}
+
+	return rawd, false
 }
 
-func (ws *WhisperMetrics) RawRenderOne(metric indexer.MetricFindItem, from string, to string) (*RawRenderItem, error) {
+func (ws *WhisperMetrics) RawDataRenderOne(metric indexer.MetricFindItem, start int64, end int64) (*RawRenderItem, error) {
 	defer stats.StatsdSlowNanoTimeFunc("reader.whisper.renderraw.get-time-ns", time.Now())
-
 	rawd := new(RawRenderItem)
 
-	if metric.Leaf == 0 { //data only
-		return rawd, fmt.Errorf("Whisper: RawRenderOne: Not a data node")
+	if metric.Leaf == 0 {
+		//data only
+		return rawd, errWhisperNotaDataNode
 	}
 
-	start, err := ParseTime(from)
+	rawd.Start = uint32(start)
+	rawd.End = uint32(end)
+	rawd.AggFunc = repr.GuessReprValueFromKey(metric.Id)
+	rawd.Step = 1 // just for something in case of errors
+	rawd.Metric = metric.Id
+	rawd.Id = metric.UniqueId
+
+	//cache check
+	// the read cache should have "all" the points from a "start" to "end" if the read cache has been activated for
+	// a while.  If not, then it's a partial list (basically the read cache just started)
+	stat_name := metric.StatName()
+	cached, got_cache := ws.GetFromReadCache(stat_name.Key, start, end)
+	// we assume the "cache" is hot data (by design) so if the num points is "lacking"
+	// we know we need to get to the data store (or at least the inflight) for the rest
+	// add the "step" here as typically we have the "forward" step of data
+	if got_cache && cached.StartInRange(uint32(start)+cached.Step) {
+		stats.StatsdClient.Incr("reader.whisper.render.read.cache.hit", 1)
+		ws.log.Debug("Read Cache Hit: %s [%d, %d)", metric.Id, start, end)
+		// need to set the start end to the ones requested before quantization to create the proper
+		// spanning range
+		cached.Start = uint32(start)
+		cached.End = uint32(end)
+		cached.AggFunc = rawd.AggFunc
+		cached.Quantize()
+		return cached, nil
+	}
+	path := ws.writer.getFilePath(stat_name.Key)
+	whis, err := whisper.Open(path)
+
 	if err != nil {
-		ws.writer.log.Error("Invalid from time `%s` :: %v", from, err)
-		return rawd, err
-	}
+		// try the write inflight cache as nothing is written yet
+		inflight_renderitem, err := ws.writer.cache_queue.GetAsRawRenderItem(stat_name)
+		// need at LEAST 2 points to get the proper step size
+		if inflight_renderitem != nil && err == nil && len(inflight_renderitem.Data) > 1 {
+			// move the times to the "requested" ones and quantize the list
+			inflight_renderitem.RealEnd = uint32(end)
+			inflight_renderitem.RealStart = uint32(start)
+			inflight_renderitem.Start = inflight_renderitem.RealStart
+			inflight_renderitem.End = inflight_renderitem.RealEnd
+			inflight_renderitem.Metric = metric.Id
+			inflight_renderitem.Id = metric.UniqueId
+			inflight_renderitem.AggFunc = rawd.AggFunc
 
-	end, err := ParseTime(to)
-	if err != nil {
-		ws.writer.log.Error("Invalid from time `%s` :: %v", to, err)
-		return rawd, err
-	}
-	if end < start {
-		start, end = end, start
-	}
-
-	whis, err := whisper.Open(ws.ToPath(metric.Id))
-	if err != nil {
-		// try the cache
-		var d_points []RawDataPoint
-		inflight, err := ws.writer.cache_queue.Get(metric.Path)
-		if inflight != nil && err == nil && len(inflight) > 0 {
-			f_t := 0
-			step_t := 0
-
-			for _, pt := range inflight {
-				t := int(pt.Time.Unix())
-				d_points = append(d_points, RawDataPoint{
-					Mean: ws.writer.guessValue(metric.Path, pt), //just a stub for the only value we know
-					Time: t,
-				})
-				if f_t <= 0 {
-					f_t = t
-				}
-				if step_t <= 0 && f_t >= 0 {
-					step_t = t - f_t
-				}
-			}
-
-			rawd.RealEnd = int(end)
-			rawd.RealStart = int(start)
-			rawd.Start = int(start)
-			rawd.End = int(end)
-			rawd.Step = int(step_t)
-			rawd.Metric = metric.Path
-			rawd.Data = d_points
-			return rawd, nil
+			err = inflight_renderitem.Quantize()
+			return inflight_renderitem, err
 		} else {
-			ws.writer.log.Error("Could not open file %s", metric.Path)
+			ws.writer.log.Error("Could not open file %s", path)
 			return rawd, err
 		}
 	}
+	defer whis.Close()
 
-	series, err := whis.Fetch(int(start), int(end))
-	if err != nil {
-		ws.writer.log.Error("Could not get series from %s", metric.Path)
+	// need a recover in case files is corrupt and thus start over
+	var series *whisper.TimeSeries
+	/*defer func() {
+		if r := recover(); r != nil {
+			ws.log.Critical("Read Whisper Failure (panic) %v :: Corrupt :: need to remove file: %s", r, path)
+			ws.writer.DeleteByName(path)
+			err = r.(error)
+		}
+	}()*/
+
+	series, err = whis.Fetch(int(start), int(end))
+
+	if err != nil || series == nil {
+		if err == nil {
+			err = errWhisperNoDataInTimes
+		}
+		ws.writer.log.Error("Could not get series from %s : error: %v", path, err)
 		return rawd, err
 	}
 
-	var d_points []RawDataPoint
-	f_t := 0
-	step_t := 0
+	points := series.Points()
+	rawd.Data = make([]RawDataPoint, len(points), len(points))
 
-	for _, point := range series.Points() {
-		d_points = append(d_points, RawDataPoint{
-			Mean: point.Value, //just a stub for the only value we know
-			Time: point.Time,
-		})
+	f_t := uint32(0)
+	step_t := uint32(0)
+
+	for idx, point := range points {
+		rawd.Data[idx] = RawDataPoint{
+			Count: 1,
+			Sum:   point.Value, //just a stub for the only value we know
+			Time:  uint32(point.Time),
+		}
 		if f_t <= 0 {
-			f_t = point.Time
+			f_t = uint32(point.Time)
 		}
 		if step_t <= 0 && f_t >= 0 {
-			step_t = point.Time - f_t
+			step_t = uint32(point.Time) - f_t
 		}
 	}
 
-	// grab the "current inflight" from the cache
-	inflight, err := ws.writer.cache_queue.Get(metric.Path)
-	if inflight != nil && err == nil && len(inflight) > 0 && len(d_points) > 0 {
-		ws.writer.cache_queue.DumpPoints(inflight)
-		inflight_l := len(inflight)
+	rawd.RealEnd = uint32(end)
+	rawd.RealStart = uint32(start)
+	rawd.Start = rawd.RealStart
+	rawd.End = rawd.RealEnd
+	rawd.Step = step_t
 
-		// since inflight is to have later data then the file itself, we go "backwards" down the
-		// inflight list
-
-		first_inflight := inflight[0]
-		first_dpoint := d_points[0]
-		start_d_point := 0
-		start_inf_point := 0
-
-		// find the start index in the data points if we've more then inflight
-		if int(first_inflight.Time.Unix()) > first_dpoint.Time {
-			for idx, pt := range d_points {
-				if pt.Time >= int(first_inflight.Time.Unix()) {
-					start_d_point = idx
-					break
-				}
-			}
-		} else {
-			// otherwise the inflight has more data then the file read
-			for idx, pt := range inflight {
-				if int(pt.Time.Unix()) >= first_dpoint.Time {
-					start_inf_point = idx
-					break
-				}
-			}
-		}
-
-		for i := start_d_point; i < len(d_points); i++ {
-			for j := start_inf_point; j < inflight_l; j++ {
-				//ws.writer.log.Critical("MM: onT: %d, inflight T: %d", d_points[i].Time, inflight[j].Time)
-
-				if int(inflight[j].Time.Unix()) == d_points[i].Time {
-					d_points[i].Mean = ws.writer.guessValue(metric.Path, inflight[j])
-					start_inf_point++
-					break
-				}
-			}
-		}
-
+	// grab the "current inflight" from the cache and merge into the main array
+	inflight_data, err := ws.writer.cache_queue.GetAsRawRenderItem(stat_name)
+	if err == nil && inflight_data != nil && len(inflight_data.Data) > 1 {
+		inflight_data.Step = step_t // need to force this step size
+		//merge with any inflight bits (inflight has higher precedence over the file)
+		inflight_data.Merge(rawd)
+		return inflight_data, nil
 	}
-	// if the first/last fit w/i the timewindow we can backfill
-
-	rawd.RealEnd = int(end)
-	rawd.RealStart = int(start)
-	rawd.Start = int(start)
-	rawd.End = int(end)
-	rawd.Step = int(step_t)
-	rawd.Metric = metric.Path
-	rawd.Data = d_points
 
 	return rawd, nil
 }
 
-func (ws *WhisperMetrics) Render(path string, from string, to string) (WhisperRenderItem, error) {
+// after the "raw" render we need to yank just the "point" we need from the data which
+// will make the read-cache much smaller (will compress just the Sum value as the count is 1)
+// we set the "mean" as thats the value the graphite out render uses
+func (ws *WhisperMetrics) RawRenderOne(metric indexer.MetricFindItem, from int64, to int64) (*RawRenderItem, error) {
+
+	return ws.RawDataRenderOne(metric, from, to)
+
+}
+
+func (ws *WhisperMetrics) Render(path string, from int64, to int64) (WhisperRenderItem, error) {
 
 	raw_data, err := ws.RawRender(path, from, to)
 
@@ -657,7 +805,7 @@ func (ws *WhisperMetrics) Render(path string, from string, to string) (WhisperRe
 
 		d_points := make([]DataPoint, 0)
 		for _, d := range data.Data {
-			v := d.Mean
+			v := d.AggValue(data.AggFunc)
 			d_points = append(d_points, DataPoint{Time: d.Time, Value: &v})
 		}
 		whis.Series[data.Metric] = d_points
@@ -665,13 +813,14 @@ func (ws *WhisperMetrics) Render(path string, from string, to string) (WhisperRe
 	return whis, err
 }
 
-func (ws *WhisperMetrics) RawRender(path string, from string, to string) ([]*RawRenderItem, error) {
+func (ws *WhisperMetrics) RawRender(path string, from int64, to int64) ([]*RawRenderItem, error) {
 	defer stats.StatsdSlowNanoTimeFunc("reader.whisper.rawrender.get-time-ns", time.Now())
-
-	var rawd []*RawRenderItem
 
 	paths := strings.Split(path, ",")
 	var metrics []indexer.MetricFindItem
+
+	render_wg := utils.GetWaitGroup()
+	defer utils.PutWaitGroup(render_wg)
 
 	for _, pth := range paths {
 		mets, err := ws.indexer.Find(pth)
@@ -681,24 +830,33 @@ func (ws *WhisperMetrics) RawRender(path string, from string, to string) ([]*Raw
 		metrics = append(metrics, mets...)
 	}
 
+	rawd := make([]*RawRenderItem, len(metrics), len(metrics))
+
 	// ye old fan out technique
-	render_one := func(metric indexer.MetricFindItem) {
+	render_one := func(metric indexer.MetricFindItem, idx int) {
+		defer render_wg.Done()
 		_ri, err := ws.RawRenderOne(metric, from, to)
+
 		if err != nil {
-			ws.render_wg.Done()
 			return
 		}
-		rawd = append(rawd, _ri)
-		ws.render_wg.Done()
+		rawd[idx] = _ri
 		return
 	}
 
-	for _, metric := range metrics {
-		ws.render_wg.Add(1)
-		go render_one(metric)
+	for idx, metric := range metrics {
+		render_wg.Add(1)
+		go render_one(metric, idx)
 	}
-	ws.render_wg.Wait()
+	render_wg.Wait()
 	return rawd, nil
+}
+
+func (ws *WhisperMetrics) CacheRender(path string, from int64, to int64, tags repr.SortingTags) ([]*RawRenderItem, error) {
+	return nil, errWhisperNotImplemented
+}
+func (cass *WhisperMetrics) CachedSeries(path string, from int64, to int64, tags repr.SortingTags) (*TotalTimeSeries, error) {
+	return nil, fmt.Errorf("WhisperMetrics: CachedSeries: NOT YET IMPLIMNETED")
 }
 
 /************************************************************************/
@@ -721,7 +879,7 @@ func (j WhisperMetricsJob) OnRetry() int {
 func (j WhisperMetricsJob) DoWork() error {
 	_, err := j.Whis.InsertNext()
 	if err != nil {
-		j.Whis.log.Error("Insert failed for Metric: %v retrying ...", j)
+		j.Whis.log.Error("Insert failed for Metric: %v retrying ...", err)
 	}
 	return err
 }

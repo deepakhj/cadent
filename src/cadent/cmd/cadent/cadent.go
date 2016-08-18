@@ -1,8 +1,26 @@
+/*
+Copyright 2016 Under Armour, Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package main
 
 import (
 	cadent "cadent/server"
 	prereg "cadent/server/prereg"
+	"cadent/server/stats"
+	"cadent/server/utils/shutdown"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -11,6 +29,7 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
+	"os/signal"
 	"path"
 	"runtime"
 	"strconv"
@@ -326,6 +345,44 @@ func main() {
 		log.Notice("Staring Server `%s`", srv.Name)
 		go srv.StartServer()
 	}
+
+	// traps some signals
+
+	TrapExit := func() {
+		//trap kills to flush queues and close connections
+		sc := make(chan os.Signal, 1)
+		signal.Notify(sc,
+			syscall.SIGINT,
+			syscall.SIGTERM,
+			syscall.SIGQUIT)
+
+		go func() {
+			s := <-sc
+
+			for _, srv := range servers {
+				log.Warning("Caught %s: Closing Server `%s` out before quit ", s, srv.Name)
+				srv.StopServer()
+			}
+
+			// need to stop the statsd collection as well
+			if stats.StatsdClient != nil {
+				stats.StatsdClient.Close()
+			}
+			if stats.StatsdClientSlow != nil {
+				stats.StatsdClientSlow.Close()
+			}
+
+			signal.Stop(sc)
+			close(sc)
+
+			shutdown.WaitOnShutdown()
+			// re-raise it
+			process, _ := os.FindProcess(os.Getpid())
+			process.Signal(s)
+			return
+		}()
+	}
+	go TrapExit()
 
 	//fire up the http stats if given
 	if len(def.HealthServerBind) != 0 {

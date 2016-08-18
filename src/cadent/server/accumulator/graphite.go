@@ -1,4 +1,20 @@
 /*
+Copyright 2016 Under Armour, Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+/*
    Here we accumulate graphite metrics and then push to a output format of whatever
    basically an internal graphite accumulator server
 */
@@ -8,8 +24,8 @@ package accumulator
 import (
 	"cadent/server/repr"
 	"fmt"
+	"io"
 	"math"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -22,127 +38,64 @@ const GRAHPITE_ACC_MIN_LEN = 3
 const GRAPHITE_ACC_MIN_FLAG = math.MinInt64
 
 /** counter/gauge type **/
-// for sorting
-type graphiteFloat64 []float64
-
-func (a graphiteFloat64) Len() int           { return len(a) }
-func (a graphiteFloat64) Swap(i int, j int)  { a[i], a[j] = a[j], a[i] }
-func (a graphiteFloat64) Less(i, j int) bool { return (a[i] - a[j]) < 0 } //this is the sorting statsd uses for its timings
-
-type AGG_TYPE func(graphiteFloat64) float64
-
-var GRAPHITE_ACC_FUN = map[string]AGG_TYPE{
-	"sum": func(vals graphiteFloat64) float64 {
-		val := 0.0
-		for _, item := range vals {
-			val += item
-		}
-		return val
-	},
-	"avg": func(vals graphiteFloat64) float64 {
-		if len(vals) == 0 {
-			return 0
-		}
-		val := 0.0
-		for _, item := range vals {
-			val += item
-		}
-
-		return val / float64(len(vals))
-	},
-	"max": func(vals graphiteFloat64) float64 {
-		if len(vals) == 0 {
-			return 0
-		}
-		sort.Sort(vals)
-
-		return vals[len(vals)-1]
-	},
-	"min": func(vals graphiteFloat64) float64 {
-		if len(vals) == 0 {
-			return 0
-		}
-		sort.Sort(vals)
-
-		return vals[0]
-	},
-	"first": func(vals graphiteFloat64) float64 {
-		if len(vals) == 0 {
-			return 0
-		}
-		return vals[0]
-	},
-	"last": func(vals graphiteFloat64) float64 {
-		if len(vals) == 0 {
-			return 0
-		}
-		return vals[len(vals)-1]
-	},
-}
 
 type GraphiteBaseStatItem struct {
-	InKey      string
-	Values     graphiteFloat64
+	InKey      repr.StatName
+	Values     repr.AggFloat64
 	InType     string
-	ReduceFunc string
+	ReduceFunc repr.AGG_FUNC
 	Time       time.Time
 	Resolution time.Duration
 
 	Min   float64
 	Max   float64
-	Mean  float64
 	Sum   float64
-	First float64
 	Last  float64
 	Count int64
 
 	mu sync.Mutex
 }
 
-func (s *GraphiteBaseStatItem) Repr() repr.StatRepr {
-	return repr.StatRepr{
+func (s *GraphiteBaseStatItem) Repr() *repr.StatRepr {
+	return &repr.StatRepr{
 		Time:  s.Time,
-		Key:   s.InKey,
+		Name:  s.InKey,
 		Min:   repr.CheckFloat(repr.JsonFloat64(s.Min)),
 		Max:   repr.CheckFloat(repr.JsonFloat64(s.Max)),
 		Count: s.Count,
-		Mean:  repr.CheckFloat(repr.JsonFloat64(s.Mean)),
 		Sum:   repr.CheckFloat(repr.JsonFloat64(s.Sum)),
-		First: repr.CheckFloat(repr.JsonFloat64(s.First)),
 		Last:  repr.CheckFloat(repr.JsonFloat64(s.Last)),
 	}
 }
 func (s *GraphiteBaseStatItem) StatTime() time.Time { return s.Time }
 func (s *GraphiteBaseStatItem) Type() string        { return s.InType }
-func (s *GraphiteBaseStatItem) Key() string         { return s.InKey }
+func (s *GraphiteBaseStatItem) Key() repr.StatName  { return s.InKey }
 
 func (s *GraphiteBaseStatItem) ZeroOut() error {
 	// reset the values
 	s.Time = time.Time{}
-	s.Values = graphiteFloat64{}
+	s.Values = repr.AggFloat64{}
 	s.Min = GRAPHITE_ACC_MIN_FLAG
-	s.Mean = 0.0
 	s.Max = GRAPHITE_ACC_MIN_FLAG
 	s.Sum = 0.0
 	s.Count = 0
-	s.First = GRAPHITE_ACC_MIN_FLAG
 	s.Last = GRAPHITE_ACC_MIN_FLAG
 	return nil
 }
 
-func (s *GraphiteBaseStatItem) Out(fmatter FormatterItem, acc AccumulatorItem) []string {
+func (s *GraphiteBaseStatItem) Write(buffer io.Writer, fmatter FormatterItem, acc AccumulatorItem) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	val := GRAPHITE_ACC_FUN[s.ReduceFunc](s.Values)
-	return []string{
-		fmatter.ToString(
-			s.InKey,
-			val,
-			int32(s.StatTime().Unix()),
-			"c",
-			acc.Tags(),
-		),
-	}
+	val := s.ReduceFunc(s.Values)
+	fmatter.Write(
+		buffer,
+		&s.InKey,
+		val,
+		int32(s.StatTime().Unix()),
+		"c",
+		acc.Tags(),
+	)
+
 }
 
 func (s *GraphiteBaseStatItem) Accumulate(val float64, sample float64, stattime time.Time) error {
@@ -162,11 +115,7 @@ func (s *GraphiteBaseStatItem) Accumulate(val float64, sample float64, stattime 
 
 	s.Count += 1
 	s.Sum += val
-	s.Mean = s.Sum / float64(s.Count)
 	s.Last = val
-	if s.First == GRAPHITE_ACC_MIN_FLAG {
-		s.First = val
-	}
 	return nil
 }
 
@@ -177,7 +126,7 @@ func (s *GraphiteBaseStatItem) Accumulate(val float64, sample float64, stattime 
 type GraphiteAccumulate struct {
 	GraphiteStats map[string]StatItem
 	OutFormat     FormatterItem
-	InTags        []AccumulatorTags
+	InTags        repr.SortingTags
 	InKeepKeys    bool
 	Resolution    time.Duration
 
@@ -216,11 +165,11 @@ func (s *GraphiteAccumulate) GetOption(opt string, defaults interface{}) interfa
 	return defaults
 }
 
-func (s *GraphiteAccumulate) Tags() []AccumulatorTags {
+func (s *GraphiteAccumulate) Tags() repr.SortingTags {
 	return s.InTags
 }
 
-func (s *GraphiteAccumulate) SetTags(tags []AccumulatorTags) {
+func (s *GraphiteAccumulate) SetTags(tags repr.SortingTags) {
 	s.InTags = tags
 }
 
@@ -259,24 +208,32 @@ func (a *GraphiteAccumulate) Reset() error {
 	return nil
 }
 
-func (a *GraphiteAccumulate) Flush() *flushedList {
+func (a *GraphiteAccumulate) Flush(buf io.Writer) *flushedList {
 	fl := new(flushedList)
 
 	a.mu.Lock()
 	for _, stats := range a.GraphiteStats {
-		fl.Add(stats.Out(a.OutFormat, a), stats.Repr())
+		stats.Write(buf, a.OutFormat, a)
+		fl.AddStat(stats.Repr())
 	}
 	a.mu.Unlock()
 	a.Reset()
 	return fl
 }
 
+/*
+	<key> <value> <time> <tag> <tag> ...
+	<tag> are not required, but will get saved into the MetaTags of the internal rep
+	as it's assumed that the "key" is the unique item we want to lookup
+	tags are of the form name=val
+*/
+
 func (a *GraphiteAccumulate) ProcessLine(line string) (err error) {
-	//<key> <value> <time>
 
 	stats_arr := strings.Fields(line)
+	l := len(stats_arr)
 
-	if len(stats_arr) < GRAHPITE_ACC_MIN_LEN {
+	if l < GRAHPITE_ACC_MIN_LEN {
 		return fmt.Errorf("Accumulate: Invalid Graphite line `%s`", line)
 	}
 
@@ -295,6 +252,12 @@ func (a *GraphiteAccumulate) ProcessLine(line string) (err error) {
 		return fmt.Errorf("Accumulate: Bad Value | Invalid Graphite line `%s`", line)
 	}
 
+	var tags repr.SortingTags
+	if l > GRAHPITE_ACC_MIN_LEN {
+		// gots some potential tags
+		tags = repr.SortingTagsFromArray(stats_arr[3:])
+	}
+
 	stat_key := a.MapKey(key, t)
 	// now the accumlator
 	a.mu.Lock()
@@ -303,28 +266,14 @@ func (a *GraphiteAccumulate) ProcessLine(line string) (err error) {
 	a.mu.Unlock()
 
 	if !ok {
-		def_agg := "avg"
-		//some "tricks" to get the correct agg fun
-		if strings.Contains(key, ".lower") || strings.Contains(key, ".min") {
-			def_agg = "min"
-		} else if strings.Contains(key, ".upper") || strings.Contains(key, ".max") {
-			def_agg = "max"
-		} else if strings.Contains(key, ".sum") {
-			def_agg = "sum"
-		} else if strings.Contains(key, ".gauges") || strings.Contains(key, ".abs") || strings.Contains(key, ".absolute") {
-			def_agg = "last"
-		} else if strings.Contains(key, ".counters") || strings.Contains(key, ".count") || strings.Contains(key, ".errors") {
-			def_agg = "sum"
-		}
 		gots = &GraphiteBaseStatItem{
 			InType:     "graphite",
 			Time:       a.ResolutionTime(t),
-			InKey:      key,
+			InKey:      repr.StatName{Key: key, MetaTags: tags},
 			Min:        GRAPHITE_ACC_MIN_FLAG,
 			Max:        GRAPHITE_ACC_MIN_FLAG,
-			First:      GRAPHITE_ACC_MIN_FLAG,
 			Last:       GRAPHITE_ACC_MIN_FLAG,
-			ReduceFunc: def_agg,
+			ReduceFunc: repr.GuessAggFuncFromKey(key),
 		}
 	}
 

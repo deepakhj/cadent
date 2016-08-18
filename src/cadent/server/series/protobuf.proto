@@ -1,0 +1,30 @@
+
+//go:generate protoc --gogofaster_out=. protobuf.proto
+
+package series;
+
+message ProtStatFull {
+    required int64 time = 1;
+    required int64 count = 7;
+    required double min = 2;
+    required double max = 3;
+    required double sum = 4;
+    required double last = 5;
+}
+
+// object for just int32 time and one value
+message ProtStatSmall {
+    required int64 time = 1;
+    required double val = 2;
+}
+
+message ProtStat {
+    required bool stat_type = 1; // false == small true == full
+    optional ProtStatFull stat = 3;
+    optional ProtStatSmall small_stat = 4;
+}
+
+message ProtStats {
+    required bool full_time_resolution = 1;
+    repeated ProtStat stats = 2;
+}

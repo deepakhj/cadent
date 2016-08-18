@@ -1,3 +1,19 @@
+/*
+Copyright 2016 Under Armour, Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package accumulator
 
 import (
@@ -20,12 +36,7 @@ func TestConfigAccumualtorAccumulator(t *testing.T) {
 	output_format = "graphite"
 	accumulate_flush = "1s"
 	times = ["5s", "1m", "10m"]
-	[[tags]]
-	key="foo"
-	value="bar"
-	[[tags]]
-	key="loo"
-	value="moo"
+	tags = [ [ "foo", "bar"], ["loo", "moo"]]
 
 	[writer]
 	driver="file"
@@ -50,7 +61,7 @@ func TestConfigAccumualtorAccumulator(t *testing.T) {
 				So(acc_c.FlushTimes[0], ShouldEqual, time.Duration(5*time.Second))
 			})
 			Convey("Should have 2 tags", func() {
-				So(len(acc_c.Accumulate.Tags()), ShouldEqual, 2)
+				So(acc_c.Accumulate.Tags().Len(), ShouldEqual, 2)
 			})
 
 		})

@@ -1,4 +1,20 @@
 /*
+Copyright 2016 Under Armour, Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+/*
 	HTTP clients
 
 	different then the tcp/udp/socket cases as the "client" starts a server itself on init
@@ -156,13 +172,14 @@ func (client *HTTPClient) run(out_queue chan splitter.SplitItem) {
 		case splitem := <-client.input_queue:
 			client.server.ProcessSplitItem(splitem, out_queue)
 		case <-client.close:
-			break
+			return
 		}
 	}
-	return
 }
 
-func (client HTTPClient) handleRequest(out_queue chan splitter.SplitItem) {
+// note close_client is not used, but for the interface due to the
+// nature of http requests handling in go (different then straight TCP)
+func (client HTTPClient) handleRequest(out_queue chan splitter.SplitItem, close_client chan bool) {
 
 	// multi http servers needs new muxers
 	// start up the http listens

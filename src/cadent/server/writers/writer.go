@@ -1,4 +1,20 @@
 /*
+Copyright 2016 Under Armour, Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+/*
    Holds the current writer and sets up the channel loop to process incoming write requests
 */
 
@@ -96,13 +112,14 @@ type WriterLoop struct {
 	name         string
 	metrics      metrics.Metrics
 	indexer      indexer.Indexer
-	write_chan   chan repr.StatRepr
-	indexer_chan chan repr.StatRepr
+	write_chan   chan *repr.StatRepr
+	indexer_chan chan *repr.StatName
 	shutdowner   *broadcast.Broadcaster
 	write_queue  *WriteQueue
 	MetricQLen   int
 	IndexerQLen  int
 	log          *logging.Logger
+	stopped      bool
 }
 
 func New() (loop *WriterLoop, err error) {
@@ -113,12 +130,17 @@ func New() (loop *WriterLoop, err error) {
 	loop.shutdowner = broadcast.New(0)
 	loop.write_queue = NewWriteQueue(WRITER_MAX_WRITE_QUEUE)
 	loop.log = logging.MustGetLogger("writer")
+	loop.stopped = false
 
 	return loop, nil
 }
 
 func (loop *WriterLoop) SetName(name string) {
 	loop.name = name
+}
+
+func (loop *WriterLoop) GetName() string {
+	return loop.name
 }
 
 func (loop *WriterLoop) statTick() {
@@ -135,7 +157,6 @@ func (loop *WriterLoop) statTick() {
 			//log.Printf("Write Queue Length: %s: Metrics: %d Indexer %d", loop.name, len(loop.write_chan), len(loop.indexer_chan))
 		}
 	}
-	return
 }
 
 func (loop *WriterLoop) SetMetrics(mets metrics.Metrics) error {
@@ -148,7 +169,7 @@ func (loop *WriterLoop) SetIndexer(idx indexer.Indexer) error {
 	return nil
 }
 
-func (loop *WriterLoop) WriterChan() chan repr.StatRepr {
+func (loop *WriterLoop) WriterChan() chan *repr.StatRepr {
 	return loop.write_chan
 }
 
@@ -156,16 +177,17 @@ func (loop *WriterLoop) indexLoop() {
 	shut := loop.shutdowner.Listen()
 	for {
 		select {
-		case stat := <-loop.indexer_chan:
+		case stat, more := <-loop.indexer_chan:
 			// indexing can be very expensive (at least for cassandra)
 			// and should have their own internal queues and smarts for handleing a massive influx of metric names
-			loop.indexer.Write(stat.Key)
+			if !more {
+				return
+			}
+			loop.indexer.Write(*stat)
 		case <-shut.Ch:
-			shut.Close()
 			return
 		}
 	}
-	return
 }
 
 func (loop *WriterLoop) procLoop() {
@@ -173,15 +195,11 @@ func (loop *WriterLoop) procLoop() {
 
 	for {
 		select {
-		case stat := <-loop.write_chan:
-			/*
-				//go func() {
-				loop.metrics.Write(stat)
-				//loop.indexer.Write(stat.Key)
-				loop.indexer_chan <- stat
-				//return
-				//}() // non-blocking indexer loop
-			*/
+		case stat, more := <-loop.write_chan:
+			if !more {
+				return
+			}
+
 			// push the stat to the dynamic sized queue (saves oddles of ram on large channels and large metrics dumps)
 			err := loop.write_queue.Push(stat)
 			if err != nil {
@@ -189,14 +207,15 @@ func (loop *WriterLoop) procLoop() {
 			}
 		case <-shut.Ch:
 			loop.metrics.Stop()
+			loop.indexer.Stop()
 			shut.Close()
 			return
 		}
 	}
-	return
 }
 
 func (loop *WriterLoop) processQueue() {
+	shut := loop.shutdowner.Listen()
 
 	proc_queue := func() {
 		ct := loop.write_queue.Len()
@@ -204,7 +223,9 @@ func (loop *WriterLoop) processQueue() {
 			stat := loop.write_queue.Poll()
 			switch stat {
 			case nil:
+				time.Sleep(time.Second) // just pause a bit as the queue is empty
 				break
+
 			default:
 				// metric writers send to indexer so as to take advantage of it's
 				// caching middle layer to prevent pounding the queue
@@ -214,8 +235,13 @@ func (loop *WriterLoop) processQueue() {
 	}
 
 	for {
-		proc_queue()
-		time.Sleep(time.Millisecond) // so as to not CPU burn
+		select {
+		case <-shut.Ch:
+			return
+		default:
+			proc_queue()
+			time.Sleep(time.Second) // so as to not CPU burn
+		}
 	}
 }
 
@@ -224,27 +250,38 @@ func (loop *WriterLoop) Full() bool {
 }
 
 func (loop *WriterLoop) Start() {
-	loop.write_chan = make(chan repr.StatRepr, loop.MetricQLen)
-	loop.indexer_chan = make(chan repr.StatRepr, loop.IndexerQLen) // indexing is slow, so we'll need to buffer things a bit more
+	loop.log.Notice("Starting Writer `%s`", loop.name)
+	loop.write_chan = make(chan *repr.StatRepr, loop.MetricQLen)
+	// indexing is slow, so we'll need to buffer things a bit more
+	loop.indexer_chan = make(chan *repr.StatName, loop.IndexerQLen)
 
+	go loop.metrics.Start()
+	go loop.indexer.Start()
 	go loop.indexLoop()
 	go loop.procLoop()
 	go loop.processQueue()
 	go loop.statTick()
-	return
 }
 
 func (loop *WriterLoop) Stop() {
-	go func() {
-		loop.shutdowner.Send(true)
-		if loop.indexer_chan != nil {
-			close(loop.indexer_chan)
-		}
-		if loop.write_chan != nil {
-			close(loop.write_chan)
-		}
+	if loop.stopped {
 		return
-	}()
+	}
+	loop.stopped = true
+	loop.log.Warning("Shutting down writer `%s`", loop.name)
+	loop.shutdowner.Send(true)
+	if loop.indexer_chan != nil {
+		close(loop.indexer_chan)
+		loop.indexer_chan = nil
+	}
+	if loop.write_chan != nil {
+		close(loop.write_chan)
+		loop.write_chan = nil
+	}
+	loop.log.Warning("Shutting down metrics writer `%s`", loop.name)
+	loop.metrics.Stop()
+	loop.log.Warning("Shutting down index writer `%s`", loop.name)
+	loop.indexer.Stop()
 }
 
 /******************************************************************
@@ -301,14 +338,14 @@ func (q *WriteQueue) Len() int {
 
 //	Pushes/inserts a value at the end/tail of the queue.
 //	Note: this function does mutate the queue.
-func (q *WriteQueue) Push(item repr.StatRepr) error {
+func (q *WriteQueue) Push(item *repr.StatRepr) error {
 	q.lock.Lock()
 	defer q.lock.Unlock()
 
 	if q.count >= q.queuemax {
 		return fmt.Errorf("Max write queue hit (max: %d) .. cannot push", q.queuemax)
 	}
-	n := &WriteNode{data: &item}
+	n := &WriteNode{data: item}
 
 	if q.tail == nil {
 		q.tail = n

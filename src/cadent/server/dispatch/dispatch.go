@@ -1,4 +1,20 @@
 /*
+Copyright 2016 Under Armour, Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+/*
  a simple implementation of a dispatcher
 
  all one needs to do is implement the IJob interface and
@@ -28,6 +44,7 @@ type Worker struct {
 	worker_pool chan chan IJob
 	job_channel chan IJob
 	quit        chan bool
+	idx         int
 	dispatcher  IDispatcher
 }
 
@@ -51,37 +68,37 @@ func (w *Worker) Shutdown() chan bool {
 	return w.quit
 }
 
-// Start method starts the run loop for the worker, listening for a quit channel in
+// starts the run loop for the worker, listening for a quit channel in
 // case we need to stop it
 func (w *Worker) Start() {
 	go func() {
 		for {
+
 			// register the current worker into the worker queue.
 			w.Workpool() <- w.Jobs()
 
 			select {
-			case job := <-w.Jobs():
+			case <-w.Shutdown():
+				return
+			case job, more := <-w.Jobs():
+				if !more || job == nil {
+					return
+				}
 				err := job.DoWork()
 				// put back on queue
 				if err != nil && w.dispatcher.Retries() < job.OnRetry() {
 					job.IncRetry()
 					w.dispatcher.JobsQueue() <- job
 				}
-			case <-w.quit:
-				return
+
 			}
 		}
-		return
 	}()
-	return
 }
 
 // Stop signals the worker to stop listening for work requests.
 func (w *Worker) Stop() {
-	go func() {
-		w.Shutdown() <- true
-		return
-	}()
+	w.Shutdown() <- true
 }
 
 /************* DISPATCH ********/
@@ -93,6 +110,7 @@ type Dispatch struct {
 	workers    []*Worker
 	numworkers int
 	retries    int
+	Name       string
 }
 
 func NewDispatch(numworkers int, work_pool chan chan IJob, job_queue chan IJob) *Dispatch {
@@ -127,6 +145,7 @@ func (d *Dispatch) Run() error {
 	// starting n number of workers
 	for i := 0; i < d.numworkers; i++ {
 		worker := NewWorker(d.work_pool, d)
+		worker.idx = i
 		d.workers[i] = worker
 		worker.Start()
 	}
@@ -156,25 +175,21 @@ func (d *Dispatch) dispatch() {
 		select {
 		case job := <-d.JobsQueue():
 			// a job request has been received
-			//func(job IJob) {
 			// try to obtain a worker job channel that is available.
 			// this will block until a worker is idle
 			jobChannel := <-d.Workpool()
 
 			// dispatch the job to the worker job channel
 			jobChannel <- job
-			//	return
-			//}
 		case <-d.shutdown:
-			for _, w := range d.workers {
-				w.Shutdown() <- true
-			}
 			//close(d.JobsQueue())
+			for _, w := range d.workers {
+				w.Stop()
+			}
 			//close(d.Workpool())
 			return
 		}
 	}
-	return
 }
 
 func (d *Dispatch) background_dispatch() {
@@ -195,10 +210,9 @@ func (d *Dispatch) background_dispatch() {
 			for _, w := range d.workers {
 				w.Shutdown() <- true
 			}
-			//close(d.JobsQueue())
-			//close(d.Workpool())
+			close(d.JobsQueue())
+			close(d.Workpool())
 			return
 		}
 	}
-	return
 }

@@ -1,18 +1,45 @@
 /*
+Copyright 2016 Under Armour, Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+/*
   Indexer Reader/Writer
 
-  just Read/Write the metric key
+  just Read/Write the StatName object
+
+  StatNames have 4 writable indexes: key, uniqueId, tags
+
+  The Unique ID is basically a hash of the key:sortedByName(tags)
+
+
 */
 
 package indexer
+
+import "cadent/server/repr"
 
 /****************** Data writers *********************/
 type Indexer interface {
 	Config(map[string]interface{}) error
 
-	Write(metric string) error // write a metric key
+	// some identifier mostly used for logs
+	Name() string
 
-	// reader methods
+	Write(metric repr.StatName) error // write a metric key
+
+	// reader methods this is an "extra" graphite based entity
 	// /metrics/find/?query=stats.counters.consthash-graphite.all-1-stats-infra-integ.mfpaws.com.*
 	/*
 		[
@@ -20,6 +47,7 @@ type Indexer interface {
 			text: "accumulator",
 			expandable: 1,
 			leaf: 0,
+			key: "stats.counters.consthash-graphite.all-1-stats-infra-integ.mfpaws.com.accumulator"
 			id: "stats.counters.consthash-graphite.all-1-stats-infra-integ.mfpaws.com.accumulator",
 			allowChildren: 1
 			}
@@ -40,6 +68,11 @@ type Indexer interface {
 	*/
 	Expand(metric string) (MetricExpandItem, error)
 
-	Stop() // kill stuff
+	Start()
 
+	// stop all processing
+	Stop()
+
+	// remove an item from the index
+	Delete(name *repr.StatName) error
 }

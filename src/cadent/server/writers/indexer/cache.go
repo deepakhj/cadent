@@ -1,4 +1,20 @@
 /*
+Copyright 2016 Under Armour, Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+/*
 	The "cacher"
 
 	Designed to behave like "carbon cache" which allows a few things to happen
@@ -25,6 +41,8 @@ import (
 	"cadent/server/stats"
 	"fmt"
 
+	"cadent/server/repr"
+	"cadent/server/utils/shutdown"
 	logging "gopkg.in/op/go-logging.v1"
 	"sync"
 	"time"
@@ -33,6 +51,28 @@ import (
 const (
 	CACHER_METRICS_KEYS = 1024 * 1024
 )
+
+// the singleton
+var _CACHER_SINGLETON map[string]*Cacher
+var _cacher_mutex sync.Mutex
+
+func getCacherSingleton(nm string) (*Cacher, error) {
+	_cacher_mutex.Lock()
+	defer _cacher_mutex.Unlock()
+
+	if val, ok := _CACHER_SINGLETON[nm]; ok {
+		return val, nil
+	}
+
+	cacher := NewCacher()
+	_CACHER_SINGLETON[nm] = cacher
+	return cacher, nil
+}
+
+// special onload init
+func init() {
+	_CACHER_SINGLETON = make(map[string]*Cacher)
+}
 
 // The "cache" item for points
 type Cacher struct {
@@ -45,8 +85,8 @@ type Cacher struct {
 	shutdown            chan bool // when recieved stop allowing adds and updates
 	_accept             bool      // flag to stop
 	log                 *logging.Logger
-	AlreadyWrittenCache map[string]bool
-	Cache               map[string]bool
+	AlreadyWrittenCache map[repr.StatId]bool
+	Cache               map[repr.StatId]repr.StatName
 }
 
 func NewCacher() *Cacher {
@@ -54,15 +94,19 @@ func NewCacher() *Cacher {
 	wc.maxKeys = CACHER_METRICS_KEYS
 	wc.curSize = 0
 	wc.log = logging.MustGetLogger("cacher.indexer")
-	wc.AlreadyWrittenCache = make(map[string]bool)
-	wc.Cache = make(map[string]bool)
-	wc.shutdown = make(chan bool)
+	wc.AlreadyWrittenCache = make(map[repr.StatId]bool)
+	wc.Cache = make(map[repr.StatId]repr.StatName)
+	wc.shutdown = make(chan bool, 2)
 	wc._accept = true
-	go wc.statsTick()
 	return wc
 }
 
+func (wc *Cacher) Start() {
+	go wc.statsTick()
+}
+
 func (wc *Cacher) Stop() {
+	shutdown.AddToShutdown()
 	wc.shutdown <- true
 }
 
@@ -71,9 +115,12 @@ func (wc *Cacher) statsTick() {
 	for {
 		select {
 		case <-wc.shutdown:
+
 			wc._accept = false
 			ticker.Stop()
 			wc.log.Warning("Index Cache shutdown .. stopping accepts")
+
+			shutdown.ReleaseFromShutdown() //release me as i'm done
 			return
 
 		case <-ticker.C:
@@ -85,7 +132,7 @@ func (wc *Cacher) statsTick() {
 	}
 }
 
-func (wc *Cacher) Add(metric string) error {
+func (wc *Cacher) Add(metric repr.StatName) error {
 	wc.mu.Lock()
 	defer wc.mu.Unlock()
 	//wc.log.Critical("STAT: %s, %v", metric, stat)
@@ -97,8 +144,8 @@ func (wc *Cacher) Add(metric string) error {
 
 	if len(wc.Cache) > wc.maxKeys {
 		wc.log.Error("Indexer Key Cache is too large .. over %d keys, have to drop this one", wc.maxKeys)
-		return fmt.Errorf("Cacher: too many keys, dropping metric")
 		stats.StatsdClientSlow.Incr("cacher.indexer.overflow", 1)
+		return fmt.Errorf("Cacher: too many keys, dropping metric")
 	}
 
 	/** ye old debuggin'
@@ -106,53 +153,55 @@ func (wc *Cacher) Add(metric string) error {
 		wc.log.Critical("ADDING: %s Time: %d, Val: %f", metric, time, value)
 	}
 	*/
-	if _, ok := wc.AlreadyWrittenCache[metric]; ok {
+	uid := metric.UniqueId()
+	if _, ok := wc.AlreadyWrittenCache[uid]; ok {
 		stats.StatsdClient.Incr("cacher.indexer.already-written", 1)
 		return nil
 	}
 
-	if _, ok := wc.Cache[metric]; ok {
+	if _, ok := wc.Cache[uid]; ok {
 		stats.StatsdClient.Incr("cacher.indexer.already-added", 1)
 	} else {
-		wc.Cache[metric] = true
-		wc.curSize += int64(len(metric))
+		wc.Cache[uid] = metric
+		wc.curSize += int64(metric.ByteSize())
 		stats.StatsdClient.Incr("cacher.indexer.add", 1)
 	}
 
 	return nil
 }
 
-func (wc *Cacher) Get(metric string) string {
+func (wc *Cacher) Get(metric repr.StatName) repr.StatName {
 	wc.mu.Lock()
 	defer wc.mu.Unlock()
-	_, ok := wc.Cache[metric]
+	gots, ok := wc.Cache[metric.UniqueId()]
 	if !ok {
-		return ""
+		return repr.StatName{}
 	}
-	return metric
+	return gots
 }
 
-func (wc *Cacher) GetNextMetric() string {
+func (wc *Cacher) GetNextMetric() repr.StatName {
 	wc.mu.Lock()
 	defer wc.mu.Unlock()
 
 	for k := range wc.Cache {
-		delete(wc.Cache, k)
 		wc.AlreadyWrittenCache[k] = true
-		wc.curSize -= int64(len(k))
-		return k
+		g := wc.Cache[k]
+		wc.curSize -= int64(g.ByteSize())
+		delete(wc.Cache, k)
+		return g
 	}
-	return ""
+	return repr.StatName{}
 }
 
-func (wc *Cacher) Pop() string {
+func (wc *Cacher) Pop() repr.StatName {
 	return wc.GetNextMetric()
 }
 
 // add a metrics/point list back on the queue as it either "failed" or was ratelimited
-func (wc *Cacher) AddBack(metric string) {
+func (wc *Cacher) AddBack(metric repr.StatName) {
 	wc.mu.Lock()
-	delete(wc.AlreadyWrittenCache, metric)
+	delete(wc.AlreadyWrittenCache, metric.UniqueId())
 	wc.mu.Unlock()
 	wc.Add(metric)
 }

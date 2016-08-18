@@ -1,4 +1,20 @@
 /*
+Copyright 2016 Under Armour, Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+/*
 	THe Kafka Index writer
 
 
@@ -8,7 +24,9 @@
 package indexer
 
 import (
+	"cadent/server/repr"
 	"cadent/server/stats"
+	"cadent/server/utils/shutdown"
 	"cadent/server/writers/dbs"
 	"encoding/json"
 	"fmt"
@@ -21,10 +39,14 @@ import (
 /** basic data type **/
 
 type KafkaPath struct {
-	Type     string   `json:"type"`
-	Path     string   `json:"path"`
-	Segments []string `json:"segments"`
-	Time     int64    `json:"time"`
+	Id       repr.StatId `json:"id"`
+	Uid      string      `json:"uid"`
+	Type     string      `json:"type"`
+	Path     string      `json:"path"`
+	Segments []string    `json:"segments"`
+	SentTime int64       `json:"senttime"`
+	Tags     [][]string  `json:"tags,omitempty"`
+	MetaTags [][]string  `json:"meta_tags,omitempty"`
 
 	encoded []byte
 	err     error
@@ -51,21 +73,18 @@ type KafkaIndexer struct {
 	db          *dbs.KafkaDB
 	conn        sarama.AsyncProducer
 	write_index bool // if false, we skip the index writing message as well, the stat metric itself has the key in it
-
-	log *logging.Logger
+	shutitdown  bool
+	indexerId   string
+	log         *logging.Logger
 }
 
 func NewKafkaIndexer() *KafkaIndexer {
 	kf := new(KafkaIndexer)
 	kf.log = logging.MustGetLogger("writers.indexer.kafka")
 	kf.write_index = true
+	kf.shutitdown = false
+	kf.indexerId = fmt.Sprintf("kafak:indexer")
 	return kf
-}
-
-func (kf *KafkaIndexer) Stop() {
-	if err := kf.conn.Close(); err != nil {
-		kf.log.Error("Failed to shut down producer cleanly %v", err)
-	}
 }
 
 func (kf *KafkaIndexer) Config(conf map[string]interface{}) error {
@@ -90,27 +109,76 @@ func (kf *KafkaIndexer) Config(conf map[string]interface{}) error {
 	return nil
 }
 
-func (kf *KafkaIndexer) Write(skey string) error {
+func (kf *KafkaIndexer) Start() {
+	kf.log.Notice("starting kafka indexer: %s", kf.Name())
+}
+
+func (kf *KafkaIndexer) Stop() {
+	kf.log.Notice("shutting down cassandra indexer: %s", kf.Name())
+	shutdown.AddToShutdown()
+	defer shutdown.ReleaseFromShutdown()
+	kf.shutitdown = true
+	time.Sleep(time.Second) // wait for any lingering writes
+	if err := kf.conn.Close(); err != nil {
+		kf.log.Error("Failed to shut down producer cleanly %v", err)
+	}
+}
+
+func (kf *KafkaIndexer) Name() string {
+	return kf.indexerId
+}
+func (kf *KafkaIndexer) Write(skey repr.StatName) error {
 	// noop if not writing indexes
-	if !kf.write_index {
+	if !kf.write_index || kf.shutitdown {
 		return nil
 	}
 
 	item := &KafkaPath{
 		Type:     "index",
-		Path:     skey,
-		Segments: strings.Split(skey, "."),
-		Time:     time.Now().UnixNano(),
+		Id:       skey.UniqueId(),
+		Uid:      skey.UniqueIdString(),
+		Path:     skey.Key,
+		Segments: strings.Split(skey.Key, "."),
+		Tags:     skey.SortedTags().Tags(),
+		MetaTags: skey.SortedMetaTags().Tags(),
+		SentTime: time.Now().UnixNano(),
 	}
 
 	stats.StatsdClientSlow.Incr("writer.kafka.indexer.writes", 1)
 
 	kf.conn.Input() <- &sarama.ProducerMessage{
 		Topic: kf.db.IndexTopic(),
-		Key:   sarama.StringEncoder(skey), // hash on metric key
+		Key:   sarama.StringEncoder(skey.Key), // hash on metric key
 		Value: item,
 	}
 
+	return nil
+}
+
+// send a "delete message" to the mix
+func (kf *KafkaIndexer) Delete(skey *repr.StatName) error {
+	// noop if not writing indexes
+	if !kf.write_index {
+		return nil
+	}
+
+	item := &KafkaPath{
+		Type:     "delete-index",
+		Id:       skey.UniqueId(),
+		Path:     skey.Key,
+		Segments: strings.Split(skey.Key, "."),
+		Tags:     skey.SortedTags().Tags(),
+		MetaTags: skey.SortedMetaTags().Tags(),
+		SentTime: time.Now().UnixNano(),
+	}
+
+	stats.StatsdClientSlow.Incr("writer.kafka.indexer.delete", 1)
+
+	kf.conn.Input() <- &sarama.ProducerMessage{
+		Topic: kf.db.IndexTopic(),
+		Key:   sarama.StringEncoder(skey.Key), // hash on metric key
+		Value: item,
+	}
 	return nil
 }
 

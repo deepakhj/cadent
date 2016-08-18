@@ -1,3 +1,19 @@
+/*
+Copyright 2016 Under Armour, Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package prereg
 
 import (
@@ -12,7 +28,7 @@ import (
 type PrefixFilter struct {
 	Prefix   string `json:"prefix"`
 	IsReject bool   `json:"is_rejected"`
-	backend  string `json:"backend"`
+	backend  string
 }
 
 func (pref PrefixFilter) ToString() string {
@@ -56,7 +72,7 @@ func (pref *PrefixFilter) SetBackend(back string) (string, error) {
 type SubStringFilter struct {
 	SubString string `json:"substring"`
 	IsReject  bool   `json:"is_rejected"`
-	backend   string `json:"backend"`
+	backend   string
 }
 
 func (sfilter *SubStringFilter) Name() string {
@@ -98,7 +114,7 @@ func (sfilter *SubStringFilter) ToString() string {
 type RegexFilter struct {
 	RegexString string `json:"regex"`
 	IsReject    bool   `json:"is_rejected"`
-	backend     string `json:"backend"`
+	backend     string
 
 	thereg *regexp.Regexp
 }
@@ -141,8 +157,8 @@ func (refilter *RegexFilter) ToString() string {
 
 /**********************   no-op filter ***********************/
 type NoOpFilter struct {
-	backend  string `json:"backend"`
-	IsReject bool   `json:"is_rejected"`
+	backend  string
+	IsReject bool `json:"is_rejected"`
 }
 
 func (nop *NoOpFilter) Name() string {
@@ -188,7 +204,7 @@ type PreReg struct {
 	Name           string `json:"name"`
 
 	// the actual "listening" server that this reg is pinned to
-	ListenServer string `json:listen_server_name`
+	ListenServer string `json:"listen_server_name"`
 
 	FilterList  []FilterItem             `json:"map"`
 	Accumulator *accumulator.Accumulator `json:"accumulator"`
@@ -225,6 +241,12 @@ func (pr *PreReg) FirstMatchBackend(line string) (string, bool, error) {
 		}
 	}
 	return pr.DefaultBackEnd, false, nil
+}
+
+func (pr *PreReg) Stop() {
+	if pr.Accumulator != nil {
+		pr.Accumulator.Stop()
+	}
 }
 
 func (pr *PreReg) LogConfig() {

@@ -1,11 +1,29 @@
 /*
+Copyright 2016 Under Armour, Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+/*
 Dump the line graphite expects to get
 */
 
 package accumulator
 
 import (
+	"cadent/server/repr"
 	"fmt"
+	"io"
 	"time"
 )
 
@@ -27,9 +45,42 @@ func (g *GraphiteFormatter) SetAccumulator(acc AccumulatorItem) {
 }
 
 func (g *GraphiteFormatter) Type() string { return GRAPHITE_FMT_NAME }
-func (g *GraphiteFormatter) ToString(key string, val float64, tstamp int32, stats_type string, tags []AccumulatorTags) string {
+func (g *GraphiteFormatter) ToString(name *repr.StatName, val float64, tstamp int32, stats_type string, tags repr.SortingTags) string {
 	if tstamp <= 0 {
 		tstamp = int32(time.Now().Unix())
 	}
-	return fmt.Sprintf("%s %f %d", key, val, tstamp)
+	name.MergeMetric2Tags(tags)
+	t_str := fmt.Sprintf("%s %f %d", name.Key, val, tstamp)
+	if !name.Tags.IsEmpty() {
+		t_str += repr.SPACE_SEPARATOR + name.MetaTags.ToStringSep(repr.EQUAL_SEPARATOR, repr.SPACE_SEPARATOR)
+		if !name.MetaTags.IsEmpty() {
+			t_str += repr.SPACE_SEPARATOR
+		}
+	}
+	if !name.MetaTags.IsEmpty() {
+		t_str += repr.SPACE_SEPARATOR + name.MetaTags.ToStringSep(repr.EQUAL_SEPARATOR, repr.SPACE_SEPARATOR)
+	}
+	return t_str
+}
+
+func (g *GraphiteFormatter) Write(buf io.Writer, name *repr.StatName, val float64, tstamp int32, stats_type string, tags repr.SortingTags) {
+	if tstamp <= 0 {
+		tstamp = int32(time.Now().Unix())
+	}
+	// merge things
+	name.MergeMetric2Tags(tags)
+
+	fmt.Fprintf(buf, "%s %f %d", name.Key, val, tstamp)
+	if !name.Tags.IsEmpty() {
+		buf.Write(repr.SPACE_SEPARATOR_BYTE)
+		name.Tags.WriteBytes(buf, repr.EQUAL_SEPARATOR_BYTE, repr.SPACE_SEPARATOR_BYTE)
+		if !name.MetaTags.IsEmpty() {
+			buf.Write(repr.SPACE_SEPARATOR_BYTE)
+		}
+	}
+	if !name.MetaTags.IsEmpty() {
+		buf.Write(repr.SPACE_SEPARATOR_BYTE)
+		name.MetaTags.WriteBytes(buf, repr.EQUAL_SEPARATOR_BYTE, repr.SPACE_SEPARATOR_BYTE)
+	}
+	buf.Write(repr.NEWLINE_SEPARATOR_BYTES)
 }
