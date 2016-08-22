@@ -30,6 +30,7 @@ package metrics
 
 import (
 	"cadent/server/repr"
+	"cadent/server/series"
 	"cadent/server/writers/indexer"
 	logging "gopkg.in/op/go-logging.v1"
 )
@@ -54,6 +55,9 @@ type Metrics interface {
 	// as the whisper file rolls up internally
 	SetResolutions([][]int) int
 
+	// we can have a writer per resolution, so this just sets the one we are currently on
+	SetCurrentResolution(int)
+
 	Config(map[string]interface{}) error
 
 	// need an Indexer 99% of the time to deal with render
@@ -76,6 +80,7 @@ type Metrics interface {
 			]
 		}
 	*/
+
 	Render(path string, from int64, to int64) (WhisperRenderItem, error)
 	RawRender(path string, from int64, to int64) ([]*RawRenderItem, error)
 
@@ -88,4 +93,21 @@ type Metrics interface {
 
 	Stop()  // kill stuff
 	Start() // fire it up
+}
+
+// for those writers that are "blob" writers, we need them to match this interface
+// so that we can do resolution rollups
+type DBMetrics interface {
+
+	// gets the latest point(s) writen
+	GetLatestFromDB(name *repr.StatName, resolution uint32) (DBSeriesList, error)
+
+	// get the series that fit in a window
+	GetRangeFromDB(name *repr.StatName, start uint32, end uint32, resolution uint32) (DBSeriesList, error)
+
+	// update a db row
+	UpdateDBSeries(dbs *DBSeries, ts series.TimeSeries) error
+
+	//add a new row
+	InsertDBSeries(name *repr.StatName, timeseries series.TimeSeries, resolution uint32) (int, error)
 }

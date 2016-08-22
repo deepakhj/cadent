@@ -105,8 +105,9 @@ type WhisperWriter struct {
 	base_path    string
 	xFilesFactor float32
 	resolutions  [][]int
-	retentions   whisper.Retention
-	indexer      indexer.Indexer
+
+	retentions whisper.Retention
+	indexer    indexer.Indexer
 
 	cache_queue   *Cacher
 	cacheOverFlow *broadcast.Listener // on byte overflow of cacher force a write
@@ -556,9 +557,10 @@ func (ws *WhisperWriter) DeleteByName(name string) (err error) {
 
 /****************** Main Writer Interfaces *********************/
 type WhisperMetrics struct {
-	writer      *WhisperWriter
-	resolutions [][]int
-	indexer     indexer.Indexer
+	writer            *WhisperWriter
+	resolutions       [][]int
+	currentResolution int
+	indexer           indexer.Indexer
 
 	shutonce sync.Once // just shutdown "once and only once ever"
 
@@ -600,6 +602,10 @@ func (ws *WhisperMetrics) SetResolutions(res [][]int) int {
 	ws.resolutions = res
 	ws.writer.resolutions = res
 	return 1 // ONLY ONE writer needed whisper self-rolls up
+}
+
+func (ws *WhisperMetrics) SetCurrentResolution(res int) {
+	ws.currentResolution = res
 }
 
 func (ws *WhisperMetrics) Write(stat repr.StatRepr) error {
@@ -858,7 +864,7 @@ func (ws *WhisperMetrics) RawRender(path string, from int64, to int64) ([]*RawRe
 func (ws *WhisperMetrics) CacheRender(path string, from int64, to int64, tags repr.SortingTags) ([]*RawRenderItem, error) {
 	return nil, errWhisperNotImplemented
 }
-func (cass *WhisperMetrics) CachedSeries(path string, from int64, to int64, tags repr.SortingTags) (*TotalTimeSeries, error) {
+func (ws *WhisperMetrics) CachedSeries(path string, from int64, to int64, tags repr.SortingTags) (*TotalTimeSeries, error) {
 	return nil, fmt.Errorf("WhisperMetrics: CachedSeries: NOT YET IMPLIMNETED")
 }
 

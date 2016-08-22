@@ -53,7 +53,14 @@ limitations under the License.
 	# one hour default
 	cache_longest_time=3600s
 
-
+	# Rollup Type
+	# this can be either `cache` or `triggered`
+	# cache = means we keep each resolution in Ram and flush when approriate
+	# triggered = just keep the lowest resoltuion in ram, upon a write, trigger the other resolutions to get
+	# rolledup and written
+	# the Cached version can take alot of RAM (NumResolutions * Metrics * BlobSize) but is better for queries
+	# that over the "nowish" timescale as things are in RAM
+	rollup_type="cached"
 
 */
 
@@ -83,6 +90,7 @@ const (
 	MYSQL_DEFAULT_SERIES_TYPE  = "gorilla"
 	MYSQL_DEFAULT_SERIES_CHUNK = 16 * 1024 // 16kb
 	MYSQL_RENDER_TIMEOUT       = "5s"      // 5 second time out on any render
+	MYSQL_DEFAULT_ROLLUP_TYPE  = "cached"
 )
 
 // common errors to avoid GC pressure
@@ -91,12 +99,13 @@ var errTimeTooSmall = errors.New("Mysql: Render: time too narrow")
 
 /****************** Interfaces *********************/
 type MySQLMetrics struct {
-	db            *dbs.MySQLDB
-	conn          *sql.DB
-	indexer       indexer.Indexer
-	renderTimeout time.Duration
-	resolutions   [][]int
-	static_tags   repr.SortingTags
+	db                *dbs.MySQLDB
+	conn              *sql.DB
+	indexer           indexer.Indexer
+	renderTimeout     time.Duration
+	resolutions       [][]int
+	currentResolution int
+	static_tags       repr.SortingTags
 
 	series_encoding  string
 	blob_max_bytes   int
@@ -111,6 +120,12 @@ type MySQLMetrics struct {
 	cacherPrefix  string
 	cacher        *Cacher
 	cacheOverFlow *broadcast.Listener // on byte overflow of cacher force a write
+
+	// if the rolluptype == cached, then we this just uses the internal RAM caches
+	// otherwise if "trigger" we only have the lowest res cache, and trigger rollups on write
+	rollupType string
+	rollup     *RollupMetric
+	doRollup   bool
 
 	shutitdown bool      // just a flag
 	shutdown   chan bool // just a flag
@@ -161,7 +176,7 @@ func (my *MySQLMetrics) Config(conf map[string]interface{}) error {
 
 	//cacher
 	my.cacherPrefix = fmt.Sprintf("cache:mysqlblob:%s", dsn)
-	cache_key := fmt.Sprintf(my.cacherPrefix, dsn, resolution)
+	cache_key := fmt.Sprintf(my.cacherPrefix+":%v", resolution)
 	my.cacher, err = getCacherSingleton(cache_key)
 	if err != nil {
 		return err
@@ -192,6 +207,18 @@ func (my *MySQLMetrics) Config(conf map[string]interface{}) error {
 	if err != nil {
 		return err
 	}
+
+	// rolluptype
+	my.rollupType = MYSQL_DEFAULT_ROLLUP_TYPE
+	_rot, ok := conf["rollup_type"]
+	if ok {
+		my.rollupType = _rot.(string)
+	}
+
+	if my.rollupType == "triggered" {
+		my.rollup = NewRollupMetric(my, my.blob_max_bytes)
+	}
+
 	// only set these if it's not been started/init'ed
 	// as the readers will use this object as well
 	if !my.cacher.started && !my.cacher.inited {
@@ -230,6 +257,19 @@ func (my *MySQLMetrics) Start() {
 		// only register this when we start as we really want to consume
 		my.cacheOverFlow = my.cacher.GetOverFlowChan()
 		go my.overFlowWrite()
+
+		// if the resolutions list is just "one" there is no triggered rollups
+		if len(my.resolutions) == 1 {
+			my.rollupType = "cached"
+		}
+		my.doRollup = my.rollupType == "triggered" && my.currentResolution == my.resolutions[0][0]
+		// start the rolluper if needed
+		if my.doRollup {
+			// all but the lowest one
+			my.rollup.blobMaxBytes = my.blob_max_bytes
+			my.rollup.SetResolutions(my.resolutions[1:])
+			go my.rollup.Start()
+		}
 	})
 }
 
@@ -259,8 +299,14 @@ func (my *MySQLMetrics) Stop() {
 			if series != nil {
 				stats.StatsdClient.Incr(fmt.Sprintf("writer.mysql.write.send-to-writers"), 1)
 				my.InsertSeries(name, series)
+				if my.doRollup {
+					my.rollup.RollupChan() <- &TotalTimeSeries{Name: name, Series: series}
+				}
 			}
 			did++
+		}
+		if my.doRollup {
+			my.rollup.Stop()
 		}
 		my.log.Warning("shutdown purge: written %d/%d...", did, mets_l)
 		my.log.Warning("Shutdown finished ... quiting mysql blob writer")
@@ -281,6 +327,9 @@ func (my *MySQLMetrics) overFlowWrite() {
 
 			//my.log.Debug("Cache Write byte overflow %s.", statitem.Name.Key)
 			my.InsertSeries(statitem.(*TotalTimeSeries).Name, statitem.(*TotalTimeSeries).Series)
+			if my.doRollup {
+				my.rollup.RollupChan() <- statitem.(*TotalTimeSeries)
+			}
 		}
 	}
 }
@@ -298,55 +347,27 @@ func (my *MySQLMetrics) SetResolutions(res [][]int) int {
 	return len(res) // need as many writers as bins
 }
 
+func (my *MySQLMetrics) SetCurrentResolution(res int) {
+	my.currentResolution = res
+}
+
 func (my *MySQLMetrics) InsertSeries(name *repr.StatName, timeseries series.TimeSeries) (int, error) {
-
-	// i.e metrics_5s
-	t_name := my.db.Tablename()
-
-	Q := fmt.Sprintf(
-		"INSERT INTO %s (uid, path, ptype, points, stime, etime) VALUES ",
-		t_name,
-	)
-
-	vals := []interface{}{}
-
-	pts := timeseries.Bytes()
-	s_time := timeseries.StartTime()
-	e_time := timeseries.LastTime()
-
-	Q += "(?,?,?,?,?,?)"
-	vals = append(
-		vals,
-		name.UniqueIdString(),
-		name.Key,
-		series.IdFromName(my.series_encoding),
-		pts,
-		s_time,
-		e_time,
-	)
-
-	//prepare the statement
-	stmt, err := my.conn.Prepare(Q)
-	if err != nil {
-		my.log.Error("Mysql Driver: Metric prepare failed, %v", err)
-		return 0, err
-	}
-	defer stmt.Close()
-
-	//format all vals at once
-	_, err = stmt.Exec(vals...)
-	if err != nil {
-		my.log.Error("Mysql Driver: Metric insert failed, %v", err)
-		return 0, err
-	}
-
-	return 1, nil
+	return my.InsertDBSeries(name, timeseries, name.Resolution)
 }
 
 func (my *MySQLMetrics) Write(stat repr.StatRepr) error {
 	stat.Name.MergeMetric2Tags(my.static_tags)
-	my.indexer.Write(stat.Name)
-	my.cacher.Add(&stat.Name, &stat)
+	// only need to do this if the first resolution
+	if my.currentResolution == my.resolutions[0][0] {
+		my.indexer.Write(stat.Name)
+	}
+	if my.rollupType == "triggered" {
+		if my.currentResolution == my.resolutions[0][0] {
+			my.cacher.Add(&stat.Name, &stat)
+		}
+	} else {
+		my.cacher.Add(&stat.Name, &stat)
+	}
 	return nil
 }
 
@@ -516,7 +537,14 @@ func (my *MySQLMetrics) GetFromWriteCache(metric *indexer.MetricFindItem, start 
 
 	// grab data from the write inflight cache
 	// need to pick the "proper" cache
-	cache_db := fmt.Sprintf("%s:%v", my.cacherPrefix, resolution)
+
+	// if we are "triggered" rollups then there is only the lowest res cache,
+	// but we can get that data too and resample to proper resolution
+	cache_db := fmt.Sprintf("%s:%d", my.cacherPrefix, resolution)
+	if my.rollupType == "triggered" {
+		cache_db = fmt.Sprintf("%s:%d", my.cacherPrefix, my.resolutions[0][0])
+	}
+
 	use_cache := getCacherByName(cache_db)
 	if use_cache == nil {
 		use_cache = my.cacher
@@ -528,6 +556,12 @@ func (my *MySQLMetrics) GetFromWriteCache(metric *indexer.MetricFindItem, start 
 	if inflight == nil {
 		return nil, nil
 	}
+
+	// resample to the res we want
+	if my.rollupType == "triggered" && uint32(my.currentResolution) != resolution {
+		inflight.Resample(resolution)
+	}
+
 	inflight.Metric = metric.Path
 	inflight.Id = metric.UniqueId
 	inflight.Step = resolution
@@ -791,4 +825,147 @@ func (my *MySQLMetrics) CachedSeries(path string, start int64, end int64, tags r
 	}
 
 	return &TotalTimeSeries{Name: name, Series: inflight}, nil
+}
+
+/*************** Match the DBMetrics Interface ***********************/
+
+// given a name get the latest metric series
+func (my *MySQLMetrics) GetLatestFromDB(name *repr.StatName, resolution uint32) (DBSeriesList, error) {
+	t_name := my.db.RootMetricsTableName()
+	Q := fmt.Sprintf(
+		"SELECT id, uid, stime, etime, ptype, points FROM %s_%ds WHERE uid=? ORDER BY etime DESC LIMIT 1",
+		t_name, resolution,
+	)
+	rows, err := my.conn.Query(Q, name.UniqueIdString())
+
+	if err != nil {
+		my.log.Error("Mysql Driver: Metric select failed, %v", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	rawd := make(DBSeriesList, 0)
+	var p_type uint8
+	var p_bytes []byte
+	var uid string
+	var id, start, end int64
+	for rows.Next() {
+		if err := rows.Scan(&id, &uid, &start, &end, &p_type, &p_bytes); err != nil {
+			return nil, err
+		}
+		dataums := &DBSeries{
+			Id:         id,
+			Uid:        uid,
+			Start:      start,
+			End:        end,
+			Ptype:      p_type,
+			Pbytes:     p_bytes,
+			Resolution: resolution,
+		}
+		rawd = append(rawd, dataums)
+	}
+	if err := rows.Err(); err != nil {
+		return rawd, err
+	}
+
+	return rawd, nil
+}
+
+// given a name get the latest metric series
+func (my *MySQLMetrics) GetRangeFromDB(name *repr.StatName, start uint32, end uint32, resolution uint32) (DBSeriesList, error) {
+	t_name := my.db.RootMetricsTableName()
+	Q := fmt.Sprintf(
+		"SELECT id, uid, stime, etime, ptype, points FROM %s_%ds WHERE uid=? AND etime >= ? AND etime <= ?",
+		t_name, resolution,
+	)
+
+	// need to convert second time to nan time
+	nano := int64(time.Second)
+	nano_end := int64(end) * nano
+	nano_start := int64(start) * nano
+
+	rows, err := my.conn.Query(Q, name.UniqueIdString(), nano_start, nano_end)
+	//my.log.Debug("Q: %s, %s %d %d", Q, name.UniqueIdString(), nano_start, nano_end)
+
+	if err != nil {
+		my.log.Error("Mysql Driver: Metric select failed, %v", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	rawd := make(DBSeriesList, 0)
+	var p_type uint8
+	var p_bytes []byte
+	var uid string
+	var id, t_start, t_end int64
+	for rows.Next() {
+		if err := rows.Scan(&id, &uid, &t_start, &t_end, &p_type, &p_bytes); err != nil {
+			return nil, err
+		}
+		dataums := &DBSeries{
+			Id:         id,
+			Uid:        uid,
+			Start:      t_start,
+			End:        t_end,
+			Ptype:      p_type,
+			Pbytes:     p_bytes,
+			Resolution: resolution,
+		}
+		rawd = append(rawd, dataums)
+	}
+	if err := rows.Err(); err != nil {
+		return rawd, err
+	}
+
+	return rawd, nil
+}
+
+// update the row defined in dbs w/ the new bytes from the new Timeseries
+func (my *MySQLMetrics) UpdateDBSeries(dbs *DBSeries, ts series.TimeSeries) error {
+
+	t_name := my.db.RootMetricsTableName()
+	Q := fmt.Sprintf(
+		"UPDATE %s_%ds SET stime=?, etime=?, ptype=?, points=? WHERE uid=? AND id=?",
+		t_name, dbs.Resolution,
+	)
+
+	ptype := series.IdFromName(ts.Name())
+	_, err := my.conn.Exec(Q, ts.StartTime(), ts.LastTime(), ptype, ts.Bytes(), dbs.Uid, dbs.Id)
+	return err
+}
+
+// update the row defined in dbs w/ the new bytes from the new Timeseries
+func (my *MySQLMetrics) InsertDBSeries(name *repr.StatName, timeseries series.TimeSeries, resolution uint32) (added int, err error) {
+
+	t_name := my.db.RootMetricsTableName()
+	Q := fmt.Sprintf(
+		"INSERT INTO %s_%ds (uid, path, ptype, points, stime, etime) VALUES ",
+		t_name, resolution,
+	)
+
+	vals := []interface{}{}
+
+	pts := timeseries.Bytes()
+	s_time := timeseries.StartTime()
+	e_time := timeseries.LastTime()
+
+	Q += "(?,?,?,?,?,?)"
+	vals = append(
+		vals,
+		name.UniqueIdString(),
+		name.Key,
+		series.IdFromName(timeseries.Name()),
+		pts,
+		s_time,
+		e_time,
+	)
+
+	//format all vals at once
+	_, err = my.conn.Exec(Q, vals...)
+	if err != nil {
+		my.log.Error("Mysql Driver: Metric insert failed, %v", err)
+		return 0, err
+	}
+
+	return 1, nil
 }

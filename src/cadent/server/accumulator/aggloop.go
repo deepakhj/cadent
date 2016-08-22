@@ -196,6 +196,7 @@ func (agg *AggregateLoop) SetWriter(conf writers.WriterConfig) error {
 
 		mets.SetIndexer(idx)
 		mets.SetResolutions(agg.getResolutionArray())
+		mets.SetCurrentResolution(int(dur.Seconds()))
 		wr.SetMetrics(mets)
 		wr.SetIndexer(idx)
 
@@ -237,7 +238,8 @@ func (agg *AggregateLoop) startInputLooper() {
 
 // this is a helper function to get things to "start" on nicely "rounded"
 // ticker intervals .. i.e. if  duration is 5 seconds .. start on t % 5
-// this is approximate of course .. there will be some error, but it will be "close"
+// this is approximate of course .. there will be some error in the MS/NS range
+// but is should be good in the second range
 func (agg *AggregateLoop) delayRoundedTicker(duration time.Duration) *time.Ticker {
 	time.Sleep(time.Now().Truncate(duration).Add(duration).Sub(time.Now()))
 	return time.NewTicker(duration)

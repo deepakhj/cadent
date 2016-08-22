@@ -113,6 +113,7 @@ const (
 	CASSANDRA_DEFAULT_LONGEST_TIME   = "3600s"
 	CASSANDRA_DEFAULT_SERIES_CHUNK   = 16 * 1024 * 1024 // 16kb
 	CASSANDRA_DEFAULT_RENDER_TIMEOUT = "5s"
+	CASSANDRA_DEFAULT_ROLLUP_TYPE    = "cached"
 )
 
 var errMultiTargetsNotAllowed = errors.New("Multiple Targets are not allowed")
@@ -271,10 +272,11 @@ func (cass *CassandraWriter) Stop() {
 
 /****************** Metrics Writer *********************/
 type CassandraMetric struct {
-	resolutions [][]int
-	static_tags repr.SortingTags
-	indexer     indexer.Indexer
-	writer      *CassandraWriter
+	resolutions       [][]int
+	currentResolution int
+	static_tags       repr.SortingTags
+	indexer           indexer.Indexer
+	writer            *CassandraWriter
 
 	series_encoding string
 	blobMaxBytes    int
@@ -290,6 +292,12 @@ type CassandraMetric struct {
 	cacherPrefix  string
 	cacher        *Cacher
 	cacheOverFlow *broadcast.Listener // on byte overflow of cacher force a write
+
+	// if the rolluptype == cached, then we this just uses the internal RAM caches
+	// otherwise if "trigger" we only have the lowest res cache, and trigger rollups on write
+	rollupType string
+	rollup     *RollupMetric
+	doRollup   bool
 
 	render_wg     sync.WaitGroup
 	render_mu     sync.Mutex
@@ -377,6 +385,17 @@ func (cass *CassandraMetric) Config(conf map[string]interface{}) (err error) {
 	}
 	cass.renderTimeout = rdur
 
+	// rolluptype
+	cass.rollupType = CASSANDRA_DEFAULT_ROLLUP_TYPE
+	_rot, ok := conf["rollup_type"]
+	if ok {
+		cass.rollupType = _rot.(string)
+	}
+
+	if cass.rollupType == "triggered" {
+		cass.rollup = NewRollupMetric(cass, cass.blobMaxBytes)
+	}
+
 	// match blob types
 	cass.cacher.seriesType = cass.series_encoding
 	cass.cacher.maxBytes = cass.blobMaxBytes
@@ -385,6 +404,8 @@ func (cass *CassandraMetric) Config(conf map[string]interface{}) (err error) {
 	// unlike the other writers, overflows of cache size are
 	// exactly what we want to write
 	cass.cacher.overFlowMethod = "chan"
+
+	// rollup types
 
 	return nil
 }
@@ -405,6 +426,19 @@ func (cass *CassandraMetric) Start() {
 
 		cass.shutitdown = false
 		go cass.overFlowWrite()
+
+		// if the resolutions list is just "one" there is no triggered rollups
+		if len(cass.resolutions) == 1 {
+			cass.rollupType = "cached"
+		}
+		cass.doRollup = cass.rollupType == "triggered" && cass.currentResolution == cass.resolutions[0][0]
+		// start the rollupper if needed
+		if cass.doRollup {
+			// all but the lowest one
+			cass.rollup.blobMaxBytes = cass.blobMaxBytes
+			cass.rollup.SetResolutions(cass.resolutions[1:])
+			go cass.rollup.Start()
+		}
 	})
 }
 
@@ -434,8 +468,14 @@ func (cass *CassandraMetric) Stop() {
 			if series != nil {
 				stats.StatsdClient.Incr(fmt.Sprintf("writer.cassandra.write.send-to-writers"), 1)
 				cass.writer.InsertSeries(name, series)
+				if cass.doRollup {
+					cass.rollup.RollupChan() <- &TotalTimeSeries{Name: name, Series: series}
+				}
 			}
 			did++
+		}
+		if cass.doRollup {
+			cass.rollup.Stop()
 		}
 		cass.writer.log.Warning("shutdown purge: written %d/%d...", did, mets_l)
 		cass.writer.log.Warning("Shutdown finished ... quiting cassandra series writer")
@@ -456,6 +496,10 @@ func (cass *CassandraMetric) SetResolutions(res [][]int) int {
 	return len(res) // need as many writers as bins
 }
 
+func (cass *CassandraMetric) SetCurrentResolution(res int) {
+	cass.currentResolution = res
+}
+
 // listen to the overflow chan from the cache and attempt to write "now"
 func (cass *CassandraMetric) overFlowWrite() {
 	for {
@@ -467,6 +511,9 @@ func (cass *CassandraMetric) overFlowWrite() {
 			return
 		}
 		cass.writer.InsertSeries(statitem.(*TotalTimeSeries).Name, statitem.(*TotalTimeSeries).Series)
+		if cass.doRollup {
+			cass.rollup.RollupChan() <- statitem.(*TotalTimeSeries)
+		}
 	}
 }
 
@@ -476,7 +523,15 @@ func (cass *CassandraMetric) Write(stat repr.StatRepr) error {
 		return nil
 	}
 	stat.Name.MergeMetric2Tags(cass.static_tags)
-	cass.indexer.Write(stat.Name)
+	// only need to do this if the first resolution
+	if cass.currentResolution == cass.resolutions[0][0] {
+		cass.indexer.Write(stat.Name)
+	}
+	if cass.rollupType == "triggered" {
+		if cass.currentResolution == cass.resolutions[0][0] {
+			return cass.cacher.Add(&stat.Name, &stat)
+		}
+	}
 	return cass.cacher.Add(&stat.Name, &stat)
 }
 
@@ -634,12 +689,17 @@ func (cass *CassandraMetric) GetFromWriteCache(metric *indexer.MetricFindItem, s
 
 	// grab data from the write inflight cache
 	// need to pick the "proper" cache
-	cache_db := fmt.Sprintf("%s:%v", cass.cacherPrefix, resolution)
+	cache_db := fmt.Sprintf("%s:%d", cass.cacherPrefix, resolution)
+	if cass.rollupType == "triggered" {
+		cache_db = fmt.Sprintf("%s:%d", cass.cacherPrefix, cass.resolutions[0][0])
+	}
+
 	use_cache := getCacherByName(cache_db)
 	if use_cache == nil {
 		use_cache = cass.cacher
 	}
 	inflight, err := use_cache.GetAsRawRenderItem(metric.StatName())
+
 	if err != nil {
 		return nil, err
 	}
@@ -905,4 +965,126 @@ func (cass *CassandraMetric) CachedSeries(path string, start int64, end int64, t
 	}
 
 	return &TotalTimeSeries{Name: name, Series: inflight}, nil
+}
+
+/*************** Match the DBMetrics Interface ***********************/
+
+// given a name get the latest metric series
+func (cass *CassandraMetric) GetLatestFromDB(name *repr.StatName, resolution uint32) (DBSeriesList, error) {
+
+	Q := fmt.Sprintf(
+		"SELECT mid.id, stime, etime, ptype, points FROM %s WHERE mid={id: ?, res: ?} ORDER BY etime DESC LIMIT 1",
+		cass.writer.db.MetricTable(),
+	)
+
+	iter := cass.writer.conn.Query(
+		Q,
+		name.UniqueId, resolution,
+	).Iter()
+
+	defer iter.Close()
+
+	rawd := make(DBSeriesList, 0)
+	var p_type uint8
+	var p_bytes []byte
+	var uid string
+	var start, end int64
+
+	for iter.Scan(&uid, &start, &end, &p_type, &p_bytes) {
+		dataums := &DBSeries{
+			Uid:        uid,
+			Start:      start,
+			End:        end,
+			Ptype:      p_type,
+			Pbytes:     p_bytes,
+			Resolution: resolution,
+		}
+		rawd = append(rawd, dataums)
+
+	}
+	if err := iter.Close(); err != nil {
+		cass.writer.log.Error("Database: Failure closing iterator: %s: %v", Q, err)
+	}
+
+	return rawd, nil
+}
+
+// given a name get the latest metric series
+func (cass *CassandraMetric) GetRangeFromDB(name *repr.StatName, start uint32, end uint32, resolution uint32) (DBSeriesList, error) {
+
+	Q := fmt.Sprintf(
+		"SELECT mid.id, stime, etime, ptype, points FROM %s WHERE mid={id: ?, res: ?} AND etime >= ? AND etime <= ?",
+		cass.writer.db.MetricTable(),
+	)
+	// need to convert second time to nan time
+	nano := int64(time.Second)
+	nano_end := int64(end) * nano
+	nano_start := int64(start) * nano
+
+	iter := cass.writer.conn.Query(
+		Q,
+		name.UniqueId, resolution, nano_start, nano_end,
+	).Iter()
+
+	defer iter.Close()
+
+	rawd := make(DBSeriesList, 0)
+	var p_type uint8
+	var p_bytes []byte
+	var uid string
+	var tstart, tend int64
+
+	for iter.Scan(&uid, &tstart, &tend, &p_type, &p_bytes) {
+		dataums := &DBSeries{
+			Uid:        uid,
+			Start:      tstart,
+			End:        tend,
+			Ptype:      p_type,
+			Pbytes:     p_bytes,
+			Resolution: resolution,
+		}
+		rawd = append(rawd, dataums)
+
+	}
+	if err := iter.Close(); err != nil {
+		cass.writer.log.Error("Database: Failure closing iterator: %s: %v", Q, err)
+	}
+
+	return rawd, nil
+}
+
+// update the row defined in dbs w/ the new bytes from the new Timeseries
+// for cassandara we need to use the "old" start ansd end times
+// as the "Uniqueid" uid, res, etime, stime
+func (cass *CassandraMetric) UpdateDBSeries(dbs *DBSeries, ts series.TimeSeries) error {
+
+	Q := fmt.Sprintf(
+		"UPDATE %s SET stime=?, etime=?, ptype=?, points=? WHERE mid={id: ?, res:?} AND stime=? AND etime=?",
+		cass.writer.db.MetricTable(),
+	)
+
+	ptype := series.IdFromName(ts.Name())
+
+	blob, err := ts.MarshalBinary()
+	if err != nil {
+		return err
+	}
+	err = cass.writer.conn.Query(
+		Q,
+		ts.StartTime(),
+		ts.LastTime(),
+		ptype,
+		blob,
+		dbs.Uid,
+		dbs.Resolution,
+		dbs.Start,
+		dbs.End,
+	).Exec()
+
+	return err
+}
+
+// update the row defined in dbs w/ the new bytes from the new Timeseries
+func (cass *CassandraMetric) InsertDBSeries(name *repr.StatName, timeseries series.TimeSeries, resolution uint32) (added int, err error) {
+	return cass.writer.InsertSeries(name, timeseries)
 }

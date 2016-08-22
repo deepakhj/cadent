@@ -79,11 +79,12 @@ func (kp *KafkaMetricObj) Encode() ([]byte, error) {
 
 /****************** Interfaces *********************/
 type KafkaFlatMetrics struct {
-	db          *dbs.KafkaDB
-	conn        sarama.AsyncProducer
-	indexer     indexer.Indexer
-	resolutions [][]int
-	static_tags repr.SortingTags
+	db                *dbs.KafkaDB
+	conn              sarama.AsyncProducer
+	indexer           indexer.Indexer
+	resolutions       [][]int
+	currentResolution int
+	static_tags       repr.SortingTags
 
 	shutitdown bool
 	startstop  utils.StartStop
@@ -150,6 +151,10 @@ func (kf *KafkaFlatMetrics) SetResolutions(res [][]int) int {
 	return len(res) // need as many writers as bins
 }
 
+func (kf *KafkaFlatMetrics) SetCurrentResolution(res int) {
+	kf.currentResolution = res
+}
+
 func (kf *KafkaFlatMetrics) Write(stat repr.StatRepr) error {
 
 	if kf.shutitdown {
@@ -187,6 +192,7 @@ func (kf *KafkaFlatMetrics) Write(stat repr.StatRepr) error {
 
 /**** READER ***/
 // needed to match interface, but we obviously cannot do this
+
 func (kf *KafkaFlatMetrics) Render(path string, from int64, to int64) (WhisperRenderItem, error) {
 	return WhisperRenderItem{}, errKafkaReaderNotImplimented
 }

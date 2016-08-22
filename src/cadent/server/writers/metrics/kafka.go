@@ -83,11 +83,12 @@ func (kp *KafkaMetric) Encode() ([]byte, error) {
 
 /****************** Interfaces *********************/
 type KafkaMetrics struct {
-	db          *dbs.KafkaDB
-	conn        sarama.AsyncProducer
-	indexer     indexer.Indexer
-	resolutions [][]int
-	static_tags repr.SortingTags
+	db                *dbs.KafkaDB
+	conn              sarama.AsyncProducer
+	indexer           indexer.Indexer
+	resolutions       [][]int
+	currentResolution int
+	static_tags       repr.SortingTags
 
 	batches int // number of stats to "batch" per message (default 0)
 	log     *logging.Logger
@@ -274,6 +275,10 @@ func (kf *KafkaMetrics) SetResolutions(res [][]int) int {
 	return len(res) // need as many writers as bins
 }
 
+func (kf *KafkaMetrics) SetCurrentResolution(res int) {
+	kf.currentResolution = res
+}
+
 func (kf *KafkaMetrics) Write(stat repr.StatRepr) error {
 	// merge the tags in
 	stat.Name.MergeMetric2Tags(kf.static_tags)
@@ -343,6 +348,7 @@ func (kf *KafkaMetrics) GetFromWriteCache(metric *repr.StatName, start uint32, e
 }
 
 // needed to match interface, but we obviously cannot do this
+
 func (kf *KafkaMetrics) Render(path string, from int64, to int64) (WhisperRenderItem, error) {
 	return WhisperRenderItem{}, errKafkaReaderNotImplimented
 }

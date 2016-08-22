@@ -106,6 +106,7 @@ import (
 	"cadent/server/repr"
 	"cadent/server/stats"
 	"cadent/server/writers/dbs"
+	"errors"
 	"fmt"
 	"github.com/gocql/gocql"
 	logging "gopkg.in/op/go-logging.v1"
@@ -132,6 +133,8 @@ const (
 	CASSANDRA_FLAT_RENDER_TIMEOUT    = "5s" // 5 second time out on any render
 
 )
+
+var errNotImplimented = errors.New("Method not implimented")
 
 /** Being Cassandra we need some mappings to match the schemas **/
 
@@ -651,10 +654,11 @@ func (cass *CassandraFlatWriter) Write(stat repr.StatRepr) error {
 
 /****************** Metrics Writer *********************/
 type CassandraFlatMetric struct {
-	resolutions [][]int
-	static_tags repr.SortingTags
-	indexer     indexer.Indexer
-	writer      *CassandraFlatWriter
+	resolutions       [][]int
+	currentResolution int
+	static_tags       repr.SortingTags
+	indexer           indexer.Indexer
+	writer            *CassandraFlatWriter
 
 	render_timeout time.Duration
 }
@@ -682,6 +686,10 @@ func (cass *CassandraFlatMetric) SetIndexer(idx indexer.Indexer) error {
 func (cass *CassandraFlatMetric) SetResolutions(res [][]int) int {
 	cass.resolutions = res
 	return len(res) // need as many writers as bins
+}
+
+func (cass *CassandraFlatMetric) SetCurrentResolution(res int) {
+	cass.currentResolution = res
 }
 
 func (cass *CassandraFlatMetric) Config(conf map[string]interface{}) (err error) {

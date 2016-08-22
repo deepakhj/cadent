@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 /*
-   Base objects to simulate a graphite API response
+   Base objects for our API responses and internal communications
 */
 
 package metrics
@@ -25,15 +25,95 @@ import (
 	"cadent/server/repr"
 	"cadent/server/series"
 	"cadent/server/utils"
+	"errors"
 	"fmt"
 	"math"
 	"sort"
+	"time"
 )
+
+/** errors **/
+var errMergeStepSizeError = errors.New("To merge 2 RawRenderItems, the step size needs to be the same")
+var errQuantizeTooLittleData = errors.New("Cannot quantize to step: too little data")
+var errQuantizeStepTooSmall = fmt.Errorf("Cannot quantize: to a '0' step size ...")
 
 /******************  a simple union of series.TimeSeries and repr.StatName *********************/
 type TotalTimeSeries struct {
 	Name   *repr.StatName
 	Series series.TimeSeries
+}
+
+/******************  structs for the raw Database query (for blob series only) *********************/
+
+type DBSeries struct {
+	Id         interface{} // don't really know what the ID format for a DB is
+	Uid        string
+	Start      int64
+	End        int64
+	Ptype      uint8
+	Pbytes     []byte
+	Resolution uint32
+}
+
+func (d *DBSeries) Iter() (series.TimeSeriesIter, error) {
+	s_name := series.NameFromId(d.Ptype)
+	return series.NewIter(s_name, d.Pbytes)
+}
+
+type DBSeriesList []*DBSeries
+
+func (mb *DBSeriesList) Start() int64 {
+	t_s := int64(0)
+	for idx, d := range *mb {
+		if idx == 0 || d.Start < t_s {
+			t_s = d.Start
+		}
+	}
+	return t_s
+}
+
+func (mb *DBSeriesList) End() int64 {
+	t_s := int64(0)
+	for idx, d := range *mb {
+		if idx == 0 || d.End > t_s {
+			t_s = d.End
+		}
+	}
+	return t_s
+}
+
+func (mb *DBSeriesList) ToRawRenderItem() (*RawRenderItem, error) {
+	rawd := new(RawRenderItem)
+	for _, d := range *mb {
+		iter, err := d.Iter()
+		if err != nil {
+			return nil, err
+		}
+		for iter.Next() {
+			to, mi, mx, ls, su, ct := iter.Values()
+			t := uint32(time.Unix(0, to).Unix())
+
+			rawd.Data = append(rawd.Data, RawDataPoint{
+				Count: ct,
+				Sum:   su,
+				Max:   mx,
+				Min:   mi,
+				Last:  ls,
+				Time:  t,
+			})
+
+			if rawd.RealEnd < t {
+				rawd.RealEnd = t
+			}
+			if rawd.RealStart > t || rawd.RealStart == 0 {
+				rawd.RealStart = t
+			}
+		}
+	}
+	rawd.Start = rawd.RealStart
+	rawd.End = rawd.RealEnd
+	return rawd, nil
+
 }
 
 /****************** Output structs for the graphite API*********************/
@@ -79,7 +159,7 @@ type WhisperRenderItem struct {
 	Series    map[string][]DataPoint `json:"series"`
 }
 
-/*** Raw renderer **/
+/****************** Output structs for the internal API*********************/
 
 type RawDataPoint struct {
 	Time  uint32  `json:"time"`
@@ -157,6 +237,9 @@ func (r *RawDataPoint) AggValue(aggfunc repr.AggType) float64 {
 // merge two data points into one .. this is a nice merge that will add counts, etc to the pieces
 // the "time" is then the greater of the two
 func (r *RawDataPoint) Merge(d *RawDataPoint) {
+	if d.IsNull() {
+		return // just skip as nothing to merge
+	}
 	if math.IsNaN(r.Max) || r.Max < d.Max {
 		r.Max = d.Max
 	}
@@ -174,7 +257,7 @@ func (r *RawDataPoint) Merge(d *RawDataPoint) {
 		r.Last = d.Last
 	}
 
-	if r.Count == math.MinInt64 && d.Count > math.MaxInt64 {
+	if r.Count == math.MinInt64 && d.Count > math.MinInt64 {
 		r.Count = d.Count
 	} else if r.Count != math.MinInt64 && d.Count != math.MinInt64 {
 		r.Count += d.Count
@@ -204,6 +287,52 @@ type RawRenderItem struct {
 	Step      uint32           `json:"step"`
 	AggFunc   repr.AggType     `json:"aggfunc"`
 	Data      RawDataPointList `json:"data"`
+}
+
+func NewRawRenderItemFromSeriesIter(iter series.TimeSeriesIter) (*RawRenderItem, error) {
+	rawd := new(RawRenderItem)
+	for iter.Next() {
+		to, mi, mx, ls, su, ct := iter.Values()
+		t := uint32(time.Unix(0, to).Unix())
+
+		rawd.Data = append(rawd.Data, RawDataPoint{
+			Count: ct,
+			Sum:   su,
+			Max:   mx,
+			Min:   mi,
+			Last:  ls,
+			Time:  t,
+		})
+
+		if rawd.RealEnd < t {
+			rawd.RealEnd = t
+		}
+		if rawd.RealStart > t || rawd.RealStart == 0 {
+			rawd.RealStart = t
+		}
+	}
+	rawd.Start = rawd.RealStart
+	rawd.End = rawd.RealEnd
+	return rawd, nil
+}
+
+func NewRawRenderItemFromSeries(ts *TotalTimeSeries) (*RawRenderItem, error) {
+	s_iter, err := ts.Series.Iter()
+	if err != nil {
+		return nil, err
+	}
+	rawd, err := NewRawRenderItemFromSeriesIter(s_iter)
+	if err != nil {
+		return nil, err
+	}
+
+	rawd.Id = ts.Name.UniqueIdString()
+	rawd.MetaTags = ts.Name.MetaTags
+	rawd.Tags = ts.Name.Tags
+	rawd.Metric = ts.Name.Key
+	rawd.Step = ts.Name.Resolution
+
+	return rawd, nil
 }
 
 func (r *RawRenderItem) Len() int {
@@ -284,7 +413,20 @@ func (r *RawRenderItem) Resample(step uint32) {
 	endTime := (r.End - step) - ((r.End - step) % step)
 
 	if endTime < start {
-		// there's no data in this Step so just bail (too small a step)
+		// basically the resampling makes "one" data point so we merge all the
+		// incoming points into this one
+		endTime = start + step
+		data := make([]RawDataPoint, 1)
+		data[0] = NullRawDataPoint(start)
+		for _, d := range r.Data {
+			data[0].Merge(&d)
+		}
+		r.Start = start
+		r.RealStart = start
+		r.Step = step
+		r.End = endTime
+		r.RealEnd = endTime
+		r.Data = data
 		return
 	}
 
@@ -356,8 +498,10 @@ func (r *RawRenderItem) Resample(step uint32) {
 	}
 
 	r.Start = start
+	r.RealStart = start
 	r.Step = step
 	r.End = endTime
+	r.RealEnd = endTime
 	r.Data = data
 }
 
@@ -373,7 +517,7 @@ func (r *RawRenderItem) Quantize() error {
 func (r *RawRenderItem) QuantizeToStep(step uint32) error {
 
 	if step <= 0 {
-		return fmt.Errorf("Cannot quantize: to a '0' step size ...")
+		return errQuantizeStepTooSmall
 	}
 
 	// make sure the start/ends are nicely divisible by the Step
@@ -383,23 +527,38 @@ func (r *RawRenderItem) QuantizeToStep(step uint32) error {
 		start = r.Start + step - left
 	}
 
-	endTime := (r.End - 1) - ((r.End - 1) % step)
-
-	if endTime < start {
-		// there's no data in this Step so just bail (too small a step)
-		return fmt.Errorf("Cannot quantize to step: too little data")
-	}
-
-	// data length of the new data array
-	data := make([]RawDataPoint, (endTime-start)/step+1)
-	cur_len := uint32(len(r.Data))
+	endTime := (r.End - 1) - ((r.End - 1) % step) + step
 
 	// make sure in time order
 	sort.Sort(r.Data)
 
-	// 'i' iterates Original Data. 'o' iterates OutGoing Data.
+	// basically all the data fits into one point
+	if endTime < start {
+		data := make([]RawDataPoint, 1)
+		r.Step = step
+		r.Start = start
+		r.End = start + step
+		r.RealEnd = start + step
+		r.RealStart = start
+		data[0] = NullRawDataPoint(start)
+		for _, d := range r.Data {
+			data[0].Merge(&d)
+
+		}
+		r.Data = data
+		return nil
+	}
+
+	// data length of the new data array
+	data := make([]RawDataPoint, ((endTime-start)/step)+1)
+	cur_len := uint32(len(r.Data))
+
+	// 'i' iterates Original Data.
+	// 'o' iterates OutGoing Data.
 	// t is the current time we need to fill/merge
-	for t, i, o := start, uint32(0), -1; t <= endTime; t += step {
+	var t, i uint32
+	var o int32
+	for t, i, o = start, uint32(0), -1; t <= endTime; t += step {
 		o += 1
 
 		// No more data in the original list
@@ -419,6 +578,11 @@ func (r *RawRenderItem) QuantizeToStep(step uint32) error {
 			if data[o].Time == 0 {
 				data[o] = NullRawDataPoint(t)
 			}
+
+			if p.Time >= endTime {
+				data[o].Merge(&p)
+			}
+
 		} else if p.Time > t-step && p.Time < t {
 			// data fits in a slot,
 			// but may need a merge w/ another point(s) in the parent list
@@ -445,9 +609,12 @@ func (r *RawRenderItem) QuantizeToStep(step uint32) error {
 			o -= 1
 		}
 	}
+
 	r.Start = start
+	r.RealStart = start
 	r.Step = step
 	r.End = endTime
+	r.RealEnd = endTime
 	r.Data = data
 	return nil
 }
@@ -459,7 +626,7 @@ func (r *RawRenderItem) Merge(m *RawRenderItem) error {
 
 	// steps sizes need to be the same
 	if r.Step != m.Step {
-		return fmt.Errorf("To merge 2 RawRenderItems, the step size needs to be the same")
+		return errMergeStepSizeError
 	}
 
 	if m.Start < r.Start {
@@ -492,6 +659,58 @@ func (r *RawRenderItem) Merge(m *RawRenderItem) error {
 	for i := 0; i < cur_len; i++ {
 		if r.Data[i].IsNull() {
 			r.Data[i] = m.Data[i]
+		}
+	}
+	return nil
+}
+
+// when we "merge" the two series we also "aggregate" the overlapping
+// data points
+func (r *RawRenderItem) MergeAndAggregate(m *RawRenderItem) error {
+	// steps sizes need to be the same
+	if r.Step != m.Step {
+		return errMergeStepSizeError
+	}
+
+	if m.Start < r.Start {
+		r.Start = m.Start
+	} else {
+		m.Start = r.Start
+	}
+	if m.End > r.End {
+		r.End = m.End
+	} else {
+		m.End = r.End
+	}
+	if m.RealStart < r.RealStart {
+		r.RealStart = m.RealStart
+	} else {
+		m.RealStart = r.RealStart
+	}
+	if m.RealEnd > r.RealEnd {
+		r.RealEnd = m.RealEnd
+	} else {
+		m.RealEnd = r.RealEnd
+	}
+
+	// both series should be the same size after this step
+	err := r.Quantize()
+	if err != nil {
+		return err
+	}
+
+	err = m.Quantize()
+	if err != nil {
+		return err
+	}
+
+	// find the "longest" one
+	cur_len := len(m.Data)
+	for i := 0; i < cur_len; i++ {
+		if r.Data[i].IsNull() {
+			r.Data[i] = m.Data[i]
+		} else {
+			r.Data[i].Merge(&m.Data[i])
 		}
 	}
 	return nil
