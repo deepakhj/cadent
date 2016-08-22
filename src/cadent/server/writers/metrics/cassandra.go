@@ -531,8 +531,10 @@ func (cass *CassandraMetric) Write(stat repr.StatRepr) error {
 		if cass.currentResolution == cass.resolutions[0][0] {
 			return cass.cacher.Add(&stat.Name, &stat)
 		}
+	} else {
+		return cass.cacher.Add(&stat.Name, &stat)
 	}
-	return cass.cacher.Add(&stat.Name, &stat)
+	return nil
 }
 
 /************************ READERS ****************/
