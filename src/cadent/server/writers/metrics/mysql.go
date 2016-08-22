@@ -219,6 +219,15 @@ func (my *MySQLMetrics) Config(conf map[string]interface{}) error {
 		my.rollup = NewRollupMetric(my, my.blob_max_bytes)
 	}
 
+	_mtc := conf["cache_max_time_in_cache"]
+	if _mtc != nil {
+		dur, err := time.ParseDuration(_mtc.(string))
+		if err != nil {
+			return err
+		}
+		my.cacher.maxTimeInCache = uint32(dur.Seconds())
+	}
+
 	// only set these if it's not been started/init'ed
 	// as the readers will use this object as well
 	if !my.cacher.started && !my.cacher.inited {

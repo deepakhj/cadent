@@ -87,6 +87,12 @@ const (
 	CACHER_SERIES_TYPE      = "protobuf"
 	CACHER_METRICS_KEYS     = 102400
 	CACHER_DEFAULT_OVERFLOW = "drop"
+
+	// for "series" writers using the overflow chan method, we can force a
+	// "write" if either nothing has been added in this time (really slow series)
+	// OR It's been in RAM this long
+	// this helps avoid too much data loss if things crash.
+	CACHER_DEFAULT_OVERFLOW_DURATION = "60m"
 )
 
 /*
@@ -171,22 +177,24 @@ var errWriteCacheTooManyPoints = errors.New("Cacher: too many points in cache, d
 
 // The "cache" item for points
 type Cacher struct {
-	mu           *sync.RWMutex
-	qmu          *sync.Mutex
-	maxKeys      int // max num of keys to keep before we have to drop
-	maxBytes     int // max num of points per key to keep before we have to drop
-	seriesType   string
-	curSize      int64
-	numCurPoint  int
-	numCurKeys   int
-	lowFruitRate float64   // % of the time we reverse the max sortings to persist low volume stats
-	shutdown     chan bool // when recieved stop allowing adds and updates
-	_accept      bool      // flag to stop
-	log          *logging.Logger
-	Queue        CacheQueue
-	NameCache    map[repr.StatId]*repr.StatName
-	Cache        map[repr.StatId]series.TimeSeries
-	Name         string // just a human name for things
+	mu             *sync.RWMutex
+	qmu            *sync.Mutex
+	maxTimeInCache uint32
+	maxKeys        int // max num of keys to keep before we have to drop
+	maxBytes       int // max num of points per key to keep before we have to drop
+	seriesType     string
+	curSize        int64
+	numCurPoint    int
+	numCurKeys     int
+	lowFruitRate   float64                // % of the time we reverse the max sortings to persist low volume stats
+	shutdown       *broadcast.Broadcaster // when recieved stop allowing adds and updates
+	_accept        bool                   // flag to stop
+	log            *logging.Logger
+	Queue          CacheQueue
+	NameCache      map[repr.StatId]*repr.StatName
+	Cache          map[repr.StatId]series.TimeSeries
+	CacheStarted   map[repr.StatId]uint32 //keep track of how long we've been in here
+	Name           string                 // just a human name for things
 
 	//overflow pieces
 	overFlowMethod string
@@ -212,11 +220,17 @@ func NewCacher() *Cacher {
 	wc.log = logging.MustGetLogger("cacher.metrics")
 	wc.Cache = make(map[repr.StatId]series.TimeSeries)
 	wc.NameCache = make(map[repr.StatId]*repr.StatName)
-	wc.shutdown = make(chan bool)
+	wc.CacheStarted = make(map[repr.StatId]uint32)
+	wc.shutdown = broadcast.New(0)
 	wc._accept = true
 	wc.lowFruitRate = 0.25
 	wc.started = false
 	wc.inited = false
+
+	dur, err := time.ParseDuration(CACHER_DEFAULT_OVERFLOW_DURATION)
+	if err != nil {
+		wc.maxTimeInCache = uint32(dur.Seconds())
+	}
 
 	wc.overFlowBroadcast = broadcast.New(128)
 	return wc
@@ -227,13 +241,17 @@ func (wc *Cacher) Start() {
 		wc.started = true
 		wc.log.Notice("Starting Metric Cache sorter tick (%d max metrics, %d max bytes per metric) [%s]", wc.maxKeys, wc.maxBytes, wc.Name)
 		go wc.startUpdateTick()
+
+		// if the overFlowMethod == "chan", then we need to force fire things
+		// into the overflow chan if they've been in the hold too long
+		go wc.startCacheExpiredTick()
 	}
 }
 
 func (wc *Cacher) Stop() {
 	shutdown.AddToShutdown()
 	if wc.started {
-		wc.shutdown <- true
+		wc.shutdown.Close()
 		wc.overFlowBroadcast.Close()
 	}
 }
@@ -248,15 +266,62 @@ func (wc *Cacher) DumpPoints(pts []*repr.StatRepr) {
 	}
 }
 
+// do this every 5 min and write out any things that need to be \
+// flush as they been in the cache too long
+func (wc *Cacher) startCacheExpiredTick() {
+
+	// only can do this if overflow is chan
+	if wc.overFlowMethod != "chan" || wc.overFlowBroadcast == nil {
+		return
+	}
+
+	tick := time.NewTicker(2 * time.Minute)
+	shuts := wc.shutdown.Listen()
+
+	push_expired := func() {
+		t_now := uint32(time.Now().Unix())
+		for unique_id, started := range wc.CacheStarted {
+			if t_now-started > wc.maxTimeInCache {
+				wc.mu.Lock()
+				wc.log.Debug("Pushing metric to writer as it's been in ram too long: (%d)", unique_id)
+				nm := wc.NameCache[unique_id]
+				ser := wc.Cache[unique_id]
+
+				wc.curSize -= int64(ser.Len()) // shrink the bytes
+				delete(wc.Cache, unique_id)
+				delete(wc.NameCache, unique_id)
+				delete(wc.CacheStarted, unique_id)
+				wc.mu.Unlock()
+
+				wc.overFlowBroadcast.Send(&TotalTimeSeries{nm, ser})
+				stats.StatsdClientSlow.Incr("cacher.metrics.write.expired", 1)
+			}
+		}
+	}
+
+	for {
+		select {
+		case <-tick.C:
+			push_expired()
+		case <-shuts.Ch:
+			tick.Stop()
+			wc._accept = false
+			wc.log.Warning("Cache shutdown .. stopping expire tick")
+			return
+		}
+	}
+}
+
 // do this only once a second as it can be expensive
 func (wc *Cacher) startUpdateTick() {
 
 	tick := time.NewTicker(2 * time.Second)
+	shuts := wc.shutdown.Listen()
 	for {
 		select {
 		case <-tick.C:
 			wc.updateQueue()
-		case <-wc.shutdown:
+		case <-shuts.Ch:
 			tick.Stop()
 			wc._accept = false
 			wc.log.Warning("Cache shutdown .. stopping accepts")
@@ -340,6 +405,7 @@ func (wc *Cacher) Add(name *repr.StatName, stat *repr.StatRepr) error {
 		wc.log.Critical("ADDING: %s Time: %d, Val: %f", metric, time, value)
 	}
 	*/
+	t_now := uint32(time.Now().Unix())
 	unique_id := name.UniqueId()
 	if gots, ok := wc.Cache[unique_id]; ok {
 		cur_size := gots.Len()
@@ -353,6 +419,7 @@ func (wc *Cacher) Add(name *repr.StatName, stat *repr.StatRepr) error {
 				wc.curSize -= int64(gots.Len()) // shrink the bytes
 				delete(wc.Cache, unique_id)
 				delete(wc.NameCache, unique_id)
+				delete(wc.CacheStarted, unique_id)
 
 				wc.overFlowBroadcast.Send(&TotalTimeSeries{nm, gots})
 				stats.StatsdClientSlow.Incr("cacher.metrics.write.overflow", 1)
@@ -385,6 +452,7 @@ NEWSTAT:
 
 	wc.Cache[unique_id] = tp
 	wc.NameCache[unique_id] = name
+	wc.CacheStarted[unique_id] = t_now
 
 	wc.curSize += int64(tp.Len())
 	stats.StatsdClient.GaugeAvg("cacher.add.ave-points-per-metric", 1)

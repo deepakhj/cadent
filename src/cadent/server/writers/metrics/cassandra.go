@@ -396,6 +396,15 @@ func (cass *CassandraMetric) Config(conf map[string]interface{}) (err error) {
 		cass.rollup = NewRollupMetric(cass, cass.blobMaxBytes)
 	}
 
+	_mtc := conf["cache_max_time_in_cache"]
+	if _mtc != nil {
+		dur, err := time.ParseDuration(_mtc.(string))
+		if err != nil {
+			return err
+		}
+		cass.cacher.maxTimeInCache = uint32(dur.Seconds())
+	}
+
 	// match blob types
 	cass.cacher.seriesType = cass.series_encoding
 	cass.cacher.maxBytes = cass.blobMaxBytes
