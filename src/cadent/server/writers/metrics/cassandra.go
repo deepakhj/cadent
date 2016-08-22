@@ -979,7 +979,7 @@ func (cass *CassandraMetric) GetLatestFromDB(name *repr.StatName, resolution uin
 
 	iter := cass.writer.conn.Query(
 		Q,
-		name.UniqueId, resolution,
+		name.UniqueIdString(), resolution,
 	).Iter()
 
 	defer iter.Close()
@@ -1023,7 +1023,7 @@ func (cass *CassandraMetric) GetRangeFromDB(name *repr.StatName, start uint32, e
 
 	iter := cass.writer.conn.Query(
 		Q,
-		name.UniqueId, resolution, nano_start, nano_end,
+		name.UniqueIdString(), resolution, nano_start, nano_end,
 	).Iter()
 
 	defer iter.Close()
