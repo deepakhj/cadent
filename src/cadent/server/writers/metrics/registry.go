@@ -26,13 +26,13 @@ import (
 
 func NewMetrics(name string) (Metrics, error) {
 	switch {
-	case name == "mysql":
+	case name == "mysql" || name == "mysql-triggered":
 		return NewMySQLMetrics(), nil
 	case name == "mysql-flat":
 		return NewMySQLFlatMetrics(), nil
 	case name == "file":
 		return NewFileMetrics(), nil
-	case name == "cassandra":
+	case name == "cassandra" || name == "cassandra-triggered":
 		return NewCassandraMetrics(), nil
 	case name == "cassandra-flat":
 		return NewCassandraFlatMetrics(), nil
@@ -61,7 +61,7 @@ func ResolutionsNeeded(name string) (WritersNeeded, error) {
 		return AllResolutions, nil
 	case name == "kafka" || name == "kafka-flat":
 		return AllResolutions, nil
-	case name == "whisper" || name == "carbon" || name == "graphite":
+	case name == "whisper" || name == "carbon" || name == "graphite" || name == "cassandra-triggered" || name == "mysql-triggered":
 		return FirstResolution, nil
 	default:
 		return AllResolutions, fmt.Errorf("Invalid metrics `%s`", name)

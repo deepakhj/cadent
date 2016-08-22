@@ -29,6 +29,7 @@ import (
 	logging "gopkg.in/op/go-logging.v1"
 
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 )
@@ -64,6 +65,11 @@ func (wc WriterMetricConfig) NewMetrics(duration time.Duration) (metrics.Metrics
 	i_ops["dsn"] = wc.DSN
 	i_ops["prefix"] = fmt.Sprintf("_%0.0fs", duration.Seconds())
 	i_ops["resolution"] = duration.Seconds()
+
+	// a little special case to set the rollupType == "triggered" if we are the triggered driver
+	if strings.HasSuffix(wc.Driver, "-triggered") {
+		i_ops["rollup_type"] = "triggered"
+	}
 
 	err = mets.Config(i_ops)
 	if err != nil {

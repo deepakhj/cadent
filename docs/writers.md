@@ -119,6 +119,10 @@ The main writers are
 
         Good for the highest throughput and data effiency for storage.
 
+    - cassandra-triggered: a binary blob of timeseries points between a time range
+
+       Same as `cassandra` but uses triggering for rollups (see below)
+
     - cassandra-flat: a row for each time/point
 
         Good for simplicity, and when you are starting out w/ cassandra to verify things are working as planned
@@ -133,6 +137,10 @@ The main writers are
         If your data storage requirements are not overly huge, this is pretty good. (also since the local dev
         on cassandra is "hard" and slow as it was never meant to run in a docker container really, this is
         a bit easier to get going and start playing w/ blob formats)
+
+    - mysql-triggered: a binary blob of timeseries points between a time range
+
+        Same as `mysql` but uses triggering for rollups (see below)
 
     - mysql-flat:
 

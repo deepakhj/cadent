@@ -336,15 +336,15 @@ func (rl *RollupMetric) DoRollup(tseries *TotalTimeSeries) error {
 		}
 
 		// the "new" data will win over any older ones
-		fmt.Println("Old Points")
-		old_data.PrintPoints()
-		fmt.Println("Pre Merge Points")
-		t_new_data.PrintPoints()
+		//fmt.Println("Old Points")
+		//old_data.PrintPoints()
+		//fmt.Println("Pre Merge Points")
+		//t_new_data.PrintPoints()
 		t_new_data.MergeAndAggregate(old_data)
 		t_new_data.Start = t_start
 		t_new_data.End = t_end
-		fmt.Println("New Points")
-		t_new_data.PrintPoints()
+		//fmt.Println("New Points")
+		//t_new_data.PrintPoints()
 		//now simply either replace the old data with new ones
 		err = writeOne(&t_new_data, r_stats, res[0], res[1])
 		if err != nil {
