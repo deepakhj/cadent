@@ -53,7 +53,6 @@ import (
 	"cadent/server/series"
 	"cadent/server/stats"
 	"cadent/server/utils"
-	"fmt"
 	"time"
 )
 
