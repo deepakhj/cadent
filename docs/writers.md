@@ -117,7 +117,7 @@ The main writers are
 
     - cassandra: a binary blob of timeseries points between a time range
 
-        Good for the highest throughput and data effiency for storage
+        Good for the highest throughput and data effiency for storage.
 
     - cassandra-flat: a row for each time/point
 
@@ -143,7 +143,21 @@ The main writers are
 
         Toss stats into a kafka topic (no readers/render api for this mode) for processing by some other entity
 
+#### Triggered Rollups
 
+For the mysql and cassandra series wrtiers, there is an option to "trigger" rollups from the lowest resolution
+rather then storing them in RAM.  Once the lowest resolution is "written" it will trigger a rollup event for the lower
+resolution items which get written to the the DB.  This can slove 2 issues,
+
+    - No need for resolution caches (which if your metrics space is large, can be alot) and just needed for the highest resoltuion.
+    - Peristence delay: the Low resolutions can stay in ram for a long time before they are written.  This can be problematic if things crash/fail as
+    those data points are never written.  With the triggered method, they are written once the highest resolution is written.
+
+To enable this, simply add
+
+    rollup_type="triggered"
+
+to the `writer.metrics` options (it will be ignored for anything other then the mysql and cassandra blob writers)
 
 ### Writer Schemas
 
