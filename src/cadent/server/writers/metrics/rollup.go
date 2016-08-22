@@ -187,7 +187,7 @@ func (rl *RollupMetric) runRollup() {
 */
 
 func (rl *RollupMetric) DoRollup(tseries *TotalTimeSeries) error {
-	defer stats.StatsdSlowNanoTimeFunc("reader.rollup.process-time-ns", time.Now())
+	defer stats.StatsdSlowNanoTimeFunc("writer.rollup.process-time-ns", time.Now())
 
 	// make the series into our resampler object
 	new_data, err := NewRawRenderItemFromSeries(tseries)
