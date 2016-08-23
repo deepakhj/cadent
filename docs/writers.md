@@ -90,7 +90,7 @@ Not everything is "done" .. as there are many things to write and verify, this i
 
 | Driver   | IndexSupport  |  TagSupport |  SeriesSupport | LineSupport  | TriggerSupport | DriverNames |
 |---|---|---|---|---|---|---|
-| cassandra | write+read  | No  | No | write+read | Yes | Index: "cassandra", Line: "cassandra-flat", Series: "cassandra", Series Triggerd: "cassandra-triggered" |
+| cassandra | write+read  | No  | write+read | write+read | Yes | Index: "cassandra", Line: "cassandra-flat", Series: "cassandra", Series Triggerd: "cassandra-triggered" |
 | mysql  | write+read  | write  | write+read  | write+read  | Yes | Index: "mysql", Line: "mysql-flat", Series: "mysql",  Series Triggerd: "cassandra-triggered" |
 | kafka  |  write | write | write  | write  | n/a | Index: "kafka", Line: "kafka-flat", Series: "kafka" |
 | whisper|  read | n/a | n/a  | write+read |  n/a | Index: "whisper", Line: "whisper", Series: "n/a" |
@@ -161,6 +161,7 @@ rather then storing them in RAM.  Once the lowest resolution is "written" it wil
 resolution items which get written to the the DB.  This can slove 2 issues,
 
     - No need for resolution caches (which if your metrics space is large, can be alot) and just needed for the highest resoltuion.
+
     - Peristence delay: the Low resolutions can stay in ram for a long time before they are written.  This can be problematic if things crash/fail as
     those data points are never written.  With the triggered method, they are written once the highest resolution is written.
 
@@ -171,9 +172,10 @@ To enable this, simply add
 to the `writer.metrics` options (it will be ignored for anything other then the mysql and cassandra blob writers)
 
 However it is better to use the `-triggered` driver names as that will tell the accumulators to only accumulate
-the lowest res (otherwise, the accumulator does not know things are in rollup mode)
+the lowest res (otherwise, the accumulator does not know things are in rollup mode, and will continue to aggregate
+the lower-res elements, but they will just take up unessesary RAM and process cycles.)
 
-    cassandra-triggers or mysql-triggered
+    cassandra-triggered or mysql-triggered
 
 
 

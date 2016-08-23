@@ -715,3 +715,82 @@ func (r *RawRenderItem) MergeAndAggregate(m *RawRenderItem) error {
 	}
 	return nil
 }
+
+// this is similar to the MergeAndAgg but it will NOT create nulls
+// for missing points in a time sequence, and Resample the data at the same time
+func (r *RawRenderItem) MergeWithResample(d *RawRenderItem, step uint32) error {
+	// based on the start, stop and step.  Fill in the gaps in missing
+	// slots (w/ nulls) as graphite does not like "missing times" (expects things to have a constant
+	// length over the entire interval)
+	// You should Put in an "End" time of "ReadData + Step" to avoid loosing the last point as things
+	// are  [Start, End) not [Start, End]
+
+	if step <= 0 {
+		return errQuantizeStepTooSmall
+	}
+
+	// make sure the start/ends are nicely divisible by the Step
+	start := r.Start
+	if d.Start < start {
+		start = d.Start
+	}
+
+	left := start % step
+	if left != 0 {
+		start = start + step - left
+	}
+
+	end := r.End
+	if d.End > r.End {
+		end = d.End
+	}
+
+	endTime := (end - 1) - ((end - 1) % step) + step
+
+	// make sure in time order
+	sort.Sort(r.Data)
+	sort.Sort(d.Data)
+
+	// 'i' iterates Original Data.
+	// 'o' iterates Incoming Data.
+	// 'n' iterates New Data.
+	// t is the current time we need to fill/merge
+	var t uint32
+	var i, o, n int
+
+	i_len := len(r.Data)
+	o_len := len(d.Data)
+	data := make([]RawDataPoint, 0)
+
+	for t, i, o, n = start, 0, 0, -1; t <= endTime; t += step {
+		dp := NullRawDataPoint(t)
+		// loop through the orig data until we hit a time > then the current one
+		for ; i < i_len; i++ {
+			if r.Data[i].Time > t {
+				break
+			}
+			dp.Merge(&r.Data[i])
+		}
+
+		// loop through the incoming data until we hit a time > then the current one
+		for ; o < o_len; o++ {
+			if d.Data[o].Time > t {
+				break
+			}
+			dp.Merge(&d.Data[o])
+		}
+		if !dp.IsNull() {
+			data = append(data, dp)
+			n++
+		}
+	}
+
+	r.Start = start
+	r.RealStart = start
+	r.Step = step
+	r.End = endTime
+	r.RealEnd = endTime
+	r.Data = data
+	return nil
+
+}

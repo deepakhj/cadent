@@ -268,10 +268,17 @@ func (rl *RollupMetric) DoRollup(tseries *TotalTimeSeries) error {
 		l_old := len(old_data)
 		for idx, ts := range m_tseries {
 			if l_old > idx {
-				rl.log.Debug("Update Series: %s %d->%d", old_data[idx].Uid, old_data[idx].Start, old_data[idx].End)
+				rl.log.Debug("Update Series Resolution %d: %s %d->%d", resolution, old_data[idx].Uid, old_data[idx].Start, old_data[idx].End)
 				rl.writer.UpdateDBSeries(old_data[idx], ts)
 			} else {
-				rl.log.Debug("Insert New Series: %s (%s) %d->%d", new_name.Key, new_name.UniqueIdString(), ts.StartTime(), ts.LastTime())
+				rl.log.Debug(
+					"Insert New Series Resolution %d: %s (%s) %d->%d",
+					resolution,
+					new_name.Key,
+					new_name.UniqueIdString(),
+					ts.StartTime(),
+					ts.LastTime(),
+				)
 				rl.writer.InsertDBSeries(new_name, ts, uint32(resolution))
 			}
 		}
@@ -284,7 +291,7 @@ func (rl *RollupMetric) DoRollup(tseries *TotalTimeSeries) error {
 	nano_s := int64(time.Second)
 	for _, res := range rl.resolutions {
 		t_new_data := *new_data
-		t_new_data.Resample(uint32(res[0]))
+
 		// use nicely truncated blocks
 		t_start := uint32(TruncateTimeTo(int64(new_data.Start), res[0]))
 		t_end := uint32(TruncateTimeTo(int64(new_data.End)+int64(res[0]), res[0]))
@@ -335,7 +342,7 @@ func (rl *RollupMetric) DoRollup(tseries *TotalTimeSeries) error {
 			//old_data.PrintPoints()
 			//fmt.Println("Pre Merge Points")
 			//t_new_data.PrintPoints()
-			err = t_new_data.MergeAndAggregate(old_data)
+			err = t_new_data.MergeWithResample(old_data, uint32(res[0]))
 			if err != nil {
 				rl.log.Errorf("Rollup Merge failure: %v", err)
 				continue
