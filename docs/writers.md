@@ -91,7 +91,7 @@ Not everything is "done" .. as there are many things to write and verify, this i
 | Driver   | IndexSupport  |  TagSupport |  SeriesSupport | LineSupport  | TriggerSupport | DriverNames |
 |---|---|---|---|---|---|---|
 | cassandra | write+read  | No  | No | write+read | Yes | Index: "cassandra", Line: "cassandra-flat", Series: "cassandra", Series Triggerd: "cassandra-triggered" |
-| mysql  | write+read  | write  | write+read  | Yes | write+read  | Index: "mysql", Line: "mysql-flat", Series: "mysql",  Series Triggerd: "cassandra-triggered" |
+| mysql  | write+read  | write  | write+read  | write+read  | Yes | Index: "mysql", Line: "mysql-flat", Series: "mysql",  Series Triggerd: "cassandra-triggered" |
 | kafka  |  write | write | write  | write  | n/a | Index: "kafka", Line: "kafka-flat", Series: "kafka" |
 | whisper|  read | n/a | n/a  | write+read |  n/a | Index: "whisper", Line: "whisper", Series: "n/a" |
 | leveldb |  write+read | No | No  | No |  n/a | Index: "leveldb", Line: "n/a", Series: "n/a" |
