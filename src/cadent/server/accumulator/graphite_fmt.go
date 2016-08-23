@@ -22,6 +22,7 @@ package accumulator
 
 import (
 	"cadent/server/repr"
+	"cadent/server/utils"
 	"fmt"
 	"io"
 	"time"
@@ -46,21 +47,10 @@ func (g *GraphiteFormatter) SetAccumulator(acc AccumulatorItem) {
 
 func (g *GraphiteFormatter) Type() string { return GRAPHITE_FMT_NAME }
 func (g *GraphiteFormatter) ToString(name *repr.StatName, val float64, tstamp int32, stats_type string, tags repr.SortingTags) string {
-	if tstamp <= 0 {
-		tstamp = int32(time.Now().Unix())
-	}
-	name.MergeMetric2Tags(tags)
-	t_str := fmt.Sprintf("%s %f %d", name.Key, val, tstamp)
-	if !name.Tags.IsEmpty() {
-		t_str += repr.SPACE_SEPARATOR + name.MetaTags.ToStringSep(repr.EQUAL_SEPARATOR, repr.SPACE_SEPARATOR)
-		if !name.MetaTags.IsEmpty() {
-			t_str += repr.SPACE_SEPARATOR
-		}
-	}
-	if !name.MetaTags.IsEmpty() {
-		t_str += repr.SPACE_SEPARATOR + name.MetaTags.ToStringSep(repr.EQUAL_SEPARATOR, repr.SPACE_SEPARATOR)
-	}
-	return t_str
+	buf := utils.GetBytesBuffer()
+	defer utils.PutBytesBuffer(buf)
+	g.Write(buf, name, val, tstamp, stats_type, tags)
+	return buf.String()
 }
 
 func (g *GraphiteFormatter) Write(buf io.Writer, name *repr.StatName, val float64, tstamp int32, stats_type string, tags repr.SortingTags) {
