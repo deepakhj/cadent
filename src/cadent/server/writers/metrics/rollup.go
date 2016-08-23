@@ -50,13 +50,41 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	logging "gopkg.in/op/go-logging.v1"
 
+	"cadent/server/dispatch"
 	"cadent/server/series"
 	"cadent/server/stats"
 	"cadent/server/utils"
 	"time"
 )
 
-const ROLLUP_QUEUE_LENGTH = 256
+const (
+	ROLLUP_QUEUE_LENGTH = 2048
+	ROLLUP_NUM_WORKERS  = 8
+	ROLLUP_NUM_RETRIES  = 2
+)
+
+/************************************************************************/
+/**********  Standard Worker Dispatcher JOB   ***************************/
+/************************************************************************/
+// rollup job queue workers
+type RollupJob struct {
+	Rollup *RollupMetric
+	Ts     TotalTimeSeries
+	Retry  int
+}
+
+func (j *RollupJob) IncRetry() int {
+	j.Retry++
+	return j.Retry
+}
+func (j *RollupJob) OnRetry() int {
+	return j.Retry
+}
+
+func (j *RollupJob) DoWork() error {
+	err := j.Rollup.DoRollup(j.Ts)
+	return err
+}
 
 /****************** Interfaces *********************/
 type RollupMetric struct {
@@ -64,22 +92,19 @@ type RollupMetric struct {
 	resolutions   [][]int
 	minResolution int
 
+	dispatcher *dispatch.DispatchQueue
+
 	series_encoding string
 	blobMaxBytes    int
 
-	shutitdown bool      // just a flag
-	shutdown   chan bool // just a flag
-	startstop  utils.StartStop
+	startstop utils.StartStop
 
-	rollupChan chan *TotalTimeSeries
-	log        *logging.Logger
+	log *logging.Logger
 }
 
 func NewRollupMetric(writer DBMetrics, maxBytes int) *RollupMetric {
 	rl := new(RollupMetric)
 	rl.writer = writer
-	rl.shutdown = make(chan bool)
-	rl.rollupChan = make(chan *TotalTimeSeries, ROLLUP_QUEUE_LENGTH)
 	rl.blobMaxBytes = maxBytes
 	rl.log = logging.MustGetLogger("writers.rollup")
 	return rl
@@ -99,41 +124,29 @@ func (rl *RollupMetric) SetMinResolution(res int) {
 func (rl *RollupMetric) Start() {
 	rl.startstop.Start(func() {
 		rl.log.Notice("Starting rollup engine writer at %d bytes per series", rl.blobMaxBytes)
-		go rl.runRollup()
+		rl.dispatcher = dispatch.NewDispatchQueue(
+			ROLLUP_NUM_WORKERS,
+			ROLLUP_QUEUE_LENGTH,
+			ROLLUP_NUM_RETRIES,
+		)
+		rl.dispatcher.Start()
 	})
 }
 
 func (rl *RollupMetric) Stop() {
 	rl.startstop.Stop(func() {
 		shutdown.AddToShutdown()
+		defer shutdown.ReleaseFromShutdown()
 		rl.log.Warning("Starting Shutdown of rollup engine")
 
-		if rl.shutitdown {
-			return // already did
+		if rl.dispatcher != nil {
+			rl.dispatcher.Stop()
 		}
-		rl.shutitdown = true
-		rl.shutdown <- true
 	})
 }
 
-func (rl *RollupMetric) RollupChan() chan *TotalTimeSeries {
-	return rl.rollupChan
-}
-
-func (rl *RollupMetric) runRollup() {
-	for {
-		select {
-		case tseries, more := <-rl.rollupChan:
-			if !more {
-				return
-			}
-			rl.DoRollup(tseries)
-
-		case <-rl.shutdown:
-			shutdown.ReleaseFromShutdown()
-			return
-		}
-	}
+func (rl *RollupMetric) Add(ts *TotalTimeSeries) {
+	rl.dispatcher.Add(&RollupJob{Rollup: rl, Ts: *ts})
 }
 
 /*
@@ -186,11 +199,11 @@ func (rl *RollupMetric) runRollup() {
 
 */
 
-func (rl *RollupMetric) DoRollup(tseries *TotalTimeSeries) error {
+func (rl *RollupMetric) DoRollup(tseries TotalTimeSeries) error {
 	defer stats.StatsdSlowNanoTimeFunc("writer.rollup.process-time-ns", time.Now())
 
 	// make the series into our resampler object
-	new_data, err := NewRawRenderItemFromSeries(tseries)
+	new_data, err := NewRawRenderItemFromSeries(&tseries)
 	if err != nil {
 		rl.log.Errorf("Rollup Failure: %v", err)
 		return err
@@ -248,10 +261,10 @@ func (rl *RollupMetric) DoRollup(tseries *TotalTimeSeries) error {
 		l_old := len(old_data)
 		for idx, ts := range m_tseries {
 			if l_old > idx {
-				rl.log.Debug("Update Series: %s", old_data[idx].Uid)
+				rl.log.Debug("Update Series: %s %d->%d", old_data[idx].Uid, old_data[idx].Start, old_data[idx].End)
 				rl.writer.UpdateDBSeries(old_data[idx], ts)
 			} else {
-				rl.log.Debug("Insert New Series: %s (%s)", new_name.Key, new_name.UniqueIdString())
+				rl.log.Debug("Insert New Series: %s (%s) %d->%d", new_name.Key, new_name.UniqueIdString(), ts.StartTime(), ts.LastTime())
 				rl.writer.InsertDBSeries(new_name, ts, uint32(resolution))
 			}
 		}
@@ -269,8 +282,20 @@ func (rl *RollupMetric) DoRollup(tseries *TotalTimeSeries) error {
 		t_start := uint32(TruncateTimeTo(int64(new_data.Start), res[0]))
 		t_end := uint32(TruncateTimeTo(int64(new_data.End)+int64(res[0]), res[0]))
 
+		// if the start|End time is 0 then there is trouble w/ the series itself
+		// and attempting a rollup is next to suicide
+		if t_start == 0 || t_end == 0 {
+			rl.log.Errorf("Rollup failure: Start|End time is 0, the series is corrupt cannot rollup")
+			continue
+		}
+
 		// first see if the "latest" series does our case 1 or 2
 		r_stats, err := rl.writer.GetLatestFromDB(tseries.Name, uint32(res[0]))
+
+		if len(r_stats) > 0 && (r_stats.Start() == 0 || r_stats.End() == 0) {
+			rl.log.Errorf("Rollup failure: Start|End time is 0 in the DB, the series is corrupt cannot rollup")
+			continue
+		}
 
 		// we have a "new" series to write
 		if len(r_stats) == 0 {

@@ -75,6 +75,7 @@ import (
 	"sort"
 
 	"cadent/server/broadcast"
+	"cadent/server/utils"
 	"cadent/server/utils/shutdown"
 	"errors"
 	logging "gopkg.in/op/go-logging.v1"
@@ -93,6 +94,9 @@ const (
 	// OR It's been in RAM this long
 	// this helps avoid too much data loss if things crash.
 	CACHER_DEFAULT_OVERFLOW_DURATION = "60m"
+
+	// max length for the broadcast channel
+	CACHER_DEFAULT_BROADCAST_LEN = 128
 )
 
 /*
@@ -202,8 +206,9 @@ type Cacher struct {
 	// allow for multiple registering entities
 	overFlowBroadcast *broadcast.Broadcaster // should pass in *TotalTimeSeries
 
-	started bool
-	inited  bool
+	startstop utils.StartStop
+	started   bool
+	inited    bool
 }
 
 func NewCacher() *Cacher {
@@ -232,12 +237,12 @@ func NewCacher() *Cacher {
 		wc.maxTimeInCache = uint32(dur.Seconds())
 	}
 
-	wc.overFlowBroadcast = broadcast.New(128)
+	wc.overFlowBroadcast = broadcast.New(CACHER_DEFAULT_BROADCAST_LEN)
 	return wc
 }
 
 func (wc *Cacher) Start() {
-	if !wc.started {
+	wc.startstop.Start(func() {
 		wc.started = true
 		wc.log.Notice("Starting Metric Cache sorter tick (%d max metrics, %d max bytes per metric) [%s]", wc.maxKeys, wc.maxBytes, wc.Name)
 		go wc.startUpdateTick()
@@ -245,15 +250,19 @@ func (wc *Cacher) Start() {
 		// if the overFlowMethod == "chan", then we need to force fire things
 		// into the overflow chan if they've been in the hold too long
 		go wc.startCacheExpiredTick()
-	}
+	})
 }
 
 func (wc *Cacher) Stop() {
-	shutdown.AddToShutdown()
-	if wc.started {
-		wc.shutdown.Close()
-		wc.overFlowBroadcast.Close()
-	}
+	wc.startstop.Stop(func() {
+		shutdown.AddToShutdown()
+		defer shutdown.ReleaseFromShutdown()
+
+		if wc.started {
+			wc.shutdown.Close()
+			wc.overFlowBroadcast.Close()
+		}
+	})
 }
 
 func (wc *Cacher) GetOverFlowChan() *broadcast.Listener {
@@ -277,9 +286,13 @@ func (wc *Cacher) startCacheExpiredTick() {
 
 	tick := time.NewTicker(2 * time.Minute)
 	shuts := wc.shutdown.Listen()
+	// only push this many per flush as to not overwhelm the backends
+	max_per_run := CACHER_DEFAULT_BROADCAST_LEN / 2
 
 	push_expired := func() {
 		t_now := uint32(time.Now().Unix())
+		did := 0
+
 		for unique_id, started := range wc.CacheStarted {
 			if t_now-started > wc.maxTimeInCache {
 				wc.mu.Lock()
@@ -287,14 +300,20 @@ func (wc *Cacher) startCacheExpiredTick() {
 				nm := wc.NameCache[unique_id]
 				ser := wc.Cache[unique_id]
 
+				wc.overFlowBroadcast.Send(&TotalTimeSeries{nm, ser})
+
 				wc.curSize -= int64(ser.Len()) // shrink the bytes
 				delete(wc.Cache, unique_id)
 				delete(wc.NameCache, unique_id)
 				delete(wc.CacheStarted, unique_id)
 				wc.mu.Unlock()
 
-				wc.overFlowBroadcast.Send(&TotalTimeSeries{nm, ser})
 				stats.StatsdClientSlow.Incr("cacher.metrics.write.expired", 1)
+				did++
+				if did > max_per_run {
+					return
+				}
+
 			}
 		}
 	}
@@ -325,7 +344,6 @@ func (wc *Cacher) startUpdateTick() {
 			tick.Stop()
 			wc._accept = false
 			wc.log.Warning("Cache shutdown .. stopping accepts")
-			shutdown.ReleaseFromShutdown()
 
 			return
 		}

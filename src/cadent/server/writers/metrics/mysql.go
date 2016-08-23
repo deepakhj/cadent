@@ -68,6 +68,7 @@ package metrics
 
 import (
 	"cadent/server/broadcast"
+	"cadent/server/dispatch"
 	"cadent/server/repr"
 	"cadent/server/series"
 	"cadent/server/stats"
@@ -86,16 +87,42 @@ import (
 )
 
 const (
-	MYSQL_DEFAULT_LONGEST_TIME = "3600s"
-	MYSQL_DEFAULT_SERIES_TYPE  = "gorilla"
-	MYSQL_DEFAULT_SERIES_CHUNK = 16 * 1024 // 16kb
-	MYSQL_RENDER_TIMEOUT       = "5s"      // 5 second time out on any render
-	MYSQL_DEFAULT_ROLLUP_TYPE  = "cached"
+	MYSQL_DEFAULT_LONGEST_TIME     = "3600s"
+	MYSQL_DEFAULT_SERIES_TYPE      = "gorilla"
+	MYSQL_DEFAULT_SERIES_CHUNK     = 16 * 1024 // 16kb
+	MYSQL_RENDER_TIMEOUT           = "5s"      // 5 second time out on any render
+	MYSQL_DEFAULT_ROLLUP_TYPE      = "cached"
+	MYSQL_DEFAULT_METRIC_WORKERS   = 16
+	MYSQL_DEFAULT_METRIC_QUEUE_LEN = 1024 * 100
+	MYSQL_DEFAULT_METRIC_RETRIES   = 2
 )
 
 // common errors to avoid GC pressure
 var errNotADataNode = errors.New("Mysql: Render: Not a data node")
 var errTimeTooSmall = errors.New("Mysql: Render: time too narrow")
+
+/************************************************************************/
+/**********  Standard Worker Dispatcher JOB   ***************************/
+/************************************************************************/
+// insert job queue workers
+type MysqlBlobMetricJob struct {
+	My    *MySQLMetrics
+	Ts    *TotalTimeSeries // where the point list live
+	retry int
+}
+
+func (j MysqlBlobMetricJob) IncRetry() int {
+	j.retry++
+	return j.retry
+}
+func (j MysqlBlobMetricJob) OnRetry() int {
+	return j.retry
+}
+
+func (j MysqlBlobMetricJob) DoWork() error {
+	err := j.My.doInsert(j.Ts)
+	return err
+}
 
 /****************** Interfaces *********************/
 type MySQLMetrics struct {
@@ -127,13 +154,15 @@ type MySQLMetrics struct {
 	rollup     *RollupMetric
 	doRollup   bool
 
+	// dispatcher worker Queue
+	num_workers      int
+	queue_len        int
+	dispatch_retries int
+	dispatcher       *dispatch.DispatchQueue
+
 	shutitdown bool      // just a flag
 	shutdown   chan bool // just a flag
 	startstop  utils.StartStop
-
-	writes_per_second int // allowed writes per second
-	num_workers       int
-	queue_len         int
 
 	log *logging.Logger
 }
@@ -215,6 +244,24 @@ func (my *MySQLMetrics) Config(conf map[string]interface{}) error {
 		my.rollupType = _rot.(string)
 	}
 
+	// tweak queues and worker sizes
+	_workers := conf["write_workers"]
+	my.num_workers = MYSQL_DEFAULT_METRIC_WORKERS
+	if _workers != nil {
+		my.num_workers = int(_workers.(int64))
+	}
+
+	_qs := conf["write_queue_length"]
+	my.queue_len = MYSQL_DEFAULT_METRIC_QUEUE_LEN
+	if _qs != nil {
+		my.queue_len = int(_qs.(int64))
+	}
+	_rt := conf["write_queue_retries"]
+	my.dispatch_retries = MYSQL_DEFAULT_METRIC_RETRIES
+	if _rt != nil {
+		my.dispatch_retries = int(_rt.(int64))
+	}
+
 	if my.rollupType == "triggered" {
 		my.rollup = NewRollupMetric(my, my.blob_max_bytes)
 	}
@@ -279,6 +326,13 @@ func (my *MySQLMetrics) Start() {
 			my.rollup.SetResolutions(my.resolutions[1:])
 			go my.rollup.Start()
 		}
+
+		my.dispatcher = dispatch.NewDispatchQueue(
+			my.num_workers,
+			my.queue_len,
+			my.dispatch_retries,
+		)
+		my.dispatcher.Start()
 	})
 }
 
@@ -307,12 +361,12 @@ func (my *MySQLMetrics) Stop() {
 			name, series, _ := my.cacher.GetSeriesById(queueitem.metric)
 			if series != nil {
 				stats.StatsdClient.Incr(fmt.Sprintf("writer.mysql.write.send-to-writers"), 1)
-				my.InsertSeries(name, series)
-				if my.doRollup {
-					my.rollup.RollupChan() <- &TotalTimeSeries{Name: name, Series: series}
-				}
+				my.doInsert(&TotalTimeSeries{Name: name, Series: series})
 			}
 			did++
+		}
+		if my.dispatcher != nil {
+			my.dispatcher.Stop()
 		}
 		if my.doRollup {
 			my.rollup.Stop()
@@ -321,6 +375,14 @@ func (my *MySQLMetrics) Stop() {
 		my.log.Warning("Shutdown finished ... quiting mysql blob writer")
 	})
 
+}
+func (my *MySQLMetrics) doInsert(ts *TotalTimeSeries) error {
+	//my.log.Debug("Cache Write byte overflow %s.", statitem.Name.Key)
+	_, err := my.InsertSeries(ts.Name, ts.Series)
+	if err == nil && my.doRollup {
+		my.rollup.Add(ts)
+	}
+	return err
 }
 
 // listen to the overflow chan from the cache and attempt to write "now"
@@ -333,12 +395,12 @@ func (my *MySQLMetrics) overFlowWrite() {
 			if my.shutitdown || !more {
 				return
 			}
-
-			//my.log.Debug("Cache Write byte overflow %s.", statitem.Name.Key)
-			my.InsertSeries(statitem.(*TotalTimeSeries).Name, statitem.(*TotalTimeSeries).Series)
-			if my.doRollup {
-				my.rollup.RollupChan() <- statitem.(*TotalTimeSeries)
-			}
+			my.dispatcher.Add(
+				&MysqlBlobMetricJob{
+					My: my,
+					Ts: statitem.(*TotalTimeSeries),
+				},
+			)
 		}
 	}
 }

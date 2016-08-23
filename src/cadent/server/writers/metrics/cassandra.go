@@ -97,6 +97,7 @@ import (
 	logging "gopkg.in/op/go-logging.v1"
 
 	"cadent/server/broadcast"
+	"cadent/server/dispatch"
 	"cadent/server/series"
 	"cadent/server/utils"
 	"cadent/server/utils/shutdown"
@@ -109,11 +110,14 @@ import (
 )
 
 const (
-	CASSANDRA_DEFAULT_SERIES_TYPE    = "gorilla"
-	CASSANDRA_DEFAULT_LONGEST_TIME   = "3600s"
-	CASSANDRA_DEFAULT_SERIES_CHUNK   = 16 * 1024 * 1024 // 16kb
-	CASSANDRA_DEFAULT_RENDER_TIMEOUT = "5s"
-	CASSANDRA_DEFAULT_ROLLUP_TYPE    = "cached"
+	CASSANDRA_DEFAULT_SERIES_TYPE      = "gorilla"
+	CASSANDRA_DEFAULT_LONGEST_TIME     = "3600s"
+	CASSANDRA_DEFAULT_SERIES_CHUNK     = 16 * 1024 * 1024 // 16kb
+	CASSANDRA_DEFAULT_RENDER_TIMEOUT   = "5s"
+	CASSANDRA_DEFAULT_ROLLUP_TYPE      = "cached"
+	CASSANDRA_DEFAULT_METRIC_WORKERS   = 16
+	CASSANDRA_DEFAULT_METRIC_QUEUE_LEN = 1024 * 100
+	CASSANDRA_DEFAULT_METRIC_RETRIES   = 2
 )
 
 var errMultiTargetsNotAllowed = errors.New("Multiple Targets are not allowed")
@@ -155,30 +159,6 @@ func _get_cass_signelton(conf map[string]interface{}) (*CassandraWriter, error) 
 // special onload init
 func init() {
 	_CASS_WRITER_SINGLETON = make(map[string]*CassandraWriter)
-}
-
-/************************************************************************/
-/**********  Standard Worker Dispatcher JOB   ***************************/
-/************************************************************************/
-// insert job queue workers
-type CassandraBlobMetricJob struct {
-	Cass   *CassandraWriter
-	Series series.TimeSeries // where the point list live
-	Name   *repr.StatName
-	retry  int
-}
-
-func (j CassandraBlobMetricJob) IncRetry() int {
-	j.retry++
-	return j.retry
-}
-func (j CassandraBlobMetricJob) OnRetry() int {
-	return j.retry
-}
-
-func (j CassandraBlobMetricJob) DoWork() error {
-	_, err := j.Cass.InsertSeries(j.Name, j.Series)
-	return err
 }
 
 type CassandraWriter struct {
@@ -270,6 +250,29 @@ func (cass *CassandraWriter) Stop() {
 	cass.shutitdown = true
 }
 
+/************************************************************************/
+/**********  Standard Worker Dispatcher JOB   ***************************/
+/************************************************************************/
+// insert job queue workers
+type CassandraBlobMetricJob struct {
+	Cass  *CassandraMetric
+	Ts    *TotalTimeSeries // where the point list live
+	retry int
+}
+
+func (j CassandraBlobMetricJob) IncRetry() int {
+	j.retry++
+	return j.retry
+}
+func (j CassandraBlobMetricJob) OnRetry() int {
+	return j.retry
+}
+
+func (j CassandraBlobMetricJob) DoWork() error {
+	err := j.Cass.doInsert(j.Ts)
+	return err
+}
+
 /****************** Metrics Writer *********************/
 type CassandraMetric struct {
 	resolutions       [][]int
@@ -302,6 +305,12 @@ type CassandraMetric struct {
 	render_wg     sync.WaitGroup
 	render_mu     sync.Mutex
 	renderTimeout time.Duration
+
+	// dispatch writer worker queue
+	num_workers      int
+	queue_len        int
+	dispatch_retries int
+	dispatcher       *dispatch.DispatchQueue
 
 	shutitdown bool
 	shutdown   chan bool
@@ -343,6 +352,24 @@ func (cass *CassandraMetric) Config(conf map[string]interface{}) (err error) {
 	g_tag, ok := conf["tags"]
 	if ok {
 		cass.static_tags = repr.SortingTagsFromString(g_tag.(string))
+	}
+
+	// tweak queus and worker sizes
+	_workers := conf["write_workers"]
+	cass.num_workers = CASSANDRA_DEFAULT_METRIC_WORKERS
+	if _workers != nil {
+		cass.num_workers = int(_workers.(int64))
+	}
+
+	_qs := conf["write_queue_length"]
+	cass.queue_len = CASSANDRA_DEFAULT_METRIC_QUEUE_LEN
+	if _qs != nil {
+		cass.queue_len = int(_qs.(int64))
+	}
+	_rt := conf["write_queue_retries"]
+	cass.dispatch_retries = CASSANDRA_DEFAULT_METRIC_RETRIES
+	if _rt != nil {
+		cass.dispatch_retries = int(_rt.(int64))
 	}
 
 	cass.blobMaxBytes = CASSANDRA_DEFAULT_SERIES_CHUNK
@@ -448,6 +475,14 @@ func (cass *CassandraMetric) Start() {
 			cass.rollup.SetResolutions(cass.resolutions[1:])
 			go cass.rollup.Start()
 		}
+
+		//start up the dispatcher
+		cass.dispatcher = dispatch.NewDispatchQueue(
+			cass.num_workers,
+			cass.queue_len,
+			cass.dispatch_retries,
+		)
+		cass.dispatcher.Start()
 	})
 }
 
@@ -476,16 +511,17 @@ func (cass *CassandraMetric) Stop() {
 			name, series, _ := cass.cacher.GetSeriesById(queueitem.metric)
 			if series != nil {
 				stats.StatsdClient.Incr(fmt.Sprintf("writer.cassandra.write.send-to-writers"), 1)
-				cass.writer.InsertSeries(name, series)
-				if cass.doRollup {
-					cass.rollup.RollupChan() <- &TotalTimeSeries{Name: name, Series: series}
-				}
+				cass.doInsert(&TotalTimeSeries{Name: name, Series: series})
 			}
 			did++
 		}
 		if cass.doRollup {
 			cass.rollup.Stop()
 		}
+		if cass.dispatcher != nil {
+			cass.dispatcher.Stop()
+		}
+
 		cass.writer.log.Warning("shutdown purge: written %d/%d...", did, mets_l)
 		cass.writer.log.Warning("Shutdown finished ... quiting cassandra series writer")
 		return
@@ -509,6 +545,14 @@ func (cass *CassandraMetric) SetCurrentResolution(res int) {
 	cass.currentResolution = res
 }
 
+func (cass *CassandraMetric) doInsert(ts *TotalTimeSeries) error {
+	_, err := cass.writer.InsertSeries(ts.Name, ts.Series)
+	if err == nil && cass.doRollup {
+		cass.rollup.Add(ts)
+	}
+	return err
+}
+
 // listen to the overflow chan from the cache and attempt to write "now"
 func (cass *CassandraMetric) overFlowWrite() {
 	for {
@@ -519,10 +563,7 @@ func (cass *CassandraMetric) overFlowWrite() {
 		if !more {
 			return
 		}
-		cass.writer.InsertSeries(statitem.(*TotalTimeSeries).Name, statitem.(*TotalTimeSeries).Series)
-		if cass.doRollup {
-			cass.rollup.RollupChan() <- statitem.(*TotalTimeSeries)
-		}
+		cass.dispatcher.Add(&CassandraBlobMetricJob{Cass: cass, Ts: statitem.(*TotalTimeSeries)})
 	}
 }
 

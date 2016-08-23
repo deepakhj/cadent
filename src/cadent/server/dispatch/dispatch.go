@@ -40,6 +40,8 @@ limitations under the License.
 
 package dispatch
 
+import "cadent/server/utils"
+
 type Worker struct {
 	worker_pool chan chan IJob
 	job_channel chan IJob
@@ -215,4 +217,38 @@ func (d *Dispatch) background_dispatch() {
 			return
 		}
 	}
+}
+
+/** Put all the pieces together */
+type DispatchQueue struct {
+	job_queue      chan IJob
+	dispatch_queue chan chan IJob
+	dispatcher     *Dispatch
+
+	startstop utils.StartStop
+}
+
+func NewDispatchQueue(workers int, max_queue_length int, retries int) *DispatchQueue {
+	dp := new(DispatchQueue)
+	dp.job_queue = make(chan IJob, max_queue_length)
+	dp.dispatch_queue = make(chan chan IJob, workers)
+	dp.dispatcher = NewDispatch(workers, dp.dispatch_queue, dp.job_queue)
+	dp.dispatcher.SetRetries(retries)
+	return dp
+}
+
+func (dp *DispatchQueue) Start() {
+	dp.startstop.Start(func() {
+		dp.dispatcher.Run()
+	})
+}
+
+func (dp *DispatchQueue) Stop() {
+	dp.startstop.Stop(func() {
+		dp.dispatcher.Shutdown()
+	})
+}
+
+func (dp *DispatchQueue) Add(job IJob) {
+	dp.job_queue <- job
 }
