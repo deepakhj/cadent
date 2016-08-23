@@ -88,14 +88,14 @@ drivers, and other options that make your environment happy.
 
 Not everything is "done" .. as there are many things to write and verify, this is the status of the pieces.
 
-| Driver   | IndexSupport  |  TagSupport |  SeriesSupport | LineSupport  | DriverNames |
+| Driver   | IndexSupport  |  TagSupport |  SeriesSupport | LineSupport  | TriggerSupport | DriverNames |
 |---|---|---|---|---|---|
-| cassandra | write+read  | No  | No | write+read | Index: "cassandra", Line: "cassandra-flat", Series: "cassandra" |
-| mysql  | write+read  | write  | write+read  | write+read  | Index: "mysql", Line: "mysql-flat", Series: "mysql" |
-| kafka  |  write | write | write  | write  | Index: "kafka", Line: "kafka-flat", Series: "kafka" |
-| whisper|  read | n/a | n/a  | write+read | Index: "whisper", Line: "whisper", Series: "n/a" |
-| leveldb |  write+read | No | No  | No | Index: "leveldb", Line: "n/a", Series: "n/a" |
-| file |  n/a | n/a | n/a  | write | Index: "n/a", Line: "file", Series: "n/a" |
+| cassandra | write+read  | No  | No | write+read | Yes | Index: "cassandra", Line: "cassandra-flat", Series: "cassandra", Series Triggerd: "cassandra-triggered" |
+| mysql  | write+read  | write  | write+read  | Yes | write+read  | Index: "mysql", Line: "mysql-flat", Series: "mysql",  Series Triggerd: "cassandra-triggered" |
+| kafka  |  write | write | write  | write  | n/a | Index: "kafka", Line: "kafka-flat", Series: "kafka" |
+| whisper|  read | n/a | n/a  | write+read |  n/a | Index: "whisper", Line: "whisper", Series: "n/a" |
+| leveldb |  write+read | No | No  | No |  n/a | Index: "leveldb", Line: "n/a", Series: "n/a" |
+| file |  n/a | n/a | n/a  | write |  n/a | Index: "n/a", Line: "file", Series: "n/a" |
 
 
 `IndexSupport` means that we can use this driver to index the metric space.
@@ -104,7 +104,9 @@ Not everything is "done" .. as there are many things to write and verify, this i
 
 `SeriesSupport` means the driver can support the TimeSeries binary blobs.
 
-`LineSupport` support means the driver can write and/or read the raw last/sum set from the Database backend.
+`LineSupport` means the driver can write and/or read the raw last/sum set from the Database backend.
+
+`TriggerSupport` is the rollup of lower resolution times are done once a series is written.
 
 `n/a` implies it will not be done, or the backend just does not support it.
 
@@ -151,6 +153,7 @@ The main writers are
 
         Toss stats into a kafka topic (no readers/render api for this mode) for processing by some other entity
 
+
 #### Triggered Rollups
 
 For the mysql and cassandra series wrtiers, there is an option to "trigger" rollups from the lowest resolution
@@ -166,6 +169,26 @@ To enable this, simply add
     rollup_type="triggered"
 
 to the `writer.metrics` options (it will be ignored for anything other then the mysql and cassandra blob writers)
+
+However it is better to use the `-triggered` driver names as that will tell the accumulators to only accumulate
+the lowest res (otherwise, the accumulator does not know things are in rollup mode)
+
+    cassandra-triggers or mysql-triggered
+
+
+
+#### Max time in Cache
+
+This applies only to Series/Blob writers where we store interal caches for a bunch of points.
+
+Since the default
+behavior is to write the series only when it hits the `cache_byte_size` setting.  This can be problematic for series
+that are very slow to update, and they will take a very long time to acctually persist to the DB system.  The setting
+
+    cache_max_time_in_cache
+
+for the `writer.options` section lets you tune this value.  The default value is 1 hour (`cache_max_time_in_cache=60m`)
+
 
 ### Writer Schemas
 
