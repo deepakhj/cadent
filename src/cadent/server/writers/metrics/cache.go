@@ -286,6 +286,7 @@ func (wc *Cacher) startCacheExpiredTick() {
 	if wc.overFlowMethod != "chan" || wc.overFlowBroadcast == nil {
 		return
 	}
+	wc.log.Notice("Starting Metric Timer for cache expiration write (max time: %ds)", wc.maxTimeInCache)
 
 	tick := time.NewTicker(2 * time.Minute)
 	shuts := wc.shutdown.Listen()
