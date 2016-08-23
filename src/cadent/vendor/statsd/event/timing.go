@@ -96,8 +96,10 @@ func (e Timing) Stats(tick time.Duration) []string {
 
 	sort.Sort(statdInt64arr(e.Values))
 
+	mean := int64(0)
 
 	for idx, v := range e.Values {
+		mean += v
 		std += math.Pow((float64(v) - avg), 2.0)
 		if idx > 0 {
 			cumulativeValues = append(cumulativeValues, v+cumulativeValues[idx-1])
@@ -124,6 +126,7 @@ func (e Timing) Stats(tick time.Duration) []string {
 		std = math.Sqrt(std / float64(e.Count))
 		base = append(base,
 			fmt.Sprintf("%s.median:%d|ms", e.Name, int64(median)),
+			fmt.Sprintf("%s.mean:%d|ms", e.Name, int64(mean)/e.Count),
 			fmt.Sprintf("%s.std:%d|ms", e.Name, int64(e.Value)),
 		)
 	}
