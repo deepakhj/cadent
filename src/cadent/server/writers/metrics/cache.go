@@ -292,10 +292,11 @@ func (wc *Cacher) startCacheExpiredTick() {
 	push_expired := func() {
 		t_now := uint32(time.Now().Unix())
 		did := 0
+		wc.mu.Lock()
+		defer wc.mu.Unlock()
 
 		for unique_id, started := range wc.CacheStarted {
 			if t_now-started > wc.maxTimeInCache {
-				wc.mu.Lock()
 				wc.log.Debug("Pushing metric to writer as it's been in ram too long: (%d)", unique_id)
 				nm := wc.NameCache[unique_id]
 				ser := wc.Cache[unique_id]
@@ -306,7 +307,6 @@ func (wc *Cacher) startCacheExpiredTick() {
 				delete(wc.Cache, unique_id)
 				delete(wc.NameCache, unique_id)
 				delete(wc.CacheStarted, unique_id)
-				wc.mu.Unlock()
 
 				stats.StatsdClientSlow.Incr("cacher.metrics.write.expired", 1)
 				did++
