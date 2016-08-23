@@ -321,7 +321,7 @@ func (rl *RollupMetric) DoRollup(tseries TotalTimeSeries) error {
 			old_data.Metric = t_new_data.Metric
 
 			if err != nil {
-				rl.log.Errorf("Rollup failure: %v", err)
+				rl.log.Errorf("Rollup Get failure: %v", err)
 				continue
 			}
 			//fmt.Println("CASE1: Old Points:", old_data)
@@ -330,14 +330,14 @@ func (rl *RollupMetric) DoRollup(tseries TotalTimeSeries) error {
 			//t_new_data.PrintPoints()
 			err = t_new_data.MergeAndAggregate(old_data)
 			if err != nil {
-				rl.log.Errorf("Rollup failure: %v", err)
+				rl.log.Errorf("Rollup Merge failure: %v", err)
 				continue
 			}
 			//fmt.Println("New Points:", t_new_data.String())
 			//t_new_data.PrintPoints()
 			err = writeOne(&t_new_data, r_stats, res[0], res[1])
 			if err != nil {
-				rl.log.Errorf("Rollup failure: %v", err)
+				rl.log.Errorf("Rollup Write failure: %v", err)
 			}
 			continue
 		}
@@ -345,19 +345,19 @@ func (rl *RollupMetric) DoRollup(tseries TotalTimeSeries) error {
 		// need to get more data in our range
 		r_stats, err = rl.writer.GetRangeFromDB(tseries.Name, t_start, t_end, uint32(res[0]))
 		if err != nil {
-			rl.log.Errorf("Rollup failure: %v", err)
+			rl.log.Errorf("Rollup Range Get failure: %v", err)
 			continue
 		}
 
 		// we need to make "one big series" from the DB items
 		old_data, err := r_stats.ToRawRenderItem()
+		if err != nil {
+			rl.log.Errorf("Rollup ToRenderItem failure: %v", err)
+			continue
+		}
 		old_data.Id = t_new_data.Id
 		old_data.Step = uint32(res[0])
 		old_data.Metric = t_new_data.Metric
-		if err != nil {
-			rl.log.Errorf("Rollup failure: %v", err)
-			continue
-		}
 
 		// the "new" data will win over any older ones
 		//fmt.Println("Old Points")
@@ -372,7 +372,7 @@ func (rl *RollupMetric) DoRollup(tseries TotalTimeSeries) error {
 		//now simply either replace the old data with new ones
 		err = writeOne(&t_new_data, r_stats, res[0], res[1])
 		if err != nil {
-			rl.log.Errorf("Rollup failure: %v", err)
+			rl.log.Errorf("Rollup Write Range failure: %v", err)
 		}
 
 	}
