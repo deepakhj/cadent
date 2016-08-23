@@ -93,7 +93,7 @@ const (
 	// "write" if either nothing has been added in this time (really slow series)
 	// OR It's been in RAM this long
 	// this helps avoid too much data loss if things crash.
-	CACHER_DEFAULT_OVERFLOW_DURATION = "60m"
+	CACHER_DEFAULT_OVERFLOW_DURATION = 3600
 
 	// max length for the broadcast channel
 	CACHER_DEFAULT_BROADCAST_LEN = 128
@@ -227,6 +227,7 @@ func NewCacher() *Cacher {
 	wc.maxKeys = CACHER_METRICS_KEYS
 	wc.maxBytes = CACHER_NUMBER_BYTES
 	wc.seriesType = CACHER_SERIES_TYPE
+	wc.maxTimeInCache = CACHER_DEFAULT_OVERFLOW_DURATION
 	wc.overFlowMethod = CACHER_DEFAULT_OVERFLOW
 	wc.overFlowBroadcast = nil
 
@@ -238,11 +239,6 @@ func NewCacher() *Cacher {
 	wc.lowFruitRate = 0.25
 	wc.started = false
 	wc.inited = false
-
-	dur, err := time.ParseDuration(CACHER_DEFAULT_OVERFLOW_DURATION)
-	if err != nil {
-		wc.maxTimeInCache = uint32(dur.Seconds())
-	}
 
 	wc.overFlowBroadcast = broadcast.New(CACHER_DEFAULT_BROADCAST_LEN)
 	return wc
