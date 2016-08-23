@@ -54,6 +54,7 @@ const DOUBLE_SPACE_SEPARATOR = "  "
 const DOT_SEPARATOR = "."
 const COMMA_SEPARATOR = ","
 const EQUAL_SEPARATOR = "="
+const COLON_SEPARATOR = ":"
 const IS_SEPARATOR = "_is_"
 const UNDERSCORE_SEPARATOR = "_"
 const DASH_SEPARATOR = "-"
@@ -62,6 +63,7 @@ const NEWLINE_SEPARATOR = "\n"
 var SPACE_SEPARATOR_BYTE = []byte(" ")
 var DOUBLE_SPACE_SEPARATOR_BYTE = []byte("  ")
 var DOT_SEPARATOR_BYTE = []byte(".")
+var COLON_SEPARATOR_BYTE = []byte(":")
 var COMMA_SEPARATOR_BYTE = []byte(",")
 var EQUAL_SEPARATOR_BYTE = []byte("=")
 var IS_SEPARATOR_BYTE = []byte("_is_")
