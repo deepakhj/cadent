@@ -69,7 +69,7 @@ const (
 // rollup job queue workers
 type RollupJob struct {
 	Rollup *RollupMetric
-	Ts     TotalTimeSeries
+	Ts     *TotalTimeSeries
 	Retry  int
 }
 
@@ -146,7 +146,8 @@ func (rl *RollupMetric) Stop() {
 }
 
 func (rl *RollupMetric) Add(ts *TotalTimeSeries) {
-	rl.dispatcher.Add(&RollupJob{Rollup: rl, Ts: *ts})
+	stats.StatsdClientSlow.Incr("writer.rollup.queue.add", 1)
+	rl.dispatcher.Add(&RollupJob{Rollup: rl, Ts: ts})
 }
 
 /*
@@ -199,15 +200,21 @@ func (rl *RollupMetric) Add(ts *TotalTimeSeries) {
 
 */
 
-func (rl *RollupMetric) DoRollup(tseries TotalTimeSeries) error {
+func (rl *RollupMetric) DoRollup(tseries *TotalTimeSeries) error {
 	defer stats.StatsdSlowNanoTimeFunc("writer.rollup.process-time-ns", time.Now())
+	stats.StatsdClientSlow.Incr("writer.rollup.queue.comsume", 1)
 
 	// make the series into our resampler object
-	new_data, err := NewRawRenderItemFromSeries(&tseries)
+	new_data, err := NewRawRenderItemFromSeries(tseries)
 	if err != nil {
 		rl.log.Errorf("Rollup Failure: %v", err)
 		return err
 	}
+
+	defer func() {
+		tseries = nil
+		new_data = nil
+	}()
 
 	rl.log.Debug("Rollup Triggered for %s (%s)", tseries.Name.Key, tseries.Name.UniqueIdString())
 	writeOne := func(rawd *RawRenderItem, old_data DBSeriesList, resolution int, ttl int) error {

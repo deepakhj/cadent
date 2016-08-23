@@ -546,6 +546,7 @@ func (cass *CassandraMetric) SetCurrentResolution(res int) {
 }
 
 func (cass *CassandraMetric) doInsert(ts *TotalTimeSeries) error {
+	stats.StatsdClientSlow.Incr("writer.cassandra.consume.add", 1)
 	_, err := cass.writer.InsertSeries(ts.Name, ts.Series)
 	if err == nil && cass.doRollup {
 		cass.rollup.Add(ts)
@@ -563,6 +564,7 @@ func (cass *CassandraMetric) overFlowWrite() {
 		if !more {
 			return
 		}
+		stats.StatsdClientSlow.Incr("writer.cassandra.queue.add", 1)
 		cass.dispatcher.Add(&CassandraBlobMetricJob{Cass: cass, Ts: statitem.(*TotalTimeSeries)})
 	}
 }

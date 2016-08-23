@@ -377,6 +377,7 @@ func (my *MySQLMetrics) Stop() {
 
 }
 func (my *MySQLMetrics) doInsert(ts *TotalTimeSeries) error {
+	stats.StatsdClientSlow.Incr("writer.mysql.consume.add", 1)
 	//my.log.Debug("Cache Write byte overflow %s.", statitem.Name.Key)
 	_, err := my.InsertSeries(ts.Name, ts.Series)
 	if err == nil && my.doRollup {
@@ -395,6 +396,7 @@ func (my *MySQLMetrics) overFlowWrite() {
 			if my.shutitdown || !more {
 				return
 			}
+			stats.StatsdClientSlow.Incr("writer.mysql.queue.add", 1)
 			my.dispatcher.Add(
 				&MysqlBlobMetricJob{
 					My: my,
