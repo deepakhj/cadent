@@ -290,7 +290,7 @@ func (wc *Cacher) startCacheExpiredTick() {
 	tick := time.NewTicker(2 * time.Minute)
 	shuts := wc.shutdown.Listen()
 	// only push this many per flush as to not overwhelm the backends
-	max_per_run := CACHER_DEFAULT_BROADCAST_LEN / 2
+	max_per_run := 1024
 
 	push_expired := func() {
 		t_now := uint32(time.Now().Unix())
