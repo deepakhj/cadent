@@ -303,8 +303,12 @@ func (wc *Cacher) startCacheExpiredTick() {
 		defer wc.mu.Unlock()
 
 		for unique_id, item := range wc.Cache {
-			if t_now-item.Started > wc.maxTimeInCache {
-				wc.log.Debug("Pushing metric to writer as it's been in ram too long: (%d)", unique_id)
+			if (t_now - item.Started) > wc.maxTimeInCache {
+				wc.log.Debug(
+					"Pushing metric to writer as it's been in ram too long: (%d) (%ds)",
+					unique_id,
+					wc.maxTimeInCache,
+				)
 
 				wc.overFlowBroadcast.Send(&TotalTimeSeries{item.Name, item.Series})
 
