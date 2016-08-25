@@ -40,6 +40,9 @@ type SortingTags [][]string
 // tag=val tag=val
 // or
 // tag_is_val tag_is_val
+// or
+// tag:val,tag:val
+
 func SortingTagsFromString(key string) SortingTags {
 
 	var parse_tsg []string
@@ -63,8 +66,13 @@ func SortingTagsFromArray(keys []string) SortingTags {
 			// try "_is_"
 			spls = strings.Split(tgs, IS_SEPARATOR)
 			if len(spls) < 2 {
-				continue
+				// try ":"
+				spls = strings.Split(tgs, COLON_SEPARATOR)
+				if len(spls) < 2 {
+					continue
+				}
 			}
+
 		}
 
 		outs = append(outs, []string{spls[0], spls[1]})

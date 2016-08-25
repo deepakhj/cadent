@@ -106,6 +106,7 @@ import (
 	"cadent/server/repr"
 	"cadent/server/stats"
 	"cadent/server/writers/dbs"
+	"errors"
 	"fmt"
 	"github.com/gocql/gocql"
 	logging "gopkg.in/op/go-logging.v1"
@@ -132,6 +133,8 @@ const (
 	CASSANDRA_FLAT_RENDER_TIMEOUT    = "5s" // 5 second time out on any render
 
 )
+
+var errNotImplimented = errors.New("Method not implimented")
 
 /** Being Cassandra we need some mappings to match the schemas **/
 
@@ -249,10 +252,7 @@ type CassandraFlatWriter struct {
 	db   *dbs.CassandraDB
 	conn *gocql.Session
 
-	write_list       []*repr.StatRepr // buffer the writes so as to do "multi" inserts per query
-	write_queue      chan dispatch.IJob
-	dispatch_queue   chan chan dispatch.IJob
-	write_dispatcher *dispatch.Dispatch
+	dispatcher *dispatch.DispatchQueue
 
 	cacher                *Cacher
 	cacheOverFlowListener *broadcast.Listener // on byte overflow of cacher force a write
@@ -379,6 +379,10 @@ func (cass *CassandraFlatWriter) Stop() {
 
 		cass.cacher.Stop()
 
+		if cass.dispatcher != nil {
+			cass.dispatcher.Stop()
+		}
+
 		mets := cass.cacher.Queue
 		mets_l := len(mets)
 		cass.log.Warning("Shutting down, exhausting the queue (%d items) and quiting", mets_l)
@@ -404,11 +408,10 @@ func (cass *CassandraFlatWriter) Start() {
 	/**** dispatcher queue ***/
 	cass.startstop.Start(func() {
 		workers := cass.num_workers
-		cass.write_queue = make(chan dispatch.IJob, cass.queue_len)
-		cass.dispatch_queue = make(chan chan dispatch.IJob, workers)
-		cass.write_dispatcher = dispatch.NewDispatch(workers, cass.dispatch_queue, cass.write_queue)
-		cass.write_dispatcher.SetRetries(2)
-		cass.write_dispatcher.Run()
+		retries := 2
+		cass.dispatcher = dispatch.NewDispatchQueue(workers, cass.queue_len, retries)
+		cass.dispatcher.Start()
+
 		cass.cacher.Start()
 		go cass.sendToWriters() // the dispatcher
 	})
@@ -607,7 +610,7 @@ func (cass *CassandraFlatWriter) sendToWriters() error {
 				time.Sleep(time.Second)
 			default:
 				stats.StatsdClient.Incr(fmt.Sprintf("writer.cassandraflat.write.send-to-writers"), 1)
-				cass.write_queue <- &CassandraFlatMetricJob{Cass: cass, Stats: points, Name: name}
+				cass.dispatcher.Add(&CassandraFlatMetricJob{Cass: cass, Stats: points, Name: name})
 			}
 		}
 	} else {
@@ -629,7 +632,7 @@ func (cass *CassandraFlatWriter) sendToWriters() error {
 			default:
 
 				stats.StatsdClient.Incr(fmt.Sprintf("writer.cassandraflat.write.send-to-writers"), 1)
-				cass.write_queue <- &CassandraFlatMetricJob{Cass: cass, Stats: points, Name: name}
+				cass.dispatcher.Add(&CassandraFlatMetricJob{Cass: cass, Stats: points, Name: name})
 				time.Sleep(dur)
 			}
 
@@ -651,16 +654,21 @@ func (cass *CassandraFlatWriter) Write(stat repr.StatRepr) error {
 
 /****************** Metrics Writer *********************/
 type CassandraFlatMetric struct {
-	resolutions [][]int
-	static_tags repr.SortingTags
-	indexer     indexer.Indexer
-	writer      *CassandraFlatWriter
+	resolutions       [][]int
+	currentResolution int
+	static_tags       repr.SortingTags
+	indexer           indexer.Indexer
+	writer            *CassandraFlatWriter
 
 	render_timeout time.Duration
 }
 
 func NewCassandraFlatMetrics() *CassandraFlatMetric {
 	return new(CassandraFlatMetric)
+}
+
+func (cass *CassandraFlatMetric) Driver() string {
+	return "cassandra-flat"
 }
 
 func (cass *CassandraFlatMetric) Start() {
@@ -682,6 +690,10 @@ func (cass *CassandraFlatMetric) SetIndexer(idx indexer.Indexer) error {
 func (cass *CassandraFlatMetric) SetResolutions(res [][]int) int {
 	cass.resolutions = res
 	return len(res) // need as many writers as bins
+}
+
+func (cass *CassandraFlatMetric) SetCurrentResolution(res int) {
+	cass.currentResolution = res
 }
 
 func (cass *CassandraFlatMetric) Config(conf map[string]interface{}) (err error) {

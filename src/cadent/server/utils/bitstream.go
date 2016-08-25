@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-/** shamelessly taken from https://github.com/dgryski/go-tsz/blob/master/bstream.go */
+/** shamelessly adapted from https://github.com/dgryski/go-tsz/blob/master/bstream.go */
 
 package utils
 

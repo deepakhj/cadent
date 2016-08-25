@@ -22,6 +22,7 @@ package accumulator
 
 import (
 	"cadent/server/repr"
+	"cadent/server/utils"
 	"fmt"
 	"io"
 	"strings"
@@ -48,25 +49,10 @@ func (g *StatsdFormatter) SetAccumulator(acc AccumulatorItem) {
 func (g *StatsdFormatter) Type() string { return STATSD_FMT_NAME }
 func (g *StatsdFormatter) ToString(name *repr.StatName, val float64, tstamp int32, stats_type string, tags repr.SortingTags) string {
 
-	switch {
-	case stats_type == "g" || stats_type == "gauge":
-		stats_type = "g"
-		break
-	case stats_type == "ms" || stats_type == "rate":
-		stats_type = "ms"
-		break
-	default:
-		stats_type = "c"
-	}
-
-	//remove the "stats.(counters|gauges|timers)" prefix .. don't want weird recursion
-	key := strings.Replace(
-		strings.Replace(
-			strings.Replace(name.Key, "stats.counters.", "", 1),
-			"stats.gauges.", "", 1),
-		"stats.timers.", "", 1)
-
-	return fmt.Sprintf("%s:%f|%s", key, val, stats_type)
+	buf := utils.GetBytesBuffer()
+	defer utils.PutBytesBuffer(buf)
+	g.Write(buf, name, val, tstamp, stats_type, tags)
+	return buf.String()
 }
 
 //tags not suppported
@@ -82,6 +68,7 @@ func (g *StatsdFormatter) Write(buf io.Writer, name *repr.StatName, val float64,
 	default:
 		stats_type = "c"
 	}
+	name.MergeMetric2Tags(tags)
 
 	//remove the "stats.(counters|gauges|timers)" prefix .. don't want weird recursion
 	key := strings.Replace(
@@ -89,6 +76,23 @@ func (g *StatsdFormatter) Write(buf io.Writer, name *repr.StatName, val float64,
 			strings.Replace(name.Key, "stats.counters.", "", 1),
 			"stats.gauges.", "", 1),
 		"stats.timers.", "", 1)
+	fmt.Fprintf(buf, "%s:%f|%s", key, val, stats_type)
 
-	fmt.Fprintf(buf, "%s:%f|%s\n", key, val, stats_type)
+	// tags are in the DataGram sort of format
+	// http://docs.datadoghq.com/guides/dogstatsd/#datagram-format
+	e_tags := name.Tags.IsEmpty()
+	if !e_tags {
+		buf.Write(repr.DATAGRAM_SEPARATOR_BYTES)
+		name.Tags.WriteBytes(buf, repr.COLON_SEPARATOR_BYTE, repr.COMMA_SEPARATOR_BYTE)
+	}
+	if !name.MetaTags.IsEmpty() {
+		if !e_tags {
+			buf.Write(repr.COMMA_SEPARATOR_BYTE)
+		} else {
+			buf.Write(repr.DATAGRAM_SEPARATOR_BYTES)
+		}
+		name.MetaTags.WriteBytes(buf, repr.COLON_SEPARATOR_BYTE, repr.COMMA_SEPARATOR_BYTE)
+
+	}
+	buf.Write(repr.NEWLINE_SEPARATOR_BYTES)
 }

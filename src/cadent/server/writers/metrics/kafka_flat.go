@@ -79,11 +79,12 @@ func (kp *KafkaMetricObj) Encode() ([]byte, error) {
 
 /****************** Interfaces *********************/
 type KafkaFlatMetrics struct {
-	db          *dbs.KafkaDB
-	conn        sarama.AsyncProducer
-	indexer     indexer.Indexer
-	resolutions [][]int
-	static_tags repr.SortingTags
+	db                *dbs.KafkaDB
+	conn              sarama.AsyncProducer
+	indexer           indexer.Indexer
+	resolutions       [][]int
+	currentResolution int
+	static_tags       repr.SortingTags
 
 	shutitdown bool
 	startstop  utils.StartStop
@@ -121,6 +122,10 @@ func (kf *KafkaFlatMetrics) Config(conf map[string]interface{}) error {
 	return nil
 }
 
+func (kf *KafkaFlatMetrics) Driver() string {
+	return "kafka-flat"
+}
+
 func (kf *KafkaFlatMetrics) Start() {
 	//noop
 }
@@ -150,14 +155,18 @@ func (kf *KafkaFlatMetrics) SetResolutions(res [][]int) int {
 	return len(res) // need as many writers as bins
 }
 
+func (kf *KafkaFlatMetrics) SetCurrentResolution(res int) {
+	kf.currentResolution = res
+}
+
 func (kf *KafkaFlatMetrics) Write(stat repr.StatRepr) error {
 
 	if kf.shutitdown {
 		return nil
 	}
 
-	kf.indexer.Write(stat.Name) // to the indexer
 	stat.Name.MergeMetric2Tags(kf.static_tags)
+	kf.indexer.Write(stat.Name) // to the indexer
 	item := &KafkaMetricObj{
 		Type:       "metric",
 		Metric:     stat.Name.Key,
@@ -171,8 +180,8 @@ func (kf *KafkaFlatMetrics) Write(stat repr.StatRepr) error {
 		TTL:        stat.Name.TTL,
 		Id:         stat.Name.UniqueId(),
 		Uid:        stat.Name.UniqueIdString(),
-		Tags:       stat.Name.SortedTags().Tags(),
-		MetaTags:   stat.Name.SortedMetaTags().Tags(),
+		Tags:       stat.Name.SortedTags(),
+		MetaTags:   stat.Name.SortedMetaTags(),
 	}
 
 	stats.StatsdClientSlow.Incr("writer.kafkaflat.metrics.writes", 1)
@@ -187,6 +196,7 @@ func (kf *KafkaFlatMetrics) Write(stat repr.StatRepr) error {
 
 /**** READER ***/
 // needed to match interface, but we obviously cannot do this
+
 func (kf *KafkaFlatMetrics) Render(path string, from int64, to int64) (WhisperRenderItem, error) {
 	return WhisperRenderItem{}, errKafkaReaderNotImplimented
 }

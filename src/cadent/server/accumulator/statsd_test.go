@@ -139,6 +139,7 @@ func TestStatsdAccumulator(t *testing.T) {
 
 		buf := new(bytes.Buffer)
 		b_arr := statter.Flush(buf)
+
 		Convey("statsd out: Flush should give us data", func() {
 			So(len(b_arr.Stats), ShouldEqual, 3)
 		})
@@ -163,7 +164,6 @@ func TestStatsdAccumulator(t *testing.T) {
 		Convey("Statsd should have proper upper_95 ", func() {
 			So(len(have_upper), ShouldNotEqual, 0)
 		})
-		have_upper = ""
 		got_timer = ""
 		for _, item := range strings.Split(buf.String(), "\n") {
 			//t.Logf("Flush Stats Statsd Line: %v", item)
@@ -174,6 +174,28 @@ func TestStatsdAccumulator(t *testing.T) {
 		}
 		Convey("Statsd statitem should not have stats.timers ", func() {
 			So(len(got_timer), ShouldEqual, 0)
+		})
+
+		// tags
+		err = statter.ProcessLine("moo.goo.org:1|ms|@0.1|#moo:goo,loo:bar")
+		Convey("statsd out: `moo.goo.org:1|ms|@0.1|#moo:goo,loo:bar` should not fail", func() {
+			So(err, ShouldEqual, nil)
+		})
+		have_upper = ""
+
+		got_tags := ""
+		nbuf := new(bytes.Buffer)
+		statter.Flush(nbuf)
+
+		t.Logf("Stats: %v", nbuf)
+		for _, item := range strings.Split(nbuf.String(), "\n") {
+			//t.Logf("Flush Stats Statsd Line: %v", item)
+			if strings.Contains(item, "|#loo:bar,moo:goo") {
+				got_tags = item
+			}
+		}
+		Convey("Statsd statitem should have tags ", func() {
+			So(len(got_tags), ShouldNotEqual, 0)
 		})
 	})
 }

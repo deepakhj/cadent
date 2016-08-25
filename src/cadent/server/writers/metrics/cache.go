@@ -75,6 +75,7 @@ import (
 	"sort"
 
 	"cadent/server/broadcast"
+	"cadent/server/utils"
 	"cadent/server/utils/shutdown"
 	"errors"
 	logging "gopkg.in/op/go-logging.v1"
@@ -87,6 +88,15 @@ const (
 	CACHER_SERIES_TYPE      = "protobuf"
 	CACHER_METRICS_KEYS     = 102400
 	CACHER_DEFAULT_OVERFLOW = "drop"
+
+	// for "series" writers using the overflow chan method, we can force a
+	// "write" if either nothing has been added in this time (really slow series)
+	// OR It's been in RAM this long
+	// this helps avoid too much data loss if things crash.
+	CACHER_DEFAULT_OVERFLOW_DURATION = 3600
+
+	// max length for the broadcast channel
+	CACHER_DEFAULT_BROADCAST_LEN = 128
 )
 
 /*
@@ -169,24 +179,35 @@ func (v CacheQueueBytes) Less(i, j int) bool { return v[i].bytes < v[j].bytes }
 var errWriteCacheTooManyMetrics = errors.New("Cacher: too many keys, dropping metric")
 var errWriteCacheTooManyPoints = errors.New("Cacher: too many points in cache, dropping metric")
 
+type CacheSeries struct {
+	SeriesList []series.TimeSeries
+	WroteIndex []int
+}
+
+type CacheItem struct {
+	Name    *repr.StatName
+	Series  series.TimeSeries
+	Started uint32 //keep track of how long we've been in here
+}
+
 // The "cache" item for points
 type Cacher struct {
-	mu           *sync.RWMutex
-	qmu          *sync.Mutex
-	maxKeys      int // max num of keys to keep before we have to drop
-	maxBytes     int // max num of points per key to keep before we have to drop
-	seriesType   string
-	curSize      int64
-	numCurPoint  int
-	numCurKeys   int
-	lowFruitRate float64   // % of the time we reverse the max sortings to persist low volume stats
-	shutdown     chan bool // when recieved stop allowing adds and updates
-	_accept      bool      // flag to stop
-	log          *logging.Logger
-	Queue        CacheQueue
-	NameCache    map[repr.StatId]*repr.StatName
-	Cache        map[repr.StatId]series.TimeSeries
-	Name         string // just a human name for things
+	mu             *sync.RWMutex
+	qmu            *sync.Mutex
+	maxTimeInCache uint32
+	maxKeys        int // max num of keys to keep before we have to drop
+	maxBytes       int // max num of points per key to keep before we have to drop
+	seriesType     string
+	curSize        int64
+	numCurPoint    int
+	numCurKeys     int
+	lowFruitRate   float64                // % of the time we reverse the max sortings to persist low volume stats
+	shutdown       *broadcast.Broadcaster // when recieved stop allowing adds and updates
+	_accept        bool                   // flag to stop
+	log            *logging.Logger
+	Queue          CacheQueue
+	Cache          map[repr.StatId]*CacheItem
+	Name           string // just a human name for things
 
 	//overflow pieces
 	overFlowMethod string
@@ -194,8 +215,9 @@ type Cacher struct {
 	// allow for multiple registering entities
 	overFlowBroadcast *broadcast.Broadcaster // should pass in *TotalTimeSeries
 
-	started bool
-	inited  bool
+	startstop utils.StartStop
+	started   bool
+	inited    bool
 }
 
 func NewCacher() *Cacher {
@@ -205,37 +227,45 @@ func NewCacher() *Cacher {
 	wc.maxKeys = CACHER_METRICS_KEYS
 	wc.maxBytes = CACHER_NUMBER_BYTES
 	wc.seriesType = CACHER_SERIES_TYPE
+	wc.maxTimeInCache = CACHER_DEFAULT_OVERFLOW_DURATION
 	wc.overFlowMethod = CACHER_DEFAULT_OVERFLOW
 	wc.overFlowBroadcast = nil
 
 	wc.curSize = 0
 	wc.log = logging.MustGetLogger("cacher.metrics")
-	wc.Cache = make(map[repr.StatId]series.TimeSeries)
-	wc.NameCache = make(map[repr.StatId]*repr.StatName)
-	wc.shutdown = make(chan bool)
+	wc.Cache = make(map[repr.StatId]*CacheItem)
+	wc.shutdown = broadcast.New(0)
 	wc._accept = true
 	wc.lowFruitRate = 0.25
 	wc.started = false
 	wc.inited = false
 
-	wc.overFlowBroadcast = broadcast.New(128)
+	wc.overFlowBroadcast = broadcast.New(CACHER_DEFAULT_BROADCAST_LEN)
 	return wc
 }
 
 func (wc *Cacher) Start() {
-	if !wc.started {
+	wc.startstop.Start(func() {
 		wc.started = true
 		wc.log.Notice("Starting Metric Cache sorter tick (%d max metrics, %d max bytes per metric) [%s]", wc.maxKeys, wc.maxBytes, wc.Name)
 		go wc.startUpdateTick()
-	}
+
+		// if the overFlowMethod == "chan", then we need to force fire things
+		// into the overflow chan if they've been in the hold too long
+		go wc.startCacheExpiredTick()
+	})
 }
 
 func (wc *Cacher) Stop() {
-	shutdown.AddToShutdown()
-	if wc.started {
-		wc.shutdown <- true
-		wc.overFlowBroadcast.Close()
-	}
+	wc.startstop.Stop(func() {
+		shutdown.AddToShutdown()
+		defer shutdown.ReleaseFromShutdown()
+
+		if wc.started {
+			wc.shutdown.Close()
+			wc.overFlowBroadcast.Close()
+		}
+	})
 }
 
 func (wc *Cacher) GetOverFlowChan() *broadcast.Listener {
@@ -248,19 +278,76 @@ func (wc *Cacher) DumpPoints(pts []*repr.StatRepr) {
 	}
 }
 
+// do this every 5 min and write out any things that need to be \
+// flush as they been in the cache too long
+func (wc *Cacher) startCacheExpiredTick() {
+
+	// only can do this if overflow is chan
+	if wc.overFlowMethod != "chan" || wc.overFlowBroadcast == nil {
+		return
+	}
+	wc.log.Notice("Starting Metric Timer for cache expiration write (max time: %ds)", wc.maxTimeInCache)
+
+	tick := time.NewTicker(2 * time.Minute)
+	shuts := wc.shutdown.Listen()
+	// only push this many per flush as to not overwhelm the backends
+	max_per_run := 1024
+
+	push_expired := func() {
+		t_now := uint32(time.Now().Unix())
+		did := 0
+		wc.mu.Lock()
+		defer wc.mu.Unlock()
+
+		for unique_id, item := range wc.Cache {
+			if (t_now - item.Started) > wc.maxTimeInCache {
+				wc.log.Debug(
+					"Pushing metric to writer as it's been in ram too long: (%d) (%ds)",
+					unique_id,
+					wc.maxTimeInCache,
+				)
+
+				wc.overFlowBroadcast.Send(&TotalTimeSeries{item.Name, item.Series})
+
+				wc.curSize -= int64(item.Series.Len()) // shrink the bytes
+				delete(wc.Cache, unique_id)
+
+				stats.StatsdClientSlow.Incr("cacher.metrics.write.expired", 1)
+				did++
+				if did > max_per_run {
+					return
+				}
+
+			}
+		}
+	}
+
+	for {
+		select {
+		case <-tick.C:
+			push_expired()
+		case <-shuts.Ch:
+			tick.Stop()
+			wc._accept = false
+			wc.log.Warning("Cache shutdown .. stopping expire tick")
+			return
+		}
+	}
+}
+
 // do this only once a second as it can be expensive
 func (wc *Cacher) startUpdateTick() {
 
 	tick := time.NewTicker(2 * time.Second)
+	shuts := wc.shutdown.Listen()
 	for {
 		select {
 		case <-tick.C:
 			wc.updateQueue()
-		case <-wc.shutdown:
+		case <-shuts.Ch:
 			tick.Stop()
 			wc._accept = false
 			wc.log.Warning("Cache shutdown .. stopping accepts")
-			shutdown.ReleaseFromShutdown()
 
 			return
 		}
@@ -276,8 +363,8 @@ func (wc *Cacher) updateQueue() {
 	wc.mu.RLock() // need both locks
 	newQueue := make(CacheQueue, len(wc.Cache))
 	for key, values := range wc.Cache {
-		num_points := values.Count()
-		newQueue[idx] = &CacheQueueItem{key, num_points, values.Len()}
+		num_points := values.Series.Count()
+		newQueue[idx] = &CacheQueueItem{key, num_points, values.Series.Len()}
 		idx++
 		f_len += num_points
 	}
@@ -340,21 +427,20 @@ func (wc *Cacher) Add(name *repr.StatName, stat *repr.StatRepr) error {
 		wc.log.Critical("ADDING: %s Time: %d, Val: %f", metric, time, value)
 	}
 	*/
+	t_now := uint32(time.Now().Unix())
 	unique_id := name.UniqueId()
 	if gots, ok := wc.Cache[unique_id]; ok {
-		cur_size := gots.Len()
-		if gots.Len() > wc.maxBytes {
+		cur_size := gots.Series.Len()
+		if cur_size > wc.maxBytes {
 
 			// if the overflow method is chan, and there is valid overFLowChan, we "pop" the item from
 			// the cache and send it to the chan (note we're already "locked" here)
 			if wc.overFlowBroadcast != nil && wc.overFlowMethod == "chan" {
 
-				nm := wc.NameCache[unique_id]
-				wc.curSize -= int64(gots.Len()) // shrink the bytes
+				wc.curSize -= int64(cur_size) // shrink the bytes
 				delete(wc.Cache, unique_id)
-				delete(wc.NameCache, unique_id)
 
-				wc.overFlowBroadcast.Send(&TotalTimeSeries{nm, gots})
+				wc.overFlowBroadcast.Send(&TotalTimeSeries{gots.Name, gots.Series})
 				stats.StatsdClientSlow.Incr("cacher.metrics.write.overflow", 1)
 				//must recompute the ordering XXX LOCKING ISSUE
 				//wc.updateQueue()
@@ -363,15 +449,14 @@ func (wc *Cacher) Add(name *repr.StatName, stat *repr.StatRepr) error {
 				goto NEWSTAT
 			}
 
-			wc.log.Error("Too Many Bytes for %v (max bytes: %d current metrics: %v)... have to drop this one", unique_id, wc.maxBytes, gots.Count())
+			wc.log.Error("Too Many Bytes for %v (max bytes: %d current metrics: %v)... have to drop this one", unique_id, wc.maxBytes, gots.Series.Count())
 			stats.StatsdClientSlow.Incr("cacher.metics.points.overflow", 1)
 			return errWriteCacheTooManyPoints
 		}
-		wc.Cache[unique_id].AddStat(stat)
-		wc.NameCache[unique_id] = name
-		now_len := wc.Cache[unique_id].Len()
+		wc.Cache[unique_id].Series.AddStat(stat)
+		now_len := wc.Cache[unique_id].Series.Len()
 		wc.curSize += int64(now_len - cur_size)
-		stats.StatsdClient.GaugeAvg("cacher.add.ave-points-per-metric", int64(gots.Count()))
+		stats.StatsdClient.GaugeAvg("cacher.add.ave-points-per-metric", int64(gots.Series.Count()))
 		return nil
 	}
 
@@ -383,8 +468,7 @@ NEWSTAT:
 
 	tp.AddStat(stat)
 
-	wc.Cache[unique_id] = tp
-	wc.NameCache[unique_id] = name
+	wc.Cache[unique_id] = &CacheItem{Series: tp, Name: name, Started: t_now}
 
 	wc.curSize += int64(tp.Len())
 	stats.StatsdClient.GaugeAvg("cacher.add.ave-points-per-metric", 1)
@@ -426,7 +510,7 @@ func (wc *Cacher) Get(name *repr.StatName) (repr.StatReprSlice, error) {
 
 	if gots, ok := wc.Cache[name.UniqueId()]; ok {
 		stats.StatsdClientSlow.Incr("cacher.read.cache-gets.values", 1)
-		return wc.getStatsStream(name, gots)
+		return wc.getStatsStream(name, gots.Series)
 	}
 	stats.StatsdClientSlow.Incr("cacher.read.cache-gets.empty", 1)
 	return nil, nil
@@ -482,9 +566,8 @@ func (wc *Cacher) GetById(metric_id repr.StatId) (*repr.StatName, repr.StatReprS
 
 	if gots, ok := wc.Cache[metric_id]; ok {
 		stats.StatsdClientSlow.Incr("cacher.read.cache-gets.values", 1)
-		nm := wc.NameCache[metric_id]
-		tseries, err := wc.getStatsStream(nm, gots)
-		return nm, tseries, err
+		tseries, err := wc.getStatsStream(gots.Name, gots.Series)
+		return gots.Name, tseries, err
 	}
 	stats.StatsdClientSlow.Incr("cacher.read.cache-gets.empty", 1)
 	return nil, nil, nil
@@ -498,7 +581,7 @@ func (wc *Cacher) GetSeries(name *repr.StatName) (*repr.StatName, series.TimeSer
 
 	if gots, ok := wc.Cache[name.UniqueId()]; ok {
 		stats.StatsdClientSlow.Incr("cacher.read.cache-series-gets.values", 1)
-		return wc.NameCache[name.UniqueId()], gots, nil
+		return gots.Name, gots.Series, nil
 	}
 	stats.StatsdClientSlow.Incr("cacher.read.cache-series-gets.empty", 1)
 	return nil, nil, nil
@@ -512,7 +595,7 @@ func (wc *Cacher) GetSeriesById(metric_id repr.StatId) (*repr.StatName, series.T
 
 	if gots, ok := wc.Cache[metric_id]; ok {
 		stats.StatsdClientSlow.Incr("cacher.read.cache-series-by-idgets.values", 1)
-		return wc.NameCache[metric_id], gots, nil
+		return gots.Name, gots.Series, nil
 	}
 	stats.StatsdClientSlow.Incr("cacher.read.cache-series-by-idgets.empty", 1)
 	return nil, nil, nil
@@ -532,9 +615,9 @@ func (wc *Cacher) GetNextMetric() *repr.StatName {
 		wc.qmu.Unlock()
 
 		wc.mu.RLock()
-		v := wc.NameCache[item.metric]
+		v := wc.Cache[item.metric]
 		wc.mu.RUnlock()
-		return v
+		return v.Name
 	}
 	return nil
 }
@@ -545,11 +628,9 @@ func (wc *Cacher) GetAnyStat() (name *repr.StatName, stats repr.StatReprSlice) {
 	defer wc.mu.Unlock()
 
 	for uid, stats := range wc.Cache {
-		name = wc.NameCache[uid]
-		out, _ := wc.getStatsStream(name, stats)
-		wc.curSize -= int64(stats.Len()) // shrink the bytes
-		delete(wc.Cache, uid)            // need to purge if error as things are corrupted somehow
-		delete(wc.NameCache, uid)
+		out, _ := wc.getStatsStream(stats.Name, stats.Series)
+		wc.curSize -= int64(stats.Series.Len()) // shrink the bytes
+		delete(wc.Cache, uid)                   // need to purge if error as things are corrupted somehow
 		return name, out
 	}
 	return nil, nil
@@ -571,10 +652,9 @@ func (wc *Cacher) PopSeries() (*repr.StatName, series.TimeSeries) {
 		defer wc.mu.Unlock()
 		unique_id := metric.UniqueId()
 		if stats, exists := wc.Cache[unique_id]; exists {
-			wc.curSize -= int64(stats.Len()) // shrink the bytes
-			delete(wc.Cache, unique_id)      // need to delete regardless as we have byte errors and things are corrupted
-			delete(wc.NameCache, unique_id)
-			return metric, stats
+			wc.curSize -= int64(stats.Series.Len()) // shrink the bytes
+			delete(wc.Cache, unique_id)             // need to delete regardless as we have byte errors and things are corrupted
+			return stats.Name, stats.Series
 		}
 	}
 	return nil, nil

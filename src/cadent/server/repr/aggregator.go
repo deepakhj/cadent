@@ -32,7 +32,7 @@ import (
 // is consistently hashed to a single instance to make the aggregator work
 
 type Aggregator struct {
-	mu sync.Mutex
+	mu sync.RWMutex
 
 	Items      map[string]*StatRepr
 	Resolution time.Duration
@@ -62,8 +62,8 @@ func (sa *Aggregator) Len() int {
 
 // get the data and clear out the current cache
 func (sa *Aggregator) GetAndClear() map[string]*StatRepr {
-	sa.mu.Lock()
-	defer sa.mu.Unlock()
+	sa.mu.RLock()
+	defer sa.mu.RUnlock()
 	t_items := make(map[string]*StatRepr)
 	for k, v := range sa.Items {
 		t_items[k] = v

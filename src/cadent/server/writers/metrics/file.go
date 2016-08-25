@@ -49,11 +49,12 @@ var errFileReaderNotImplemented = errors.New("FILE READER NOT IMPLMENTED")
 
 /****************** Interfaces *********************/
 type FileMetrics struct {
-	fp          *os.File
-	filename    string
-	prefix      string
-	indexer     indexer.Indexer
-	resolutions [][]int
+	fp                *os.File
+	filename          string
+	prefix            string
+	indexer           indexer.Indexer
+	resolutions       [][]int
+	currentResolution int
 
 	max_file_size int64 // file rotation
 	write_lock    sync.Mutex
@@ -72,7 +73,10 @@ func NewFileMetrics() *FileMetrics {
 	return fc
 }
 
-// TODO
+func (fi *FileMetrics) Driver() string {
+	return "file"
+}
+
 func (fi *FileMetrics) Stop() {
 	fi.startstop.Stop(func() {
 		shutdown.AddToShutdown()
@@ -98,6 +102,10 @@ func (fi *FileMetrics) SetIndexer(idx indexer.Indexer) error {
 func (fi *FileMetrics) SetResolutions(res [][]int) int {
 	fi.resolutions = res
 	return len(res) // need as many writers as bins
+}
+
+func (fi *FileMetrics) SetCurrentResolution(res int) {
+	fi.currentResolution = res
 }
 
 func (fi *FileMetrics) Config(conf map[string]interface{}) error {
@@ -228,7 +236,7 @@ func (fi *FileMetrics) Write(stat repr.StatRepr) error {
 }
 
 /**** READER ***/
-// XXX TODO
+
 func (fi *FileMetrics) Render(path string, from int64, to int64) (WhisperRenderItem, error) {
 	return WhisperRenderItem{}, errFileReaderNotImplemented
 }

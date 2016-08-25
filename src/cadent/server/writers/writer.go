@@ -29,6 +29,7 @@ import (
 	logging "gopkg.in/op/go-logging.v1"
 
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 )
@@ -51,9 +52,9 @@ func (wc WriterMetricConfig) ResolutionsNeeded() (metrics.WritersNeeded, error) 
 	return metrics.ResolutionsNeeded(wc.Driver)
 }
 
-func (wc WriterMetricConfig) NewMetrics(duration time.Duration) (metrics.Metrics, error) {
+func (wc WriterMetricConfig) NewMetrics(duration time.Duration) (metrics.MetricsWriter, error) {
 
-	mets, err := metrics.NewMetrics(wc.Driver)
+	mets, err := metrics.NewWriterMetrics(wc.Driver)
 	if err != nil {
 		return nil, err
 	}
@@ -64,6 +65,11 @@ func (wc WriterMetricConfig) NewMetrics(duration time.Duration) (metrics.Metrics
 	i_ops["dsn"] = wc.DSN
 	i_ops["prefix"] = fmt.Sprintf("_%0.0fs", duration.Seconds())
 	i_ops["resolution"] = duration.Seconds()
+
+	// a little special case to set the rollupType == "triggered" if we are the triggered driver
+	if strings.HasSuffix(wc.Driver, "-triggered") {
+		i_ops["rollup_type"] = "triggered"
+	}
 
 	err = mets.Config(i_ops)
 	if err != nil {
@@ -102,15 +108,20 @@ func (wc WriterIndexerConfig) NewIndexer() (indexer.Indexer, error) {
 }
 
 type WriterConfig struct {
-	Metrics            WriterMetricConfig  `toml:"metrics"`
-	Indexer            WriterIndexerConfig `toml:"indexer"`
-	MetricQueueLength  int                 `toml:"metric_queue_length"`  // metric write queue length
-	IndexerQueueLength int                 `toml:"indexer_queue_length"` // indexer write queue length
+	Metrics WriterMetricConfig  `toml:"metrics"`
+	Indexer WriterIndexerConfig `toml:"indexer"`
+
+	// secondary writers i.e. write to multiple spots
+	SubMetrics WriterMetricConfig  `toml:"submetrics"`
+	SubIndexer WriterIndexerConfig `toml:"subindexer"`
+
+	MetricQueueLength  int `toml:"metric_queue_length"`  // metric write queue length
+	IndexerQueueLength int `toml:"indexer_queue_length"` // indexer write queue length
 }
 
 type WriterLoop struct {
 	name         string
-	metrics      metrics.Metrics
+	metrics      metrics.MetricsWriter
 	indexer      indexer.Indexer
 	write_chan   chan *repr.StatRepr
 	indexer_chan chan *repr.StatName
@@ -159,14 +170,22 @@ func (loop *WriterLoop) statTick() {
 	}
 }
 
-func (loop *WriterLoop) SetMetrics(mets metrics.Metrics) error {
+func (loop *WriterLoop) SetMetrics(mets metrics.MetricsWriter) error {
 	loop.metrics = mets
 	return nil
+}
+
+func (loop *WriterLoop) Metrics() metrics.MetricsWriter {
+	return loop.metrics
 }
 
 func (loop *WriterLoop) SetIndexer(idx indexer.Indexer) error {
 	loop.indexer = idx
 	return nil
+}
+
+func (loop *WriterLoop) Indexer() indexer.Indexer {
+	return loop.indexer
 }
 
 func (loop *WriterLoop) WriterChan() chan *repr.StatRepr {

@@ -59,11 +59,12 @@ import (
 
 /****************** Interfaces *********************/
 type MySQLFlatMetrics struct {
-	db          *dbs.MySQLDB
-	conn        *sql.DB
-	indexer     indexer.Indexer
-	resolutions [][]int
-	static_tags repr.SortingTags
+	db                *dbs.MySQLDB
+	conn              *sql.DB
+	indexer           indexer.Indexer
+	resolutions       [][]int
+	currentResolution int
+	static_tags       repr.SortingTags
 
 	write_list     []repr.StatRepr // buffer the writes so as to do "multi" inserts per query
 	max_write_size int             // size of that buffer before a flush
@@ -126,6 +127,10 @@ func (my *MySQLFlatMetrics) Config(conf map[string]interface{}) error {
 	return nil
 }
 
+func (my *MySQLFlatMetrics) Driver() string {
+	return "mysql-flat"
+}
+
 func (my *MySQLFlatMetrics) Stop() {
 	if my.shutitdown {
 		return
@@ -151,6 +156,10 @@ func (my *MySQLFlatMetrics) SetIndexer(idx indexer.Indexer) error {
 func (my *MySQLFlatMetrics) SetResolutions(res [][]int) int {
 	my.resolutions = res
 	return len(res) // need as many writers as bins
+}
+
+func (my *MySQLFlatMetrics) SetCurrentResolution(res int) {
+	my.currentResolution = res
 }
 
 func (my *MySQLFlatMetrics) PeriodFlush() {
@@ -234,6 +243,7 @@ func (my *MySQLFlatMetrics) Write(stat repr.StatRepr) error {
 
 /**** READER ***/
 // XXX TODO
+
 func (my *MySQLFlatMetrics) Render(path string, from int64, to int64) (WhisperRenderItem, error) {
 	return WhisperRenderItem{}, fmt.Errorf("MYSQL READER NOT YET DONE")
 }

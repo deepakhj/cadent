@@ -200,6 +200,19 @@ func (cf *ConfigAccumulator) GetAccumulator() (*Accumulator, error) {
 
 	}
 
+	// set up sub writers after Main Writers are added
+	if cf.Writer.SubMetrics.Driver != "" {
+
+		if cf.Writer.SubIndexer.Driver == "" {
+			return nil, fmt.Errorf("You need an Indexer config set for a Sub Metric writer")
+		}
+		_, err = ac.SetSubAggregateLoop(cf.Writer)
+		if err != nil {
+			return nil, err
+		}
+
+	}
+
 	// set up the reader it needs to be done AFTER the Keeper times are verified
 	if cf.Reader.Listen != "" && ac.Aggregators != nil {
 

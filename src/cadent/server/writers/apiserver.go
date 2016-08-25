@@ -82,8 +82,8 @@ type ApiConfig struct {
 	MaxReadCacheBytesPerMetric int              `toml:"read_cache_max_bytes_per_metric"`
 }
 
-func (re *ApiConfig) GetMetrics(resolution float64) (metrics.Metrics, error) {
-	reader, err := metrics.NewMetrics(re.ApiMetricOptions.Driver)
+func (re *ApiConfig) GetMetrics(resolution float64) (metrics.MetricsReader, error) {
+	reader, err := metrics.NewReaderMetrics(re.ApiMetricOptions.Driver)
 	if err != nil {
 		return nil, err
 	}
@@ -118,7 +118,7 @@ func (re *ApiConfig) GetIndexer() (indexer.Indexer, error) {
 
 type ApiLoop struct {
 	Conf    ApiConfig
-	Metrics metrics.Metrics
+	Metrics metrics.MetricsReader
 	Indexer indexer.Indexer
 
 	shutdown chan bool

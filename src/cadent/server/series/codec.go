@@ -92,6 +92,19 @@ func NewCodecTimeSeries(t0 int64, options *Options) *CodecTimeSeries {
 	return ret
 }
 
+func (s *CodecTimeSeries) HandlerName() string {
+	switch s.handle.(type) {
+	case *cdec.BincHandle:
+		return "binc"
+	case *cdec.CborHandle:
+		return "cbor"
+	case *cdec.JsonHandle:
+		return "json"
+	default:
+		return "msgp"
+	}
+}
+
 func (s *CodecTimeSeries) Name() string {
 	return CODEC_NAME
 }
