@@ -30,11 +30,7 @@ package shutdown
 import "sync"
 
 //signelton
-var _SHUTDOWN_WAITGROUP *sync.WaitGroup
-
-func init() {
-	_SHUTDOWN_WAITGROUP = new(sync.WaitGroup)
-}
+var _SHUTDOWN_WAITGROUP sync.WaitGroup
 
 func AddToShutdown() {
 	_SHUTDOWN_WAITGROUP.Add(1)

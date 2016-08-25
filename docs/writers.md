@@ -88,14 +88,14 @@ drivers, and other options that make your environment happy.
 
 Not everything is "done" .. as there are many things to write and verify, this is the status of the pieces.
 
-| Driver   | IndexSupport  |  TagSupport |  SeriesSupport | LineSupport  | DriverNames |
-|---|---|---|---|---|---|
-| cassandra | write+read  | No  | No | write+read | Index: "cassandra", Line: "cassandra-flat", Series: "cassandra" |
-| mysql  | write+read  | write  | write+read  | write+read  | Index: "mysql", Line: "mysql-flat", Series: "mysql" |
-| kafka  |  write | write | write  | write  | Index: "kafka", Line: "kafka-flat", Series: "kafka" |
-| whisper|  read | n/a | n/a  | write+read | Index: "whisper", Line: "whisper", Series: "n/a" |
-| leveldb |  write+read | No | No  | No | Index: "leveldb", Line: "n/a", Series: "n/a" |
-| file |  n/a | n/a | n/a  | write | Index: "n/a", Line: "file", Series: "n/a" |
+| Driver   | IndexSupport  |  TagSupport |  SeriesSupport | LineSupport  | TriggerSupport | DriverNames |
+|---|---|---|---|---|---|---|
+| cassandra | write+read  | No  | write+read | write+read | Yes | Index: "cassandra", Line: "cassandra-flat", Series: "cassandra", Series Triggerd: "cassandra-triggered" |
+| mysql  | write+read  | write  | write+read  | write+read  | Yes | Index: "mysql", Line: "mysql-flat", Series: "mysql",  Series Triggerd: "cassandra-triggered" |
+| kafka  |  write | write | write  | write  | n/a | Index: "kafka", Line: "kafka-flat", Series: "kafka" |
+| whisper|  read | n/a | n/a  | write+read |  n/a | Index: "whisper", Line: "whisper", Series: "n/a" |
+| leveldb |  write+read | No | No  | No |  n/a | Index: "leveldb", Line: "n/a", Series: "n/a" |
+| file |  n/a | n/a | n/a  | write |  n/a | Index: "n/a", Line: "file", Series: "n/a" |
 
 
 `IndexSupport` means that we can use this driver to index the metric space.
@@ -104,7 +104,9 @@ Not everything is "done" .. as there are many things to write and verify, this i
 
 `SeriesSupport` means the driver can support the TimeSeries binary blobs.
 
-`LineSupport` support means the driver can write and/or read the raw last/sum set from the Database backend.
+`LineSupport` means the driver can write and/or read the raw last/sum set from the Database backend.
+
+`TriggerSupport` is the rollup of lower resolution times are done once a series is written.
 
 `n/a` implies it will not be done, or the backend just does not support it.
 
@@ -117,11 +119,17 @@ The main writers are
 
     - cassandra: a binary blob of timeseries points between a time range
 
-        Good for the highest throughput and data effiency for storage
+        Good for the highest throughput and data effiency for storage.
+
+    - cassandra-triggered: a binary blob of timeseries points between a time range
+
+       Same as `cassandra` but uses triggering for rollups (see below)
 
     - cassandra-flat: a row for each time/point
 
         Good for simplicity, and when you are starting out w/ cassandra to verify things are working as planned
+        But, not exactly space efficient nor read/api performant.  But may be usefull (as it was for me)
+        in verifification of the internals.
 
     - whisper: standard graphite format
 
@@ -134,6 +142,10 @@ The main writers are
         on cassandra is "hard" and slow as it was never meant to run in a docker container really, this is
         a bit easier to get going and start playing w/ blob formats)
 
+    - mysql-triggered: a binary blob of timeseries points between a time range
+
+        Same as `mysql` but uses triggering for rollups (see below)
+
     - mysql-flat:
 
         Like cassandra-flat but for mysql ..
@@ -143,6 +155,62 @@ The main writers are
 
         Toss stats into a kafka topic (no readers/render api for this mode) for processing by some other entity
 
+
+#### Triggered Rollups
+
+For the mysql and cassandra series wrtiers, there is an option to "trigger" rollups from the lowest resolution
+rather then storing them in RAM.  Once the lowest resolution is "written" it will trigger a rollup event for the lower
+resolution items which get written to the the DB.  This can slove 2 issues,
+
+    - No need for resolution caches (which if your metrics space is large, can be alot) and just needed for the highest resoltuion.
+
+    - Peristence delay: the Low resolutions can stay in ram for a long time before they are written.  This can be problematic if things crash/fail as
+    those data points are never written.  With the triggered method, they are written once the highest resolution is written.
+
+To enable this, simply add
+
+    rollup_type="triggered"
+
+to the `writer.metrics` options (it will be ignored for anything other then the mysql and cassandra blob writers)
+
+However it is better to use the `-triggered` driver names as that will tell the accumulators to only accumulate
+the lowest res (otherwise, the accumulator does not know things are in rollup mode, and will continue to aggregate
+the lower-res elements, but they will just take up unessesary RAM and process cycles.)
+
+    cassandra-triggered or mysql-triggered
+
+
+
+#### Max time in Cache
+
+This applies only to Series/Blob writers where we store interal caches for a bunch of points.
+
+Since the default
+behavior is to write the series only when it hits the `cache_byte_size` setting.  This can be problematic for series
+that are very slow to update, and they will take a very long time to acctually persist to the DB system.  The setting
+
+    cache_max_time_in_cache
+
+for the `writer.options` section lets you tune this value.  The default value is 1 hour (`cache_max_time_in_cache=60m`)
+
+
+### SubWriters
+
+Currently there is support for "double writing" which simply means writing to 2 places at the same time (any more then
+that and things can get abused at high volume).
+Each writer gets it's own cache/queue/etc. Which means that the RAM requiements (and CPU) are doubled in the worst case
+(it depends on the subwriter config of course).
+This was mostly meant for writing to your long term storage, and publishing events to kafka.  Or as a migration path
+for moving from one storage system to another.
+
+
+### Shutdown
+
+On shutdown (basically a SIGINT), since there can be lots of data still in the cache phase of things.  Cadent will attempt to Flush all the
+data it has into the writers.  It this in "full blast" mode, which means it will simply write as fast as it can.  If
+There are many thousands of metrics in RAM this can take some time (if you have multiple resolutions and/or in triggered
+rollup mode things need to do these writes too so more time).   So expect loads on both the cadent host and the DB system
+to suddenly go bonkers.
 
 
 ### Writer Schemas
@@ -611,7 +679,7 @@ The "Flat" format is
     	    time: [int64 unix Nano second time stamp],
     	    metric: "my.metric.is.good",
     	    id: [uint64 FNVa],
-    	    uid: string based on the ID,
+    	    uid: string // base 36 from the ID
     	    sum: float64,
     	    min: float64,
     	    max: float64,
@@ -630,7 +698,7 @@ The "Blob" format is
     	    time: [int64 unix Nano second time stamp],
     	    metric: "my.metric.is.good",
     	    id: [uint64 FNVa],
-    	    uid: string // based on the ID,
+    	    uid: string // base 36 from the ID
     	    data: bytes,
     	    encoding: string // the series encoding gorilla, protobuf, etc
     	    resolution: float64,

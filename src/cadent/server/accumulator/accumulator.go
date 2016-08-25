@@ -145,12 +145,26 @@ func (acc *Accumulator) SetAggregateLoop(conf writers.WriterConfig) (agg *Aggreg
 	if err != nil {
 		return nil, err
 	}
-	err = acc.Aggregators.SetWriter(conf)
+	err = acc.Aggregators.SetWriter(conf, "main")
 	if err != nil {
 		return nil, err
 	}
 	return acc.Aggregators, nil
+}
 
+func (acc *Accumulator) SetSubAggregateLoop(conf writers.WriterConfig) (agg *AggregateLoop, err error) {
+	// the aggs need to be set first
+	if acc.Aggregators == nil {
+		return nil, fmt.Errorf("To have 'sub' writers, you first need a main writer.")
+	}
+	if err != nil {
+		return nil, err
+	}
+	err = acc.Aggregators.SetWriter(conf, "sub")
+	if err != nil {
+		return nil, err
+	}
+	return acc.Aggregators, nil
 }
 
 func (acc *Accumulator) SetOutputQueue(qu chan splitter.SplitItem) {

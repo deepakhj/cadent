@@ -139,9 +139,10 @@ func TestCarbontwoAccumulator(t *testing.T) {
 			So(len(b_arr.Stats), ShouldEqual, 3)
 		})
 		strs := strings.Split(buf.String(), "\n")
-		So(strs, ShouldContain, "mtype=counter.stat=max.unit=B.what=house:10.000000|c")
-		So(strs, ShouldContain, "mtype=gauge.stat=min.unit=B.what=house:2.000000|g")
-		So(strs, ShouldContain, "mtype=rate.stat=mean.unit=B.what=house:5.666667|ms")
+		t.Logf("Stats: %v", strs)
+		So(strs, ShouldContain, "mtype=counter.stat=max.unit=B.what=house:10.000000|c|#mtype:counter,stat:max,unit:B,what:house,moo:goo,house:spam")
+		So(strs, ShouldContain, "mtype=gauge.stat=min.unit=B.what=house:2.000000|g|#mtype:gauge,stat:min,unit:B,what:house,moo:goo,house:spam")
+		So(strs, ShouldContain, "mtype=rate.stat=mean.unit=B.what=house:5.666667|ms|#mtype:rate,stat:mean,unit:B,what:house,moo:goo,house:spam")
 
 	})
 
@@ -170,7 +171,7 @@ func TestCarbontwoAccumulator(t *testing.T) {
 			So(len(b_arr.Stats), ShouldEqual, 4)
 		})
 		strs := strings.Split(buf.String(), "\n")
-		t.Logf("MOO: %v", buf.String())
+
 		So(strs, ShouldContain, "mtype=rate stat=count unit=B what=monkey 22.000000 123123")
 		So(strs, ShouldContain, "mtype=gauge stat=min unit=B what=house  house=spam moo=goo 2.000000 123123")
 		So(strs, ShouldContain, "mtype=rate stat=mean unit=B what=house  house=spam moo=goo 5.666667 123123")

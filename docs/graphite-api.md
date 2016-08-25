@@ -24,7 +24,7 @@ This may mean that you will see some random interspersed `nils` in the data on s
 
 *NOTE*  Currently only Cassandra, MySQL and Whisper "render apis" are valid. File and Kafka writers can have no render apis.
 
-*NOTE* the `/cache` endpoint only makes since for TimeSeries based writers, as a result only Cassandra, MySQL, kafka series writers impliment this
+*NOTE* the `/cached/series` endpoint only makes since for TimeSeries based writers, as a result only Cassandra, MySQL, kafka series writers impliment this
 
 #### Table of implemented apis and writers
 
@@ -61,6 +61,42 @@ Not everything can implement the APIs due to their nature. Below is a table of w
 `No` means it has not been implemended yet
 
 `TagSupport` is forth comming, but it will basicall add an extra Query param `tag=XXX` to things once the indexing has been hashed out
+
+#### Aggregation
+
+Since graphite does not have the ability to tell the api what sort of aggregation we want/need from a given metric.  Cadent
+attempts to infer what aggregation to use. Below is the mappings we use to infer, anything that does not match will get
+the default of `mean`.
+
+| MetricName  |  AggMethod |
+|---|---|
+| ends with: count |  sum |
+| ends with: error(s?) |  sum |
+| ends with: delete(s?) |  sum |
+| ends with: insert(s?) |  sum |
+| ends with: update(s?) |  sum |
+| ends with: request(s?) |  sum |
+| ends with: select(s?) |  sum |
+| ends with: add(s|ed)? |  sum |
+| ends with: remove(s?) |  sum |
+| ends with: remove(s|d?) |  sum |
+| ends with: consume(d?) |  sum |
+| ends with: sum |  sum |
+| ends with: max |  max |
+| ends with: max_\d+ |  max |
+| ends with: upper |  max |
+| ends with: upper_\d+ |  max |
+| ends with: min |  min |
+| ends with: lower |  min |
+| ends with: min_\d+ |  min |
+| ends with: lower_\d+ |  min |
+| ends with: gauge |  last |
+| starts with: stats.gauge |  last |
+| ends with: median |  median |
+| ends with: middle |  median |
+| starts with: median_\d+ |  median |
+| DEFAULT | mean |
+
 
 
 #### API Reader config

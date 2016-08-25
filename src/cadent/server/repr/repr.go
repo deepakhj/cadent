@@ -54,14 +54,17 @@ const DOUBLE_SPACE_SEPARATOR = "  "
 const DOT_SEPARATOR = "."
 const COMMA_SEPARATOR = ","
 const EQUAL_SEPARATOR = "="
+const COLON_SEPARATOR = ":"
 const IS_SEPARATOR = "_is_"
 const UNDERSCORE_SEPARATOR = "_"
 const DASH_SEPARATOR = "-"
 const NEWLINE_SEPARATOR = "\n"
+const DATAGRAM_SEPARATOR = "|#"
 
 var SPACE_SEPARATOR_BYTE = []byte(" ")
 var DOUBLE_SPACE_SEPARATOR_BYTE = []byte("  ")
 var DOT_SEPARATOR_BYTE = []byte(".")
+var COLON_SEPARATOR_BYTE = []byte(":")
 var COMMA_SEPARATOR_BYTE = []byte(",")
 var EQUAL_SEPARATOR_BYTE = []byte("=")
 var IS_SEPARATOR_BYTE = []byte("_is_")
@@ -69,6 +72,7 @@ var NEWLINE_SEPARATOR_BYTES = []byte("\n")
 var NEWLINE_SEPARATOR_BYTE = NEWLINE_SEPARATOR_BYTES[0]
 var DASH_SEPARATOR_BYTES = []byte("-")
 var UNDERSCORE_SEPARATOR_BYTES = []byte("_")
+var DATAGRAM_SEPARATOR_BYTES = []byte("|#")
 
 type StatId uint64
 
