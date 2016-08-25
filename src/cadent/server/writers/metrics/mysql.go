@@ -126,6 +126,7 @@ func (j MysqlBlobMetricJob) DoWork() error {
 
 /****************** Interfaces *********************/
 type MySQLMetrics struct {
+	driver            string
 	db                *dbs.MySQLDB
 	conn              *sql.DB
 	indexer           indexer.Indexer
@@ -134,19 +135,18 @@ type MySQLMetrics struct {
 	currentResolution int
 	static_tags       repr.SortingTags
 
-	series_encoding  string
-	blob_max_bytes   int
-	blob_oldest_time time.Duration
-
 	// this is for Render where we may have several caches, but only "one"
 	// cacher get picked for the default render (things share the cache from writers
 	// and the api render, but not all the caches, so we need to be able to get the
-	// caches from other resolutions
-	// cache:mysqlblob:[mysql hosts]:[resolution]
 	// the cache singleton keys
-	cacherPrefix  string
-	cacher        *Cacher
-	cacheOverFlow *broadcast.Listener // on byte overflow of cacher force a write
+	// `cache:series:seriesMaxMetrics:seriesEncoding:seriesMaxBytes:maxTimeInCache`
+	cacherPrefix     string
+	cacher           *Cacher
+	cacheOverFlow    *broadcast.Listener // on byte overflow of cacher force a write
+	seriesEncoding   string
+	seriesMaxMetrics int
+	seriesMaxBytes   int
+	maxTimeInCache   time.Duration
 
 	// if the rolluptype == cached, then we this just uses the internal RAM caches
 	// otherwise if "trigger" we only have the lowest res cache, and trigger rollups on write
@@ -186,6 +186,8 @@ func (my *MySQLMetrics) Config(conf map[string]interface{}) error {
 		return fmt.Errorf("Resolution needed for mysql writer")
 	}
 
+	my.driver = "mysql"
+
 	// newDB is a "cached" item to let us pass the connections around
 	db_key := dsn + fmt.Sprintf("%f", resolution)
 	db, err := dbs.NewDB("mysql", db_key, conf)
@@ -197,36 +199,17 @@ func (my *MySQLMetrics) Config(conf map[string]interface{}) error {
 	my.conn = db.Connection().(*sql.DB)
 
 	// cacher and mysql options for series
-	my.series_encoding = MYSQL_DEFAULT_SERIES_TYPE
+	my.seriesEncoding = MYSQL_DEFAULT_SERIES_TYPE
 	_bt := conf["series_encoding"]
 	if _bt != nil {
-		my.series_encoding = _bt.(string)
+		my.seriesEncoding = _bt.(string)
 	}
 
-	//cacher
-	my.cacherPrefix = fmt.Sprintf("cache:mysqlblob:%s", dsn)
-	cache_key := fmt.Sprintf(my.cacherPrefix+":%v", resolution)
-	my.cacher, err = getCacherSingleton(cache_key)
-	if err != nil {
-		return err
-	}
-
-	my.blob_max_bytes = MYSQL_DEFAULT_SERIES_CHUNK
+	my.seriesMaxBytes = MYSQL_DEFAULT_SERIES_CHUNK
 	_bz := conf["cache_byte_size"]
 	if _bz != nil {
-		my.blob_max_bytes = int(_bz.(int64))
+		my.seriesMaxBytes = int(_bz.(int64))
 	}
-
-	pd := MYSQL_DEFAULT_LONGEST_TIME
-	_pd := conf["cache_longest_time"]
-	if _pd != nil {
-		pd = _pd.(string)
-	}
-	dur, err := time.ParseDuration(pd)
-	if err != nil {
-		return fmt.Errorf("Mysql cache_longest_time is not a valid duration: %v", err)
-	}
-	my.blob_oldest_time = dur
 
 	g_tag, ok := conf["tags"]
 	if ok {
@@ -263,30 +246,44 @@ func (my *MySQLMetrics) Config(conf map[string]interface{}) error {
 	}
 
 	if my.rollupType == "triggered" {
-		my.rollup = NewRollupMetric(my, my.blob_max_bytes)
+		my.driver = "mysql-triggered"
+		my.rollup = NewRollupMetric(my, my.seriesMaxBytes)
 	}
 
 	_mtc := conf["cache_max_time_in_cache"]
+	_maxtime := MYSQL_DEFAULT_LONGEST_TIME
+
 	if _mtc != nil {
-		dur, err := time.ParseDuration(_mtc.(string))
-		if err != nil {
-			return err
-		}
-		my.cacher.maxTimeInCache = uint32(dur.Seconds())
+		_maxtime = _mtc.(string)
+	}
+	dur, err := time.ParseDuration(_maxtime)
+	if err != nil {
+		return err
+	}
+	my.maxTimeInCache = dur
+
+	my.seriesMaxMetrics = CACHER_METRICS_KEYS
+	_cz := conf["cache_metric_size"]
+	if _cz != nil {
+		my.seriesMaxMetrics = int(_cz.(int64))
+	}
+
+	//cacher
+	my.cacherPrefix = fmt.Sprintf("cache:series:%d:%s:%d:%s", my.seriesMaxMetrics, my.seriesEncoding, my.seriesMaxBytes, my.maxTimeInCache.String())
+	cache_key := fmt.Sprintf(my.cacherPrefix+":%v", resolution)
+	my.cacher, err = getCacherSingleton(cache_key)
+	if err != nil {
+		return err
 	}
 
 	// only set these if it's not been started/init'ed
 	// as the readers will use this object as well
 	if !my.cacher.started && !my.cacher.inited {
 		my.cacher.inited = true
-		my.cacher.maxBytes = my.blob_max_bytes
-		my.cacher.seriesType = my.series_encoding
-
-		my.cacher.maxKeys = CACHER_METRICS_KEYS
-		_cz := conf["cache_metric_size"]
-		if _cz != nil {
-			my.cacher.maxKeys = int(_cz.(int64))
-		}
+		my.cacher.maxBytes = my.seriesMaxBytes
+		my.cacher.seriesType = my.seriesEncoding
+		my.cacher.maxTimeInCache = uint32(dur.Seconds())
+		my.cacher.maxKeys = my.seriesMaxMetrics
 
 		// unlike the other writers, overflows of cache size are
 		// exactly what we want to write
@@ -304,10 +301,14 @@ func (my *MySQLMetrics) Config(conf map[string]interface{}) error {
 	return nil
 }
 
+func (my *MySQLMetrics) Driver() string {
+	return my.driver
+}
+
 func (my *MySQLMetrics) Start() {
 	my.startstop.Start(func() {
-		my.log.Notice("Starting mysql writer for %s at %d bytes per series", my.db.Tablename(), my.blob_max_bytes)
-		my.cacher.maxBytes = my.blob_max_bytes
+		my.log.Notice("Starting mysql writer for %s at %d bytes per series", my.db.Tablename(), my.seriesMaxBytes)
+		my.cacher.maxBytes = my.seriesMaxBytes
 		my.cacher.Start()
 
 		// only register this when we start as we really want to consume
@@ -322,7 +323,7 @@ func (my *MySQLMetrics) Start() {
 		// start the rolluper if needed
 		if my.doRollup {
 			// all but the lowest one
-			my.rollup.blobMaxBytes = my.blob_max_bytes
+			my.rollup.blobMaxBytes = my.seriesMaxBytes
 			my.rollup.SetResolutions(my.resolutions[1:])
 			go my.rollup.Start()
 		}
@@ -337,10 +338,10 @@ func (my *MySQLMetrics) Start() {
 }
 
 func (my *MySQLMetrics) Stop() {
+	my.log.Warning("Stopping Mysql writer for (%s)", my.cacher.Name)
 	my.startstop.Stop(func() {
 		shutdown.AddToShutdown()
 		defer shutdown.ReleaseFromShutdown()
-		my.log.Warning("Starting Shutdown of writer")
 
 		if my.shutitdown {
 			return // already did
@@ -348,30 +349,49 @@ func (my *MySQLMetrics) Stop() {
 		my.shutitdown = true
 
 		my.cacher.Stop()
-
-		mets := my.cacher.Queue
+		mets := my.cacher.Cache
 		mets_l := len(mets)
-		my.log.Warning("Shutting down, exhausting the queue (%d items) and quiting", mets_l)
+		my.log.Warning("Shutting down %s and exhausting the queue (%d items) and quiting", my.cacher.Name, mets_l)
+
 		// full tilt write out
+		go_do := make(chan *TotalTimeSeries, 16)
+		done := make(chan bool, 1)
+		go func() {
+			for {
+				select {
+				case s, more := <-go_do:
+					if !more {
+						return
+					}
+					stats.StatsdClient.Incr(fmt.Sprintf("writer.cache.shutdown.send-to-writers"), 1)
+					my.InsertSeries(s.Name, s.Series)
+					if my.doRollup {
+						my.rollup.DoRollup(s)
+					}
+				case <-done:
+					return
+				}
+			}
+		}()
+
 		did := 0
 		for _, queueitem := range mets {
 			if did%100 == 0 {
 				my.log.Warning("shutdown purge: written %d/%d...", did, mets_l)
 			}
-			name, series, _ := my.cacher.GetSeriesById(queueitem.metric)
-			if series != nil {
-				stats.StatsdClient.Incr(fmt.Sprintf("writer.mysql.write.send-to-writers"), 1)
-				my.doInsert(&TotalTimeSeries{Name: name, Series: series})
+			if queueitem.Series != nil {
+				go_do <- &TotalTimeSeries{Name: queueitem.Name, Series: queueitem.Series}
 			}
 			did++
 		}
+		close(done)
+		close(go_do)
+		my.log.Warning("shutdown purge: written %d/%d...", did, mets_l)
+
 		if my.dispatcher != nil {
 			my.dispatcher.Stop()
 		}
-		if my.doRollup {
-			my.rollup.Stop()
-		}
-		my.log.Warning("shutdown purge: written %d/%d...", did, mets_l)
+
 		my.log.Warning("Shutdown finished ... quiting mysql blob writer")
 	})
 
@@ -389,21 +409,20 @@ func (my *MySQLMetrics) doInsert(ts *TotalTimeSeries) error {
 // listen to the overflow chan from the cache and attempt to write "now"
 func (my *MySQLMetrics) overFlowWrite() {
 	for {
-		select {
-		case statitem, more := <-my.cacheOverFlow.Ch:
+		statitem, more := <-my.cacheOverFlow.Ch
 
-			// bail
-			if my.shutitdown || !more {
-				return
-			}
-			stats.StatsdClientSlow.Incr("writer.mysql.queue.add", 1)
-			my.dispatcher.Add(
-				&MysqlBlobMetricJob{
-					My: my,
-					Ts: statitem.(*TotalTimeSeries),
-				},
-			)
+		// bail
+		if !more {
+			return
 		}
+		stats.StatsdClientSlow.Incr("writer.mysql.queue.add", 1)
+		my.dispatcher.Add(
+			&MysqlBlobMetricJob{
+				My: my,
+				Ts: statitem.(*TotalTimeSeries),
+			},
+		)
+
 	}
 }
 

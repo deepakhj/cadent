@@ -44,9 +44,11 @@ const (
 	FirstResolution                      // just one
 )
 
-/****************** Data readers *********************/
+// Writer interface ..
+type MetricsWriter interface {
 
-type Metrics interface {
+	// the name of the driver
+	Driver() string
 
 	// need to able to set what our resolutions are for ease of resolution picking
 	// the INT return tells the agg loop if we need to have MULTI writers
@@ -66,20 +68,30 @@ type Metrics interface {
 	// Writer
 	Write(repr.StatRepr) error
 
-	// Reader
+	Stop()  // kill stuff
+	Start() // fire it up
+}
 
-	// /render?target=XXXX&from=-24h&to=now
-	/*
-		{
-			target: "scaleToSeconds(stats.counters.consthash-graphite.all-1-stats-infra-integ.mfpaws.com.writer.cassandra.noncached-writes-path,1)",
-			datapoints: [
-			[
-			0,
-			1456087430
-			],...
-			]
-		}
-	*/
+// Reader interface ..
+type MetricsReader interface {
+
+	// the name of the driver
+	Driver() string
+
+	// need to able to set what our resolutions are for ease of resolution picking
+	// the INT return tells the agg loop if we need to have MULTI writers
+	// i.e. for items that DO NOT self rollup (DBs) we need as many writers as resolutions
+	// for Whisper (or 'other' things) we only need the Lowest time for the writers
+	// as the whisper file rolls up internally
+	SetResolutions([][]int) int
+
+	// we can have a writer per resolution, so this just sets the one we are currently on
+	SetCurrentResolution(int)
+
+	Config(map[string]interface{}) error
+
+	// need an Indexer 99% of the time to deal with render
+	SetIndexer(indexer.Indexer) error
 
 	Render(path string, from int64, to int64) (WhisperRenderItem, error)
 	RawRender(path string, from int64, to int64) ([]*RawRenderItem, error)
@@ -98,6 +110,9 @@ type Metrics interface {
 // for those writers that are "blob" writers, we need them to match this interface
 // so that we can do resolution rollups
 type DBMetrics interface {
+
+	// the name of the driver
+	Driver() string
 
 	// gets the latest point(s) writen
 	GetLatestFromDB(name *repr.StatName, resolution uint32) (DBSeriesList, error)

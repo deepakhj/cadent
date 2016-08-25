@@ -122,6 +122,10 @@ func (kf *KafkaFlatMetrics) Config(conf map[string]interface{}) error {
 	return nil
 }
 
+func (kf *KafkaFlatMetrics) Driver() string {
+	return "kafka-flat"
+}
+
 func (kf *KafkaFlatMetrics) Start() {
 	//noop
 }
@@ -161,8 +165,8 @@ func (kf *KafkaFlatMetrics) Write(stat repr.StatRepr) error {
 		return nil
 	}
 
-	kf.indexer.Write(stat.Name) // to the indexer
 	stat.Name.MergeMetric2Tags(kf.static_tags)
+	kf.indexer.Write(stat.Name) // to the indexer
 	item := &KafkaMetricObj{
 		Type:       "metric",
 		Metric:     stat.Name.Key,
@@ -176,8 +180,8 @@ func (kf *KafkaFlatMetrics) Write(stat repr.StatRepr) error {
 		TTL:        stat.Name.TTL,
 		Id:         stat.Name.UniqueId(),
 		Uid:        stat.Name.UniqueIdString(),
-		Tags:       stat.Name.SortedTags().Tags(),
-		MetaTags:   stat.Name.SortedMetaTags().Tags(),
+		Tags:       stat.Name.SortedTags(),
+		MetaTags:   stat.Name.SortedMetaTags(),
 	}
 
 	stats.StatsdClientSlow.Incr("writer.kafkaflat.metrics.writes", 1)

@@ -127,6 +127,10 @@ func (my *MySQLFlatMetrics) Config(conf map[string]interface{}) error {
 	return nil
 }
 
+func (my *MySQLFlatMetrics) Driver() string {
+	return "mysql-flat"
+}
+
 func (my *MySQLFlatMetrics) Stop() {
 	if my.shutitdown {
 		return

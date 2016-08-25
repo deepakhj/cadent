@@ -275,26 +275,25 @@ func (j CassandraBlobMetricJob) DoWork() error {
 
 /****************** Metrics Writer *********************/
 type CassandraMetric struct {
+	driver            string
 	resolutions       [][]int
 	currentResolution int
 	static_tags       repr.SortingTags
 	indexer           indexer.Indexer
 	writer            *CassandraWriter
 
-	series_encoding string
-	blobMaxBytes    int
-	blobMaxMetrics  int
-	blobOldestTime  time.Duration
-
 	// this is for Render where we may have several caches, but only "one"
 	// cacher get picked for the default render (things share the cache from writers
 	// and the api render, but not all the caches, so we need to be able to get the
-	// caches from other resolutions
-	// cache:cassandrablob:[cassandra hosts]:[resolution]
 	// the cache singleton keys
-	cacherPrefix  string
-	cacher        *Cacher
-	cacheOverFlow *broadcast.Listener // on byte overflow of cacher force a write
+	// `cache:series:seriesMaxMetrics:seriesEncoding:seriesMaxBytes:maxTimeInCache`
+	cacherPrefix     string
+	cacher           *Cacher
+	cacheOverFlow    *broadcast.Listener // on byte overflow of cacher force a write
+	seriesEncoding   string
+	seriesMaxMetrics int
+	seriesMaxBytes   int
+	maxTimeInCache   time.Duration
 
 	// if the rolluptype == cached, then we this just uses the internal RAM caches
 	// otherwise if "trigger" we only have the lowest res cache, and trigger rollups on write
@@ -331,22 +330,16 @@ func (cass *CassandraMetric) Config(conf map[string]interface{}) (err error) {
 	}
 	cass.writer = gots
 
+	cass.driver = "cassandra"
+
 	_dsn := conf["dsn"]
 	if _dsn == nil {
 		return fmt.Errorf("Metrics: `dsn` (server1,server2,server3) is needed for cassandra config")
 	}
 
-	dsn := _dsn.(string)
-
 	resolution := conf["resolution"]
 	if resolution == nil {
 		return fmt.Errorf("resolution needed for cassandra writer")
-	}
-	cass.cacherPrefix = fmt.Sprintf("cache:cassandrablob:%s", dsn)
-	cache_key := fmt.Sprintf("%s:%v", cass.cacherPrefix, resolution)
-	cass.cacher, err = getCacherSingleton(cache_key)
-	if err != nil {
-		return err
 	}
 
 	g_tag, ok := conf["tags"]
@@ -372,38 +365,27 @@ func (cass *CassandraMetric) Config(conf map[string]interface{}) (err error) {
 		cass.dispatch_retries = int(_rt.(int64))
 	}
 
-	cass.blobMaxBytes = CASSANDRA_DEFAULT_SERIES_CHUNK
+	cass.seriesMaxBytes = CASSANDRA_DEFAULT_SERIES_CHUNK
 	_bz := conf["cache_byte_size"]
 	if _bz != nil {
-		cass.blobMaxBytes = int(_bz.(int64))
+		cass.seriesMaxBytes = int(_bz.(int64))
 	}
 
-	pd := CASSANDRA_DEFAULT_LONGEST_TIME
-	_pd := conf["cache_longest_time"]
-	if _pd != nil {
-		pd = _pd.(string)
-	}
-	dur, err := time.ParseDuration(pd)
-	if err != nil {
-		return fmt.Errorf("Cassandra cache_longest_time is not a valid duration: %v", err)
-	}
-	cass.blobOldestTime = dur
-
-	cass.series_encoding = CASSANDRA_DEFAULT_SERIES_TYPE
+	cass.seriesEncoding = CASSANDRA_DEFAULT_SERIES_TYPE
 	_se := conf["series_encoding"]
 	if _se != nil {
-		cass.series_encoding = _se.(string)
+		cass.seriesEncoding = _se.(string)
 	}
 
-	cass.blobMaxBytes = CASSANDRA_DEFAULT_SERIES_CHUNK
+	cass.seriesMaxBytes = CASSANDRA_DEFAULT_SERIES_CHUNK
 	_ps := conf["cache_byte_size"]
 	if _ps != nil {
-		cass.blobMaxBytes = int(_ps.(int64))
+		cass.seriesMaxBytes = int(_ps.(int64))
 	}
 	_ms := conf["cache_metric_size"]
-	cass.blobMaxMetrics = CACHER_METRICS_KEYS
+	cass.seriesMaxMetrics = CACHER_METRICS_KEYS
 	if _ms != nil {
-		cass.blobMaxMetrics = int(_ms.(int64))
+		cass.seriesMaxMetrics = int(_ms.(int64))
 	}
 
 	rdur, err := time.ParseDuration(CASSANDRA_DEFAULT_RENDER_TIMEOUT)
@@ -420,22 +402,32 @@ func (cass *CassandraMetric) Config(conf map[string]interface{}) (err error) {
 	}
 
 	if cass.rollupType == "triggered" {
-		cass.rollup = NewRollupMetric(cass, cass.blobMaxBytes)
+		cass.driver = "cassandra-triggered" // reset the name
+		cass.rollup = NewRollupMetric(cass, cass.seriesMaxBytes)
 	}
 
-	_mtc := conf["cache_max_time_in_cache"]
-	if _mtc != nil {
-		dur, err := time.ParseDuration(_mtc.(string))
-		if err != nil {
-			return err
-		}
-		cass.cacher.maxTimeInCache = uint32(dur.Seconds())
+	pd := CASSANDRA_DEFAULT_LONGEST_TIME
+	_pd := conf["cache_max_time_in_cache"]
+	if _pd != nil {
+		pd = _pd.(string)
+	}
+	dur, err := time.ParseDuration(pd)
+	if err != nil {
+		return fmt.Errorf("Cassandra cache_max_time_in_cache is not a valid duration: %v", err)
+	}
+	cass.maxTimeInCache = dur
+
+	cass.cacherPrefix = fmt.Sprintf("cache:series:%d:%s:%d:%s", cass.seriesMaxMetrics, cass.seriesEncoding, cass.seriesMaxBytes, cass.maxTimeInCache.String())
+	cache_key := fmt.Sprintf(cass.cacherPrefix+":%v", resolution)
+	cass.cacher, err = getCacherSingleton(cache_key)
+	if err != nil {
+		return err
 	}
 
-	// match blob types
-	cass.cacher.seriesType = cass.series_encoding
-	cass.cacher.maxBytes = cass.blobMaxBytes
-	cass.cacher.maxKeys = cass.blobMaxMetrics
+	cass.cacher.seriesType = cass.seriesEncoding
+	cass.cacher.maxBytes = cass.seriesMaxBytes
+	cass.cacher.maxKeys = cass.seriesMaxMetrics
+	cass.cacher.maxTimeInCache = uint32(cass.maxTimeInCache.Seconds())
 
 	// unlike the other writers, overflows of cache size are
 	// exactly what we want to write
@@ -446,13 +438,18 @@ func (cass *CassandraMetric) Config(conf map[string]interface{}) (err error) {
 	return nil
 }
 
+func (cass *CassandraMetric) Driver() string {
+	return cass.driver
+}
+
 func (cass *CassandraMetric) Start() {
 	cass.startstop.Start(func() {
 		/**** dispatcher queue ***/
-		cass.writer.log.Notice("Starting cassandra series writer for %s at %d bytes per series", cass.writer.db.MetricTable(), cass.blobMaxBytes)
+		cass.writer.log.Notice("Starting cassandra series writer for %s at %d bytes per series", cass.writer.db.MetricTable(), cass.seriesMaxBytes)
 
-		cass.cacher.maxBytes = cass.blobMaxBytes
-		cass.cacher.maxKeys = cass.blobMaxMetrics
+		cass.cacher.maxBytes = cass.seriesMaxBytes
+		cass.cacher.maxKeys = cass.seriesMaxMetrics
+		cass.cacher.maxTimeInCache = uint32(cass.maxTimeInCache.Seconds())
 		cass.cacher.overFlowMethod = "chan"
 
 		cass.cacher.Start()
@@ -471,7 +468,7 @@ func (cass *CassandraMetric) Start() {
 		// start the rollupper if needed
 		if cass.doRollup {
 			// all but the lowest one
-			cass.rollup.blobMaxBytes = cass.blobMaxBytes
+			cass.rollup.blobMaxBytes = cass.seriesMaxBytes
 			cass.rollup.SetResolutions(cass.resolutions[1:])
 			go cass.rollup.Start()
 		}
@@ -499,22 +496,45 @@ func (cass *CassandraMetric) Stop() {
 
 		cass.cacher.Stop()
 
-		mets := cass.cacher.Queue
+		mets := cass.cacher.Cache
 		mets_l := len(mets)
-		cass.writer.log.Warning("Shutting down, exhausting the queue (%d items) and quiting", mets_l)
+		cass.writer.log.Warning("Shutting down %s and exhausting the queue (%d items) and quiting", cass.cacher.Name, mets_l)
+
 		// full tilt write out
+		go_do := make(chan *TotalTimeSeries, 16)
+		done := make(chan bool, 1)
+		go func() {
+			for {
+				select {
+				case s, more := <-go_do:
+					if !more {
+						return
+					}
+					stats.StatsdClient.Incr(fmt.Sprintf("writer.cache.shutdown.send-to-writers"), 1)
+					cass.writer.InsertSeries(s.Name, s.Series)
+					if cass.doRollup {
+						cass.rollup.DoRollup(s)
+					}
+				case <-done:
+					return
+				}
+			}
+		}()
+
 		did := 0
 		for _, queueitem := range mets {
 			if did%100 == 0 {
 				cass.writer.log.Warning("shutdown purge: written %d/%d...", did, mets_l)
 			}
-			name, series, _ := cass.cacher.GetSeriesById(queueitem.metric)
-			if series != nil {
-				stats.StatsdClient.Incr(fmt.Sprintf("writer.cassandra.write.send-to-writers"), 1)
-				cass.doInsert(&TotalTimeSeries{Name: name, Series: series})
+			if queueitem.Series != nil {
+				go_do <- &TotalTimeSeries{Name: queueitem.Name, Series: queueitem.Series}
 			}
 			did++
 		}
+		close(done)
+		close(go_do)
+		cass.writer.log.Warning("shutdown purge: written %d/%d...", did, mets_l)
+
 		if cass.doRollup {
 			cass.rollup.Stop()
 		}
@@ -522,7 +542,6 @@ func (cass *CassandraMetric) Stop() {
 			cass.dispatcher.Stop()
 		}
 
-		cass.writer.log.Warning("shutdown purge: written %d/%d...", did, mets_l)
 		cass.writer.log.Warning("Shutdown finished ... quiting cassandra series writer")
 		return
 	})
@@ -557,9 +576,6 @@ func (cass *CassandraMetric) doInsert(ts *TotalTimeSeries) error {
 // listen to the overflow chan from the cache and attempt to write "now"
 func (cass *CassandraMetric) overFlowWrite() {
 	for {
-		if cass.shutitdown {
-			return
-		}
 		statitem, more := <-cass.cacheOverFlow.Ch
 		if !more {
 			return

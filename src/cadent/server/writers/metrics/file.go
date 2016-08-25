@@ -73,7 +73,10 @@ func NewFileMetrics() *FileMetrics {
 	return fc
 }
 
-// TODO
+func (fi *FileMetrics) Driver() string {
+	return "file"
+}
+
 func (fi *FileMetrics) Stop() {
 	fi.startstop.Stop(func() {
 		shutdown.AddToShutdown()

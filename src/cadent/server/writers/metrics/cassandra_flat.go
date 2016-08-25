@@ -667,6 +667,10 @@ func NewCassandraFlatMetrics() *CassandraFlatMetric {
 	return new(CassandraFlatMetric)
 }
 
+func (cass *CassandraFlatMetric) Driver() string {
+	return "cassandra-flat"
+}
+
 func (cass *CassandraFlatMetric) Start() {
 	cass.writer.Start()
 }

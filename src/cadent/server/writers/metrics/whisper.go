@@ -573,6 +573,10 @@ func NewWhisperMetrics() *WhisperMetrics {
 	return ws
 }
 
+func (ws *WhisperMetrics) Driver() string {
+	return "whisper"
+}
+
 func (ws *WhisperMetrics) Start() {
 	ws.writer.Start()
 }
