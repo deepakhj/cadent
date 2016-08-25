@@ -128,6 +128,8 @@ The main writers are
     - cassandra-flat: a row for each time/point
 
         Good for simplicity, and when you are starting out w/ cassandra to verify things are working as planned
+        But, not exactly space efficient nor read/api performant.  But may be usefull (as it was for me)
+        in verifification of the internals.
 
     - whisper: standard graphite format
 
@@ -190,6 +192,25 @@ that are very slow to update, and they will take a very long time to acctually p
     cache_max_time_in_cache
 
 for the `writer.options` section lets you tune this value.  The default value is 1 hour (`cache_max_time_in_cache=60m`)
+
+
+### SubWriters
+
+Currently there is support for "double writing" which simply means writing to 2 places at the same time (any more then
+that and things can get abused at high volume).
+Each writer gets it's own cache/queue/etc. Which means that the RAM requiements (and CPU) are doubled in the worst case
+(it depends on the subwriter config of course).
+This was mostly meant for writing to your long term storage, and publishing events to kafka.  Or as a migration path
+for moving from one storage system to another.
+
+
+### Shutdown
+
+On shutdown (basically a SIGINT), since there can be lots of data still in the cache phase of things.  Cadent will attempt to Flush all the
+data it has into the writers.  It this in "full blast" mode, which means it will simply write as fast as it can.  If
+There are many thousands of metrics in RAM this can take some time (if you have multiple resolutions and/or in triggered
+rollup mode things need to do these writes too so more time).   So expect loads on both the cadent host and the DB system
+to suddenly go bonkers.
 
 
 ### Writer Schemas
@@ -658,7 +679,7 @@ The "Flat" format is
     	    time: [int64 unix Nano second time stamp],
     	    metric: "my.metric.is.good",
     	    id: [uint64 FNVa],
-    	    uid: string based on the ID,
+    	    uid: string // base 36 from the ID
     	    sum: float64,
     	    min: float64,
     	    max: float64,
@@ -677,7 +698,7 @@ The "Blob" format is
     	    time: [int64 unix Nano second time stamp],
     	    metric: "my.metric.is.good",
     	    id: [uint64 FNVa],
-    	    uid: string // based on the ID,
+    	    uid: string // base 36 from the ID
     	    data: bytes,
     	    encoding: string // the series encoding gorilla, protobuf, etc
     	    resolution: float64,
