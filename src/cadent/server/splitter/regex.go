@@ -29,25 +29,25 @@ import (
 const REGEX_NAME = "regex"
 
 type RegexSplitItem struct {
-	inkey    string
-	inline   string
+	inkey    []byte
+	inline   []byte
 	intime   time.Time
-	regexed  [][]string
+	regexed  [][][]byte
 	inphase  Phase
 	inorigin Origin
 	inoname  string
-	tags     [][]string
+	tags     [][][]byte
 }
 
-func (g *RegexSplitItem) Key() string {
+func (g *RegexSplitItem) Key() []byte {
 	return g.inkey
 }
 
-func (g *RegexSplitItem) Tags() [][]string {
+func (g *RegexSplitItem) Tags() [][][]byte {
 	return g.tags
 }
 
-func (g *RegexSplitItem) Line() string {
+func (g *RegexSplitItem) Line() []byte {
 	return g.inline
 }
 
@@ -59,7 +59,7 @@ func (g *RegexSplitItem) Timestamp() time.Time {
 	return g.intime
 }
 
-func (g *RegexSplitItem) Fields() []string {
+func (g *RegexSplitItem) Fields() [][]byte {
 	return g.regexed[0]
 }
 
@@ -125,10 +125,10 @@ func NewRegExSplitter(conf map[string]interface{}) (*RegExSplitter, error) {
 	return job, nil
 }
 
-func (job *RegExSplitter) ProcessLine(line string) (SplitItem, error) {
-	var key_param, time_param string
+func (job *RegExSplitter) ProcessLine(line []byte) (SplitItem, error) {
+	var key_param, time_param []byte
 
-	matched := job.key_regex.FindAllStringSubmatch(line, -1)
+	matched := job.key_regex.FindAllSubmatch(line, -1)
 	if matched == nil {
 		return nil, fmt.Errorf("Regex not matched")
 	}
@@ -140,7 +140,7 @@ func (job *RegExSplitter) ProcessLine(line string) (SplitItem, error) {
 	t := time.Time{}
 	if job.time_index > 0 && len(job.time_layout) > 0 {
 		time_param = matched[0][job.time_index+1]
-		_time, err := time.Parse(job.time_layout, time_param)
+		_time, err := time.Parse(job.time_layout, string(time_param))
 		if err == nil {
 			t = _time
 		}

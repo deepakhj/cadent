@@ -88,7 +88,7 @@ const (
 type OutputMessage struct {
 	m_type    outMessageType
 	outserver string
-	param     string
+	param     []byte
 	client    Client
 	server    *Server
 }
@@ -518,10 +518,10 @@ func (server *Server) SendtoOutputWorkers(spl splitter.SplitItem, out chan split
 
 //return the ServerHashCheck for a given key (more a utility debugger thing for
 // the stats http server)
-func (server *Server) HasherCheck(key string) ServerHashCheck {
+func (server *Server) HasherCheck(key []byte) ServerHashCheck {
 
 	var out_check ServerHashCheck
-	out_check.HashKey = key
+	out_check.HashKey = string(key)
 
 	for _, hasher := range server.Hashers {
 		// may have replicas inside the pool too that we need to deal with
@@ -529,7 +529,7 @@ func (server *Server) HasherCheck(key string) ServerHashCheck {
 		if err == nil {
 			for _, useme := range servs {
 				out_check.ToServers = append(out_check.ToServers, useme)
-				out_check.HashValue = append(out_check.HashValue, hasher.Hasher.GetHasherValue(key))
+				out_check.HashValue = append(out_check.HashValue, hasher.Hasher.GetHasherValue(out_check.HashKey))
 			}
 		}
 	}

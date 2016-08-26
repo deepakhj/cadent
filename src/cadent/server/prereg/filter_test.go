@@ -24,7 +24,7 @@ import (
 func TestPreRegFilters(t *testing.T) {
 
 	//some tester strings
-	statstring := "tester.i.am.a.stat 1234 1234"
+	statstring := []byte("tester.i.am.a.stat 1234 1234")
 	backend_str := []string{"graphite-prefix", "graphite-substring", "graphite-regex", "defaultbackend"}
 
 	// Only pass t into top-level Convey calls
@@ -79,7 +79,7 @@ func TestPreRegFilters(t *testing.T) {
 			f.Init()
 		}
 
-		Convey("When we attempt to match `"+statstring+"`", func() {
+		Convey("When we attempt to match `"+string(statstring)+"`", func() {
 			Convey("Prefix should match ", func() {
 				f := prere.FilterList[0]
 				matches, rejected, err := f.Match(statstring)
@@ -105,7 +105,7 @@ func TestPreRegFilters(t *testing.T) {
 				So(err, ShouldEqual, nil)
 				So(f.Backend(), ShouldEqual, "graphite-regex")
 			})
-			Convey("Firstmatch filter of `"+statstring+"` should match ", func() {
+			Convey("Firstmatch filter of `"+string(statstring)+"` should match ", func() {
 				f, rejected, err := prere.FirstMatchFilter(statstring)
 				So(f, ShouldEqual, prere.FilterList[0])
 				So(rejected, ShouldEqual, false)
@@ -114,21 +114,21 @@ func TestPreRegFilters(t *testing.T) {
 			})
 
 			Convey("Firstmatch filter of `123123` should match noop", func() {
-				f, rejected, err := prere.FirstMatchFilter("123123")
+				f, rejected, err := prere.FirstMatchFilter([]byte("123123"))
 				So(f, ShouldEqual, prere.FilterList[3])
 				So(rejected, ShouldEqual, false)
 				So(err, ShouldEqual, nil)
 			})
 
 			Convey("FirstMatchBackend filter of `123123` should be `defaultbackend` ", func() {
-				bk, rejected, err := prere.FirstMatchBackend("123123")
+				bk, rejected, err := prere.FirstMatchBackend([]byte("123123"))
 				So(bk, ShouldEqual, "defaultbackend")
 				So(rejected, ShouldEqual, false)
 				So(err, ShouldEqual, nil)
 			})
 
 			Convey("FirstMatchBackend filter of `moo.am.goo` should be `defaultbackend` ", func() {
-				bk, rejected, err := prere.FirstMatchBackend("moo.am.goo")
+				bk, rejected, err := prere.FirstMatchBackend([]byte("moo.am.goo"))
 				So(bk, ShouldEqual, "graphite-substring")
 				So(rejected, ShouldEqual, true)
 				So(err, ShouldEqual, nil)
@@ -136,19 +136,19 @@ func TestPreRegFilters(t *testing.T) {
 
 			// full mapper
 			Convey("MatchingFilters filter reg map of `123123` should match ", func() {
-				f := maper.MatchingFilters("123123")
+				f := maper.MatchingFilters([]byte("123123"))
 				So(len(f), ShouldEqual, 1)
 			})
 
 			Convey("MatchingBackends filter reg map of `123123` should match `defaultbackend`", func() {
-				bk, rej, err := maper.FirstMatchBackends("123123")
+				bk, rej, err := maper.FirstMatchBackends([]byte("123123"))
 				So(len(bk), ShouldEqual, 1)
 				So(bk[0], ShouldEqual, "defaultbackend")
 				So(len(rej), ShouldEqual, 1)
 				So(len(err), ShouldEqual, 1)
 			})
 
-			Convey("MatchingBackends filter reg map of `"+statstring+"` should match `graphite-prefix`", func() {
+			Convey("MatchingBackends filter reg map of `"+string(statstring)+"` should match `graphite-prefix`", func() {
 				bk, rej, err := maper.FirstMatchBackends(statstring)
 				So(len(bk), ShouldEqual, 1)
 				So(bk[0], ShouldEqual, "graphite-prefix")

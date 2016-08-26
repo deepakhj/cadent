@@ -228,8 +228,8 @@ func (a *GraphiteAccumulate) Flush(buf io.Writer) *flushedList {
 	tags are of the form name=val
 */
 
-func (a *GraphiteAccumulate) ProcessLine(line string) (err error) {
-
+func (a *GraphiteAccumulate) ProcessLine(linebytes []byte) (err error) {
+	line := string(linebytes)
 	stats_arr := strings.Fields(line)
 	l := len(stats_arr)
 

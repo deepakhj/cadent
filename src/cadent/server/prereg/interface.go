@@ -22,7 +22,7 @@ type FilterItem interface {
 	Type() string
 	Rejecting() bool
 	Init() error
-	Match(string) (bool, bool, error) // match, reject, error
+	Match(line []byte) (bool, bool, error) // match, reject, error
 	Backend() string
 	SetBackend(string) (string, error)
 	ToString() string
@@ -30,5 +30,5 @@ type FilterItem interface {
 
 // allow the filter items to use this to Send to queues if desired
 type BackendItem interface {
-	Send(string)
+	Send([]byte)
 }

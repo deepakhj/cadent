@@ -28,6 +28,7 @@ limitations under the License.
 package splitter
 
 import (
+	"bytes"
 	"cadent/server/repr"
 	"errors"
 	"fmt"
@@ -44,6 +45,15 @@ var errCarbonTwoUnitRequired = errors.New("unit Tag is required")
 var errCarbonTwoMTypeRequired = errors.New("mtype Tag is required")
 
 var CARBONTWO_REPLACER *strings.Replacer
+var CARBONTWO_REPLACER_BYTES = [][][]byte{
+	{[]byte(".."), []byte(".")},
+	{[]byte(","), []byte("_")},
+	{[]byte("*"), []byte("_")},
+	{[]byte("("), []byte("_")},
+	{[]byte(")"), []byte("_")},
+	{[]byte("{"), []byte("_")},
+	{[]byte("}"), []byte("_")},
+}
 
 func init() {
 	CARBONTWO_REPLACER = strings.NewReplacer(
@@ -58,21 +68,21 @@ func init() {
 }
 
 type CarbonTwoSplitItem struct {
-	inkey    string
-	inline   string
+	inkey    []byte
+	inline   []byte
 	intime   time.Time
-	infields []string
+	infields [][]byte
 	inphase  Phase
 	inorigin Origin
 	inoname  string
-	tags     [][]string
+	tags     [][][]byte
 }
 
-func (g *CarbonTwoSplitItem) Key() string {
+func (g *CarbonTwoSplitItem) Key() []byte {
 	return g.inkey
 }
 
-func (g *CarbonTwoSplitItem) Tags() [][]string {
+func (g *CarbonTwoSplitItem) Tags() [][][]byte {
 	return g.tags
 }
 
@@ -84,11 +94,11 @@ func (g *CarbonTwoSplitItem) Timestamp() time.Time {
 	return g.intime
 }
 
-func (g *CarbonTwoSplitItem) Line() string {
+func (g *CarbonTwoSplitItem) Line() []byte {
 	return g.inline
 }
 
-func (g *CarbonTwoSplitItem) Fields() []string {
+func (g *CarbonTwoSplitItem) Fields() [][]byte {
 	return g.infields
 }
 
@@ -142,26 +152,29 @@ the hash key is <intrinsic_tags>
 metatags are not part of the unique identifier so
 should not be included in the hash key for accumulators
 */
-func (g *CarbonTwoSplitter) ProcessLine(line string) (SplitItem, error) {
+func (g *CarbonTwoSplitter) ProcessLine(line []byte) (SplitItem, error) {
 
-	line = CARBONTWO_REPLACER.Replace(line)
+	//line = CARBONTWO_REPLACER.Replace(line)
+	for _, repls := range CARBONTWO_REPLACER_BYTES {
+		line = bytes.Replace(line, repls[0], repls[1], -1)
+	}
 
-	stats_arr := strings.Split(line, repr.DOUBLE_SPACE_SEPARATOR)
-	var key string
-	var vals []string
+	stats_arr := bytes.Split(line, repr.DOUBLE_SPACE_SEPARATOR_BYTE)
+	var key []byte
+	var vals [][]byte
 
 	if len(stats_arr) == 1 { // the <tag> <tag> <tag> <value> <time> case
-		t_vs := strings.Fields(line)
+		t_vs := bytes.Fields(line)
 		l_f := len(t_vs)
 		if l_f < 3 {
 			return nil, errCarbonTwoNotValid
 		}
-		key = strings.Join(t_vs[0:l_f-2], repr.SPACE_SEPARATOR)
+		key = bytes.Join(t_vs[0:l_f-2], repr.SPACE_SEPARATOR_BYTE)
 		vals = t_vs[l_f-2:]
 
 	} else { // the <tag> <tag> <tag>  <meta> ... <value> <time> case
 		key = stats_arr[0]
-		vals = strings.Fields(stats_arr[1])
+		vals = bytes.Fields(stats_arr[1])
 	}
 
 	if len(vals) < 2 {
@@ -172,7 +185,7 @@ func (g *CarbonTwoSplitter) ProcessLine(line string) (SplitItem, error) {
 	_intime := vals[l_vals-1] // should be unix timestamp
 
 	t := time.Now()
-	i, err := strconv.ParseInt(_intime, 10, 64)
+	i, err := strconv.ParseInt(string(_intime), 10, 64)
 	if err == nil {
 		if i <= 0 {
 			return nil, errCarbonTwoNotValid
@@ -186,10 +199,10 @@ func (g *CarbonTwoSplitter) ProcessLine(line string) (SplitItem, error) {
 	}
 
 	// parse tags
-	otags := make([][]string, 0)
+	otags := make([][][]byte, 0)
 	if l_vals >= 4 {
 		for i := 0; i < l_vals-int(2); i++ {
-			t_spl := strings.Split(vals[i], repr.EQUAL_SEPARATOR)
+			t_spl := bytes.Split(vals[i], repr.EQUAL_SEPARATOR_BYTE)
 			otags = append(otags, t_spl)
 		}
 	}

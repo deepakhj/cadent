@@ -25,9 +25,10 @@ import (
 
 	"cadent/server/lrucache"
 	"cadent/server/stats"
+	"cadent/server/utils"
+	"encoding/binary"
 	"fmt"
 	"net/url"
-	"strconv"
 	"strings"
 )
 
@@ -171,9 +172,19 @@ func (self *ConstHasher) Get(in_key string) (string, error) {
 }
 
 //alias to hasher to allow to use our LRU cache
-func (self *ConstHasher) GetN(in_key string, num int) ([]string, error) {
-	cache_key := in_key + ":" + strconv.Itoa(num)
-	srv, ok := self.Cache.Get(cache_key)
+func (self *ConstHasher) GetN(in_key []byte, num int) ([]string, error) {
+
+	l := len(in_key)
+	cache_key := utils.GetBytes(l + 1 + 2)
+	defer utils.PutBytes(cache_key)
+
+	copy(cache_key, in_key)
+	cache_key[l] = ':'
+	binary.LittleEndian.PutUint16(cache_key[l+1:], uint16(num))
+
+	key_str := string(in_key)
+	cache_key_str := string(cache_key)
+	srv, ok := self.Cache.Get(cache_key_str)
 
 	upStatsd := func(items []string) {
 		for _, useme := range items {
@@ -183,7 +194,7 @@ func (self *ConstHasher) GetN(in_key string, num int) ([]string, error) {
 
 	if !ok {
 		stats.StatsdClient.Incr("lrucache.miss", 1)
-		srv, err := self.Hasher.GetN(in_key, num)
+		srv, err := self.Hasher.GetN(key_str, num)
 		//find out real server string(s)
 		var real_servers []string
 		for _, s := range srv {
@@ -192,7 +203,7 @@ func (self *ConstHasher) GetN(in_key string, num int) ([]string, error) {
 
 		//log.Println("For: ", in_key, " Got: ", srv, " ->", real_servers)
 
-		self.Cache.Set(cache_key, MultiServerCacheItem(real_servers))
+		self.Cache.Set(cache_key_str, MultiServerCacheItem(real_servers))
 		upStatsd(real_servers)
 		return real_servers, err
 	}

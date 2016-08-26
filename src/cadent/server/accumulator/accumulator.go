@@ -77,7 +77,7 @@ type Accumulator struct {
 
 	mu          sync.Mutex
 	timer       *time.Ticker
-	LineQueue   chan string
+	LineQueue   chan []byte
 	OutputQueue chan splitter.SplitItem
 	Shutdown    chan bool
 	shutitdown  bool
@@ -112,7 +112,7 @@ func NewAccumlator(inputtype string, outputtype string, keepkeys bool, name stri
 		Name:              name,
 		FlushTimes:        []time.Duration{time.Duration(time.Second)},
 		AccumulateTime:    time.Duration(time.Second),
-		LineQueue:         make(chan string, 10000),
+		LineQueue:         make(chan []byte, 10000),
 		shutitdown:        false,
 		timer:             nil,
 		RandomTickerStart: false,
@@ -175,7 +175,7 @@ func (acc *Accumulator) ProcessSplitItem(sp splitter.SplitItem) error {
 	return acc.ProcessLine(sp.Line())
 }
 
-func (acc *Accumulator) ProcessLine(sp string) error {
+func (acc *Accumulator) ProcessLine(sp []byte) error {
 	stats.StatsdClient.Incr("accumulator.lines.incoming", 1)
 	if !acc.shutitdown {
 		acc.LineQueue <- sp
@@ -224,7 +224,7 @@ func (acc *Accumulator) Start() error {
 	}
 
 	if acc.LineQueue == nil {
-		acc.LineQueue = make(chan string, 10000)
+		acc.LineQueue = make(chan []byte, 10000)
 	}
 
 	// here again as a stop can hit in the middle of the delay timer
@@ -302,7 +302,7 @@ func (acc *Accumulator) FlushAndPost(attime time.Time) ([]splitter.SplitItem, er
 	//t := time.Now()
 	out_spl := make([]splitter.SplitItem, 0)
 	for {
-		line, err := buffer.ReadString(repr.NEWLINE_SEPARATOR_BYTE)
+		line, err := buffer.ReadBytes(repr.NEWLINE_SEPARATOR_BYTE)
 		if err == io.EOF {
 			break
 		}
@@ -310,7 +310,7 @@ func (acc *Accumulator) FlushAndPost(attime time.Time) ([]splitter.SplitItem, er
 			acc.log.Error("Buffer read error", err)
 			continue
 		}
-		if line == "" {
+		if len(line) == 0 {
 			continue
 		}
 
@@ -357,7 +357,7 @@ func (acc *Accumulator) Flush() ([]splitter.SplitItem, error) {
 
 	var out_spl []splitter.SplitItem
 	for {
-		line, err := buffer.ReadString(repr.NEWLINE_SEPARATOR_BYTE)
+		line, err := buffer.ReadBytes(repr.NEWLINE_SEPARATOR_BYTE)
 		if err == io.EOF {
 			break
 		}
@@ -365,7 +365,7 @@ func (acc *Accumulator) Flush() ([]splitter.SplitItem, error) {
 			acc.log.Error("Buffer read error", err)
 			continue
 		}
-		if line == "" {
+		if len(line) == 0 {
 			continue
 		}
 		spl, err := acc.OutSplitter.ProcessLine(line)

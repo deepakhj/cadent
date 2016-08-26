@@ -241,7 +241,9 @@ func (a *CarbonTwoAccumulate) Flush(buf io.Writer) *flushedList {
 	counter	keeps increasing over time (but might wrap/reset at some point) i.e. a gauge with the added notion of “i usually want to derive this to see the rate”
 	timestamp
 */
-func (a *CarbonTwoAccumulate) ProcessLine(line string) (err error) {
+func (a *CarbonTwoAccumulate) ProcessLine(lineb []byte) (err error) {
+	line := string(lineb)
+
 	stats_arr := strings.Split(line, "  ")
 	var key string
 	var vals []string

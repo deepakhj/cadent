@@ -17,18 +17,19 @@ limitations under the License.
 package prereg
 
 import (
+	"bytes"
 	"cadent/server/accumulator"
 	"fmt"
 	"regexp"
-	"strings"
 )
 
 /********************** prefix filter ***********************/
 
 type PrefixFilter struct {
-	Prefix   string `json:"prefix"`
-	IsReject bool   `json:"is_rejected"`
-	backend  string
+	Prefix     string `json:"prefix"`
+	prefixByte []byte
+	IsReject   bool `json:"is_rejected"`
+	backend    string
 }
 
 func (pref PrefixFilter) ToString() string {
@@ -51,11 +52,12 @@ func (pref *PrefixFilter) Rejecting() bool {
 	return pref.IsReject
 }
 func (pref *PrefixFilter) Init() error {
+	pref.prefixByte = []byte(pref.Prefix)
 	return nil
 }
 
-func (pref *PrefixFilter) Match(in string) (bool, bool, error) {
-	match := strings.HasPrefix(in, pref.Prefix)
+func (pref *PrefixFilter) Match(in []byte) (bool, bool, error) {
+	match := bytes.HasPrefix(in, pref.prefixByte)
 	return match, pref.IsReject, nil
 }
 
@@ -70,9 +72,10 @@ func (pref *PrefixFilter) SetBackend(back string) (string, error) {
 
 /**********************   SubString filter ***********************/
 type SubStringFilter struct {
-	SubString string `json:"substring"`
-	IsReject  bool   `json:"is_rejected"`
-	backend   string
+	SubString      string `json:"substring"`
+	subStringBytes []byte
+	IsReject       bool `json:"is_rejected"`
+	backend        string
 }
 
 func (sfilter *SubStringFilter) Name() string {
@@ -85,10 +88,11 @@ func (sfilter *SubStringFilter) Rejecting() bool {
 	return sfilter.IsReject
 }
 func (sfilter *SubStringFilter) Init() error {
+	sfilter.subStringBytes = []byte(sfilter.SubString)
 	return nil
 }
-func (sfilter *SubStringFilter) Match(in string) (bool, bool, error) {
-	match := strings.Contains(in, sfilter.SubString)
+func (sfilter *SubStringFilter) Match(in []byte) (bool, bool, error) {
+	match := bytes.Contains(in, sfilter.subStringBytes)
 	return match, sfilter.IsReject, nil
 }
 
@@ -132,8 +136,8 @@ func (refilter *RegexFilter) Init() error {
 	refilter.thereg = regexp.MustCompile(refilter.RegexString)
 	return nil
 }
-func (refilter *RegexFilter) Match(in string) (bool, bool, error) {
-	match := refilter.thereg.MatchString(in)
+func (refilter *RegexFilter) Match(in []byte) (bool, bool, error) {
+	match := refilter.thereg.Match(in)
 	return match, refilter.IsReject, nil
 }
 
@@ -175,7 +179,7 @@ func (nop *NoOpFilter) Init() error {
 }
 
 //always match of true
-func (nop *NoOpFilter) Match(in string) (bool, bool, error) {
+func (nop *NoOpFilter) Match(in []byte) (bool, bool, error) {
 	return true, false, nil
 }
 
@@ -210,7 +214,7 @@ type PreReg struct {
 	Accumulator *accumulator.Accumulator `json:"accumulator"`
 }
 
-func (pr *PreReg) MatchingFilters(line string) []FilterItem {
+func (pr *PreReg) MatchingFilters(line []byte) []FilterItem {
 	// just the list of filters that match a string
 
 	var fitems = make([]FilterItem, 0)
@@ -223,7 +227,7 @@ func (pr *PreReg) MatchingFilters(line string) []FilterItem {
 	return fitems
 }
 
-func (pr *PreReg) FirstMatchFilter(line string) (FilterItem, bool, error) {
+func (pr *PreReg) FirstMatchFilter(line []byte) (FilterItem, bool, error) {
 	for _, fil := range pr.FilterList {
 		matched, reject, err := fil.Match(line)
 		if matched {
@@ -233,7 +237,7 @@ func (pr *PreReg) FirstMatchFilter(line string) (FilterItem, bool, error) {
 	return nil, false, nil
 }
 
-func (pr *PreReg) FirstMatchBackend(line string) (string, bool, error) {
+func (pr *PreReg) FirstMatchBackend(line []byte) (string, bool, error) {
 	for _, fil := range pr.FilterList {
 		matched, reject, err := fil.Match(line)
 		if matched {
@@ -266,7 +270,7 @@ func (pr *PreReg) LogConfig() {
 // list of filters
 type PreRegMap map[string]*PreReg
 
-func (lpr *PreRegMap) MatchingFilters(line string) []FilterItem {
+func (lpr *PreRegMap) MatchingFilters(line []byte) []FilterItem {
 	var fitems = make([]FilterItem, 0)
 	for _, pr := range *lpr {
 		gots := pr.MatchingFilters(line)
@@ -277,7 +281,7 @@ func (lpr *PreRegMap) MatchingFilters(line string) []FilterItem {
 	return fitems
 }
 
-func (lpr *PreRegMap) FirstMatchingFilters(line string) []FilterItem {
+func (lpr *PreRegMap) FirstMatchingFilters(line []byte) []FilterItem {
 	var fitems = make([]FilterItem, 0)
 	for _, pr := range *lpr {
 		gots := pr.MatchingFilters(line)
@@ -287,7 +291,7 @@ func (lpr *PreRegMap) FirstMatchingFilters(line string) []FilterItem {
 	}
 	return fitems
 }
-func (lpr *PreRegMap) FirstMatchBackends(line string) ([]string, []bool, []error) {
+func (lpr *PreRegMap) FirstMatchBackends(line []byte) ([]string, []bool, []error) {
 	var backs = make([]string, 0)
 	var reject = make([]bool, 0)
 	var errs = make([]error, 0)
