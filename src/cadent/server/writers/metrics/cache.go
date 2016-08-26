@@ -619,6 +619,9 @@ func (wc *Cacher) GetNextMetric() *repr.StatName {
 		wc.mu.RUnlock()
 
 		if v == nil {
+			wc.mu.Lock()
+			delete(wc.Cache, item.metric)
+			wc.mu.Unlock()
 			continue
 		}
 		return v.Name

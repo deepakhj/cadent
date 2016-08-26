@@ -254,7 +254,6 @@ func (loop *WriterLoop) procLoop() {
 		case <-shut.Ch:
 			loop.metrics.Stop()
 			loop.indexer.Stop()
-			shut.Close()
 			return
 		}
 	}
