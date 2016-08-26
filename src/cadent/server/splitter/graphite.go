@@ -164,7 +164,7 @@ func (g *GraphiteSplitter) ProcessLine(line []byte) (SplitItem, error) {
 
 		// graphite timestamps are in unix seconds
 		t := time.Time{}
-		if len(graphite_array) >= g.time_index {
+		if len(graphite_array) > g.time_index {
 			i, err := strconv.ParseInt(string(graphite_array[g.time_index]), 10, 64)
 			if err == nil {
 				// nano or second tstamps
