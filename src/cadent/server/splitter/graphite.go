@@ -23,8 +23,8 @@ limitations under the License.
 package splitter
 
 import (
-	"bytes"
 	"cadent/server/repr"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -33,6 +33,8 @@ import (
 
 /****************** RUNNERS *********************/
 const GRAPHITE_NAME = "graphite"
+
+var errBadGraphiteLine = errors.New("Invalid Graphite/Space line")
 
 var GRAHITE_REPLACER *strings.Replacer
 var GRAHITE_REPLACER_BYTES = [][][]byte{
@@ -154,18 +156,19 @@ func (g *GraphiteSplitter) ProcessLine(line []byte) (SplitItem, error) {
 	//<key> <value> <time> <more> <more>
 	//graphite_array := strings.Fields(line)
 	// clean the string of bad chars
-	//line = GRAHITE_REPLACER.Replace(line)
-	for _, repls := range GRAHITE_REPLACER_BYTES {
+	/*for _, repls := range GRAHITE_REPLACER_BYTES {
 		line = bytes.Replace(line, repls[0], repls[1], -1)
-	}
+	}*/
+	t_l := string(line)
+	t_l = GRAHITE_REPLACER.Replace(t_l)
 
-	graphite_array := bytes.Split(line, repr.SPACE_SEPARATOR_BYTE)
+	graphite_array := strings.Split(t_l, repr.SPACE_SEPARATOR)
 	if len(graphite_array) > g.key_index {
 
 		// graphite timestamps are in unix seconds
 		t := time.Time{}
-		if len(graphite_array) >= g.time_index {
-			i, err := strconv.ParseInt(string(graphite_array[g.time_index]), 10, 64)
+		if len(graphite_array) > g.time_index {
+			i, err := strconv.ParseInt(graphite_array[g.time_index], 10, 64)
 			if err == nil {
 				// nano or second tstamps
 				if i > 2147483647 {
@@ -175,17 +178,21 @@ func (g *GraphiteSplitter) ProcessLine(line []byte) (SplitItem, error) {
 				}
 			}
 		}
+		fs := [][]byte{}
+		for _, j := range graphite_array {
+			fs = append(fs, []byte(j))
+		}
 		// log.Printf("IN GRAPHITE: %s ARR: %v  t_idx: %d, time: %s", graphite_array, line, graphite_array[job.time_index], t.String())
 		gi := &GraphiteSplitItem{
-			inkey:    graphite_array[g.key_index],
-			inline:   line,
+			inkey:    []byte(graphite_array[g.key_index]),
+			inline:   []byte(t_l),
 			intime:   t,
-			infields: graphite_array,
+			infields: fs,
 			inphase:  Parsed,
 			inorigin: Other,
 		}
 		return gi, nil
 	}
-	return nil, fmt.Errorf("Invalid Graphite/Space line")
+	return nil, errBadGraphiteLine
 
 }
