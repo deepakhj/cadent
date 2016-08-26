@@ -210,7 +210,106 @@ On shutdown (basically a SIGINT), since there can be lots of data still in the c
 data it has into the writers.  It this in "full blast" mode, which means it will simply write as fast as it can.  If
 There are many thousands of metrics in RAM this can take some time (if you have multiple resolutions and/or in triggered
 rollup mode things need to do these writes too so more time).   So expect loads on both the cadent host and the DB system
-to suddenly go bonkers.
+to suddenly go bonkers.  If you need to "stop" this action, you'll need a hard SIGKILL on the processes.
+
+### Caches
+
+The internal caches are the repos for all inflight data before it is written.  Some cache configurations are such that
+writes only happen on an "overflow".  An overflow is when a meteric has reached some configurable "max size".  Any "series"
+based writer uses this "overflow" meathod.  In this overflow meathod a "max time in cache" is also settable to force a write
+for things that slow to get points added.
+
+For Non-series writers, this overflow is set to "drop".  Drop means any NEW incoming points will not be added to the
+write cache, we do this as w/o it there is a huge chance the ram requirements will OOM kill the process and more data
+is then lost.
+
+The API render pieces also need knowledge of these caches as in the "short" timescales (minuets-hours) most all data is
+in ram.  So it also needs to know of the caches.  As a resul there is a config section just for caches for an accumulator section.
+There can be many defined as if doing double writes (say to cassandra series format and whisper/kafka single stat emitters)
+the caches mean different things as for series, we want it to do an overflow, where as in the single point we want to emit as
+soon as possible.
+
+Just a note the `kafka-flat` writer does not currently use a write back cache, as it's assumed to be able to handle the
+incoming volume.  Obviously if your kafka cannot take the many hundreds of thousands of messages per second, i suggest the
+series method is used.
+
+#### Example
+
+    [graphite-proxy-map]
+    listen_server="graphite-proxy"
+    default_backend="graphite-proxy"
+
+        [graphite-proxy-map.accumulator]
+        backend = "BLACKHOLE"
+        input_format = "graphite"
+        output_format = "graphite"
+        random_ticker_start = false
+
+        accumulate_flush = "5s"
+        times = ["5s:1h", "1m:168h"]
+
+        [[graphite-proxy-map.accumulator.writer.caches]]
+            name="gorilla"
+            series_encoding="gorilla"
+            bytes_per_metric=1024
+            max_metrics=1024000  # for 1 million points @ 1024 b you'll need lots o ram
+            # max_time_in_cache="60m" # force a cache flush for metrics in ram longer then this number
+            # broadcast_length="128" # buffer channel for pushed overflow writes
+            # for non-series metrics, the typical behavior is to flush the highest counts first,
+            # but that may mean lower counts never get written, this value "flips" the sorter at this % rate to
+            # force the "smaller" ones to get written more often
+            # low_fruit_rate= 0.25
+
+        [[graphite-proxy-map.accumulator.writer.caches]]
+            name="whisper"
+            series_encoding="gob"
+            bytes_per_metric=4096
+            max_metrics=1024000
+            # for non-series metrics, the typical behavior is to flush the highest counts first,
+            # but that may mean lower counts never get written, this value "flips" the sorter at this % rate to
+            # force the "smaller" ones to get written more often
+            low_fruit_rate= 0.25
+
+        [graphite.accumulator.writer.metrics]
+            driver = "mysql-triggered"
+            dsn = "user:pass@tcp(localhost:3306)/cadent"
+            cache = "gorilla"
+
+        [graphite.accumulator.writer.indexer]
+            driver = "mysql"
+            dsn = "user:pass@tcp(localhost:3306)/cadent"
+            [graphite-proxy-map.accumulator.writer.indexer.options]
+            writes_per_second=200
+
+        # also push things to whisper files
+        [graphite.accumulator.writer.submetrics]
+            driver = "whisper"
+            dsn = "/vol/graphite/storage/whisper/"
+            cache = "whisper"
+
+        [graphite.accumulator.writer.submetrics.options]
+         xFilesFactor=0.3
+         write_workers=16
+         write_queue_length=102400
+         writes_per_second=2500 # allowed physical writes per second
+
+
+        # and a levelDB index
+        [graphite.accumulator.writer.subindexer]
+        driver = "leveldb"
+        dsn = "/vol/graphite/storage/ldb/"
+
+        [graphite.accumulator.api]
+            base_path = "/graphite/"
+            listen = "0.0.0.0:8085"
+                [graphite-cassandra.accumulator.api.metrics]
+                driver = "mysql-triggered"
+                dsn = "user:pass@tcp(localhost:3306)/cadent"
+                cache = "gorilla"
+
+        [graphite.accumulator.api.indexer]
+         driver = "leveldb"
+         dsn = "/vol/graphite/storage/ldb/"
 
 
 ### Writer Schemas

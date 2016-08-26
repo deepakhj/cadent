@@ -109,7 +109,7 @@ type WhisperWriter struct {
 	retentions whisper.Retention
 	indexer    indexer.Indexer
 
-	cache_queue   *Cacher
+	cacher        *Cacher
 	cacheOverFlow *broadcast.Listener // on byte overflow of cacher force a write
 
 	shutdown   chan bool // when triggered, we skip the rate limiter and go full out till the queue is done
@@ -167,36 +167,11 @@ func NewWhisperWriter(conf map[string]interface{}) (*WhisperWriter, error) {
 		return nil, fmt.Errorf("Whisper Metrics: base path %s is not a directory", ws.base_path)
 	}
 
-	// set up the cacher
-	ws.cache_queue, err = getCacherSingleton("whisper")
-	if !ws.cache_queue.started && !ws.cache_queue.inited {
-		ws.cache_queue.inited = true
-		_ms := conf["cache_metric_size"]
-		if _ms != nil {
-			ws.cache_queue.maxKeys = int(_ms.(int64))
-		}
-
-		_ps := conf["cache_byte_size"]
-		if _ps != nil {
-			ws.cache_queue.maxBytes = int(_ps.(int64))
-		}
-
-		_st := conf["cache_series_type"]
-		if _st != nil {
-			ws.cache_queue.seriesType = _st.(string)
-		}
-
-		_ov := conf["cache_overflow_method"]
-		if _ov != nil {
-			ws.cache_queue.overFlowMethod = _ov.(string)
-
-		}
-
-		_lf := conf["cache_low_fruit_rate"]
-		if _lf != nil {
-			ws.cache_queue.lowFruitRate = _lf.(float64)
-		}
+	_cache := conf["cache"]
+	if _cache == nil {
+		return nil, errMetricsCacheRequired
 	}
+	ws.cacher = _cache.(*Cacher)
 
 	_rs := conf["writes_per_second"]
 	ws.writes_per_second = WHISPER_WRITES_PER_SECOND
@@ -336,13 +311,13 @@ func (ws *WhisperWriter) Stop() {
 		}
 		ws.shutdown <- true
 
-		ws.cache_queue.Stop()
+		ws.cacher.Stop()
 
-		if ws.cache_queue == nil {
+		if ws.cacher == nil {
 			ws.log.Warning("Whisper: Shutdown finished, nothing in queue to write")
 			return
 		}
-		mets := ws.cache_queue.Queue
+		mets := ws.cacher.Queue
 		mets_l := len(mets)
 		ws.log.Warning("Whisper: Shutting down, exhausting the queue (%d items) and quiting", mets_l)
 		// full tilt write out
@@ -351,9 +326,9 @@ func (ws *WhisperWriter) Stop() {
 			if did%100 == 0 {
 				ws.log.Warning("Whisper: shutdown purge: written %d/%d...", did, mets_l)
 			}
-			name, points, _ := ws.cache_queue.GetById(queueitem.metric)
+			name, points, _ := ws.cacher.GetById(queueitem.metric)
 			if points != nil {
-				stats.StatsdClient.Incr(fmt.Sprintf("writer.cassandraflat.write.send-to-writers"), 1)
+				stats.StatsdClient.Incr(fmt.Sprintf("writer.whisper.write.send-to-writers"), 1)
 				ws.InsertMulti(name, points)
 			}
 			did++
@@ -381,12 +356,12 @@ func (ws *WhisperWriter) Start() {
 		ws.write_dispatcher.SetRetries(2)
 		ws.write_dispatcher.Run()
 
-		ws.cache_queue.Start()
+		ws.cacher.Start()
 		go ws.sendToWriters() // fire up queue puller
 
 		// set th overflow chan, and start the listener for that channel
-		if ws.cache_queue.overFlowMethod == "chan" {
-			ws.cacheOverFlow = ws.cache_queue.GetOverFlowChan()
+		if ws.cacher.overFlowMethod == "chan" {
+			ws.cacheOverFlow = ws.cacher.GetOverFlowChan()
 			go ws.overFlowWrite()
 		}
 	})
@@ -466,7 +441,7 @@ func (ws *WhisperWriter) InsertMulti(metric *repr.StatName, points repr.StatRepr
 func (ws *WhisperWriter) InsertNext() (int, error) {
 	defer stats.StatsdSlowNanoTimeFunc("writer.whisper.update-time-ns", time.Now())
 
-	metric, points := ws.cache_queue.Pop()
+	metric, points := ws.cacher.Pop()
 	if metric == nil || points == nil || len(points) == 0 {
 		return 0, nil
 	}
@@ -499,7 +474,7 @@ func (ws *WhisperWriter) Write(stat repr.StatRepr) error {
 	}
 
 	// add to the writeback cache only
-	ws.cache_queue.Add(&stat.Name, &stat)
+	ws.cacher.Add(&stat.Name, &stat)
 	agg_func := repr.GuessReprValueFromKey(stat.Name.Key)
 	// and now add it to the readcache iff it's been activated
 	r_cache := GetReadCache()
@@ -711,7 +686,7 @@ func (ws *WhisperMetrics) RawDataRenderOne(metric indexer.MetricFindItem, start 
 
 	if err != nil {
 		// try the write inflight cache as nothing is written yet
-		inflight_renderitem, err := ws.writer.cache_queue.GetAsRawRenderItem(stat_name)
+		inflight_renderitem, err := ws.writer.cacher.GetAsRawRenderItem(stat_name)
 		// need at LEAST 2 points to get the proper step size
 		if inflight_renderitem != nil && err == nil && len(inflight_renderitem.Data) > 1 {
 			// move the times to the "requested" ones and quantize the list
@@ -779,7 +754,7 @@ func (ws *WhisperMetrics) RawDataRenderOne(metric indexer.MetricFindItem, start 
 	rawd.Step = step_t
 
 	// grab the "current inflight" from the cache and merge into the main array
-	inflight_data, err := ws.writer.cache_queue.GetAsRawRenderItem(stat_name)
+	inflight_data, err := ws.writer.cacher.GetAsRawRenderItem(stat_name)
 	if err == nil && inflight_data != nil && len(inflight_data.Data) > 1 {
 		inflight_data.Step = step_t // need to force this step size
 		//merge with any inflight bits (inflight has higher precedence over the file)

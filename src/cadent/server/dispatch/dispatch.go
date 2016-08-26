@@ -221,6 +221,7 @@ func (d *Dispatch) background_dispatch() {
 
 /** Put all the pieces together */
 type DispatchQueue struct {
+	Name           string
 	job_queue      chan IJob
 	dispatch_queue chan chan IJob
 	dispatcher     *Dispatch

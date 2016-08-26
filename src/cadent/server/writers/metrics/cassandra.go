@@ -102,7 +102,6 @@ import (
 	"cadent/server/utils"
 	"cadent/server/utils/shutdown"
 	"cadent/server/writers/indexer"
-	"errors"
 	"math"
 	"strings"
 	"sync"
@@ -110,17 +109,12 @@ import (
 )
 
 const (
-	CASSANDRA_DEFAULT_SERIES_TYPE      = "gorilla"
-	CASSANDRA_DEFAULT_LONGEST_TIME     = "3600s"
-	CASSANDRA_DEFAULT_SERIES_CHUNK     = 16 * 1024 * 1024 // 16kb
 	CASSANDRA_DEFAULT_RENDER_TIMEOUT   = "5s"
 	CASSANDRA_DEFAULT_ROLLUP_TYPE      = "cached"
 	CASSANDRA_DEFAULT_METRIC_WORKERS   = 16
 	CASSANDRA_DEFAULT_METRIC_QUEUE_LEN = 1024 * 100
 	CASSANDRA_DEFAULT_METRIC_RETRIES   = 2
 )
-
-var errMultiTargetsNotAllowed = errors.New("Multiple Targets are not allowed")
 
 /*** set up "one" real writer (per dsn) .. need just a single cassandra DB connection for all the time resoltuions
 
@@ -287,13 +281,9 @@ type CassandraMetric struct {
 	// and the api render, but not all the caches, so we need to be able to get the
 	// the cache singleton keys
 	// `cache:series:seriesMaxMetrics:seriesEncoding:seriesMaxBytes:maxTimeInCache`
-	cacherPrefix     string
-	cacher           *Cacher
-	cacheOverFlow    *broadcast.Listener // on byte overflow of cacher force a write
-	seriesEncoding   string
-	seriesMaxMetrics int
-	seriesMaxBytes   int
-	maxTimeInCache   time.Duration
+	cacherPrefix  string
+	cacher        *Cacher
+	cacheOverFlow *broadcast.Listener // on byte overflow of cacher force a write
 
 	// if the rolluptype == cached, then we this just uses the internal RAM caches
 	// otherwise if "trigger" we only have the lowest res cache, and trigger rollups on write
@@ -370,29 +360,6 @@ func (cass *CassandraMetric) Config(conf map[string]interface{}) (err error) {
 		cass.dispatch_retries = int(_rt.(int64))
 	}
 
-	cass.seriesMaxBytes = CASSANDRA_DEFAULT_SERIES_CHUNK
-	_bz := conf["cache_byte_size"]
-	if _bz != nil {
-		cass.seriesMaxBytes = int(_bz.(int64))
-	}
-
-	cass.seriesEncoding = CASSANDRA_DEFAULT_SERIES_TYPE
-	_se := conf["series_encoding"]
-	if _se != nil {
-		cass.seriesEncoding = _se.(string)
-	}
-
-	cass.seriesMaxBytes = CASSANDRA_DEFAULT_SERIES_CHUNK
-	_ps := conf["cache_byte_size"]
-	if _ps != nil {
-		cass.seriesMaxBytes = int(_ps.(int64))
-	}
-	_ms := conf["cache_metric_size"]
-	cass.seriesMaxMetrics = CACHER_METRICS_KEYS
-	if _ms != nil {
-		cass.seriesMaxMetrics = int(_ms.(int64))
-	}
-
 	rdur, err := time.ParseDuration(CASSANDRA_DEFAULT_RENDER_TIMEOUT)
 	if err != nil {
 		return err
@@ -406,30 +373,17 @@ func (cass *CassandraMetric) Config(conf map[string]interface{}) (err error) {
 		cass.rollupType = _rot.(string)
 	}
 
+	_cache := conf["cache"]
+	if _cache == nil {
+		return errMetricsCacheRequired
+	}
+	cass.cacher = _cache.(*Cacher)
+	cass.cacherPrefix = cass.cacher.Prefix
+
 	if cass.rollupType == "triggered" {
 		cass.driver = "cassandra-triggered" // reset the name
-		cass.rollup = NewRollupMetric(cass, cass.seriesMaxBytes)
+		cass.rollup = NewRollupMetric(cass, cass.cacher.maxBytes)
 	}
-
-	pd := CASSANDRA_DEFAULT_LONGEST_TIME
-	_pd := conf["cache_max_time_in_cache"]
-	if _pd != nil {
-		pd = _pd.(string)
-	}
-	dur, err := time.ParseDuration(pd)
-	if err != nil {
-		return fmt.Errorf("Cassandra cache_max_time_in_cache is not a valid duration: %v", err)
-	}
-	cass.maxTimeInCache = dur
-
-	cass.cacherPrefix = fmt.Sprintf("cache:series:%d:%s:%d:%s", cass.seriesMaxMetrics, cass.seriesEncoding, cass.seriesMaxBytes, cass.maxTimeInCache.String())
-	cache_key := fmt.Sprintf(cass.cacherPrefix+":%v", resolution)
-	cass.cacher, err = getCacherSingleton(cache_key)
-	if err != nil {
-		return err
-	}
-
-	// rollup types
 
 	return nil
 }
@@ -441,14 +395,8 @@ func (cass *CassandraMetric) Driver() string {
 func (cass *CassandraMetric) Start() {
 	cass.startstop.Start(func() {
 		/**** dispatcher queue ***/
-		cass.writer.log.Notice("Starting cassandra series writer for %s at %d bytes per series", cass.writer.db.MetricTable(), cass.seriesMaxBytes)
-
-		cass.cacher.seriesType = cass.seriesEncoding
-		cass.cacher.maxBytes = cass.seriesMaxBytes
-		cass.cacher.maxKeys = cass.seriesMaxMetrics
-		cass.cacher.maxTimeInCache = uint32(cass.maxTimeInCache.Seconds())
-		cass.cacher.overFlowMethod = "chan"
-
+		cass.writer.log.Notice("Starting cassandra series writer for %s at %d bytes per series", cass.writer.db.MetricTable(), cass.cacher.maxBytes)
+		cass.cacher.overFlowMethod = "chan" // need to force this issue
 		cass.cacher.Start()
 
 		// register the overflower
@@ -465,7 +413,7 @@ func (cass *CassandraMetric) Start() {
 		// start the rollupper if needed
 		if cass.doRollup {
 			// all but the lowest one
-			cass.rollup.blobMaxBytes = cass.seriesMaxBytes
+			cass.rollup.blobMaxBytes = cass.cacher.maxBytes
 			cass.rollup.SetResolutions(cass.resolutions[1:])
 			go cass.rollup.Start()
 		}
@@ -761,7 +709,7 @@ func (cass *CassandraMetric) GetFromWriteCache(metric *indexer.MetricFindItem, s
 		cache_db = fmt.Sprintf("%s:%d", cass.cacherPrefix, cass.resolutions[0][0])
 	}
 
-	use_cache := getCacherByName(cache_db)
+	use_cache := GetCacherByName(cache_db)
 	if use_cache == nil {
 		use_cache = cass.cacher
 	}
@@ -1010,7 +958,7 @@ func (cass *CassandraMetric) CachedSeries(path string, start int64, end int64, t
 
 	resolution := cass.getResolution(start, end)
 	cache_db := fmt.Sprintf("%s:%v", cass.cacherPrefix, resolution)
-	use_cache := getCacherByName(cache_db)
+	use_cache := GetCacherByName(cache_db)
 	if use_cache == nil {
 		use_cache = cass.cacher
 	}

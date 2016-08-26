@@ -61,9 +61,10 @@ import (
 var errTargetRequired = errors.New("Target is required")
 
 type ApiMetricConfig struct {
-	Driver  string                 `toml:"driver"`
-	DSN     string                 `toml:"dsn"`
-	Options map[string]interface{} `toml:"options"` // option=[ [key, value], [key, value] ...]
+	Driver   string                 `toml:"driver"`
+	DSN      string                 `toml:"dsn"`
+	UseCache string                 `toml:"cache"`
+	Options  map[string]interface{} `toml:"options"` // option=[ [key, value], [key, value] ...]
 }
 
 type ApiIndexerConfig struct {
@@ -92,6 +93,21 @@ func (re *ApiConfig) GetMetrics(resolution float64) (metrics.MetricsReader, erro
 	}
 	re.ApiMetricOptions.Options["dsn"] = re.ApiMetricOptions.DSN
 	re.ApiMetricOptions.Options["resolution"] = resolution
+
+	// need to match caches
+	// use the defined cacher object
+	if len(re.ApiMetricOptions.UseCache) == 0 {
+		return nil, errCacheOptionRequired
+	}
+
+	// find the proper cache to use
+	res := uint32(resolution)
+	proper_name := fmt.Sprintf("%s:%d", re.ApiMetricOptions.UseCache, res)
+	c, err := metrics.GetCacherSingleton(proper_name)
+	if err != nil {
+		return nil, err
+	}
+	re.ApiMetricOptions.Options["cache"] = c
 
 	err = reader.Config(re.ApiMetricOptions.Options)
 	if err != nil {

@@ -317,7 +317,6 @@ func (rl *RollupMetric) DoRollup(tseries *TotalTimeSeries) error {
 			t_new_data.RealStart = t_start
 			t_new_data.RealEnd = t_end
 			t_new_data.End = t_end
-
 			err = writeOne(&t_new_data, nil, res[0], res[1])
 			if err != nil {
 				rl.log.Errorf("Rollup failure: %v", err)
@@ -330,14 +329,25 @@ func (rl *RollupMetric) DoRollup(tseries *TotalTimeSeries) error {
 
 		if t_start_nano >= r_stats.End() || (t_start_nano >= r_stats.Start() && t_end_nano >= r_stats.End()) {
 			old_data, err := r_stats.ToRawRenderItem()
+
+			// if this fails, means our old data is corrupt, and the only real recourse is to add a new row
+			if err != nil {
+				rl.log.Errorf("Rollup Get failure, need to write a new row: `%v`", err)
+				t_new_data.Start = t_start
+				t_new_data.RealStart = t_start
+				t_new_data.RealEnd = t_end
+				t_new_data.End = t_end
+				err = writeOne(&t_new_data, nil, res[0], res[1])
+				if err != nil {
+					rl.log.Errorf("Rollup failure: %v", err)
+				}
+
+				continue
+			}
+
 			old_data.Id = t_new_data.Id
 			old_data.Step = uint32(res[0])
 			old_data.Metric = t_new_data.Metric
-
-			if err != nil {
-				rl.log.Errorf("Rollup Get failure: %v", err)
-				continue
-			}
 			//fmt.Println("CASE1: Old Points:", old_data)
 			//old_data.PrintPoints()
 			//fmt.Println("Pre Merge Points")

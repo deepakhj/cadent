@@ -72,11 +72,11 @@ the default of `mean`.
 |---|---|
 | ends with: count |  sum |
 | ends with: error(s?) |  sum |
-| ends with: delete(s?) |  sum |
-| ends with: insert(s?) |  sum |
-| ends with: update(s?) |  sum |
-| ends with: request(s?) |  sum |
-| ends with: select(s?) |  sum |
+| ends with: delete(s|d?) |  sum |
+| ends with: insert(s|ed?) |  sum |
+| ends with: update(s|d?) |  sum |
+| ends with: request(s|ed?) |  sum |
+| ends with: select(s|ed?) |  sum |
 | ends with: add(s|ed)? |  sum |
 | ends with: remove(s?) |  sum |
 | ends with: remove(s|d?) |  sum |

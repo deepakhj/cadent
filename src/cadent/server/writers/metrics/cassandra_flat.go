@@ -710,7 +710,7 @@ func (cass *CassandraFlatMetric) Config(conf map[string]interface{}) (err error)
 
 	cache_key := fmt.Sprintf("cassandraflat:cache:%s:%v", conf["dsn"], resolution)
 
-	gots.cacher, err = getCacherSingleton(cache_key)
+	gots.cacher, err = GetCacherSingleton(cache_key)
 
 	if err != nil {
 		return err

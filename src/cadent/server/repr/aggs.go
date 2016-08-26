@@ -67,7 +67,11 @@ func AggTypeFromTag(stat string) AggType {
 		return MIN
 	case stat == "max" || stat == "upper" || _upperReg.MatchString(stat) || _upperMaxReg.MatchString(stat):
 		return MAX
-	case stat == "sum" || stat == "count" || stat == "insert" || stat == "add" || stat == "counter" || stat == "requests" || _countReg.MatchString(stat):
+	case stat == "sum" || stat == "count" || stat == "add" || stat == "counter" || stat == "requests" || _countReg.MatchString(stat):
+		return SUM
+	case stat == "select" || stat == "selects" || stat == "selected" || stat == "updates" || stat == "update" || stat == "inserts" || stat == "insert" || stat == "delete" || stat == "deletes" || stat == "deleted":
+		return SUM
+	case stat == "consume" || stat == "consumed":
 		return SUM
 	case stat == "gauge" || stat == "abs" || stat == "absolute":
 		return LAST
@@ -97,7 +101,7 @@ func GuessReprValueFromKey(metric string) AggType {
 		return LAST
 	case last_path == "requests" || last_path == "sum" || last_path == "errors" || last_path == "error":
 		return SUM
-	case last_path == "updates" || last_path == "update" || last_path == "inserts" || last_path == "insert" || last_path == "delete" || last_path == "deletes":
+	case last_path == "select" || last_path == "selects" || last_path == "selected" || last_path == "updates" || last_path == "update" || last_path == "updated" || last_path == "inserts" || last_path == "insert" || last_path == "delete" || last_path == "deleted" || last_path == "deletes":
 		return SUM
 	case last_path == "adds" || last_path == "add" || last_path == "added" || last_path == "remove" || last_path == "removes" || last_path == "removed":
 		return SUM

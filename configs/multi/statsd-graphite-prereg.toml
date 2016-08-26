@@ -1,0 +1,141 @@
+###########################################################################
+## Statsd proxy to internal graphite accumulator
+###########################################################################
+
+[statsd-proxy-map]
+listen_server="statsd-proxy" # which listener to sit in front of  (must be in the main config)
+default_backend="graphite-proxy"  # failing a match go here
+
+    [statsd-proxy-map.accumulator]
+    backend = "graphite-proxy"  # farm to relay
+    input_format = "statsd"
+    output_format = "graphite"
+    accumulate_flush = "10s"
+    options = [
+            ["legacyNamespace", "true"],
+            ["prefixGauge", "gauges"],
+            ["prefixTimer", "timers"],
+            ["prefixCounter", ""],
+            ["globalPrefix", "stats"],
+            ["globalSuffix", ""],
+            ["percentThreshold", "0.90,0.95,0.99"]
+    ]
+
+    # Sub string type match
+    [[statsd-proxy-map.map]]
+    substring=".marvel"  # ignore elastic search marvel stuff
+    reject=true
+
+    [[statsd-proxy-map.map]]
+    regex='''(kafka\.consumer\.FetchRequestAndResponseMetrics.*)|(.*ReplicaFetcherThread.*)|(kafka\.server\.FetcherLagMetrics\..*)|(kafka\.log\.Log\..*)|(kafka\.cluster\.Partition\..*)'''
+    reject=true
+
+###########################################################################
+## Graphite Writer :: to both Whisper and Cassandra
+###########################################################################
+
+[graphite-cassandra]
+listen_server="graphite-proxy"
+default_backend="graphite-proxy"
+
+    # accumulator and
+    [graphite-cassandra.accumulator]
+    backend = "BLACKHOLE"  # loop back, the code will bypass the accumulator on the second pass
+    input_format = "graphite"
+    output_format = "graphite"
+    accumulate_flush = "10s"  # push out to writer aggregator collector and the backend every 5s
+
+    # aggregate bin counts
+    times = ["10s:168h", "1m:720h", "10m:21600h"]
+
+    [graphite-cassandra.accumulator.writer]
+        metric_queue_length=10240
+        indexer_queue_length=10240
+
+        [[graphite-cassandra.accumulator.writer.caches]]
+        name="gorilla"
+        series_encoding="gorilla"
+        bytes_per_metric=1024
+        max_metrics=1024000  # for 1 million points @ 1024 b you'll need lots o ram
+
+        [[graphite-cassandra.accumulator.writer.caches]]
+        name="whisper"
+        series_encoding="gorilla"
+        bytes_per_metric=1024
+        low_fruit_rate=0.1
+        max_metrics=1024000  # for 1 million points @ 1024 b you'll need lots o ram
+
+
+        [graphite-cassandra.accumulator.writer.metrics]
+        driver = "cassandra-triggered"
+        dsn = "127.0.0.1"
+        cache = "gorilla"
+
+        [graphite-cassandra.accumulator.writer.metrics.options]
+        user="cassandra"
+        pass="cassandra"
+        keyspace="metric"
+        metrics_table="metric_series"
+        numcons=32
+
+        [graphite-cassandra.accumulator.writer.indexer]
+        driver = "cassandra"
+        dsn = "127.0.0.1"
+
+        [graphite-cassandra.accumulator.writer.indexer.options]
+        user="cassandra"
+        pass="cassandra"
+        path_table="path"
+        segment_table="segment"
+        cache_index=1024000
+        numcons=10
+        write_workers=32
+        write_queue_length=1024000
+        writes_per_second=8000
+
+
+        [graphite-cassandra.accumulator.writer.submetrics]
+        driver = "whisper"
+        dsn = "/vol/graphite/storage/whisper/"
+        cache = "whisper"
+
+        [graphite-cassandra.accumulator.writer.submetrics.options]
+        xFilesFactor=0.3
+        write_workers=16
+        write_queue_length=102400
+        writes_per_second=2500 # allowed physical writes per second
+
+        [graphite-cassandra.accumulator.writer.subindexer]
+        driver = "leveldb"
+        dsn = "/vol/graphite/storage/ldb/"
+
+
+
+    [graphite-cassandra.accumulator.api]
+    base_path = "/graphite/"
+    listen = "0.0.0.0:8085"
+        [graphite-cassandra.accumulator.api.metrics]
+        driver = "cassandra"
+        dsn = "127.0.0.1"
+        cache = "gorilla"
+            [graphite-cassandra.accumulator.api.metrics.options]
+            user="cassandra"
+            pass="cassandra"
+            keyspace="metric"
+            metrics_table="metric_series"
+
+
+        [graphite-cassandra.accumulator.api.indexer]
+        driver = "cassandra"
+        dsn = "127.0.0.1"
+
+            [graphite-cassandra.accumulator.api.indexer.options]
+            user="cassandra"
+            pass="cassandra"
+            path_table="path"
+            segment_table="segment"
+
+    [[graphite-cassandra.map]]
+    # Sub string type match
+        substring=".marvel"  # ignore elastic search marvel stuff
+        reject=true
