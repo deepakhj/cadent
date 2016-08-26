@@ -152,11 +152,12 @@ var ACCUMULATE_FUNC = map[AggType]AGG_FUNC{
 			return 0
 		}
 		sort.Sort(vals)
+		use_v := l_val / 2
 		if l_val%2 == 0 && l_val > 3 {
-			return (vals[l_val-1] + vals[l_val+1]) / 2.0
+			return (vals[use_v-1] + vals[use_v+1]) / 2.0
 		}
 
-		return vals[l_val-1]
+		return vals[use_v]
 	},
 	MAX: func(vals AggFloat64) float64 {
 		if len(vals) == 0 {
