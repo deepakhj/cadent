@@ -28,7 +28,6 @@ limitations under the License.
 package splitter
 
 import (
-	"bytes"
 	"cadent/server/repr"
 	"errors"
 	"fmt"
@@ -152,29 +151,30 @@ the hash key is <intrinsic_tags>
 metatags are not part of the unique identifier so
 should not be included in the hash key for accumulators
 */
-func (g *CarbonTwoSplitter) ProcessLine(line []byte) (SplitItem, error) {
+func (g *CarbonTwoSplitter) ProcessLine(inline []byte) (SplitItem, error) {
 
-	//line = CARBONTWO_REPLACER.Replace(line)
-	for _, repls := range CARBONTWO_REPLACER_BYTES {
+	line := string(inline)
+	line = CARBONTWO_REPLACER.Replace(line)
+	/*for _, repls := range CARBONTWO_REPLACER_BYTES {
 		line = bytes.Replace(line, repls[0], repls[1], -1)
-	}
+	}*/
 
-	stats_arr := bytes.Split(line, repr.DOUBLE_SPACE_SEPARATOR_BYTE)
-	var key []byte
-	var vals [][]byte
+	stats_arr := strings.Split(line, repr.DOUBLE_SPACE_SEPARATOR)
+	var key string
+	var vals []string
 
 	if len(stats_arr) == 1 { // the <tag> <tag> <tag> <value> <time> case
-		t_vs := bytes.Fields(line)
+		t_vs := strings.Fields(line)
 		l_f := len(t_vs)
 		if l_f < 3 {
 			return nil, errCarbonTwoNotValid
 		}
-		key = bytes.Join(t_vs[0:l_f-2], repr.SPACE_SEPARATOR_BYTE)
+		key = strings.Join(t_vs[0:l_f-2], repr.SPACE_SEPARATOR)
 		vals = t_vs[l_f-2:]
 
 	} else { // the <tag> <tag> <tag>  <meta> ... <value> <time> case
 		key = stats_arr[0]
-		vals = bytes.Fields(stats_arr[1])
+		vals = strings.Fields(stats_arr[1])
 	}
 
 	if len(vals) < 2 {
@@ -185,7 +185,7 @@ func (g *CarbonTwoSplitter) ProcessLine(line []byte) (SplitItem, error) {
 	_intime := vals[l_vals-1] // should be unix timestamp
 
 	t := time.Now()
-	i, err := strconv.ParseInt(string(_intime), 10, 64)
+	i, err := strconv.ParseInt(_intime, 10, 64)
 	if err == nil {
 		if i <= 0 {
 			return nil, errCarbonTwoNotValid
@@ -202,16 +202,19 @@ func (g *CarbonTwoSplitter) ProcessLine(line []byte) (SplitItem, error) {
 	otags := make([][][]byte, 0)
 	if l_vals >= 4 {
 		for i := 0; i < l_vals-int(2); i++ {
-			t_spl := bytes.Split(vals[i], repr.EQUAL_SEPARATOR_BYTE)
-			otags = append(otags, t_spl)
+			t_spl := strings.Split(vals[i], repr.EQUAL_SEPARATOR)
+			otags = append(otags, [][]byte{[]byte(t_spl[0]), []byte(t_spl[1])})
 		}
 	}
-
+	fs := [][]byte{}
+	for _, j := range vals {
+		fs = append(fs, []byte(j))
+	}
 	gi := &CarbonTwoSplitItem{
-		inkey:    key,
-		inline:   line,
+		inkey:    []byte(key),
+		inline:   []byte(line),
 		intime:   t,
-		infields: vals,
+		infields: fs,
 		tags:     otags,
 		inphase:  Parsed,
 		inorigin: Other,
