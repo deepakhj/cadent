@@ -317,7 +317,6 @@ func (rl *RollupMetric) DoRollup(tseries *TotalTimeSeries) error {
 			t_new_data.RealStart = t_start
 			t_new_data.RealEnd = t_end
 			t_new_data.End = t_end
-
 			err = writeOne(&t_new_data, nil, res[0], res[1])
 			if err != nil {
 				rl.log.Errorf("Rollup failure: %v", err)
@@ -334,6 +333,10 @@ func (rl *RollupMetric) DoRollup(tseries *TotalTimeSeries) error {
 			// if this fails, means our old data is corrupt, and the only real recourse is to add a new row
 			if err != nil {
 				rl.log.Errorf("Rollup Get failure, need to write a new row: `%v`", err)
+				t_new_data.Start = t_start
+				t_new_data.RealStart = t_start
+				t_new_data.RealEnd = t_end
+				t_new_data.End = t_end
 				err = writeOne(&t_new_data, nil, res[0], res[1])
 				if err != nil {
 					rl.log.Errorf("Rollup failure: %v", err)
