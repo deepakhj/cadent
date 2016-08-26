@@ -22,17 +22,24 @@ default_backend="graphite-proxy"  # failing a match go here
     # aggregate bin counts
     times = ["5s:1h", "1m:168h"]
 
+    # cache objects to be shared (or not) across the writer backends
+    [[graphite-proxy-map.accumulator.writer.caches]]
+            name="gorilla"
+            cache_series_type="gorilla"
+            cache_byte_size=1024
+            cache_metric_size=1024000  # for 1 million points @ 1024 b you'll need lots o ram
+            # cache_max_time_in_cache="2m" # force a cache flush for metrics in ram longer then this number
+
     # AND write things to the cassandra DB
     # cassandra api, metrics writer and path indexer
     [graphite-proxy-map.accumulator.writer.metrics]
         driver = "cassandra-flat"
         dsn = "127.0.0.1:9042"
+        cache = "gorilla"
         [graphite-proxy-map.accumulator.writer.metrics.options]
         write_queue_length=100
         writes_per_second=500
-        cache_series_type="gorilla"
-        cache_byte_size=4096
-        cache_overflow_method="drop"
+
 
 
     [graphite-proxy-map.accumulator.writer.indexer]
@@ -50,6 +57,7 @@ default_backend="graphite-proxy"  # failing a match go here
             [graphite-proxy-map.accumulator.api.metrics]
             driver = "cassandra-flat"
             dsn = "127.0.0.1:9042"
+            cache = "gorilla"
 
             [graphite-proxy-map.accumulator.api.indexer]
             driver = "cassandra"

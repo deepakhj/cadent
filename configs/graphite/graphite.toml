@@ -95,6 +95,23 @@ internal_health_server_points=500
 internal_health_server_path="./html"
 
 
+[statsd-proxy]
+# internal statsd listener that pushes things into the below graphite section
+
+## what port/scheme we are listening on for incoming data
+listen="udp://0.0.0.0:8125"
+
+msg_type="statsd"
+
+# only one server one node use the fastest one (however not used anyw
+hasher_algo="mmh3"
+hasher_elter="statsd"
+hasher_vnodes=1
+workers=20
+
+out_dev_null=true
+
+
 [graphite-proxy]
 
 ### Server sections .. note all the above is overridable in each section

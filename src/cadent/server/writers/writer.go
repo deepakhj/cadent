@@ -28,6 +28,7 @@ import (
 	"cadent/server/writers/metrics"
 	logging "gopkg.in/op/go-logging.v1"
 
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -38,37 +39,68 @@ const (
 	WRITER_DEFAULT_INDEX_QUEUE_LENGTH  = 1024 * 20
 	WRITER_DEFAULT_METRIC_QUEUE_LENGTH = 1024 * 10
 	WRITER_MAX_WRITE_QUEUE             = 10 * 1024 * 1024
-
-	// defaults for the cache objects
-	WRITER_CACHER_NUMBER_BYTES     = 8192
-	WRITER_CACHER_SERIES_TYPE      = "protobuf"
-	WRITER_CACHER_METRICS_KEYS     = 102400
-	WRITER_CACHER_DEFAULT_OVERFLOW = "drop"
-
-	// for "series" writers using the overflow chan method, we can force a
-	// "write" if either nothing has been added in this time (really slow series)
-	// OR It's been in RAM this long
-	// this helps avoid too much data loss if things crash.
-	WRITER_CACHER_DEFAULT_OVERFLOW_DURATION = 3600
-
-	// max length for the broadcast channel
-	WRITER_CACHER_DEFAULT_BROADCAST_LEN = 128
 )
+
+var errNeedCacheName = errors.New("`Name` is required")
+var errCacheOptionRequired = errors.New("Metrics configs need a `cache` option")
+var errCacheNotFound = errors.New("Count not find cache with the provided name")
 
 // toml config for Internal Caches
 type WriterCacheConfig struct {
-	Name            string `toml:"name"`
-	BytesPerMetric  int    `toml:"bytes_per_metric"`
-	SeriesEncoding  string `toml:"series_encoding"`
-	MaxMetricKeys   int    `toml:"max_metrics"`
-	CacheOverFlow   string `toml:"overflow_method"`
-	BroadCastLength int    `toml:"broadcast_length"`
+	Name            string  `toml:"name"`
+	SeriesEncoding  string  `toml:"series_encoding"`
+	BytesPerMetric  int     `toml:"bytes_per_metric"`
+	MaxMetricKeys   int     `toml:"max_metrics"`
+	MaxTimeInCache  string  `toml:"max_time_in_cache"`
+	CacheOverFlow   string  `toml:"overflow_method"`
+	BroadCastLength int     `toml:"broadcast_length"`
+	LowFruitRate    float64 `toml:"low_fruit_rate"`
+}
+
+func (wc *WriterCacheConfig) New(resolution uint32) (*metrics.Cacher, error) {
+	// grab from signleton list
+	if len(wc.Name) == 0 {
+		return nil, errNeedCacheName
+	}
+	c, err := metrics.GetCacherSingleton(fmt.Sprintf("%s:%d", wc.Name, resolution))
+	if err != nil {
+		return nil, err
+	}
+	c.Prefix = wc.Name
+	if wc.BroadCastLength > 0 {
+		c.SetMaxBroadcastLen(wc.BroadCastLength)
+	}
+	if wc.MaxMetricKeys > 0 {
+		c.SetMaxKeys(wc.MaxMetricKeys)
+	}
+	if len(wc.CacheOverFlow) > 0 {
+		c.SetMaxOverFlowMethod(wc.CacheOverFlow)
+	}
+	if len(wc.SeriesEncoding) > 0 {
+		c.SetSeriesEncoding(wc.SeriesEncoding)
+	}
+	if wc.BytesPerMetric > 0 {
+		c.SetMaxBytesPerMetric(wc.BytesPerMetric)
+	}
+	if len(wc.MaxTimeInCache) > 0 {
+		d, err := time.ParseDuration(wc.MaxTimeInCache)
+		if err != nil {
+			return nil, err
+		}
+		c.SetMaxTimeInCache(uint32(d.Seconds()))
+	}
+	if wc.LowFruitRate > 0 {
+		c.SetLowFruitRate(wc.LowFruitRate)
+	}
+	return c, nil
 }
 
 // toml config for Metrics
 type WriterMetricConfig struct {
-	Driver      string                 `toml:"driver"`
-	DSN         string                 `toml:"dsn"`
+	Driver   string `toml:"driver"`
+	DSN      string `toml:"dsn"`
+	UseCache string `toml:"cache"`
+
 	QueueLength int                    `toml:"input_queue_length"` // metric write queue length
 	Options     map[string]interface{} `toml:"options"`            // option=[ [key, value], [key, value] ...]
 }
@@ -77,7 +109,7 @@ func (wc WriterMetricConfig) ResolutionsNeeded() (metrics.WritersNeeded, error) 
 	return metrics.ResolutionsNeeded(wc.Driver)
 }
 
-func (wc WriterMetricConfig) NewMetrics(duration time.Duration) (metrics.MetricsWriter, error) {
+func (wc WriterMetricConfig) NewMetrics(duration time.Duration, cache_config []WriterCacheConfig) (metrics.MetricsWriter, error) {
 
 	mets, err := metrics.NewWriterMetrics(wc.Driver)
 	if err != nil {
@@ -94,6 +126,31 @@ func (wc WriterMetricConfig) NewMetrics(duration time.Duration) (metrics.Metrics
 	// a little special case to set the rollupType == "triggered" if we are the triggered driver
 	if strings.HasSuffix(wc.Driver, "-triggered") {
 		i_ops["rollup_type"] = "triggered"
+	}
+
+	// use the defined cacher object
+	if len(wc.UseCache) == 0 {
+		return nil, errCacheOptionRequired
+	}
+
+	// find the proper cache to use
+	res := uint32(duration.Seconds())
+	proper_name := fmt.Sprintf("%s:%d", wc.UseCache, res)
+	have := false
+	for _, c := range cache_config {
+		got, err := c.New(res)
+		if err != nil {
+			return nil, err
+		}
+
+		if got.Name == proper_name {
+			i_ops["cache"] = got
+			have = true
+			break
+		}
+	}
+	if !have {
+		return nil, errCacheNotFound
 	}
 
 	err = mets.Config(i_ops)
@@ -133,7 +190,7 @@ func (wc WriterIndexerConfig) NewIndexer() (indexer.Indexer, error) {
 }
 
 type WriterConfig struct {
-	Caches []WriterCacheConfig `toml:"cache"`
+	Caches []WriterCacheConfig `toml:"caches"`
 
 	Metrics WriterMetricConfig  `toml:"metrics"`
 	Indexer WriterIndexerConfig `toml:"indexer"`
@@ -148,6 +205,7 @@ type WriterConfig struct {
 
 type WriterLoop struct {
 	name         string
+	cache        *metrics.Cacher
 	metrics      metrics.MetricsWriter
 	indexer      indexer.Indexer
 	write_chan   chan *repr.StatRepr

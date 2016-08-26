@@ -87,10 +87,7 @@ import (
 )
 
 const (
-	MYSQL_DEFAULT_LONGEST_TIME     = "3600s"
-	MYSQL_DEFAULT_SERIES_TYPE      = "gorilla"
-	MYSQL_DEFAULT_SERIES_CHUNK     = 16 * 1024 // 16kb
-	MYSQL_RENDER_TIMEOUT           = "5s"      // 5 second time out on any render
+	MYSQL_RENDER_TIMEOUT           = "5s" // 5 second time out on any render
 	MYSQL_DEFAULT_ROLLUP_TYPE      = "cached"
 	MYSQL_DEFAULT_METRIC_WORKERS   = 16
 	MYSQL_DEFAULT_METRIC_QUEUE_LEN = 1024 * 100
@@ -140,13 +137,9 @@ type MySQLMetrics struct {
 	// and the api render, but not all the caches, so we need to be able to get the
 	// the cache singleton keys
 	// `cache:series:seriesMaxMetrics:seriesEncoding:seriesMaxBytes:maxTimeInCache`
-	cacherPrefix     string
-	cacher           *Cacher
-	cacheOverFlow    *broadcast.Listener // on byte overflow of cacher force a write
-	seriesEncoding   string
-	seriesMaxMetrics int
-	seriesMaxBytes   int
-	maxTimeInCache   time.Duration
+	cacherPrefix  string
+	cacher        *Cacher
+	cacheOverFlow *broadcast.Listener // on byte overflow of cacher force a write
 
 	// if the rolluptype == cached, then we this just uses the internal RAM caches
 	// otherwise if "trigger" we only have the lowest res cache, and trigger rollups on write
@@ -160,8 +153,7 @@ type MySQLMetrics struct {
 	dispatch_retries int
 	dispatcher       *dispatch.DispatchQueue
 
-	shutitdown bool      // just a flag
-	shutdown   chan bool // just a flag
+	shutitdown bool // just a flag
 	startstop  utils.StartStop
 
 	log *logging.Logger
@@ -204,19 +196,6 @@ func (my *MySQLMetrics) Config(conf map[string]interface{}) error {
 	my.db = db.(*dbs.MySQLDB)
 	my.conn = db.Connection().(*sql.DB)
 
-	// cacher and mysql options for series
-	my.seriesEncoding = MYSQL_DEFAULT_SERIES_TYPE
-	_bt := conf["series_encoding"]
-	if _bt != nil {
-		my.seriesEncoding = _bt.(string)
-	}
-
-	my.seriesMaxBytes = MYSQL_DEFAULT_SERIES_CHUNK
-	_bz := conf["cache_byte_size"]
-	if _bz != nil {
-		my.seriesMaxBytes = int(_bz.(int64))
-	}
-
 	g_tag, ok := conf["tags"]
 	if ok {
 		my.static_tags = repr.SortingTagsFromString(g_tag.(string))
@@ -251,39 +230,17 @@ func (my *MySQLMetrics) Config(conf map[string]interface{}) error {
 		my.dispatch_retries = int(_rt.(int64))
 	}
 
+	_cache := conf["cache"]
+	if _cache == nil {
+		return errMetricsCacheRequired
+	}
+	my.cacher = _cache.(*Cacher)
+	my.cacherPrefix = my.cacher.Prefix
+
 	if my.rollupType == "triggered" {
 		my.driver = "mysql-triggered"
-		my.rollup = NewRollupMetric(my, my.seriesMaxBytes)
+		my.rollup = NewRollupMetric(my, my.cacher.maxBytes)
 	}
-
-	_mtc := conf["cache_max_time_in_cache"]
-	_maxtime := MYSQL_DEFAULT_LONGEST_TIME
-
-	if _mtc != nil {
-		_maxtime = _mtc.(string)
-	}
-	dur, err := time.ParseDuration(_maxtime)
-	if err != nil {
-		return err
-	}
-	my.maxTimeInCache = dur
-
-	my.seriesMaxMetrics = CACHER_METRICS_KEYS
-	_cz := conf["cache_metric_size"]
-	if _cz != nil {
-		my.seriesMaxMetrics = int(_cz.(int64))
-	}
-
-	//cacher
-	my.cacherPrefix = fmt.Sprintf("cache:series:%d:%s:%d:%s", my.seriesMaxMetrics, my.seriesEncoding, my.seriesMaxBytes, my.maxTimeInCache.String())
-	cache_key := fmt.Sprintf(my.cacherPrefix+":%v", resolution)
-
-	my.cacher, err = getCacherSingleton(cache_key)
-	if err != nil {
-		return err
-	}
-
-	my.shutdown = make(chan bool)
 
 	rdur, err := time.ParseDuration(MYSQL_RENDER_TIMEOUT)
 	if err != nil {
@@ -300,12 +257,8 @@ func (my *MySQLMetrics) Driver() string {
 
 func (my *MySQLMetrics) Start() {
 	my.startstop.Start(func() {
-		my.log.Notice("Starting mysql writer for %s at %d bytes per series", my.db.Tablename(), my.seriesMaxBytes)
+		my.log.Notice("Starting mysql writer for %s at %d bytes per series", my.db.Tablename(), my.cacher.maxBytes)
 
-		my.cacher.maxBytes = my.seriesMaxBytes
-		my.cacher.seriesType = my.seriesEncoding
-		my.cacher.maxTimeInCache = uint32(my.maxTimeInCache.Seconds())
-		my.cacher.maxKeys = my.seriesMaxMetrics
 		my.cacher.overFlowMethod = "chan"
 		my.cacher.Start()
 
@@ -321,7 +274,7 @@ func (my *MySQLMetrics) Start() {
 		// start the rolluper if needed
 		if my.doRollup {
 			// all but the lowest one
-			my.rollup.blobMaxBytes = my.seriesMaxBytes
+			my.rollup.blobMaxBytes = my.cacher.maxBytes
 			my.rollup.SetResolutions(my.resolutions[1:])
 			go my.rollup.Start()
 		}
@@ -635,7 +588,7 @@ func (my *MySQLMetrics) GetFromWriteCache(metric *indexer.MetricFindItem, start 
 		cache_db = fmt.Sprintf("%s:%d", my.cacherPrefix, my.resolutions[0][0])
 	}
 
-	use_cache := getCacherByName(cache_db)
+	use_cache := GetCacherByName(cache_db)
 	if use_cache == nil {
 		use_cache = my.cacher
 	}
@@ -893,7 +846,7 @@ func (my *MySQLMetrics) CachedSeries(path string, start int64, end int64, tags r
 
 	resolution := my.getResolution(start, end)
 	cache_db := fmt.Sprintf("%s:%v", my.cacherPrefix, resolution)
-	use_cache := getCacherByName(cache_db)
+	use_cache := GetCacherByName(cache_db)
 	if use_cache == nil {
 		use_cache = my.cacher
 	}

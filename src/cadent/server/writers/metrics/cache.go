@@ -120,7 +120,7 @@ the "render" step will then attempt to backfill those points
 var _CACHER_SINGLETON map[string]*Cacher
 var _cacher_mutex sync.RWMutex
 
-func getCacherSingleton(nm string) (*Cacher, error) {
+func GetCacherSingleton(nm string) (*Cacher, error) {
 	_cacher_mutex.Lock()
 	defer _cacher_mutex.Unlock()
 
@@ -135,7 +135,7 @@ func getCacherSingleton(nm string) (*Cacher, error) {
 }
 
 // just GET by name if it exists
-func getCacherByName(nm string) *Cacher {
+func GetCacherByName(nm string) *Cacher {
 	_cacher_mutex.RLock()
 	defer _cacher_mutex.RUnlock()
 
@@ -208,6 +208,7 @@ type Cacher struct {
 	Queue          CacheQueue
 	Cache          map[repr.StatId]*CacheItem
 	Name           string // just a human name for things
+	Prefix         string // caches names are "Prefix:{resolution}" or should be
 
 	//overflow pieces
 	overFlowMethod string
@@ -242,6 +243,28 @@ func NewCacher() *Cacher {
 
 	wc.overFlowBroadcast = broadcast.New(CACHER_DEFAULT_BROADCAST_LEN)
 	return wc
+}
+
+func (wc *Cacher) SetMaxKeys(m int) {
+	wc.maxKeys = m
+}
+func (wc *Cacher) SetMaxBytesPerMetric(m int) {
+	wc.maxBytes = m
+}
+func (wc *Cacher) SetSeriesEncoding(m string) {
+	wc.seriesType = m
+}
+func (wc *Cacher) SetMaxTimeInCache(m uint32) {
+	wc.maxTimeInCache = m
+}
+func (wc *Cacher) SetMaxOverFlowMethod(m string) {
+	wc.overFlowMethod = m
+}
+func (wc *Cacher) SetMaxBroadcastLen(m int) {
+	wc.overFlowBroadcast = broadcast.New(m)
+}
+func (wc *Cacher) SetLowFruitRate(m float64) {
+	wc.lowFruitRate = m
 }
 
 func (wc *Cacher) Start() {

@@ -42,11 +42,6 @@ import (
 	"time"
 )
 
-const (
-	KAFKA_DEFAULT_SERIES_TYPE  = "gorilla"
-	KAFKA_DEFAULT_SERIES_CHUNK = 16 * 1024 // 16kb
-)
-
 /** kafka put object **/
 type KafkaMetric struct {
 	Type       string      `json:"type"`
@@ -103,13 +98,9 @@ type KafkaMetrics struct {
 	// and the api render, but not all the caches, so we need to be able to get the
 	// the cache singleton keys
 	// `cache:series:seriesMaxMetrics:seriesEncoding:seriesMaxBytes:maxTimeInCache`
-	cacherPrefix     string
-	cacher           *Cacher
-	cacheOverFlow    *broadcast.Listener // on byte overflow of cacher force a write
-	seriesEncoding   string
-	seriesMaxMetrics int
-	seriesMaxBytes   int
-	maxTimeInCache   time.Duration
+	cacherPrefix  string
+	cacher        *Cacher
+	cacheOverFlow *broadcast.Listener // on byte overflow of cacher force a write
 }
 
 func NewKafkaMetrics() *KafkaMetrics {
@@ -147,44 +138,12 @@ func (kf *KafkaMetrics) Config(conf map[string]interface{}) error {
 		kf.static_tags = repr.SortingTagsFromString(g_tag.(string))
 	}
 
-	_cz := conf["cache_metric_size"]
-	kf.seriesMaxMetrics = CACHER_METRICS_KEYS
-	if _cz != nil {
-		kf.seriesMaxMetrics = int(_cz.(int64))
+	_cache := conf["cache"]
+	if _cache == nil {
+		return errMetricsCacheRequired
 	}
-
-	// cacher and mysql options for series
-	_bt := conf["series_encoding"]
-	kf.seriesEncoding = KAFKA_DEFAULT_SERIES_TYPE
-	if _bt != nil {
-		kf.seriesEncoding = _bt.(string)
-	}
-
-	_bz := conf["cache_byte_size"]
-	kf.seriesMaxBytes = KAFKA_DEFAULT_SERIES_CHUNK
-	if _bz != nil {
-		kf.seriesMaxBytes = int(_bz.(int64))
-	}
-
-	_mtc := conf["cache_max_time_in_cache"]
-	_maxtime := MYSQL_DEFAULT_LONGEST_TIME
-
-	if _mtc != nil {
-		_maxtime = _mtc.(string)
-	}
-	dur, err := time.ParseDuration(_maxtime)
-	if err != nil {
-		return err
-	}
-	kf.maxTimeInCache = dur
-
-	kf.cacherPrefix = fmt.Sprintf("cache:series:%d:%s:%d:%s", kf.seriesMaxMetrics, kf.seriesEncoding, kf.seriesMaxBytes, kf.maxTimeInCache.String())
-	cache_key := fmt.Sprintf(kf.cacherPrefix+":%v", resolution)
-	kf.cacher, err = getCacherSingleton(cache_key)
-	if err != nil {
-		return err
-	}
-
+	kf.cacher = _cache.(*Cacher)
+	kf.cacherPrefix = kf.cacher.Prefix
 	return nil
 }
 
@@ -195,11 +154,7 @@ func (kf *KafkaMetrics) Driver() string {
 func (kf *KafkaMetrics) Start() {
 	kf.startstop.Start(func() {
 		kf.log.Notice("Starting Kafka writer for %s at %d bytes per series", kf.db.DataTopic(), kf.cacher.maxBytes)
-		kf.cacher.seriesType = kf.seriesEncoding
-		kf.cacher.maxBytes = kf.seriesMaxBytes
-		kf.cacher.maxKeys = kf.seriesMaxMetrics
-		kf.cacher.maxTimeInCache = uint32(kf.maxTimeInCache.Seconds())
-		kf.cacher.overFlowMethod = "chan"
+		kf.cacher.overFlowMethod = "chan" // force chan
 
 		kf.cacher.Start()
 		// only register this if we are really going to consume it
@@ -352,7 +307,7 @@ func (kf *KafkaMetrics) GetFromWriteCache(metric *repr.StatName, start uint32, e
 	// grab data from the write inflight cache
 	// need to pick the "proper" cache
 	cache_db := fmt.Sprintf("%s:%v", kf.cacherPrefix, resolution)
-	use_cache := getCacherByName(cache_db)
+	use_cache := GetCacherByName(cache_db)
 	if use_cache == nil {
 		use_cache = kf.cacher
 	}
@@ -446,7 +401,7 @@ func (kf *KafkaMetrics) CachedSeries(path string, start int64, end int64, tags r
 
 	resolution := kf.getResolution(start, end)
 	cache_db := fmt.Sprintf("%s:%v", kf.cacherPrefix, resolution)
-	use_cache := getCacherByName(cache_db)
+	use_cache := GetCacherByName(cache_db)
 	if use_cache == nil {
 		use_cache = kf.cacher
 	}

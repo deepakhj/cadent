@@ -35,15 +35,20 @@ default_backend="graphite-proxy"  # failing a match go here
     accumulate_flush = "5s"
     times = ["5s:1h", "1m:168h"]
 
+    # cache objects to be shared (or not) across the writer backends
+    [[graphite-proxy-map.accumulator.writer.caches]]
+        name="gorilla"
+        cache_series_type="gorilla"
+        cache_byte_size=1024
+        cache_metric_size=1024000  # for 1 million points @ 1024 b you'll need lots o ram
+        # cache_max_time_in_cache="2m" # force a cache flush for metrics in ram longer then this number
+
     # primary write things to the mysql DB
     [graphite-proxy-map.accumulator.writer.metrics]
         driver = "mysql-triggered"
         dsn = "root:@tcp(localhost:3306)/cadent"
-        [graphite-proxy-map.accumulator.writer.metrics.options]
-            cache_series_type="gorilla"
-            cache_byte_size=1024
-            cache_metric_size=1024000  # for 1 million points @ 1024 b you'll need lots o ram
-            # cache_max_time_in_cache="2m" # force a cache flush for metrics in ram longer then this number
+        cache = "gorilla"
+
 
     [graphite-proxy-map.accumulator.writer.indexer]
         driver = "mysql"
@@ -55,11 +60,7 @@ default_backend="graphite-proxy"  # failing a match go here
     [graphite-proxy-map.accumulator.writer.submetrics]
         driver = "kafka"
         dsn = "127.0.0.1:9092"
-        [graphite-proxy-map.accumulator.writer.submetrics.options]
-            cache_series_type="gorilla"
-            cache_byte_size=1024
-            cache_metric_size=1024000  # for 1 million points @ 1024 b you'll need lots o ram
-            # cache_max_time_in_cache="2m" # force a cache flush for metrics in ram longer then this number
+        cache="gorilla"
 
     # no sub indexer here
     [graphite-proxy-map.accumulator.writer.subindexer]
@@ -73,6 +74,7 @@ default_backend="graphite-proxy"  # failing a match go here
             [graphite-proxy-map.accumulator.api.metrics]
                 driver = "mysql"
                 dsn = "root:@tcp(localhost:3306)/cadent"
+                cache = "gorilla"
 
 
             [graphite-proxy-map.accumulator.api.indexer]

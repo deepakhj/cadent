@@ -205,7 +205,7 @@ func (agg *AggregateLoop) SetWriter(conf writers.WriterConfig, mainorsub string)
 			agg.log.Error("Writer error:: %s", err)
 			return err
 		}
-		mets, err := conf_mets.NewMetrics(dur)
+		mets, err := conf_mets.NewMetrics(dur, conf.Caches)
 		if err != nil {
 			return err
 		}

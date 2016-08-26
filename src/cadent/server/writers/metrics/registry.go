@@ -21,8 +21,15 @@ limitations under the License.
 package metrics
 
 import (
+	"errors"
 	"fmt"
 )
+
+// cache configs are required for some metric writers
+var errMetricsCacheRequired = errors.New("Cache object is required")
+
+// /cached/series endpoint cannot have multi targets
+var errMultiTargetsNotAllowed = errors.New("Multiple Targets are not allowed")
 
 func NewReaderMetrics(name string) (MetricsReader, error) {
 	switch {
