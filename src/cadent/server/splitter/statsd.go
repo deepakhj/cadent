@@ -23,8 +23,8 @@ package splitter
 import (
 	"cadent/server/repr"
 	"fmt"
+	"strings"
 	"time"
-	"bytes"
 )
 
 const STATSD_NAME = "statsd"
@@ -108,12 +108,17 @@ func NewStatsdSplitter(conf map[string]interface{}) (*StatsdSplitter, error) {
 
 func (job *StatsdSplitter) ProcessLine(line []byte) (SplitItem, error) {
 
-	statd_array := bytes.Split(line, repr.COLON_SEPARATOR_BYTE)
+	in_l := string(line)
+	statd_array := strings.Split(in_l, repr.COLON_SEPARATOR)
+	fs := [][]byte{}
+	for _, j := range statd_array {
+		fs = append(fs, []byte(j))
+	}
 	if len(statd_array) >= 2 {
 		si := &StatsdSplitItem{
-			inkey:    statd_array[0],
-			inline:   line,
-			infields: statd_array,
+			inkey:    []byte(statd_array[0]),
+			inline:   []byte(in_l),
+			infields: fs,
 			inphase:  Parsed,
 			inorigin: Other,
 		}
