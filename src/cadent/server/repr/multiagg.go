@@ -58,7 +58,7 @@ func (ma *MultiAggregator) Len() int {
 }
 
 // Add one stat to all the queues
-func (ma *MultiAggregator) Add(stat StatRepr) error {
+func (ma *MultiAggregator) Add(stat *StatRepr) error {
 	ma.mu.Lock()
 	defer ma.mu.Unlock()
 

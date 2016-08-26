@@ -73,7 +73,7 @@ func (sa *Aggregator) GetAndClear() map[string]*StatRepr {
 	return t_items
 }
 
-func (sa *Aggregator) Add(stat StatRepr) error {
+func (sa *Aggregator) Add(stat *StatRepr) error {
 	sa.mu.Lock()
 	defer sa.mu.Unlock()
 
@@ -81,7 +81,7 @@ func (sa *Aggregator) Add(stat StatRepr) error {
 	m_k := sa.MapKey(stat.Name.UniqueIdString(), stat.Time)
 	element, ok := sa.Items[m_k]
 	if !ok {
-		sa.Items[m_k] = &stat
+		sa.Items[m_k] = stat
 		return nil
 	}
 

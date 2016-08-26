@@ -54,7 +54,7 @@ const (
 /** dispatcher job **/
 type StatJob struct {
 	Aggregators *repr.MultiAggregator
-	Stat        repr.StatRepr
+	Stat        *repr.StatRepr
 }
 
 func (j StatJob) IncRetry() int {
@@ -256,7 +256,7 @@ func (agg *AggregateLoop) startInputLooper() {
 	for {
 		select {
 		case stat := <-agg.InputChan:
-			agg.stat_write_queue <- StatJob{Aggregators: agg.Aggregators, Stat: stat}
+			agg.stat_write_queue <- StatJob{Aggregators: agg.Aggregators, Stat: &stat}
 			//agg.Aggregators.Add(stat)
 		case <-shut.Ch:
 			return
