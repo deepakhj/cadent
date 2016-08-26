@@ -448,7 +448,7 @@ func (ws *WhisperWriter) InsertMulti(metric *repr.StatName, points repr.StatRepr
 		if r := recover(); r != nil {
 			ws.log.Critical("Whisper Failure (panic) '%v' :: Corrupt :: need to remove file: %s", r, metric.Key)
 			ws.DeleteByName(metric.Key)
-			err = r.(error)
+			err = fmt.Errorf("%v", r)
 		}
 	}()
 
