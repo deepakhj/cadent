@@ -21,10 +21,10 @@ limitations under the License.
 package splitter
 
 import (
-	"bytes"
 	"cadent/server/repr"
 	"fmt"
 	"time"
+	"bytes"
 )
 
 const STATSD_NAME = "statsd"
