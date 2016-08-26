@@ -99,10 +99,7 @@ type AggregateLoop struct {
 	OutReader *writers.ApiLoop
 
 	// dispathers
-
-	stat_write_queue    chan dispatch.IJob
-	stat_dispatch_queue chan chan dispatch.IJob
-	stat_dispatcher     *dispatch.Dispatch
+	stat_dispatcher *dispatch.DispatchQueue
 
 	// if true will set the flusher to basically started at "now" time otherwise it will use time % duration
 	// use case:
@@ -244,19 +241,17 @@ func (agg *AggregateLoop) SetWriter(conf writers.WriterConfig, mainorsub string)
 func (agg *AggregateLoop) startInputLooper() {
 	shut := agg.Shutdown.Listen()
 
-	if agg.stat_write_queue == nil {
+	if agg.stat_dispatcher == nil {
 		workers := AGGLOOP_DEFAULT_WORKERS
-		agg.stat_write_queue = make(chan dispatch.IJob, AGGLOOP_DEFAULT_QUEUE_LENGTH)
-		agg.stat_dispatch_queue = make(chan chan dispatch.IJob, workers)
-		agg.stat_dispatcher = dispatch.NewDispatch(workers, agg.stat_dispatch_queue, agg.stat_write_queue)
+		agg.stat_dispatcher = dispatch.NewDispatchQueue(workers, AGGLOOP_DEFAULT_QUEUE_LENGTH, 0)
 		agg.stat_dispatcher.Name = "aggloop"
-		agg.stat_dispatcher.Run()
+		agg.stat_dispatcher.Start()
 	}
 
 	for {
 		select {
 		case stat := <-agg.InputChan:
-			agg.stat_write_queue <- StatJob{Aggregators: agg.Aggregators, Stat: &stat}
+			agg.stat_dispatcher.Add(StatJob{Aggregators: agg.Aggregators, Stat: &stat})
 			//agg.Aggregators.Add(stat)
 		case <-shut.Ch:
 			return
@@ -411,7 +406,7 @@ func (agg *AggregateLoop) Stop() {
 		agg.log.Warning("Initiating shutdown of aggregator for `%s`", agg.Name)
 
 		if agg.stat_dispatcher != nil {
-			agg.stat_dispatcher.Shutdown()
+			agg.stat_dispatcher.Stop()
 		}
 
 		agg.Shutdown.Send(true)
