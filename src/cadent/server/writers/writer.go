@@ -38,7 +38,32 @@ const (
 	WRITER_DEFAULT_INDEX_QUEUE_LENGTH  = 1024 * 20
 	WRITER_DEFAULT_METRIC_QUEUE_LENGTH = 1024 * 10
 	WRITER_MAX_WRITE_QUEUE             = 10 * 1024 * 1024
+
+	// defaults for the cache objects
+	WRITER_CACHER_NUMBER_BYTES     = 8192
+	WRITER_CACHER_SERIES_TYPE      = "protobuf"
+	WRITER_CACHER_METRICS_KEYS     = 102400
+	WRITER_CACHER_DEFAULT_OVERFLOW = "drop"
+
+	// for "series" writers using the overflow chan method, we can force a
+	// "write" if either nothing has been added in this time (really slow series)
+	// OR It's been in RAM this long
+	// this helps avoid too much data loss if things crash.
+	WRITER_CACHER_DEFAULT_OVERFLOW_DURATION = 3600
+
+	// max length for the broadcast channel
+	WRITER_CACHER_DEFAULT_BROADCAST_LEN = 128
 )
+
+// toml config for Internal Caches
+type WriterCacheConfig struct {
+	Name            string `toml:"name"`
+	BytesPerMetric  int    `toml:"bytes_per_metric"`
+	SeriesEncoding  string `toml:"series_encoding"`
+	MaxMetricKeys   int    `toml:"max_metrics"`
+	CacheOverFlow   string `toml:"overflow_method"`
+	BroadCastLength int    `toml:"broadcast_length"`
+}
 
 // toml config for Metrics
 type WriterMetricConfig struct {
@@ -108,6 +133,8 @@ func (wc WriterIndexerConfig) NewIndexer() (indexer.Indexer, error) {
 }
 
 type WriterConfig struct {
+	Caches []WriterCacheConfig `toml:"cache"`
+
 	Metrics WriterMetricConfig  `toml:"metrics"`
 	Indexer WriterIndexerConfig `toml:"indexer"`
 

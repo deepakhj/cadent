@@ -169,6 +169,14 @@ type MySQLMetrics struct {
 
 func NewMySQLMetrics() *MySQLMetrics {
 	my := new(MySQLMetrics)
+	my.driver = "mysql"
+	my.log = logging.MustGetLogger("writers.mysql")
+	return my
+}
+
+func NewMySQLTriggeredMetrics() *MySQLMetrics {
+	my := new(MySQLMetrics)
+	my.driver = "mysql-triggered"
 	my.log = logging.MustGetLogger("writers.mysql")
 	return my
 }
@@ -185,8 +193,6 @@ func (my *MySQLMetrics) Config(conf map[string]interface{}) error {
 	if resolution == nil {
 		return fmt.Errorf("Resolution needed for mysql writer")
 	}
-
-	my.driver = "mysql"
 
 	// newDB is a "cached" item to let us pass the connections around
 	db_key := dsn + fmt.Sprintf("%f", resolution)
@@ -271,23 +277,10 @@ func (my *MySQLMetrics) Config(conf map[string]interface{}) error {
 	//cacher
 	my.cacherPrefix = fmt.Sprintf("cache:series:%d:%s:%d:%s", my.seriesMaxMetrics, my.seriesEncoding, my.seriesMaxBytes, my.maxTimeInCache.String())
 	cache_key := fmt.Sprintf(my.cacherPrefix+":%v", resolution)
+
 	my.cacher, err = getCacherSingleton(cache_key)
 	if err != nil {
 		return err
-	}
-
-	// only set these if it's not been started/init'ed
-	// as the readers will use this object as well
-	if !my.cacher.started && !my.cacher.inited {
-		my.cacher.inited = true
-		my.cacher.maxBytes = my.seriesMaxBytes
-		my.cacher.seriesType = my.seriesEncoding
-		my.cacher.maxTimeInCache = uint32(dur.Seconds())
-		my.cacher.maxKeys = my.seriesMaxMetrics
-
-		// unlike the other writers, overflows of cache size are
-		// exactly what we want to write
-		my.cacher.overFlowMethod = "chan"
 	}
 
 	my.shutdown = make(chan bool)
@@ -308,7 +301,12 @@ func (my *MySQLMetrics) Driver() string {
 func (my *MySQLMetrics) Start() {
 	my.startstop.Start(func() {
 		my.log.Notice("Starting mysql writer for %s at %d bytes per series", my.db.Tablename(), my.seriesMaxBytes)
+
 		my.cacher.maxBytes = my.seriesMaxBytes
+		my.cacher.seriesType = my.seriesEncoding
+		my.cacher.maxTimeInCache = uint32(my.maxTimeInCache.Seconds())
+		my.cacher.maxKeys = my.seriesMaxMetrics
+		my.cacher.overFlowMethod = "chan"
 		my.cacher.Start()
 
 		// only register this when we start as we really want to consume

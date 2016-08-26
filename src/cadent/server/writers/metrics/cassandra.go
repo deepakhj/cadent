@@ -318,6 +318,13 @@ type CassandraMetric struct {
 
 func NewCassandraMetrics() *CassandraMetric {
 	cass := new(CassandraMetric)
+	cass.driver = "cassandra"
+	return cass
+}
+
+func NewCassandraTriggerMetrics() *CassandraMetric {
+	cass := new(CassandraMetric)
+	cass.driver = "cassandra-triggered"
 	return cass
 }
 
@@ -329,8 +336,6 @@ func (cass *CassandraMetric) Config(conf map[string]interface{}) (err error) {
 		return err
 	}
 	cass.writer = gots
-
-	cass.driver = "cassandra"
 
 	_dsn := conf["dsn"]
 	if _dsn == nil {
@@ -424,15 +429,6 @@ func (cass *CassandraMetric) Config(conf map[string]interface{}) (err error) {
 		return err
 	}
 
-	cass.cacher.seriesType = cass.seriesEncoding
-	cass.cacher.maxBytes = cass.seriesMaxBytes
-	cass.cacher.maxKeys = cass.seriesMaxMetrics
-	cass.cacher.maxTimeInCache = uint32(cass.maxTimeInCache.Seconds())
-
-	// unlike the other writers, overflows of cache size are
-	// exactly what we want to write
-	cass.cacher.overFlowMethod = "chan"
-
 	// rollup types
 
 	return nil
@@ -447,6 +443,7 @@ func (cass *CassandraMetric) Start() {
 		/**** dispatcher queue ***/
 		cass.writer.log.Notice("Starting cassandra series writer for %s at %d bytes per series", cass.writer.db.MetricTable(), cass.seriesMaxBytes)
 
+		cass.cacher.seriesType = cass.seriesEncoding
 		cass.cacher.maxBytes = cass.seriesMaxBytes
 		cass.cacher.maxKeys = cass.seriesMaxMetrics
 		cass.cacher.maxTimeInCache = uint32(cass.maxTimeInCache.Seconds())

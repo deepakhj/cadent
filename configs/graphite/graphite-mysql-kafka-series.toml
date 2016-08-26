@@ -74,6 +74,7 @@ default_backend="graphite-proxy"  # failing a match go here
                 driver = "mysql"
                 dsn = "root:@tcp(localhost:3306)/cadent"
 
+
             [graphite-proxy-map.accumulator.api.indexer]
                 driver = "mysql"
                 dsn = "root:@tcp(localhost:3306)/cadent"

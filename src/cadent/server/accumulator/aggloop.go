@@ -259,7 +259,6 @@ func (agg *AggregateLoop) startInputLooper() {
 			agg.stat_write_queue <- StatJob{Aggregators: agg.Aggregators, Stat: stat}
 			//agg.Aggregators.Add(stat)
 		case <-shut.Ch:
-			shut.Close()
 			return
 		}
 	}
@@ -361,43 +360,46 @@ func (agg *AggregateLoop) startWriteLooper(mws *multiWriter) {
 
 // For every flus time, start a new timer loop to perform writes
 func (agg *AggregateLoop) Start() error {
-	agg.log.Notice("Starting Aggregator Loop for `%s`", agg.Name)
+	agg.startstop.Start(func() {
+		agg.log.Notice("Starting Aggregator Loop for `%s`", agg.Name)
 
-	if agg.shutitdown {
-		agg.log.Warning("Got shutdown signal, not starting loop")
-		return nil
-	}
+		if agg.shutitdown {
+			agg.log.Warning("Got shutdown signal, not starting loop")
+			return
+		}
 
-	//start the input loop acceptor
-	go agg.startInputLooper()
+		//start the input loop acceptor
+		go agg.startInputLooper()
 
-	// since we can have multiple writers, some may want only "one" agg some may want more
-	// so we need to figure out the proper Aggs to keep
-	num_writers := metrics.FirstResolution
-	for _, mws := range agg.OutWriters {
-		for _, wr := range mws.ws {
-			needs, _ := metrics.ResolutionsNeeded(wr.Metrics().Driver())
-			if needs == metrics.AllResolutions {
-				num_writers = metrics.AllResolutions
-				agg.Aggregators = repr.NewMulti(agg.FlushTimes)
-				break
+		// since we can have multiple writers, some may want only "one" agg some may want more
+		// so we need to figure out the proper Aggs to keep
+		num_writers := metrics.FirstResolution
+		for _, mws := range agg.OutWriters {
+			for _, wr := range mws.ws {
+				needs, _ := metrics.ResolutionsNeeded(wr.Metrics().Driver())
+				if needs == metrics.AllResolutions {
+					num_writers = metrics.AllResolutions
+					agg.Aggregators = repr.NewMulti(agg.FlushTimes)
+					break
+				}
 			}
 		}
-	}
 
-	// need to "reset" the Aggregators to just be the FIRST one if num_writers == FirstResolution
-	if num_writers == metrics.FirstResolution {
-		agg.Aggregators = repr.NewMulti([]time.Duration{agg.FlushTimes[0]})
-	}
+		// need to "reset" the Aggregators to just be the FIRST one if num_writers == FirstResolution
+		if num_writers == metrics.FirstResolution {
+			agg.Aggregators = repr.NewMulti([]time.Duration{agg.FlushTimes[0]})
+		}
 
-	for _, writ := range agg.OutWriters {
-		go agg.startWriteLooper(writ)
-	}
+		for _, writ := range agg.OutWriters {
+			go agg.startWriteLooper(writ)
+		}
 
-	// fire up the reader if around
-	if agg.OutReader != nil {
-		go agg.OutReader.Start()
-	}
+		// fire up the reader if around
+		if agg.OutReader != nil {
+			go agg.OutReader.Start()
+		}
+		return
+	})
 	return nil
 }
 

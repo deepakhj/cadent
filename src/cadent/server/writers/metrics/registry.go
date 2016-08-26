@@ -43,14 +43,18 @@ func NewReaderMetrics(name string) (MetricsReader, error) {
 
 func NewWriterMetrics(name string) (MetricsWriter, error) {
 	switch {
-	case name == "mysql" || name == "mysql-triggered":
+	case name == "mysql":
 		return NewMySQLMetrics(), nil
+	case name == "mysql-triggered":
+		return NewMySQLTriggeredMetrics(), nil
 	case name == "mysql-flat":
 		return NewMySQLFlatMetrics(), nil
 	case name == "file":
 		return NewFileMetrics(), nil
-	case name == "cassandra" || name == "cassandra-triggered":
+	case name == "cassandra":
 		return NewCassandraMetrics(), nil
+	case name == "cassandra-triggered":
+		return NewCassandraTriggerMetrics(), nil
 	case name == "cassandra-flat":
 		return NewCassandraFlatMetrics(), nil
 	case name == "whisper" || name == "carbon" || name == "graphite":

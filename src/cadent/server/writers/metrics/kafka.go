@@ -185,20 +185,6 @@ func (kf *KafkaMetrics) Config(conf map[string]interface{}) error {
 		return err
 	}
 
-	// only set these if it's not been started/init'ed
-	// as the readers will use this object as well
-	if !kf.cacher.started && !kf.cacher.inited {
-		kf.cacher.seriesType = kf.seriesEncoding
-		kf.cacher.maxBytes = kf.seriesMaxBytes
-		kf.cacher.maxKeys = kf.seriesMaxMetrics
-		kf.cacher.maxTimeInCache = uint32(kf.maxTimeInCache.Seconds())
-
-		kf.cacher.inited = true
-
-		// we write the overflows
-		kf.cacher.overFlowMethod = "chan"
-	}
-
 	return nil
 }
 
@@ -209,6 +195,12 @@ func (kf *KafkaMetrics) Driver() string {
 func (kf *KafkaMetrics) Start() {
 	kf.startstop.Start(func() {
 		kf.log.Notice("Starting Kafka writer for %s at %d bytes per series", kf.db.DataTopic(), kf.cacher.maxBytes)
+		kf.cacher.seriesType = kf.seriesEncoding
+		kf.cacher.maxBytes = kf.seriesMaxBytes
+		kf.cacher.maxKeys = kf.seriesMaxMetrics
+		kf.cacher.maxTimeInCache = uint32(kf.maxTimeInCache.Seconds())
+		kf.cacher.overFlowMethod = "chan"
+
 		kf.cacher.Start()
 		// only register this if we are really going to consume it
 		kf.cacheOverFlow = kf.cacher.GetOverFlowChan()
