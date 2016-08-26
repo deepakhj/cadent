@@ -136,7 +136,7 @@ func startStatsServer(defaults *cadent.Config, servers []*cadent.Server) {
 
 		for idx, serv := range servers {
 			// note the server itself populates this ever 5 seconds
-			hasher_map[serv.Name] = servers[idx].HasherCheck(h_key)
+			hasher_map[serv.Name] = servers[idx].HasherCheck([]byte(h_key))
 		}
 		w.Header().Set("Content-Type", "application/json")
 		resbytes, _ := json.Marshal(hasher_map)

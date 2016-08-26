@@ -635,9 +635,9 @@ func (a *StatsdAccumulate) Flush(buf io.Writer) *flushedList {
 	return fl
 }
 
-func (a *StatsdAccumulate) ProcessLine(line string) (err error) {
+func (a *StatsdAccumulate) ProcessLine(lineb []byte) (err error) {
 	//<key>:<value>|<type>|@<sample>|#tags:val,tag:val
-
+	line := string(lineb)
 	got_tags := strings.Split(line, "|#")
 
 	stats_arr := strings.Split(got_tags[0], ":")

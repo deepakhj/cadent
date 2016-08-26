@@ -40,12 +40,12 @@ const (
 )
 
 type SplitItem interface {
-	Key() string
+	Key() []byte
 	HasTime() bool
 	Timestamp() time.Time
-	Line() string
-	Fields() []string
-	Tags() [][]string
+	Line() []byte
+	Fields() [][]byte
+	Tags() [][][]byte
 	Phase() Phase
 	SetPhase(Phase)
 	Origin() Origin
@@ -56,6 +56,6 @@ type SplitItem interface {
 }
 
 type Splitter interface {
-	ProcessLine(line string) (SplitItem, error)
+	ProcessLine(line []byte) (SplitItem, error)
 	Name() (name string)
 }

@@ -24,13 +24,14 @@ package cadent
 import (
 	"bufio"
 	//"log"
+	"bytes"
 	"cadent/server/dispatch"
+	"cadent/server/repr"
 	"cadent/server/splitter"
 	"cadent/server/stats"
 	"fmt"
 	"net"
 	"reflect"
-	"strings"
 	"time"
 )
 
@@ -188,12 +189,12 @@ func (client *TCPClient) handleRequest(outqueue chan splitter.SplitItem, close_c
 			return
 		default:
 		}
-		line, err := buf.ReadString('\n')
+		line, err := buf.ReadBytes(repr.NEWLINE_SEPARATOR_BYTE)
 
 		if err != nil {
 			break
 		}
-		line = strings.Trim(line, "\n\t ")
+		line = bytes.TrimSpace(line)
 		if len(line) == 0 {
 			continue
 		}

@@ -23,6 +23,7 @@ limitations under the License.
 package splitter
 
 import (
+	"bytes"
 	"cadent/server/repr"
 	"fmt"
 	"strconv"
@@ -34,6 +35,16 @@ import (
 const GRAPHITE_NAME = "graphite"
 
 var GRAHITE_REPLACER *strings.Replacer
+var GRAHITE_REPLACER_BYTES = [][][]byte{
+	{[]byte(".."), []byte(".")},
+	{[]byte(","), []byte("_")},
+	{[]byte("*"), []byte("_")},
+	{[]byte("("), []byte("_")},
+	{[]byte(")"), []byte("_")},
+	{[]byte("{"), []byte("_")},
+	{[]byte("}"), []byte("_")},
+	{[]byte("  "), []byte(" ")},
+}
 
 func init() {
 	GRAHITE_REPLACER = strings.NewReplacer(
@@ -49,21 +60,21 @@ func init() {
 }
 
 type GraphiteSplitItem struct {
-	inkey    string
-	inline   string
+	inkey    []byte
+	inline   []byte
 	intime   time.Time
-	infields []string
+	infields [][]byte
 	inphase  Phase
 	inorigin Origin
 	inoname  string
-	tags     [][]string
+	tags     [][][]byte
 }
 
-func (g *GraphiteSplitItem) Key() string {
+func (g *GraphiteSplitItem) Key() []byte {
 	return g.inkey
 }
 
-func (g *GraphiteSplitItem) Tags() [][]string {
+func (g *GraphiteSplitItem) Tags() [][][]byte {
 	return g.tags
 }
 
@@ -75,11 +86,11 @@ func (g *GraphiteSplitItem) Timestamp() time.Time {
 	return g.intime
 }
 
-func (g *GraphiteSplitItem) Line() string {
+func (g *GraphiteSplitItem) Line() []byte {
 	return g.inline
 }
 
-func (g *GraphiteSplitItem) Fields() []string {
+func (g *GraphiteSplitItem) Fields() [][]byte {
 	return g.infields
 }
 
@@ -139,18 +150,22 @@ func NewGraphiteSplitter(conf map[string]interface{}) (*GraphiteSplitter, error)
 	return job, nil
 }
 
-func (g *GraphiteSplitter) ProcessLine(line string) (SplitItem, error) {
+func (g *GraphiteSplitter) ProcessLine(line []byte) (SplitItem, error) {
 	//<key> <value> <time> <more> <more>
 	//graphite_array := strings.Fields(line)
 	// clean the string of bad chars
-	line = GRAHITE_REPLACER.Replace(line)
-	graphite_array := strings.Split(line, repr.SPACE_SEPARATOR)
+	//line = GRAHITE_REPLACER.Replace(line)
+	for _, repls := range GRAHITE_REPLACER_BYTES {
+		line = bytes.Replace(line, repls[0], repls[1], -1)
+	}
+
+	graphite_array := bytes.Split(line, repr.SPACE_SEPARATOR_BYTE)
 	if len(graphite_array) > g.key_index {
 
 		// graphite timestamps are in unix seconds
 		t := time.Time{}
 		if len(graphite_array) >= g.time_index {
-			i, err := strconv.ParseInt(graphite_array[g.time_index], 10, 64)
+			i, err := strconv.ParseInt(string(graphite_array[g.time_index]), 10, 64)
 			if err == nil {
 				// nano or second tstamps
 				if i > 2147483647 {

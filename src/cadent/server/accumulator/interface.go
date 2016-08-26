@@ -42,7 +42,7 @@ type AccumulatorItem interface {
 	Stats() map[string]StatItem
 	Flush(buf io.Writer) *flushedList
 	Name() string
-	ProcessLine(string) error
+	ProcessLine(line []byte) error
 	Reset() error
 	Tags() repr.SortingTags
 	SetKeepKeys(bool) error

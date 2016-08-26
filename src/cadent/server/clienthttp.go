@@ -24,6 +24,8 @@ package cadent
 
 import (
 	"bufio"
+	"bytes"
+	"cadent/server/repr"
 	"cadent/server/splitter"
 	"cadent/server/stats"
 	"fmt"
@@ -32,7 +34,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"strings"
 )
 
 const HTTP_BUFFER_SIZE = 4098
@@ -122,7 +123,7 @@ func (client *HTTPClient) HttpHandler(w http.ResponseWriter, r *http.Request) {
 	buf := bufio.NewReaderSize(r.Body, client.BufferSize)
 	lines := 0
 	for {
-		line, err := buf.ReadString('\n')
+		line, err := buf.ReadBytes(repr.NEWLINE_SEPARATOR_BYTE)
 
 		if err != nil {
 			break
@@ -131,12 +132,7 @@ func (client *HTTPClient) HttpHandler(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		//this will block once the queue is full
-		if line == "" {
-			continue
-		}
-
-		n_line := strings.Trim(line, "\n\t ")
+		n_line := bytes.TrimSpace(line)
 		if len(n_line) == 0 {
 			continue
 		}

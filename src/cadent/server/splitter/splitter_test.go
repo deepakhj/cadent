@@ -49,24 +49,24 @@ func TestGraphiteRunner(t *testing.T) {
 	conf := make(map[string]interface{})
 	conf["key_index"] = 0
 
-	good_line := "moo.goo.org 123 1465866540"
+	good_line := []byte("moo.goo.org 123 1465866540")
 	Convey("Graphite Runner should parse lines nicely", t, func() {
 
 		gr, _ := NewGraphiteSplitter(conf)
 		spl, _ := gr.ProcessLine(good_line)
 		So(gr.Name(), ShouldEqual, "graphite")
-		So(spl.Key(), ShouldEqual, "moo.goo.org")
-		So(spl.Line(), ShouldEqual, good_line)
+		So(string(spl.Key()), ShouldEqual, "moo.goo.org")
+		So(string(spl.Line()), ShouldEqual, string(good_line))
 		So(spl.OriginName(), ShouldEqual, "")
 		So(spl.Phase(), ShouldEqual, Parsed)
 		So(spl.IsValid(), ShouldEqual, true)
 		So(spl.HasTime(), ShouldEqual, true)
 		So(spl.Timestamp().Unix(), ShouldEqual, 1465866540)
 
-		So(spl.Fields(), ShouldResemble, []string{
-			"moo.goo.org",
-			"123",
-			"1465866540",
+		So(spl.Fields(), ShouldResemble, [][]byte{
+			[]byte("moo.goo.org"),
+			[]byte("123"),
+			[]byte("1465866540"),
 		})
 
 		spl.SetPhase(AccumulatedParsed)
@@ -93,21 +93,21 @@ func TestStatsdRunner(t *testing.T) {
 
 	conf := make(map[string]interface{})
 
-	good_line := "moo.goo.org:123|ms|@0.1"
-	bad_line := "moo.goo.orgII123|0.1"
+	good_line := []byte("moo.goo.org:123|ms|@0.1")
+	bad_line := []byte("moo.goo.orgII123|0.1")
 
 	Convey("Statsd Runner should parse lines nicely", t, func() {
 
 		gr, _ := NewStatsdSplitter(conf)
 		si, _ := gr.ProcessLine(good_line)
-		So(si.Key(), ShouldEqual, "moo.goo.org")
+		So(string(si.Key()), ShouldEqual, "moo.goo.org")
 		So(gr.Name(), ShouldEqual, "statsd")
 		So(si.OriginName(), ShouldEqual, "")
 		So(si.IsValid(), ShouldEqual, true)
-		So(si.Line(), ShouldEqual, good_line)
-		So(si.Fields(), ShouldResemble, []string{
-			"moo.goo.org",
-			"123|ms|@0.1",
+		So(string(si.Line()), ShouldEqual, string(good_line))
+		So(si.Fields(), ShouldResemble, [][]byte{
+			[]byte("moo.goo.org"),
+			[]byte("123|ms|@0.1"),
 		})
 		So(si.Phase(), ShouldEqual, Parsed)
 		si.SetPhase(AccumulatedParsed)
@@ -133,9 +133,9 @@ func TestRegexRunner(t *testing.T) {
 
 	conf := make(map[string]interface{})
 
-	good_line := "Nov 18 01:22:36 web-7-frontend-lb-prod mfp-nginx: 190.172.234.165 - 10.31.133.179 momo"
-	bad_line := "abc123"
-	bad_line_2 := "Nov 18 01:22:36 web-7-frontend-lb-prod"
+	good_line := []byte("Nov 18 01:22:36 web-7-frontend-lb-prod mfp-nginx: 190.172.234.165 - 10.31.133.179 momo")
+	bad_line := []byte("abc123")
+	bad_line_2 := []byte("Nov 18 01:22:36 web-7-frontend-lb-prod")
 
 	reg := `(<\d+>)?(?P<Timestamp>[A-Z][a-z]+\s+\d+\s\d+:\d+:\d+) (?P<Key>\S+) (?P<Logger>\S+):(.*)`
 	regger := regexp.MustCompile(reg)
@@ -143,25 +143,29 @@ func TestRegexRunner(t *testing.T) {
 	conf["regexp"] = regger
 	conf["regexpNames"] = []string{"", "Timestamp", "Key", "Logger"}
 
-	spl_string := []string{
+	spl_string := [][]byte{
 		good_line,
-		"",
-		"Nov 18 01:22:36",
-		"web-7-frontend-lb-prod",
-		"mfp-nginx",
-		" 190.172.234.165 - 10.31.133.179 momo",
+		[]byte(""),
+		[]byte("Nov 18 01:22:36"),
+		[]byte("web-7-frontend-lb-prod"),
+		[]byte("mfp-nginx"),
+		[]byte(" 190.172.234.165 - 10.31.133.179 momo"),
 	}
 
 	Convey("REgex Runner should parse lines nicely", t, func() {
 		gr, _ := NewRegExSplitter(conf)
 		ri, _ := gr.ProcessLine(good_line)
 		So(gr.Name(), ShouldEqual, "regex")
-		So(ri.Key(), ShouldEqual, "web-7-frontend-lb-prod")
-		So(ri.Line(), ShouldEqual, good_line)
+		So(string(ri.Key()), ShouldEqual, string("web-7-frontend-lb-prod"))
+		So(string(ri.Line()), ShouldEqual, string(good_line))
 		So(ri.Phase(), ShouldEqual, Parsed)
 		So(ri.Origin(), ShouldEqual, Other)
 		So(ri.OriginName(), ShouldEqual, "")
-		So(ri.Fields(), ShouldResemble, spl_string)
+		So(len(ri.Fields()), ShouldEqual, len(spl_string))
+
+		for i, b := range spl_string {
+			So(string(ri.Fields()[i]), ShouldEqual, string(b))
+		}
 		So(ri.IsValid(), ShouldEqual, true)
 		ri.SetPhase(AccumulatedParsed)
 		So(ri.Phase(), ShouldEqual, AccumulatedParsed)
@@ -195,29 +199,33 @@ func TestCarbonTwoRunner(t *testing.T) {
 
 	conf := make(map[string]interface{})
 
-	good_line := "moo.goo.org  moo=goo house=loop 345345 1465866540"
-	good_line_2 := "moo.goo.org  345345 1465866540"
-	good_line_3 := "host=me type=monkey stat=last mtype=counter 345345 1465866540"
-	bad_line := "moo.goo.org 3456n -890"
+	good_line := []byte("moo.goo.org  moo=goo house=loop 345345 1465866540")
+	good_line_2 := []byte("moo.goo.org  345345 1465866540")
+	good_line_3 := []byte("host=me type=monkey stat=last mtype=counter 345345 1465866540")
+	bad_line := []byte("moo.goo.org 3456n -890")
 	Convey("CarbonTwo Runner should parse lines nicely", t, func() {
 
 		gr, _ := NewCarbonTwoSplitter(conf)
 		spl, _ := gr.ProcessLine(good_line)
 		So(gr.Name(), ShouldEqual, "carbon2")
-		So(spl.Key(), ShouldEqual, "moo.goo.org")
-		So(spl.Line(), ShouldEqual, good_line)
+		So(string(spl.Key()), ShouldEqual, "moo.goo.org")
+		So(string(spl.Line()), ShouldEqual, string(good_line))
 		So(spl.OriginName(), ShouldEqual, "")
 		So(spl.Phase(), ShouldEqual, Parsed)
 		So(spl.IsValid(), ShouldEqual, true)
 		So(spl.HasTime(), ShouldEqual, true)
 		So(spl.Timestamp().Unix(), ShouldEqual, 1465866540)
 
-		So(spl.Fields(), ShouldResemble, []string{
+		shouldbe := []string{
 			"moo=goo",
 			"house=loop",
 			"345345",
 			"1465866540",
-		})
+		}
+		So(len(spl.Fields()), ShouldEqual, len(shouldbe))
+		for i, b := range shouldbe {
+			So(string(spl.Fields()[i]), ShouldEqual, b)
+		}
 
 		spl.SetPhase(AccumulatedParsed)
 		So(spl.Phase(), ShouldEqual, AccumulatedParsed)
@@ -226,11 +234,15 @@ func TestCarbonTwoRunner(t *testing.T) {
 		spl.SetOriginName("moo")
 		So(spl.OriginName(), ShouldEqual, "moo")
 
-		So(spl.Tags(), ShouldResemble, [][]string{
+		shouldtags := [][]string{
 			{"moo", "goo"},
 			{"house", "loop"},
-		})
-
+		}
+		So(len(spl.Tags()), ShouldEqual, len(shouldtags))
+		for i, b := range shouldtags {
+			So(string(spl.Tags()[i][0]), ShouldEqual, b[0])
+			So(string(spl.Tags()[i][1]), ShouldEqual, b[1])
+		}
 	})
 
 	Convey("CarbonTwo Runner should not parser this with a bad key index", t, func() {
@@ -248,9 +260,9 @@ func TestCarbonTwoRunner(t *testing.T) {
 		spl, err := gr.ProcessLine(good_line_2)
 		So(spl, ShouldNotEqual, nil)
 		So(err, ShouldEqual, nil)
-		So(spl.Key(), ShouldEqual, "moo.goo.org")
+		So(string(spl.Key()), ShouldEqual, "moo.goo.org")
 		So(spl.Timestamp().Unix(), ShouldEqual, 1465866540)
-		So(spl.Tags(), ShouldResemble, [][]string{})
+		So(spl.Tags(), ShouldResemble, [][][]byte{})
 
 	})
 
@@ -261,9 +273,9 @@ func TestCarbonTwoRunner(t *testing.T) {
 		So(spl, ShouldNotEqual, nil)
 		So(err, ShouldEqual, nil)
 		// host=me type=monkey stat=last mtype=counter
-		So(spl.Key(), ShouldEqual, "host=me type=monkey stat=last mtype=counter")
+		So(string(spl.Key()), ShouldEqual, "host=me type=monkey stat=last mtype=counter")
 		So(spl.Timestamp().Unix(), ShouldEqual, 1465866540)
-		So(spl.Tags(), ShouldResemble, [][]string{})
+		So(spl.Tags(), ShouldResemble, [][][]byte{})
 
 	})
 

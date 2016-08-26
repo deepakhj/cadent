@@ -21,14 +21,15 @@ limitations under the License.
 package cadent
 
 import (
+	"bytes"
 	"cadent/server/broadcast"
 	"cadent/server/dispatch"
+	"cadent/server/repr"
 	"cadent/server/splitter"
 	"cadent/server/stats"
 	"github.com/reusee/mmh3"
 	logging "gopkg.in/op/go-logging.v1"
 	"net"
-	"strings"
 )
 
 // 1Mb default buffer size
@@ -165,7 +166,7 @@ func (client *UDPClient) delegate(inchan []chan splitter.SplitItem, workers uint
 	for {
 		select {
 		case splitem := <-client.input_queue:
-			hash := mmh3.Hash32([]byte(splitem.Key())) % workers
+			hash := mmh3.Hash32(splitem.Key()) % workers
 			inchan[hash] <- splitem
 		case <-shuts.Ch:
 			return
@@ -173,12 +174,12 @@ func (client *UDPClient) delegate(inchan []chan splitter.SplitItem, workers uint
 	}
 }
 
-func (client *UDPClient) procLines(line string, job_queue chan dispatch.IJob, out_queue chan splitter.SplitItem) {
-	for _, n_line := range strings.Split(line, "\n") {
+func (client *UDPClient) procLines(lines []byte, job_queue chan dispatch.IJob, out_queue chan splitter.SplitItem) {
+	for _, n_line := range bytes.Split(lines, repr.NEWLINE_SEPARATOR_BYTES) {
 		if len(n_line) == 0 {
 			continue
 		}
-		n_line = strings.Trim(n_line, "\r\n\t ")
+		n_line = bytes.TrimSpace(n_line)
 		if len(n_line) == 0 {
 			continue
 		}
@@ -235,9 +236,8 @@ func (client *UDPClient) getLines(job_queue chan dispatch.IJob, out_queue chan s
 			rlen, _, _ := client.Connection.ReadFrom(buf[:])
 			client.server.BytesReadCount.Up(uint64(rlen))
 
-			in_str := string(buf[0:rlen])
 			if rlen > 0 {
-				client.procLines(in_str, job_queue, out_queue)
+				client.procLines(buf[0:rlen], job_queue, out_queue)
 			}
 		}
 	}

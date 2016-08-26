@@ -23,6 +23,7 @@ package cadent
 import (
 	"cadent/server/dispatch"
 	"cadent/server/netpool"
+	"cadent/server/repr"
 	"cadent/server/stats"
 	"fmt"
 	"net"
@@ -107,8 +108,7 @@ func (p *PoolWriter) Write(j *OutputMessage) error {
 		// Conn.Write will raise a timeout error after 1 seconds
 		netconn.SetWriteDeadline(time.Now().Add(j.server.WriteTimeout))
 		//var wrote int
-		to_send := []byte(j.param + "\n")
-
+		to_send := append(j.param, repr.NEWLINE_SEPARATOR_BYTE)
 		by, err := netconn.Write(to_send)
 
 		//log.Printf("SEND %s %s", wrote, err)
@@ -155,7 +155,7 @@ func (p *SingleWriter) Write(j *OutputMessage) error {
 
 		conn.SetWriteDeadline(time.Now().Add(j.server.WriteTimeout))
 		//send it and close it
-		to_send := []byte(j.param + "\n")
+		to_send := append(j.param, repr.NEWLINE_SEPARATOR_BYTE)
 		_, err = conn.Write(to_send)
 		conn.Close()
 		conn = nil

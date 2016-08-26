@@ -21,24 +21,25 @@ limitations under the License.
 package splitter
 
 import (
+	"bytes"
+	"cadent/server/repr"
 	"fmt"
-	"strings"
 	"time"
 )
 
 const STATSD_NAME = "statsd"
 
 type StatsdSplitItem struct {
-	inkey    string
-	inline   string
-	infields []string
+	inkey    []byte
+	inline   []byte
+	infields [][]byte
 	inphase  Phase
 	inorigin Origin
 	inoname  string
-	tags     [][]string
+	tags     [][][]byte
 }
 
-func (g *StatsdSplitItem) Key() string {
+func (g *StatsdSplitItem) Key() []byte {
 	return g.inkey
 }
 
@@ -46,7 +47,7 @@ func (g *StatsdSplitItem) HasTime() bool {
 	return false
 }
 
-func (g *StatsdSplitItem) Tags() [][]string {
+func (g *StatsdSplitItem) Tags() [][][]byte {
 	return g.tags
 }
 
@@ -54,11 +55,11 @@ func (g *StatsdSplitItem) Timestamp() time.Time {
 	return time.Time{}
 }
 
-func (g *StatsdSplitItem) Line() string {
+func (g *StatsdSplitItem) Line() []byte {
 	return g.inline
 }
 
-func (g *StatsdSplitItem) Fields() []string {
+func (g *StatsdSplitItem) Fields() [][]byte {
 	return g.infields
 }
 
@@ -105,9 +106,9 @@ func NewStatsdSplitter(conf map[string]interface{}) (*StatsdSplitter, error) {
 	return job, nil
 }
 
-func (job *StatsdSplitter) ProcessLine(line string) (SplitItem, error) {
+func (job *StatsdSplitter) ProcessLine(line []byte) (SplitItem, error) {
 
-	statd_array := strings.Split(line, ":")
+	statd_array := bytes.Split(line, repr.COLON_SEPARATOR_BYTE)
 	if len(statd_array) >= 2 {
 		si := &StatsdSplitItem{
 			inkey:    statd_array[0],
@@ -118,6 +119,6 @@ func (job *StatsdSplitter) ProcessLine(line string) (SplitItem, error) {
 		}
 		return si, nil
 	}
-	return nil, fmt.Errorf("Invalid Statsd line: " + line)
+	return nil, fmt.Errorf("Invalid Statsd line: " + string(line))
 
 }
