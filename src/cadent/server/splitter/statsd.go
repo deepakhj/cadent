@@ -25,6 +25,7 @@ import (
 	"cadent/server/repr"
 	"fmt"
 	"time"
+	"strings"
 )
 
 const STATSD_NAME = "statsd"
@@ -108,7 +109,7 @@ func NewStatsdSplitter(conf map[string]interface{}) (*StatsdSplitter, error) {
 
 func (job *StatsdSplitter) ProcessLine(line []byte) (SplitItem, error) {
 
-	statd_array := bytes.Split(line, repr.COLON_SEPARATOR_BYTE)
+	statd_array := strings.Split(string(line), repr.COLON_SEPARATOR)
 	if len(statd_array) >= 2 {
 		si := &StatsdSplitItem{
 			inkey:    statd_array[0],
