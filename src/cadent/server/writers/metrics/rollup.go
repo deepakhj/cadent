@@ -330,8 +330,15 @@ func (rl *RollupMetric) DoRollup(tseries *TotalTimeSeries) error {
 
 		if t_start_nano >= r_stats.End() || (t_start_nano >= r_stats.Start() && t_end_nano >= r_stats.End()) {
 			old_data, err := r_stats.ToRawRenderItem()
+
+			// if this fails, means our old data is corrupt, and the only real recourse is to add a new row
 			if err != nil {
-				rl.log.Errorf("Rollup Get failure: %v", err)
+				rl.log.Errorf("Rollup Get failure, need to write a new row: `%v`", err)
+				err = writeOne(&t_new_data, nil, res[0], res[1])
+				if err != nil {
+					rl.log.Errorf("Rollup failure: %v", err)
+				}
+
 				continue
 			}
 
