@@ -32,7 +32,7 @@ func TestFileWriterAccumulator(t *testing.T) {
 		file, _ := ioutil.TempFile("/tmp", "cadent_file_test")
 		f_name := file.Name()
 		file.Close()
-		fw, _ := NewMetrics("file")
+		fw, _ := NewWriterMetrics("file")
 
 		idx, _ := indexer.NewIndexer("noop")
 		conf := make(map[string]interface{})

@@ -40,42 +40,42 @@ func TestCarbontwoAccumulator(t *testing.T) {
 			So(err, ShouldEqual, nil)
 		})
 
-		err = statter.ProcessLine("moo.goo.org 1")
+		err = statter.ProcessLine([]byte("moo.goo.org 1"))
 		Convey("`moo.goo.org 1` should fail", func() {
 			So(err, ShouldNotEqual, nil)
 		})
 
-		err = statter.ProcessLine("moo.goo.org:1")
+		err = statter.ProcessLine([]byte("moo.goo.org:1"))
 		Convey("`moo.goo.org:1` should  fail", func() {
 			So(err, ShouldNotEqual, nil)
 		})
 
-		err = statter.ProcessLine("stat=max mtype=gauge what=house 123 123123")
+		err = statter.ProcessLine([]byte("stat=max mtype=gauge what=house 123 123123"))
 		Convey("`type=min mtype=gauge what=house 123 123123` should  fail", func() {
 			So(err, ShouldEqual, errCarbonTwoUnitRequired)
 		})
 
-		err = statter.ProcessLine("stat=max unit=B what=house 123 123123")
+		err = statter.ProcessLine([]byte("stat=max unit=B what=house 123 123123"))
 		Convey("`type=min unit=B what=house 123 123123` should  fail", func() {
 			So(err, ShouldEqual, errCarbonTwoMTypeRequired)
 		})
 
-		err = statter.ProcessLine("stat=max unit=B mtype=gauge what=house 123 123123")
+		err = statter.ProcessLine([]byte("stat=max unit=B mtype=gauge what=house 123 123123"))
 		Convey("`type=min unit=B mtype=gauge what=house 123 123123` should not fail", func() {
 			So(err, ShouldEqual, nil)
 		})
 
-		err = statter.ProcessLine("stat=max unit=B mtype=gauge what=house  moo=goo house=spam 123 123123")
+		err = statter.ProcessLine([]byte("stat=max unit=B mtype=gauge what=house  moo=goo house=spam 123 123123"))
 		Convey("`moo.goo.org 2 123123` should not fail", func() {
 			So(err, ShouldEqual, nil)
 		})
 
-		err = statter.ProcessLine("stat=max.unit=B.mtype=gauge.what=house  moo=goo house=spam 123 123123")
+		err = statter.ProcessLine([]byte("stat=max.unit=B.mtype=gauge.what=house  moo=goo house=spam 123 123123"))
 		Convey("type=min.unit=B.mtype=gauge.what=house  moo=goo house=spam 123 123123` should not fail", func() {
 			So(err, ShouldEqual, nil)
 		})
 
-		err = statter.ProcessLine("stat=max,unit=B,mtype=gauge,what=house  moo=goo house=spam 123 123123")
+		err = statter.ProcessLine([]byte("stat=max,unit=B,mtype=gauge,what=house  moo=goo house=spam 123 123123"))
 		Convey("type=min,unit=B,mtype=gauge,what=house  moo=goo house=spam 123 123123` should not fail", func() {
 			So(err, ShouldEqual, nil)
 		})
@@ -84,17 +84,17 @@ func TestCarbontwoAccumulator(t *testing.T) {
 		b := new(devNullWriter)
 		statter.Flush(b)
 
-		err = statter.ProcessLine("stat=max unit=B mtype=gauge what=house  moo=goo house=spam 2 123123")
-		err = statter.ProcessLine("stat=max unit=B mtype=gauge what=house  moo=goo house=spam 5 123123")
-		err = statter.ProcessLine("stat=max unit=B mtype=gauge what=house  moo=goo house=spam 10 123123")
+		err = statter.ProcessLine([]byte("stat=max unit=B mtype=gauge what=house  moo=goo house=spam 2 123123"))
+		err = statter.ProcessLine([]byte("stat=max unit=B mtype=gauge what=house  moo=goo house=spam 5 123123"))
+		err = statter.ProcessLine([]byte("stat=max unit=B mtype=gauge what=house  moo=goo house=spam 10 123123"))
 
-		err = statter.ProcessLine("stat=min unit=B mtype=gauge what=house  moo=goo house=spam 2 123123")
-		err = statter.ProcessLine("stat=min unit=B mtype=gauge what=house  moo=goo house=spam 5 123123")
-		err = statter.ProcessLine("stat=min unit=B mtype=gauge what=house  moo=goo house=spam 10 123123")
+		err = statter.ProcessLine([]byte("stat=min unit=B mtype=gauge what=house  moo=goo house=spam 2 123123"))
+		err = statter.ProcessLine([]byte("stat=min unit=B mtype=gauge what=house  moo=goo house=spam 5 123123"))
+		err = statter.ProcessLine([]byte("stat=min unit=B mtype=gauge what=house  moo=goo house=spam 10 123123"))
 
-		err = statter.ProcessLine("stat=mean unit=B mtype=gauge what=house  moo=goo house=spam 2 123123")
-		err = statter.ProcessLine("stat=mean unit=B mtype=gauge what=house  moo=goo house=spam 5 123123")
-		err = statter.ProcessLine("stat=mean unit=B mtype=gauge what=house  moo=goo house=spam 10 123123")
+		err = statter.ProcessLine([]byte("stat=mean unit=B mtype=gauge what=house  moo=goo house=spam 2 123123"))
+		err = statter.ProcessLine([]byte("stat=mean unit=B mtype=gauge what=house  moo=goo house=spam 5 123123"))
+		err = statter.ProcessLine([]byte("stat=mean unit=B mtype=gauge what=house  moo=goo house=spam 10 123123"))
 
 		buf := new(bytes.Buffer)
 		b_arr := statter.Flush(buf)
@@ -121,17 +121,17 @@ func TestCarbontwoAccumulator(t *testing.T) {
 	statter.Init(stsfmt)
 	Convey("Set the formatter to Statsd ", t, func() {
 
-		err = statter.ProcessLine("stat=max unit=B mtype=counter what=house  moo=goo house=spam 2 123123")
-		err = statter.ProcessLine("stat=max unit=B mtype=counter what=house  moo=goo house=spam 5 123123")
-		err = statter.ProcessLine("stat=max unit=B mtype=counter what=house  moo=goo house=spam 10 123123")
+		err = statter.ProcessLine([]byte("stat=max unit=B mtype=counter what=house  moo=goo house=spam 2 123123"))
+		err = statter.ProcessLine([]byte("stat=max unit=B mtype=counter what=house  moo=goo house=spam 5 123123"))
+		err = statter.ProcessLine([]byte("stat=max unit=B mtype=counter what=house  moo=goo house=spam 10 123123"))
 
-		err = statter.ProcessLine("stat=min unit=B mtype=gauge what=house  moo=goo house=spam 2 123123")
-		err = statter.ProcessLine("stat=min unit=B mtype=gauge what=house  moo=goo house=spam 5 123123")
-		err = statter.ProcessLine("stat=min unit=B mtype=gauge what=house  moo=goo house=spam 10 123123")
+		err = statter.ProcessLine([]byte("stat=min unit=B mtype=gauge what=house  moo=goo house=spam 2 123123"))
+		err = statter.ProcessLine([]byte("stat=min unit=B mtype=gauge what=house  moo=goo house=spam 5 123123"))
+		err = statter.ProcessLine([]byte("stat=min unit=B mtype=gauge what=house  moo=goo house=spam 10 123123"))
 
-		err = statter.ProcessLine("stat=mean unit=B mtype=rate what=house  moo=goo house=spam 2 123123")
-		err = statter.ProcessLine("stat=mean unit=B mtype=rate what=house  moo=goo house=spam 5 123123")
-		err = statter.ProcessLine("stat=mean unit=B mtype=rate what=house  moo=goo house=spam 10 123123")
+		err = statter.ProcessLine([]byte("stat=mean unit=B mtype=rate what=house  moo=goo house=spam 2 123123"))
+		err = statter.ProcessLine([]byte("stat=mean unit=B mtype=rate what=house  moo=goo house=spam 5 123123"))
+		err = statter.ProcessLine([]byte("stat=mean unit=B mtype=rate what=house  moo=goo house=spam 10 123123"))
 
 		buf := new(bytes.Buffer)
 		b_arr := statter.Flush(buf)
@@ -150,20 +150,20 @@ func TestCarbontwoAccumulator(t *testing.T) {
 	statter.Init(carbfmt)
 	Convey("Set the formatter to carbon2 ", t, func() {
 
-		err = statter.ProcessLine("stat=max unit=B mtype=counter what=house  moo=goo house=spam 2 123123")
-		err = statter.ProcessLine("stat=max unit=B mtype=counter what=house  moo=goo house=spam 5 123123")
-		err = statter.ProcessLine("stat=max unit=B mtype=counter what=house  moo=goo house=spam 10 123123")
+		err = statter.ProcessLine([]byte("stat=max unit=B mtype=counter what=house  moo=goo house=spam 2 123123"))
+		err = statter.ProcessLine([]byte("stat=max unit=B mtype=counter what=house  moo=goo house=spam 5 123123"))
+		err = statter.ProcessLine([]byte("stat=max unit=B mtype=counter what=house  moo=goo house=spam 10 123123"))
 
-		err = statter.ProcessLine("stat=min unit=B mtype=gauge what=house  moo=goo house=spam 2 123123")
-		err = statter.ProcessLine("stat=min unit=B mtype=gauge what=house  moo=goo house=spam 5 123123")
-		err = statter.ProcessLine("stat=min unit=B mtype=gauge what=house  moo=goo house=spam 10 123123")
+		err = statter.ProcessLine([]byte("stat=min unit=B mtype=gauge what=house  moo=goo house=spam 2 123123"))
+		err = statter.ProcessLine([]byte("stat=min unit=B mtype=gauge what=house  moo=goo house=spam 5 123123"))
+		err = statter.ProcessLine([]byte("stat=min unit=B mtype=gauge what=house  moo=goo house=spam 10 123123"))
 
-		err = statter.ProcessLine("stat=mean unit=B mtype=rate what=house  moo=goo house=spam 2 123123")
-		err = statter.ProcessLine("stat=mean unit=B mtype=rate what=house  moo=goo house=spam 5 123123")
-		err = statter.ProcessLine("stat=mean unit=B mtype=rate what=house  moo=goo house=spam 10 123123")
+		err = statter.ProcessLine([]byte("stat=mean unit=B mtype=rate what=house  moo=goo house=spam 2 123123"))
+		err = statter.ProcessLine([]byte("stat=mean unit=B mtype=rate what=house  moo=goo house=spam 5 123123"))
+		err = statter.ProcessLine([]byte("stat=mean unit=B mtype=rate what=house  moo=goo house=spam 10 123123"))
 
-		err = statter.ProcessLine("stat=count unit=B mtype=rate what=monkey  10 123123")
-		err = statter.ProcessLine("stat=count unit=B mtype=rate what=monkey  12 123123")
+		err = statter.ProcessLine([]byte("stat=count unit=B mtype=rate what=monkey  10 123123"))
+		err = statter.ProcessLine([]byte("stat=count unit=B mtype=rate what=monkey  12 123123"))
 
 		buf := new(bytes.Buffer)
 		b_arr := statter.Flush(buf)

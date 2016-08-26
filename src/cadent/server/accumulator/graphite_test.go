@@ -36,35 +36,35 @@ func TestGraphiteAccumulator(t *testing.T) {
 			So(err, ShouldEqual, nil)
 		})
 
-		err = statter.ProcessLine("moo.goo.org 1")
+		err = statter.ProcessLine([]byte("moo.goo.org 1"))
 		Convey("`moo.goo.org 1` should fail", func() {
 			So(err, ShouldNotEqual, nil)
 		})
 
-		err = statter.ProcessLine("moo.goo.org:1")
+		err = statter.ProcessLine([]byte("moo.goo.org:1"))
 		Convey("`moo.goo.org:1` should  fail", func() {
 			So(err, ShouldNotEqual, nil)
 		})
-		err = statter.ProcessLine("moo.goo.org 1 123123")
+		err = statter.ProcessLine([]byte("moo.goo.org 1 123123"))
 		Convey("`moo.goo.org 1 123123` should not fail", func() {
 			So(err, ShouldEqual, nil)
 		})
 
-		err = statter.ProcessLine("moo.goo.org 2 123123")
+		err = statter.ProcessLine([]byte("moo.goo.org 2 123123"))
 		Convey("`moo.goo.org 2 123123` should not fail", func() {
 			So(err, ShouldEqual, nil)
 		})
-		err = statter.ProcessLine("moo.goo.max 2 123123")
-		err = statter.ProcessLine("moo.goo.max 5 123123")
-		err = statter.ProcessLine("moo.goo.max 10 123123")
+		err = statter.ProcessLine([]byte("moo.goo.max 2 123123"))
+		err = statter.ProcessLine([]byte("moo.goo.max 5 123123"))
+		err = statter.ProcessLine([]byte("moo.goo.max 10 123123"))
 
-		err = statter.ProcessLine("stats.counters.goo 2 123123")
-		err = statter.ProcessLine("stats.counters.goo 5 123123")
-		err = statter.ProcessLine("stats.counters.goo 10 123123")
+		err = statter.ProcessLine([]byte("stats.counters.goo 2 123123"))
+		err = statter.ProcessLine([]byte("stats.counters.goo 5 123123"))
+		err = statter.ProcessLine([]byte("stats.counters.goo 10 123123"))
 
-		err = statter.ProcessLine("stats.gauges.goo 2 123123")
-		err = statter.ProcessLine("stats.gauges.goo 5 123123")
-		err = statter.ProcessLine("stats.gauges.goo 10 123123")
+		err = statter.ProcessLine([]byte("stats.gauges.goo 2 123123"))
+		err = statter.ProcessLine([]byte("stats.gauges.goo 5 123123"))
+		err = statter.ProcessLine([]byte("stats.gauges.goo 10 123123"))
 
 		buf := new(bytes.Buffer)
 		b_arr := statter.Flush(buf)
@@ -76,7 +76,7 @@ func TestGraphiteAccumulator(t *testing.T) {
 		})
 
 		// taggin support
-		err = statter.ProcessLine("stats.gauges.goo 10 123123 moo=house host=me")
+		err = statter.ProcessLine([]byte("stats.gauges.goo 10 123123 moo=house host=me"))
 		buf = new(bytes.Buffer)
 		b_arr = statter.Flush(buf)
 		for _, item := range b_arr.Stats {
@@ -93,21 +93,21 @@ func TestGraphiteAccumulator(t *testing.T) {
 	statter.Init(stsfmt)
 	Convey("Set the formatter to Statsd ", t, func() {
 
-		err = statter.ProcessLine("moo.goo.max 2 123123")
-		err = statter.ProcessLine("moo.goo.max 5 123123")
-		err = statter.ProcessLine("moo.goo.max 10 123123")
+		err = statter.ProcessLine([]byte("moo.goo.max 2 123123"))
+		err = statter.ProcessLine([]byte("moo.goo.max 5 123123"))
+		err = statter.ProcessLine([]byte("moo.goo.max 10 123123"))
 
-		err = statter.ProcessLine("moo.goo.min 2 123123")
-		err = statter.ProcessLine("moo.goo.min 5 123123")
-		err = statter.ProcessLine("moo.goo.min 10 123123")
+		err = statter.ProcessLine([]byte("moo.goo.min 2 123123"))
+		err = statter.ProcessLine([]byte("moo.goo.min 5 123123"))
+		err = statter.ProcessLine([]byte("moo.goo.min 10 123123"))
 
-		err = statter.ProcessLine("moo.goo.avg 2 123123")
-		err = statter.ProcessLine("moo.goo.avg 5 123123")
-		err = statter.ProcessLine("moo.goo.avg 10 123123")
+		err = statter.ProcessLine([]byte("moo.goo.avg 2 123123"))
+		err = statter.ProcessLine([]byte("moo.goo.avg 5 123123"))
+		err = statter.ProcessLine([]byte("moo.goo.avg 10 123123"))
 
-		err = statter.ProcessLine("stats.counters.goo 2 123123")
-		err = statter.ProcessLine("stats.counters.goo 5 123123")
-		err = statter.ProcessLine("stats.counters.goo 10 123123")
+		err = statter.ProcessLine([]byte("stats.counters.goo 2 123123"))
+		err = statter.ProcessLine([]byte("stats.counters.goo 5 123123"))
+		err = statter.ProcessLine([]byte("stats.counters.goo 10 123123"))
 
 		buf := new(bytes.Buffer)
 		b_arr := statter.Flush(buf)
@@ -124,21 +124,21 @@ func TestGraphiteAccumulator(t *testing.T) {
 	statter.Init(carbfmt)
 	Convey("Set the formatter to carbon2 ", t, func() {
 
-		err = statter.ProcessLine("moo.goo.max 2 123123")
-		err = statter.ProcessLine("moo.goo.max 5 123123")
-		err = statter.ProcessLine("moo.goo.max 10 123123")
+		err = statter.ProcessLine([]byte("moo.goo.max 2 123123"))
+		err = statter.ProcessLine([]byte("moo.goo.max 5 123123"))
+		err = statter.ProcessLine([]byte("moo.goo.max 10 123123"))
 
-		err = statter.ProcessLine("moo.goo.min 2 123123")
-		err = statter.ProcessLine("moo.goo.min 5 123123")
-		err = statter.ProcessLine("moo.goo.min 10 123123")
+		err = statter.ProcessLine([]byte("moo.goo.min 2 123123"))
+		err = statter.ProcessLine([]byte("moo.goo.min 5 123123"))
+		err = statter.ProcessLine([]byte("moo.goo.min 10 123123"))
 
-		err = statter.ProcessLine("moo.goo.avg 2 123123")
-		err = statter.ProcessLine("moo.goo.avg 5 123123")
-		err = statter.ProcessLine("moo.goo.avg 10 123123")
+		err = statter.ProcessLine([]byte("moo.goo.avg 2 123123"))
+		err = statter.ProcessLine([]byte("moo.goo.avg 5 123123"))
+		err = statter.ProcessLine([]byte("moo.goo.avg 10 123123"))
 
-		err = statter.ProcessLine("stats.counters.goo 2 123123")
-		err = statter.ProcessLine("stats.counters.goo 5 123123")
-		err = statter.ProcessLine("stats.counters.goo 10 123123")
+		err = statter.ProcessLine([]byte("stats.counters.goo 2 123123"))
+		err = statter.ProcessLine([]byte("stats.counters.goo 5 123123"))
+		err = statter.ProcessLine([]byte("stats.counters.goo 10 123123"))
 
 		buf := new(bytes.Buffer)
 		b_arr := statter.Flush(buf)
@@ -154,9 +154,9 @@ func TestGraphiteAccumulator(t *testing.T) {
 
 		statter.SetTags(repr.SortingTags{[]string{"moo", "goo"}, []string{"foo", "bar"}})
 
-		err = statter.ProcessLine("stats.counters.goo 2 123123")
-		err = statter.ProcessLine("stats.counters.goo 5 123123")
-		err = statter.ProcessLine("stats.counters.goo 10 123123")
+		err = statter.ProcessLine([]byte("stats.counters.goo 2 123123"))
+		err = statter.ProcessLine([]byte("stats.counters.goo 5 123123"))
+		err = statter.ProcessLine([]byte("stats.counters.goo 10 123123"))
 
 		buf = new(bytes.Buffer)
 		b_arr = statter.Flush(buf)

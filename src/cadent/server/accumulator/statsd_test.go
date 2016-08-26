@@ -36,43 +36,43 @@ func TestStatsdAccumulator(t *testing.T) {
 			So(err, ShouldEqual, nil)
 		})
 
-		err = statter.ProcessLine("moo.goo.org 1")
+		err = statter.ProcessLine([]byte("moo.goo.org 1"))
 		Convey("`moo.goo.org 1` should fail", func() {
 			So(err, ShouldNotEqual, nil)
 		})
 
-		err = statter.ProcessLine("moo.goo.org:1")
+		err = statter.ProcessLine([]byte("moo.goo.org:1"))
 		Convey("`moo.goo.org:1` should not fail", func() {
 			So(err, ShouldEqual, nil)
 		})
-		err = statter.ProcessLine("moo.goo.org:1|c")
+		err = statter.ProcessLine([]byte("moo.goo.org:1|c"))
 		Convey("`moo.goo.org:1|c` should not fail", func() {
 			So(err, ShouldEqual, nil)
 		})
 
-		err = statter.ProcessLine("moo.goo.org:1|ms")
+		err = statter.ProcessLine([]byte("moo.goo.org:1|ms"))
 		Convey("`moo.goo.org:1|ms` should not fail", func() {
 			So(err, ShouldEqual, nil)
 		})
 
-		err = statter.ProcessLine("moo.goo.org:3|ms|@0.01")
+		err = statter.ProcessLine([]byte("moo.goo.org:3|ms|@0.01"))
 		Convey("`moo.goo.org:1|ms|@0.01` should not fail", func() {
 			So(err, ShouldEqual, nil)
 		})
 
-		err = statter.ProcessLine("moo.goo.org:3|ms|@gg")
+		err = statter.ProcessLine([]byte("moo.goo.org:3|ms|@gg"))
 		Convey("`moo.goo.org:1|ms|@gg` should fail", func() {
 			So(err, ShouldNotEqual, nil)
 		})
 
-		err = statter.ProcessLine("moo.goo.org:1|h")
+		err = statter.ProcessLine([]byte("moo.goo.org:1|h"))
 		Convey("`moo.goo.org:1|h` should not fail", func() {
 			So(err, ShouldEqual, nil)
 		})
 
-		err = statter.ProcessLine("moo.goo.org:1|g")
-		err = statter.ProcessLine("moo.goo.org:+1|g")
-		err = statter.ProcessLine("moo.goo.org:-5|g")
+		err = statter.ProcessLine([]byte("moo.goo.org:1|g"))
+		err = statter.ProcessLine([]byte("moo.goo.org:+1|g"))
+		err = statter.ProcessLine([]byte("moo.goo.org:-5|g"))
 		Convey("`moo.goo.org.gauge:1|g` should not fail", func() {
 			So(err, ShouldEqual, nil)
 		})
@@ -113,29 +113,29 @@ func TestStatsdAccumulator(t *testing.T) {
 	statter.Init(stsfmt)
 	Convey("Set the formatter to Statsd ", t, func() {
 
-		err = statter.ProcessLine("moo.goo.org:1|c")
+		err = statter.ProcessLine([]byte("moo.goo.org:1|c"))
 		Convey("statsd out: `moo.goo.org:1|c` should not fail", func() {
 			So(err, ShouldEqual, nil)
 		})
-		err = statter.ProcessLine("moo.goo.org:1")
+		err = statter.ProcessLine([]byte("moo.goo.org:1"))
 		Convey("statsd out: `moo.goo.org:1` should not fail", func() {
 			So(err, ShouldEqual, nil)
 		})
 
-		err = statter.ProcessLine("moo.goo.org:1|g")
+		err = statter.ProcessLine([]byte("moo.goo.org:1|g"))
 		Convey("statsd out: `moo.goo.org:1|g` should not fail", func() {
 			So(err, ShouldEqual, nil)
 		})
 		Convey("statsd out: type ", func() {
 			So(stsfmt.Type(), ShouldEqual, "statsd_formater")
 		})
-		err = statter.ProcessLine("moo.goo.org:1|ms|@0.1")
+		err = statter.ProcessLine([]byte("moo.goo.org:1|ms|@0.1"))
 		Convey("statsd out: `moo.goo.org:1|ms|@0.1` should not fail", func() {
 			So(err, ShouldEqual, nil)
 		})
 		// let some time pass
 		time.Sleep(time.Second)
-		err = statter.ProcessLine("moo.goo.org:2|ms|@0.1")
+		err = statter.ProcessLine([]byte("moo.goo.org:2|ms|@0.1"))
 
 		buf := new(bytes.Buffer)
 		b_arr := statter.Flush(buf)
@@ -177,7 +177,7 @@ func TestStatsdAccumulator(t *testing.T) {
 		})
 
 		// tags
-		err = statter.ProcessLine("moo.goo.org:1|ms|@0.1|#moo:goo,loo:bar")
+		err = statter.ProcessLine([]byte("moo.goo.org:1|ms|@0.1|#moo:goo,loo:bar"))
 		Convey("statsd out: `moo.goo.org:1|ms|@0.1|#moo:goo,loo:bar` should not fail", func() {
 			So(err, ShouldEqual, nil)
 		})

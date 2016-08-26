@@ -76,7 +76,7 @@ func TestAccumualtorAggLoop(t *testing.T) {
 				So(agg, ShouldNotEqual, nil)
 			})
 
-			err = agg.SetWriter(cf.Writer)
+			err = agg.SetWriter(cf.Writer, "main")
 			Convey("Aggregator writer should init", func() {
 				So(err, ShouldEqual, nil)
 			})
