@@ -980,6 +980,13 @@ func (my *MySQLMetrics) UpdateDBSeries(dbs *DBSeries, ts series.TimeSeries) erro
 // update the row defined in dbs w/ the new bytes from the new Timeseries
 func (my *MySQLMetrics) InsertDBSeries(name *repr.StatName, timeseries series.TimeSeries, resolution uint32) (added int, err error) {
 
+	if name == nil {
+		return 0, errNameIsNil
+	}
+	if timeseries == nil {
+		return 0, errSeriesIsNil
+	}
+
 	t_name := my.db.RootMetricsTableName()
 	Q := fmt.Sprintf(
 		"INSERT INTO %s_%ds (uid, path, ptype, points, stime, etime) VALUES ",

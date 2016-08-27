@@ -90,8 +90,8 @@ Not everything is "done" .. as there are many things to write and verify, this i
 
 | Driver   | IndexSupport  |  TagSupport |  SeriesSupport | LineSupport  | TriggerSupport | DriverNames |
 |---|---|---|---|---|---|---|
-| cassandra | write+read  | No  | write+read | write+read | Yes | Index: "cassandra", Line: "cassandra-flat", Series: "cassandra", Series Triggerd: "cassandra-triggered" |
-| mysql  | write+read  | write  | write+read  | write+read  | Yes | Index: "mysql", Line: "mysql-flat", Series: "mysql",  Series Triggerd: "cassandra-triggered" |
+| cassandra | write+read  | No  | write+read | write+read | Yes | Index: "cassandra", Line: "cassandra-flat", Series: "cassandra", Series Triggered: "cassandra-triggered" |
+| mysql  | write+read  | write  | write+read  | write+read  | Yes | Index: "mysql", Line: "mysql-flat", Series: "mysql",  Series Triggered: "cassandra-triggered" |
 | kafka  |  write | write | write  | write  | n/a | Index: "kafka", Line: "kafka-flat", Series: "kafka" |
 | whisper|  read | n/a | n/a  | write+read |  n/a | Index: "whisper", Line: "whisper", Series: "n/a" |
 | leveldb |  write+read | No | No  | No |  n/a | Index: "leveldb", Line: "n/a", Series: "n/a" |
@@ -189,9 +189,9 @@ Since the default
 behavior is to write the series only when it hits the `cache_byte_size` setting.  This can be problematic for series
 that are very slow to update, and they will take a very long time to acctually persist to the DB system.  The setting
 
-    cache_max_time_in_cache
+    max_time_in_cache
 
-for the `writer.options` section lets you tune this value.  The default value is 1 hour (`cache_max_time_in_cache=60m`)
+for the `writer.options` section lets you tune this value.  The default value is 1 hour (`max_time_in_cache=60m`)
 
 
 ### SubWriters

@@ -80,6 +80,11 @@ func TestCarbontwoAccumulator(t *testing.T) {
 			So(err, ShouldEqual, nil)
 		})
 
+		err = statter.ProcessLine([]byte("stat_is_max,unit_is_B,mtype_is_gauge,what_is_house  moo_is_goo house_is_spam 123 123123"))
+		Convey("type_is_min,unit_is_B,mtype_is_gauge,what_is_house  moo=goo house=spam 123 123123` should not fail", func() {
+			So(err, ShouldEqual, nil)
+		})
+
 		// clear it out
 		b := new(devNullWriter)
 		statter.Flush(b)
@@ -112,9 +117,9 @@ func TestCarbontwoAccumulator(t *testing.T) {
 		}
 
 		strs := strings.Split(buf.String(), "\n")
-		So(strs, ShouldContain, "mtype=gauge.stat=max.unit=B.what=house 10.000000 123123 mtype=gauge stat=max unit=B what=house  moo=goo house=spam")
-		So(strs, ShouldContain, "mtype=gauge.stat=min.unit=B.what=house 2.000000 123123 mtype=gauge stat=min unit=B what=house  moo=goo house=spam")
-		So(strs, ShouldContain, "mtype=gauge.stat=mean.unit=B.what=house 5.666667 123123 mtype=gauge stat=mean unit=B what=house  moo=goo house=spam")
+		So(strs, ShouldContain, "mtype_is_gauge.stat_is_max.unit_is_B.what_is_house 10.000000 123123 mtype=gauge stat=max unit=B what=house  moo=goo house=spam")
+		So(strs, ShouldContain, "mtype_is_gauge.stat_is_min.unit_is_B.what_is_house 2.000000 123123 mtype=gauge stat=min unit=B what=house  moo=goo house=spam")
+		So(strs, ShouldContain, "mtype_is_gauge.stat_is_mean.unit_is_B.what_is_house 5.666667 123123 mtype=gauge stat=mean unit=B what=house  moo=goo house=spam")
 
 	})
 	stsfmt, err := NewFormatterItem("statsd")
@@ -140,9 +145,9 @@ func TestCarbontwoAccumulator(t *testing.T) {
 		})
 		strs := strings.Split(buf.String(), "\n")
 		t.Logf("Stats: %v", strs)
-		So(strs, ShouldContain, "mtype=counter.stat=max.unit=B.what=house:10.000000|c|#mtype:counter,stat:max,unit:B,what:house,moo:goo,house:spam")
-		So(strs, ShouldContain, "mtype=gauge.stat=min.unit=B.what=house:2.000000|g|#mtype:gauge,stat:min,unit:B,what:house,moo:goo,house:spam")
-		So(strs, ShouldContain, "mtype=rate.stat=mean.unit=B.what=house:5.666667|ms|#mtype:rate,stat:mean,unit:B,what:house,moo:goo,house:spam")
+		So(strs, ShouldContain, "mtype_is_counter.stat_is_max.unit_is_B.what_is_house:10.000000|c|#mtype:counter,stat:max,unit:B,what:house,moo:goo,house:spam")
+		So(strs, ShouldContain, "mtype_is_gauge.stat_is_min.unit_is_B.what_is_house:2.000000|g|#mtype:gauge,stat:min,unit:B,what:house,moo:goo,house:spam")
+		So(strs, ShouldContain, "mtype_is_rate.stat_is_mean.unit_is_B.what_is_house:5.666667|ms|#mtype:rate,stat:mean,unit:B,what:house,moo:goo,house:spam")
 
 	})
 

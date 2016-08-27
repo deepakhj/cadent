@@ -1,5 +1,5 @@
 
-### Graphite like API/Readers
+# Graphite like API/Readers
 
 Readers are an attempt to imitate the Graphite API bits and include 3 main endpoints with a few more endpoints
 
@@ -7,9 +7,9 @@ Readers are an attempt to imitate the Graphite API bits and include 3 main endpo
     /{root}/find  -- find paths ( ?query=path.*.to.my.*.metric )
     /{root}/expand -- expand a tree ( ?query=path.*.to.my.*.metric )
     /{root}/metrics -- get metrics in the format graphite needs ( ?target=path.*.to.my.*.metric&from=time&to=time )
-    /{root}/rawrender -- get the actuall metrics in the internal format ( ?target=path.*.to.my.*.metric&from=time&to=time )
+    /{root}/rawrender -- get the actual metrics in the internal format ( ?target=path.*.to.my.*.metric&from=time&to=time )
     /{root}/cached/series -- get the BINARY blob of data only ONE metric allowed here ( ?to=now&from=-10m&target=graphitetest.there.now.there )
-    /{root}/cache -- get the actuall metrics stored in writeback cache ( ?target=path.*.to.my.*.metric&from=time&to=time )
+    /{root}/cache -- get the actual metrics stored in writeback cache ( ?target=path.*.to.my.*.metric&from=time&to=time )
 
 For now, all return types are JSON.
 
@@ -19,18 +19,18 @@ does not write "nils" so the `/metrics` endpoint has to return an interpolated s
 (this is more a warning for those that may notice some time shifting in some data and "data" holes)
 
 This may mean that you will see some random interspersed `nils` in the data on small time ranges.  There are a variety of reasons for this
-1) flush times are not "exact" go's in the concurency world, not everything is run exactly when we want it do so over time some "drift" will occur.
+1) flush times are not "exact" go's in the concurrency world, not everything is run exactly when we want it do so over time some "drift" will occur.
 2) Since we are both "flushing to disk" and "flushing from buffers" from many buffers at different times, sometimes they just don't line up
 
 *NOTE*  Currently only Cassandra, MySQL and Whisper "render apis" are valid. File and Kafka writers can have no render apis.
 
-*NOTE* the `/cached/series` endpoint only makes since for TimeSeries based writers, as a result only Cassandra, MySQL, kafka series writers impliment this
+*NOTE* the `/cached/series` endpoint only makes since for TimeSeries based writers, as a result only Cassandra, MySQL, kafka series writers implement this
 
-#### Table of implemented apis and writers
+## Table of implemented apis and writers
 
 Not everything can implement the APIs due to their nature. Below is a table of what drivers implement which endpoints
 
-##### Metrics
+### Metrics
 
 | Driver   | /rawrender + /metrics | /cache + /cached/series  | TagSupport |
 |---|---|---|---|
@@ -45,7 +45,7 @@ Not everything can implement the APIs due to their nature. Below is a table of w
 | whisper| yes | n/a | n/a |
 
 
-##### Index
+### Index
 
 | Driver   |  /expand | /find  | TagSupport |
 |---|---|---|---|---|---|
@@ -56,13 +56,13 @@ Not everything can implement the APIs due to their nature. Below is a table of w
 | whisper | yes | yes | n/a |
 
 
-`n/a` means it cannot/won't be implemeneted
+`n/a` means it cannot/won't be implemented
 
-`No` means it has not been implemended yet
+`No` means it has not been implemented yet, but can
 
 `TagSupport` is forth comming, but it will basicall add an extra Query param `tag=XXX` to things once the indexing has been hashed out
 
-#### Aggregation
+## Aggregation
 
 Since graphite does not have the ability to tell the api what sort of aggregation we want/need from a given metric.  Cadent
 attempts to infer what aggregation to use. Below is the mappings we use to infer, anything that does not match will get
@@ -72,14 +72,14 @@ the default of `mean`.
 |---|---|
 | ends with: count |  sum |
 | ends with: error(s?) |  sum |
-| ends with: delete(s|d?) |  sum |
-| ends with: insert(s|ed?) |  sum |
-| ends with: update(s|d?) |  sum |
-| ends with: request(s|ed?) |  sum |
-| ends with: select(s|ed?) |  sum |
-| ends with: add(s|ed)? |  sum |
+| ends with: delete(s\|d?) |  sum |
+| ends with: insert(s\|ed?) |  sum |
+| ends with: update(s\|d?) |  sum |
+| ends with: request(s\|ed?) |  sum |
+| ends with: select(s\|ed?) |  sum |
+| ends with: add(s\|ed)? |  sum |
 | ends with: remove(s?) |  sum |
-| ends with: remove(s|d?) |  sum |
+| ends with: remove(s\|d?) |  sum |
 | ends with: consume(d?) |  sum |
 | ends with: sum |  sum |
 | ends with: max |  max |
@@ -94,12 +94,12 @@ the default of `mean`.
 | starts with: stats.gauge |  last |
 | ends with: median |  median |
 | ends with: middle |  median |
-| starts with: median_\d+ |  median |
+| ends with: median_\d+ |  median |
 | DEFAULT | mean |
 
 
 
-#### API Reader config
+## API Reader config
 
     [statsd-regex-map]
     listen_server="statsd-proxy" # which listener to sit in front of  (must be in the main config)
@@ -160,7 +160,7 @@ the default of `mean`.
 
 
 This will fire up a http server listening on port 8083 for those 3 endpoints above.  In order to get graphite to "understand" this endpoint you can use
-either "graphite-web" or "graphite-api". And you will need https://gitlab.mfpaws.com/Metrics/pycandent
+either "graphite-web" or "graphite-api". And you will need https://github.com/wyndhblb/pycandent
 
 For graphite-web you'll need to add these in the `settings.py` (based on the settings above)
 

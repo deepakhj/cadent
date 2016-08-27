@@ -16,6 +16,7 @@ default_backend="statsd-proxy"  # failing a match go here
             ["legacyNamespace", "true"],
             ["prefixGauge", "gauges"],
             ["prefixTimer", "timers"],
+            ["prefixSets", "sets"],
             ["prefixCounter", ""],  # legacy namespace
             ["globalPrefix", "stats"],
             ["globalSuffix", ""],

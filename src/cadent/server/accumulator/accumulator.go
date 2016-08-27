@@ -295,41 +295,54 @@ func (acc *Accumulator) PushStat(spl *repr.StatRepr) {
 func (acc *Accumulator) FlushAndPost(attime time.Time) ([]splitter.SplitItem, error) {
 	defer stats.StatsdSlowNanoTimeFunc(fmt.Sprintf("accumulator.flushpost-time-ns"), time.Now())
 
-	buffer := new(bytes.Buffer)
-	items := acc.Accumulate.Flush(buffer)
+	// a few modes here
+	// 1. if th backend is "BLACKHOLE" we don't need the "acctual" lines
+	//    just the split items as it's not going back to be re-consistently hashed
+	// 2. if the input and output formats are the same, no need to "process"
+	//    lines
+
 	//log.Notice("Flush: %s", items)
 	//return []splitter.SplitItem{}, nil
 	//t := time.Now()
 	out_spl := make([]splitter.SplitItem, 0)
-	for {
-		line, err := buffer.ReadBytes(repr.NEWLINE_SEPARATOR_BYTE)
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			acc.log.Error("Buffer read error", err)
-			continue
-		}
-		if len(line) == 0 {
-			continue
-		}
+	var items *flushedList
+	// the buck stops here and into writers
+	if acc.ToBackend != BLACK_HOLE_BACKEND {
 
-		spl, err := acc.OutSplitter.ProcessLine(line)
+		buffer := new(bytes.Buffer)
+		items = acc.Accumulate.Flush(buffer)
+		for {
+			line, err := buffer.ReadBytes(repr.NEWLINE_SEPARATOR_BYTE)
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				acc.log.Error("Buffer read error", err)
+				continue
+			}
+			if len(line) == 0 {
+				continue
+			}
 
-		if err != nil {
-			acc.log.Error("Invalid Line post flush accumulate `%s` Err:%s", line, err)
-			continue
+			spl, err := acc.OutSplitter.ProcessLine(line)
+
+			if err != nil {
+				acc.log.Error("Invalid Line post flush accumulate `%s` Err:%s", line, err)
+				continue
+			}
+			// this tells the server backends to NOT send to the accumulator anymore
+			// otherwise we'd get serious infinite channel loops
+			//log.Warning("ACC posted: %v  Len %d", spl.Line(), acc.OutputQueue)
+			spl.SetPhase(splitter.AccumulatedParsed)
+			spl.SetOrigin(splitter.Other)
+			spl.SetOriginName(acc.FromBackend) // where we are from
+			out_spl = append(out_spl, spl)
+			//log.Notice("sending: %s Len:%d", spl.Line(), len(acc.OutputQueue))
+			acc.PushLine(spl)
+			//log.Notice("SENT: %s Len:%d", spl.Line(), len(acc.OutputQueue))
 		}
-		// this tells the server backends to NOT send to the accumulator anymore
-		// otherwise we'd get serious infinite channel loops
-		//log.Warning("ACC posted: %v  Len %d", spl.Line(), acc.OutputQueue)
-		spl.SetPhase(splitter.AccumulatedParsed)
-		spl.SetOrigin(splitter.Other)
-		spl.SetOriginName(acc.FromBackend) // where we are from
-		out_spl = append(out_spl, spl)
-		//log.Notice("sending: %s Len:%d", spl.Line(), len(acc.OutputQueue))
-		acc.PushLine(spl)
-		//log.Notice("SENT: %s Len:%d", spl.Line(), len(acc.OutputQueue))
+	} else {
+		items = acc.Accumulate.FlushList()
 	}
 
 	if acc.Aggregators != nil {
