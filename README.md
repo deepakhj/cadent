@@ -13,7 +13,7 @@ As far as i can tell only Kafka followed by Cassandra spew forth more (and Kafka
 ### The beginnings.
 
 Graphite (carbon) + Statsd:  The champions of getting metrics stored and queried quickly.  I hesitate to say almost every startup started here
-(Except those acctually old enough to have started w/ SNMP and RRDtool, I include myself here).  However, it turns out
+(Except those acctually old enough to have started w/ SNMP and RRDtool, I include myself here) with these two wonderful tools.  However, it turns out
 we collect more metrics per second from all the various sources then any sort of actual user trafic (by a few orders
 of magnitude).  It, not being customer facing, (not customer facing in the eyes of the business, but certainly "internal" customer
 facing) the resources allocated to keeping it running and useful are sparse.
