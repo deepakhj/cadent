@@ -1,7 +1,0 @@
-#!/bin/bash
-source "$(dirname "${0}")/shared.env"
-
-supervisorctl -c "${SUPERVISORD_CONF}" stop all
-supervisorctl -c "${SUPERVISORD_CONF}" shutdown
-
-exit 0
