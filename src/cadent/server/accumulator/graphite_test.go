@@ -82,11 +82,14 @@ func TestGraphiteAccumulator(t *testing.T) {
 		for _, item := range b_arr.Stats {
 			So(item.Name.MetaTags, ShouldResemble, repr.SortingTags{
 				[]string{"moo", "house"},
+			})
+			So(item.Name.Tags, ShouldResemble, repr.SortingTags{
 				[]string{"host", "me"},
 			})
+
 		}
 
-		So(strings.Split(buf.String(), "\n")[0], ShouldEqual, "stats.gauges.goo 10.000000 123123 moo=house host=me")
+		So(strings.Split(buf.String(), "\n")[0], ShouldEqual, "stats.gauges.goo 10.000000 123123 host=me moo=house")
 
 	})
 	stsfmt, err := NewFormatterItem("statsd")

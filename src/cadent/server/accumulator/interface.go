@@ -41,6 +41,7 @@ type AccumulatorItem interface {
 	Init(FormatterItem) error
 	Stats() map[string]StatItem
 	Flush(buf io.Writer) *flushedList
+	FlushList() *flushedList
 	Name() string
 	ProcessLine(line []byte) error
 	Reset() error

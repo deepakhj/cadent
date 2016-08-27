@@ -225,6 +225,18 @@ func (a *CarbonTwoAccumulate) Flush(buf io.Writer) *flushedList {
 	return fl
 }
 
+func (a *CarbonTwoAccumulate) FlushList() *flushedList {
+	fl := new(flushedList)
+
+	a.mu.RLock()
+	for _, stats := range a.CarbonTwoStats {
+		fl.AddStat(stats.Repr())
+	}
+	a.mu.RUnlock()
+	a.Reset()
+	return fl
+}
+
 /*
 <tag> <tag> <tag>  <metatags> <metatags> <metatags> <value> <time>
  the <tags> for the unique "key" for the metric
@@ -292,9 +304,9 @@ func (a *CarbonTwoAccumulate) ProcessLine(lineb []byte) (err error) {
 	}
 
 	// the sorted tags give us a string of goodies
-	// make it name=val.name=val
+	// make it name_is_val.name_is_val
 	sort.Sort(tags)
-	unique_key := tags.ToStringSep(repr.EQUAL_SEPARATOR, repr.DOT_SEPARATOR)
+	unique_key := tags.ToStringSep(repr.IS_SEPARATOR, repr.DOT_SEPARATOR)
 	stat_key := a.MapKey(unique_key, t)
 	var meta_tags repr.SortingTags
 	// now for the "other" tags
