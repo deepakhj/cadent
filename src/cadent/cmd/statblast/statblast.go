@@ -51,7 +51,7 @@ var sentLines int64
 var numWords int = 3
 var startTime = time.Now().Unix()
 var ConnectionTimeout, _ = time.ParseDuration("2s")
-var Statsdtypes = []string{"c", "g", "ms"}
+var Statsdtypes = []string{"c", "g", "ms", "s", "h"}
 
 var conLock sync.Mutex
 var outCons map[*url.URL]net.Conn
