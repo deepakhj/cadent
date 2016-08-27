@@ -23,7 +23,9 @@ package accumulator
 
 import (
 	"cadent/server/repr"
+	"cadent/server/utils"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"math"
 	"sort"
@@ -219,7 +221,9 @@ func (s *StatsdBaseStatItem) Accumulate(val float64, sample float64, stattime ti
 	return nil
 }
 
+/**************************************************************************/
 /** timer type **/
+/**************************************************************************/
 
 type StatsdTimerStatItem struct {
 	InKey     repr.StatName
@@ -472,6 +476,97 @@ func (s *StatsdTimerStatItem) Write(buffer io.Writer, fmatter FormatterItem, acc
 	s.start_time = time.Now().Unix()
 }
 
+/**************************************************************************/
+/** set type **/
+/* sets are just "counts" of incoming unique values which we map to a hash*/
+/**************************************************************************/
+
+type StatsdSetStatItem struct {
+	InKey  repr.StatName
+	InType string
+	Tags   repr.SortingTags
+	Values map[uint64]bool
+
+	start_time int64
+
+	mu sync.RWMutex
+}
+
+func (s *StatsdSetStatItem) Repr() *repr.StatRepr {
+
+	ct := int64(len(s.Values))
+	return &repr.StatRepr{
+		Time:  time.Now(),
+		Name:  s.InKey,
+		Min:   repr.CheckFloat(repr.JsonFloat64(ct)),
+		Max:   repr.CheckFloat(repr.JsonFloat64(ct)),
+		Count: ct,
+		Sum:   repr.CheckFloat(repr.JsonFloat64(ct)),
+		Last:  repr.CheckFloat(repr.JsonFloat64(ct)),
+	}
+}
+
+// time is 'now' basically for statsd
+func (s *StatsdSetStatItem) StatTime() time.Time { return time.Now() }
+func (s *StatsdSetStatItem) Key() repr.StatName  { return s.InKey }
+func (s *StatsdSetStatItem) Type() string        { return s.InType }
+
+// stattime is not used for statsd, but there for interface goodness
+// also "sample rate" is not really a valid thing for sets ..
+func (s *StatsdSetStatItem) Accumulate(val float64, sample float64, stattime time.Time) error {
+	if math.IsInf(val, 0) || math.IsNaN(val) {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.start_time == 0 {
+		s.start_time = time.Now().Unix()
+	}
+	if s.Values == nil {
+		s.Values = make(map[uint64]bool)
+	}
+	s.Values[uint64(val)] = true
+	return nil
+}
+
+func (s *StatsdSetStatItem) ZeroOut() error {
+	// reset the values
+	s.Values = make(map[uint64]bool, 0)
+	s.start_time = 0
+	return nil
+}
+
+func (s *StatsdSetStatItem) Write(buffer io.Writer, fmatter FormatterItem, acc AccumulatorItem) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	root := acc.GetOption("Prefix", "stats").(string)
+	pref := acc.GetOption("SetPrefix", "sets").(string)
+	sufix := acc.GetOption("Suffix", "").(string)
+
+	f_key := ""
+	if len(root) > 0 {
+		f_key = root + "."
+	}
+	if len(pref) > 0 {
+		f_key = f_key + pref + "."
+	}
+	if len(sufix) > 0 {
+		f_key = f_key + sufix + "."
+	}
+	f_key = f_key + s.InKey.Key
+	ct := float64(len(s.Values))
+
+	fmatter.Write(
+		buffer,
+		&repr.StatName{Key: f_key, Tags: s.InKey.Tags, MetaTags: s.InKey.MetaTags},
+		ct,
+		0, // let formatter handle the time,
+		"s",
+		acc.Tags(),
+	)
+}
+
 /******************************/
 /** statsd accumulator **/
 /******************************/
@@ -488,6 +583,7 @@ type StatsdAccumulate struct {
 	Suffix        string
 	GaugePrefix   string
 	TimerPrefix   string
+	SetPrefix     string
 	CounterPrefix string
 	Thresholds    []float64
 
@@ -499,6 +595,7 @@ func (s *StatsdAccumulate) SetOptions(ops [][]string) error {
 	s.GaugePrefix = "gauges"
 	s.CounterPrefix = "counters"
 	s.TimerPrefix = "timers"
+	s.SetPrefix = "sets"
 	s.Thresholds = []float64{0.90, 0.95, 0.99}
 	s.Suffix = ""
 	s.Prefix = "stats"
@@ -520,6 +617,9 @@ func (s *StatsdAccumulate) SetOptions(ops [][]string) error {
 		}
 		if op[0] == "prefixTimer" {
 			s.TimerPrefix = op[1]
+		}
+		if op[0] == "prefixSet" {
+			s.SetPrefix = op[1]
 		}
 		if op[0] == "prefixCounter" {
 			s.CounterPrefix = op[1]
@@ -554,6 +654,8 @@ func (s *StatsdAccumulate) GetOption(opt string, defaults interface{}) interface
 		return s.TimerPrefix
 	case "CounterPrefix":
 		return s.CounterPrefix
+	case "SetPrefix":
+		return s.SetPrefix
 	case "Prefix":
 		return s.Prefix
 	case "Suffix":
@@ -635,6 +737,18 @@ func (a *StatsdAccumulate) Flush(buf io.Writer) *flushedList {
 	return fl
 }
 
+func (a *StatsdAccumulate) FlushList() *flushedList {
+	fl := new(flushedList)
+
+	a.mu.RLock()
+	for _, stats := range a.StatsdStats {
+		fl.AddStat(stats.Repr())
+	}
+	a.mu.RUnlock()
+	a.Reset()
+	return fl
+}
+
 func (a *StatsdAccumulate) ProcessLine(lineb []byte) (err error) {
 	//<key>:<value>|<type>|@<sample>|#tags:val,tag:val
 	line := string(lineb)
@@ -668,9 +782,12 @@ func (a *StatsdAccumulate) ProcessLine(lineb []byte) (err error) {
 		}
 	}
 
-	f_val, err := strconv.ParseFloat(val, 64)
-	if err != nil {
-		return fmt.Errorf("Accumulate: Bad Value | Invalid Statds line `%s`", line)
+	var f_val float64
+	if c_type != "s" {
+		f_val, err = strconv.ParseFloat(val, 64)
+		if err != nil {
+			return fmt.Errorf("Accumulate: Bad Value | Invalid Statds line `%s`", line)
+		}
 	}
 
 	if len(val_type) == 3 {
@@ -700,7 +817,8 @@ func (a *StatsdAccumulate) ProcessLine(lineb []byte) (err error) {
 	a.mu.RUnlock()
 
 	if !ok {
-		if c_type == "ms" || c_type == "h" {
+		switch c_type {
+		case "ms", "h":
 			thres := make([]float64, 3)
 			thres[0] = 0.9
 			thres[1] = 0.95
@@ -718,7 +836,13 @@ func (a *StatsdAccumulate) ProcessLine(lineb []byte) (err error) {
 				PercentThreshold: thres,
 				SampleSum:        0,
 			}
-		} else {
+		case "s":
+			gots = &StatsdSetStatItem{
+				InType: "s",
+				Values: make(map[uint64]bool, 0),
+				InKey:  repr.StatName{Key: key, Tags: tags},
+			}
+		default:
 			gots = &StatsdBaseStatItem{
 				InType: c_type,
 				Sum:    0.0,
@@ -727,9 +851,23 @@ func (a *StatsdAccumulate) ProcessLine(lineb []byte) (err error) {
 				Last:   STATSD_ACC_MIN_FLAG,
 				InKey:  repr.StatName{Key: key, Tags: tags},
 			}
+
 		}
 	}
-	m_val := float64(f_val)
+	var m_val float64
+	switch c_type {
+	case "s":
+
+		byte_buf := utils.GetBytesBuffer()
+		defer utils.PutBytesBuffer(byte_buf)
+		buf := fnv.New64a()
+		fmt.Fprintf(byte_buf, val)
+		buf.Write(byte_buf.Bytes())
+		m_val = float64(buf.Sum64())
+	default:
+		m_val = float64(f_val)
+	}
+
 	// needs to lock internally if needed
 	gots.Accumulate(m_val, 1.0/sample, time.Time{})
 
