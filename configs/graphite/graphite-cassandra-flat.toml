@@ -12,8 +12,7 @@ listen_server="graphite-proxy" # which listener to sit in front of  (must be in 
 default_backend="graphite-proxy"  # failing a match go here
 
     [graphite-proxy-map.accumulator]
-
-    backend = "BLACKHOLE"
+    backend = "graphite-gg-relay"  # loop back, the code will bypass the accumulator on the second pass
     input_format = "graphite"
     output_format = "graphite"
     accumulate_flush = "5s"

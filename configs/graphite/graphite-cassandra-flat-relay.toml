@@ -14,7 +14,7 @@ default_backend="graphite-proxy"
 
     # accumulator and
     [graphite-cassandra.accumulator]
-    backend = "graphite-gg-relay"  # loop back, the code will bypass the accumulator on the second pass
+    backend = "BLACKHOLE"
     input_format = "graphite"
     output_format = "graphite"
 
