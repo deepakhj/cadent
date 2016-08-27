@@ -5,17 +5,44 @@ Cadent
 
 Manipulate your metrics
 
-So in terms of picking a bad name ... marketers .. is "k-dent" as in "k as in cake" \ˈkā-dənt\ .. 
-call it "ca-dent" (ca as in cat) if you really want to .. but that holds no real meaning (just look it up ... expand your vocab)
+Philosophy: Measure everything period. If it's not measured it does not exist.
 
-Basically this acts like 4-6 existing projects out in the wilderness statsd, statsd-proxy, carbon-relay, carbon-aggegator, carbon-cache, cyanite
+Cadent itself spews about 400-500 of it's own metrics for instances (which of course it just emits to itself if configure to).
+As far as i can tell only Kafka followed by Cassandra spew forth more (and Kafka is obscenely verbose, to the point of just not useful really).
+
+### The beginnings.
+
+Graphite (carbon) + Statsd:  The champions of getting metrics stored and queried quickly.  I hesitate to say almost every startup started here
+(Except those acctually old enough to have started w/ SNMP and RRDtool, I include myself here).  However, it turns out
+we collect more metrics per second from all the various sources then any sort of actual user trafic (by a few orders
+of magnitude).  It, not being customer facing, (not customer facing in the eyes of the business, but certainly "internal" customer
+facing) the resources allocated to keeping it running and useful are sparse.
+
+But as much as I love, use, hack, tinker and futz with graphite + statsd.  There are three big issues, it's reliance on disks, single threaded and general performance while trying to keep a few TBs of metrics online and queried, make it difficult to scale (not impossible
+by any means, just not easy).
+
+I think is now a common issue in the ecosphere of metrics/ops folks now.  And as a result _many_ projects exist out there in the echo system that handle lots of "parts" of the problem.  Cadent attempts to "solve it all" (and laughs at itself, as of course it's
+"standing on the sholders of giants", uses other good opensource pieces in the wild, and is certainly not the most performant things in the world) in one binary.
+Every situation is different, data retention requirement, speed, input volume, query volume, timeording,
+persistence solutions etc.  Each one comes with it's own cost to run (something alot of projects fail to mention).  For instance if you're just starting, you're probably not going to have a good sized cassandra cluster and a good sized kafka cluster, as your app
+probably runs on one (maybe two) instances.  But you probably have a Database somewhere, or at least a hardrive.
+As you expand, you start to hit the "wall". There's no way around it.  But let's make moving that wall easier.
+
+### The Name:
+
+is "k-dent" as in "`k` as in `cake`" `\ˈkā-dənt\` ..
+call it "ca-dent" (`ca` as in `cat`) if you really want to .. but that holds no real meaning (just look it up)
+
+### Function
+
+Basically this acts like many tens of existing projects out in the wilderness that either are, or act like, the standard "set": statsd, statsd-proxy, carbon-relay, carbon-aggegator, carbon-cache.
 
 It "sorta" behaves like carbon-cache, (as it can read/write to whisper files but does not have the "entire functionality set" of carbon-cache)
 Cassandra, and even a SQL DB if you really think that's a good idea, watch as you kill your RDBS trying to insert 100k items in 1 second)
 
 But dramatically retooled and optimized to handle 100's of thousands of metrics a second.
 
-Has a Hekad feel (same sort of data pipeline like) but optimized for what we really need
+Has a pipeline feel but optimized for what we really need
 
  - consistent hashing relay
  - metric filter and router
@@ -23,32 +50,51 @@ Has a Hekad feel (same sort of data pipeline like) but optimized for what we rea
  - accumulation and aggregation
  - time series DB writing
  - graphite-api endpoints
- 
-Yes "each" of the above can be handled by a standalone app (and they do exist in the echo system) .. however at the volume
+
+Yes "each" of the above can be handled by a standalone app (and many do exist in the echo system) .. however at the volume
 we want to address .. there's nothing like raw RAM/CPU power on a local node (the internet, slow, ram, fast).
 
-Note:: configuration for complex scenarios of loop backs, replicas moving, multiple backends, accumulators, and aggregators 
+Note:: configuration for complex scenarios of loop backs, replicas moving, multiple backends, accumulators, and aggregators
 can get confusing .. and you can find yourself hitting yourself over the head alot.  You's say "why not keep it simple"
 If metrics collection and manipulating was simple, I would not have to write this.
+
+
+### What it does not do.
+
+Visualization: In the visualization world grafana wins, period we're not visualizing things in cadent.
+
+`result = f(timeseries)`: Graphite/graphite-api also win here, by alot.  Their DSL for applying `fancy math` to timeseries is near impossible to match (not impossible, but really hard to recreate it as it's depth is rather mystifying sometimes).
+
+
+## Why is it designed this way?
+
+Well, no system lives in a vacuum.  You probably already have a graphite cluster, maybe OpenTSDB, or what have you, and
+need to migrate systems as whatever you are using is falling down (for reasons, as ops folks, i hope you know). But you cannot
+just "cut the cord" to the old system as there are many dependencies on it already.  Time series never stop, never slow
+down, never go away. So each peice of this puzzle is made to partially replace another.  If one element cannot be "out of the box"
+replaced, then replication to a new system is there to feed things to the old one, while bootstrapping the new one.
+
+That's why this looks a bit like plaster covering a few holes left by a few baseballs.  You can only cover one hole
+at a time.
 
 
 Installation
 ------------
 
-    Well, first you need to install go .. https://golang.org  >= 1.5.1
-    And a kernel that supports SO_REUSEPORT (linux 3.9 or higher and bsd like kernels)
-    And make sure to use VENDOR support (in golang 1.6, this is the default)
-    go 1.7 is perfered as it's faster.
-    
+Well, first you need to install go .. https://golang.org  >= 1.5.1
+And a kernel that supports SO_REUSEPORT (linux 3.9 or higher and bsd like kernels)
+And make sure to use VENDOR support (in golang 1.6, this is the default)
+go 1.7 is perfered as it's faster.
 
-    git clone git@scm-main-01.dc.myfitnesspal.com:Metrics/cadent.git
+
+    git clone {path to repo}
     export GOPATH=$(pwd)
 
     make
-   
 
-Examples
---------
+
+Examples Configs
+----------------
 
 Look to the "example-config.toml" for all the options you can set and their meaning
 and config directory for more examples.
@@ -56,20 +102,22 @@ and config directory for more examples.
 to start
 
     cadent --config=example-config.toml
-    
-There is also the "PreReg" options files as well, this lets one pre-route lines to various backends, that can then 
+
+There is also the "PreReg" options files as well, this lets one pre-route lines to various backends, that can then
 be consitently hashed, or "rejected" if so desired, as well as "accumulated" (ala statsd or carbon-aggrigate)
 
     cadent --config=example-config.toml --prereg=example-prereg.toml
 
 
-What I do
----------
+Look to `config/*` for many more example configs.
 
-Once upon a time, our statsd servers had __waaaayyyy__ to many UDP errors (a common problem i've been told). 
-Like many projects, necessity, breeds, well, more necessity, but that's another conversation.
+What Cadent does
+----------------
+
+Once upon a time, our statsd servers had __waaaayyyy__ to many UDP errors (a common problem I've been told).
+Like many projects, necessity, breeds, (well, more necessity, but that's another conversation)...
 So a Statsd Consistent Hashing Proxy in Golang was written to be alot faster and not drop any packets.
- 
+
 And then ...
 
 This was designed to be an arbitrary proxy for any "line" that has a representative Key that needs to be forwarded to
@@ -79,24 +127,28 @@ any other "line" that can be regex out a Key, like fowarding loglines to an ELK 
 And then ...
 
 It Supports health checking to remove nodes from the hash ring should the go out, and uses a pooling for
-outgoing connections.  It also supports various hashing algorithms to attempt to imitate other
+outgoing connections (mostly because the cloud is a nice place).
+
+It also supports various hashing algorithms to attempt to imitate other
 proxies to be transparent to them.
 
 And then ...
 
-Replication is supported as well to other places, there is "alot" of polling and line buffereing so we don't 
+Replication is supported as well to other places, there is "alot" of pooling and line buffereing so we don't
 waste sockets and time sending one line at a time for things that can support multiline inputs (i.e. statsd/graphite)
 
 And then ...
 
 A "PreRegex" filter on all incoming lines to either shift them to other backends (defined in the config) or
-simply reject the incoming line
+simply reject the incoming line (you can thank kafka for this addition ;)
 
 And then ...
 
+well running 20 statsd processes to just handle the load seemed silly, thus ....
+
 Accumulators. which initially "accumulates" lines that can be (thing statsd or carbon-aggrigate) then
 emits them to a designated backend, which then can be "PreRegex" to other backends if nessesary
-Currently only "graphite" and "statsd" accumulators are available such that one can do statsd -> graphite or even 
+Currently only "graphite" and "statsd" accumulators are available such that one can do statsd -> graphite or even
 graphite -> graphite or graphite -> statsd (weird) or statsd -> statsd.  The {same}->{same} are more geared
 towards pre-buffering very "loud" inputs so as no to overwhelm the various backends.
 
@@ -104,34 +156,44 @@ NOTE :: if in a cluster of hashers and accumulators .. NTP is your friend .. mak
 
 And then ...
 
-Data stores, since we have all the data, why not try a more another data store?
-Whisper, Cassandra, Kafka, Mysql, TextFile
+Data stores, since we have all the data, why not try a more another data store, one that is not so Disk sensitive?
+Whisper, Cassandra, Kafka, Mysql, TextFile, {add your own driver}
 
 And then ..
 
 Indexers.  Needs to be able to index the metrics keys in some fashion.  Kafka, Cassandra, LevelDB, "whisper".
+(whisper in quotes as it's just a glob on the file system, it need not do anything really, but needs to provide an API
+of some kind)
 
 And then ..
 
-GraphiteAPI.  Special datastores need to be able to hook into the graphite eco system.
+GraphiteAPI.  Special datastores need to be able to hook into the mighty graphite eco system.  We don't yet want to imitate the
+full DSL of graphite, that's really hard.
 
 And then ..
 
 TimeSeries.  The initial pass at external data stores, where "dumb".  Basically things stored a point for every time/value set.
-This turned can be expensive.  The Whisper format is pretty compact, but requires lots of IO to deal internal rollups and
+This turned out to very be expensive.  The Whisper format is pretty compact, but requires lots of IO to deal internal rollups and
  seeking to proper places in the RRD.  Cassandra on a "flat point" storage is both very high disk use and for big queries can be
  slow.  Internally things were also not stored effiently causing some ram bloat.  So a variety of compressed time series were
  created to deal w/ all these issues.  These series are binary chunked blobs spanning a time range of points.  Some algorithms are
  very space efficent (gorilla) but not as easy to deal with if slices/sorting, etc are needed.  So given the use case a
- few series types that are used.
+ few series types that can be used.
+
+And then ..
+
+Tags (some folks call this "multi-dimensions").  This is the "work in progress point" of where cadent is.
+
 
 Current Flow ::
 
 The Flow of a given line looks like so
 
-    InLine(s) -> Listener -> Splitter -> [Accumulator] -> [PreReg/Filter] -> Backend -> Hasher -> OutPool -> Buffer -> outLine(s) -> And/Or -> [Writer/Indexer]
-                                                                |
-                                                                [-> Replicator -> Hasher -> OutPool -> Buffer -> outLine(s)]
+    InLine(s) -> Listener -> Splitter -> [Accumulator] -> [PreReg/Filter] -> Backend -> Hasher -> OutPool -> Buffer -> outLine(s)
+                                              |                 |              [ |  -> Writer/Indexer ]
+                                              |                 |
+                                              |                 |[ -> Replicator -> Hasher -> OutPool -> Buffer -> outLine(s) -> [Writer/Indexer] ]
+                                              |-> [ Writer/indexer ]
 Things in `[]` are optional
 
 What Needs Work
@@ -144,16 +206,16 @@ Currently much of the system uses strings as it's basis for things, which was a 
 lines are strings in the incoming) but at large loads this can lead to RAM and GC issues.
 
 2. OverFlow handling: there are ALOT of buffers and internal caching and compression of timeseries going on to help w/
-metric floods, RAM pressure, writing issues and so on.  There is no real magic bullet i've found yet to be able to handle huge loads w/o dropping
+metric floods, RAM pressure, writing issues and so on (yes, we have seen a litteral boost of 100k-500k new metrics appear from "no where").  There is no real magic bullet i've found yet to be able to handle huge loads w/o dropping
 some points in the series at somepoint in the chain.  Things like backpressure are hard to impliment as the senders need to
 also understand backpressure (which UDP cannot) and various stats sending clients do not either (as it requires them to
 also have some interal buffering mechanisms when issues occur). Personally, the best mechanism may be to imitate a
 cassandra/kafka append only rotating log on the file system, which then
 the writers/indexers simply consume internally to do the writes. Much similare to how Hekad's ElasticSearch writer behaves
 but, even w/ this mechanism, if the writers cannot keep up eventually there will be death. Internally the "write-cache" is this
-mecahnism of a sort, in RAM, but will simply drop overflowing points.  So really Kafka may be the only "real" solution here.
+mecahnism of a sort, in RAM, but will simply drop overflowing points.
 
-3. Metric Indexing: Graphites "format" was made for file glob patterns, which is good if everything is on a file system
+3. Metric Indexing (Tag indexing): Graphite's "format" was made for file glob patterns, which is good if everything is on a file system
 this is not the case for other data stores.  And intertroducing a "tag/multi-dim" structure on top of this just makes
 indexing that much harder of a problem to be able to "find" metrics you are looking for (obviously if you know the exact
 name for things, this is easy, ans some TSDBs do indeed force this issue), but we are spoiled by the graphite's finder abilities.
@@ -169,7 +231,15 @@ cadents running that may be the accumulator portion (which cannot be assumed as 
 But if it is a "cadent->cadent" transfer there are much better/faster mechanisms to get data across a wire then convertering things
 back to strings and starting the entire process over again.
 
-6. "shutdown" currently pretty clunky and can lead to some not-so-nice fail modes
+6. "Other then a text socket" input API.  Currently there's no inputs that are, say, based on a kafka topic, or http post w/ JSON data.
+And no not-a-text-line protocal (MSGpack/Protobuf/blaa).  Should not be hard to create, just needs to be.
+
+7. "shutdown" currently pretty clunky and can lead to some crash fail modes (i.e. writing to a closed channel sort of stuff as the pipline
+can sometimes be difficult to fully "shutdown-in-order" due to the inital design.
+
+8. Lastly, writer/reader tests.  Mocking all the DBs needed in the mix currently is no easy feet (that's an entire code base in itself)
+Many of the sub components have a decent test-suit just not the full "writer/reader" mechanisms.
+
 
 ## Accumulators 
 
@@ -179,7 +249,7 @@ endpoint scenario, you'd want to consistently hash from the incoming line stream
 backend accumulators (in the same fashion that Statsd Proxy -> Statsd and Carbon Relay -> Carbon Aggregator).  
 
 
-It's easy to do this in one "instance" of this item where one creates a "loop back" to itself, but on a different
+It's easy to do this in one "instance" of this cadent where one creates a "loop back" to itself, but on a different
 listener port.
 
      InLine(port 8125) -> Splitter -> [PreReg/Filter] -> Backend -> Hasher -> OutPool (port 8126)
@@ -212,7 +282,7 @@ To use it properly you will need to specify a `timeLayout` in the regex options,
 
 Time really only matters for sending things to writer backends or another service that uses that time.
 
-*Please note::* certain backends (i.e. cassandra, mysql, etc) will "squish" old data points if times are sent in 
+*Please note::* certain backends (i.e. cassandra-flat, mysql-flat, etc) will "squish" old data points if times are sent in
 funny order.  Meaning if you send data with times 1pm, 1pm, 1pm in one "flush period" then all the 3 of those "1pm times"
 will get aggregated and inserted in the DB.  However, if one tries to "re-add" the 1pm data sometime in the future 
 this will clobber the old data point with the new data.  Meaning that we don't aggregate the old value w/ a new one
@@ -247,12 +317,6 @@ Currently supported incoming "line" formats
 
 [See the lineformats doc](./docs/lineformats.md)
 
-### Writers
-
-Here you will find the schemas, some gotchas, advice and what nots.
-
-[See the writers doc](./docs/writers.md)
-
 
 ### TimeSeries
 
@@ -260,6 +324,11 @@ There is lots of experimenting, series types and use cases provided here
 
 [See the timeseries doc](./docs/timeseries.md)
 
+### Writers
+
+Here you will find the schemas, some gotchas, advice and what nots.
+
+[See the writers doc](./docs/writers.md)
 
 
 ### UniqueID generation
@@ -454,6 +523,6 @@ TBD
 Author
 ------
 
-![A Flow of examples](configs/example-flow.png)
+![A Flow of examples](docs/example-flow.png)
 
-boblanton@myfitnesspal.com 2015-2016 MyFitnesspal
+bblanton@underarmour.com 2015-2016 UnderArmour
