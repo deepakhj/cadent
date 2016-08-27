@@ -43,7 +43,10 @@ func init() {
 
 var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 var randWords = []string{"test", "house", "here", "badline", "cow", "now"}
-var randTagName = []string{"unit", "mytpe", "host", "code", "direction", "type"}
+var randTagName = []string{"host", "code", "direction", "type", "dummy", "moomoo"}
+var randUnit = []string{"B", "Hz", "ft", "J", "jiff"}
+var randMtype = []string{"rate", "counter", "gauge"}
+var randStat = []string{"min", "max", "mean", "min_90", "max_90"}
 var sentLines int64
 var numWords int = 3
 var startTime = time.Now().Unix()
@@ -90,12 +93,10 @@ func sprinter(ct int) string {
 }
 
 func sprinterTag(ct int) string {
-	r_wor := []string{RandItem(randWords)}
-	r_tgs := []string{RandItem(randTagName)}
+	// add the "required" tags
+	r_ws := []string{"what=" + RandItem(randWords), "unit=" + RandItem(randUnit), "mtype=" + RandItem(randMtype), "stat=" + RandItem(randStat)}
 
-	r_ws := []string{r_tgs[0] + "=" + r_wor[0]}
-
-	for i := 0; i < ct-1; i++ {
+	for i := 0; i < ct-4; i++ {
 		r_ws = append(r_ws, RandItem(randTagName)+"="+RandItem(randWords))
 	}
 	return strings.Join(r_ws, " ")
@@ -224,6 +225,7 @@ func Runner(server string, intype string, rate string, buffer int) {
 		case true:
 			fmt.Print(oneline)
 			sentLines++
+			time.Sleep(sleeper)
 		default:
 			if len(msg+oneline) >= buffer {
 				SendMsg(i_url, msg)
