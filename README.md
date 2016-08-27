@@ -38,6 +38,7 @@ Installation
     Well, first you need to install go .. https://golang.org  >= 1.5.1
     And a kernel that supports SO_REUSEPORT (linux 3.9 or higher and bsd like kernels)
     And make sure to use VENDOR support (in golang 1.6, this is the default)
+    go 1.7 is perfered as it's faster.
     
 
     git clone git@scm-main-01.dc.myfitnesspal.com:Metrics/cadent.git
@@ -253,6 +254,13 @@ There is lots of experimenting, series types and use cases provided here
 [See the timeseries doc](./docs/timeseries.md)
 
 
+### UniqueID generation
+
+Notes on how cadent determins a "unique" id for each metric
+
+[See the uniqueid doc](./docs/uniqueid.md)
+
+
 ### API/Readers
 
 Graphite like API for querying
@@ -288,7 +296,7 @@ There is also a special `listen` called `backend_only` which is simply a place w
     Graphite: <key> <value> <time>
     Statsd: <key>:<value>|<type>|<samplerate>
     Regex: (<\d+>)?(?P<Timestamp>[A-Z][a-z]+\s+\d+\s\d+:\d+:\d+) (?P<Key>\S+) (?P<Logger>\S+):(.*)
-    Carbon2: <tag> <tag> <Tag>  <meta_tag> <value> <time>
+    Carbon2: name=val name=val name=val  <meta_tag> <value> <time>
     Carbon2a: name=value.name=value  <meta_tag> <value> <time>
     Carbon2b: name=value,name=value  <meta_tag> <value> <time>
     Carbon2c: name_is_value.name_is_value  <meta_tag> <value> <time>
@@ -303,7 +311,7 @@ There is also a special `listen` called `backend_only` which is simply a place w
     - <meta_tags> are NOT concidered to signify a different metric
     - the "<key>" we unique idenfity a metric is a SORTED by name string of the form
 
-        `nameA=value.nameB=value.nameC=value`
+        `nameA_is_value.nameB_is_value.nameC_is_value`
 
     - there are some "fixed" "intrinsict" tags defined for the metrics2.0 layout, these tags
       are used to determin the <key> and unique ID of a given Stat
@@ -325,6 +333,8 @@ There is also a special `listen` called `backend_only` which is simply a place w
         "file"
         "line"
         "env"
+        "dc"
+        "zone"
 
 
     - all other tags are concidered "metatags" and not included in the Unique identifier of a given metric
