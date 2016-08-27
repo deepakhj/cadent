@@ -1,5 +1,5 @@
 
-### Graphite like API/Readers
+# Graphite like API/Readers
 
 Readers are an attempt to imitate the Graphite API bits and include 3 main endpoints with a few more endpoints
 
@@ -26,11 +26,11 @@ This may mean that you will see some random interspersed `nils` in the data on s
 
 *NOTE* the `/cached/series` endpoint only makes since for TimeSeries based writers, as a result only Cassandra, MySQL, kafka series writers impliment this
 
-#### Table of implemented apis and writers
+## Table of implemented apis and writers
 
 Not everything can implement the APIs due to their nature. Below is a table of what drivers implement which endpoints
 
-##### Metrics
+### Metrics
 
 | Driver   | /rawrender + /metrics | /cache + /cached/series  | TagSupport |
 |---|---|---|---|
@@ -45,7 +45,7 @@ Not everything can implement the APIs due to their nature. Below is a table of w
 | whisper| yes | n/a | n/a |
 
 
-##### Index
+### Index
 
 | Driver   |  /expand | /find  | TagSupport |
 |---|---|---|---|---|---|
@@ -62,7 +62,7 @@ Not everything can implement the APIs due to their nature. Below is a table of w
 
 `TagSupport` is forth comming, but it will basicall add an extra Query param `tag=XXX` to things once the indexing has been hashed out
 
-#### Aggregation
+## Aggregation
 
 Since graphite does not have the ability to tell the api what sort of aggregation we want/need from a given metric.  Cadent
 attempts to infer what aggregation to use. Below is the mappings we use to infer, anything that does not match will get
@@ -99,7 +99,7 @@ the default of `mean`.
 
 
 
-#### API Reader config
+## API Reader config
 
     [statsd-regex-map]
     listen_server="statsd-proxy" # which listener to sit in front of  (must be in the main config)

@@ -1,9 +1,9 @@
 
 
-### TimeSeries
+# TimeSeries
 
 
-#### Basic "Series" Point
+## Basic "Series" Point
 
 A point is really a collection of 6 different numbers plus a time stamp
 
@@ -18,7 +18,7 @@ A point is really a collection of 6 different numbers plus a time stamp
     }
 
 
-#### Definitions
+## Definitions
 
 The core of things for writers/caching (not really used at all in the simply Constist Hashing or Statsd modes).
 
@@ -62,14 +62,14 @@ Some definitions:
         Lowres is the "default" behavior as most of the time our flush times are in the SECONDS not less
 
 
-#### GOB + DeltaOfDeltas + VarBit + SmartEncoding + TimeResolution
+## GOB + DeltaOfDeltas + VarBit + SmartEncoding + TimeResolution
 
 The gob format which is a GoLang Specific encoding https://golang.org/pkg/encoding/gob/ that uses the VarBit encoding internally.
 
 This method is pretty efficent.  But it is golang specific so it's not too portable.  But may be good for other uses
 (like quick file appenders or something in the future).
 
-#### ProtoBuf + VarBit + SmartEncoding + TimeResolution
+## ProtoBuf + VarBit + SmartEncoding + TimeResolution
 
 Standard protobuf encoder github.com/golang/protobuf/proto using the https://github.com/gogo/protobuf generator
 
@@ -85,17 +85,17 @@ This uses "gogofaster" for the generator of proto schemas
     protoc --gogofaster_out=. *.proto
 
 
-#### Json
+## Json
 
 The most portable format, but also the biggest (as we a storing strings in reality).  I'd only use this if you
 need extream portability across things, as it's not really space efficent at all.
 
-#### MsgPack
+## MsgPack
 
 In terms of "space" consumed this is a little worse then gogofaster's ProtoBuf.
 In terms of Decoding/Encoding speed it's on a level all its own.  Use this for things that favor speed vs space.
 
-#### Gorilla + DeltaOfDeltas + VarBit + SmartEncoding + TimeResolution
+## Gorilla + DeltaOfDeltas + VarBit + SmartEncoding + TimeResolution
 
 The most extream compression available.  As well as doing the same goodies mentioned, the core squeezer is the
 Float64 compression it uses.  Read up on it here http://www.vldb.org/pvldb/vol8/p1816-teller.pdf.
@@ -113,21 +113,27 @@ This is probably the best option if you are doing a statsd -> graphite output as
 foward.  This one gets tricky with raw graphite inputs as they can be of any time ordering on the incoming.
 
 
-#### Repr
+## Repr
 
 This is the "native" internal format for a metric cadent.  It's NOT very space conciderate (as it's vewry similare
 to the json format, but w/ more stuff).  Basically don't use it for storage.
 
 
-#### ZipGob  + DeltaOfDeltas + VarBit + SmartEncoding + TimeResolution
+## ZipGob  + DeltaOfDeltas + VarBit + SmartEncoding + TimeResolution
 
 Instead of a flat []byte buffer for gob encoding use the FLATE buffer (otherwise exactly the same as Gob).  While it
 does some some space, due to the internals of the golang Flate, there is alot of GC churn and evils associated
 with this one if used for a large number of series.  So this may be a good "final persist state" but it should get converted
 out of this format for use elsewhere.
 
+### *DON'T USE THIS*
 
-### The PointType Enum
+Why is it included?  It may be handy for other things, but in terms of handling massive volumes, this is not
+very good due to the MASSIVE GC/byte pressure it exerts.
+
+
+
+# The PointType Enum
 
 For reference as we store a uint8 in data stores.  I'd only recommend using Gob, Protobuf or Gorilla, unless you
 need "super compatability" then JSON/MSGPACK may be a good bet.  Whatever you do don't really use the ZipGob.

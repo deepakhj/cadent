@@ -15,6 +15,7 @@ default_backend="graphite-proxy"  # failing a match go here
             ["legacyNamespace", "true"],
             ["prefixGauge", "gauges"],
             ["prefixTimer", "timers"],
+            ["prefixSets", "sets"],
             ["prefixCounter", ""],
             ["globalPrefix", "stats"],
             ["globalSuffix", ""],

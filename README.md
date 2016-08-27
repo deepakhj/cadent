@@ -240,6 +240,13 @@ caches to maintain the other bins (from the base flush time) and flush to writer
 
 _MULTIPLE TIMES ONLY MATTER IF THERE ARE WRITERS._
 
+
+### Incoming line formats
+
+Currently supported incoming "line" formats
+
+[See the lineformats doc](./docs/lineformats.md)
+
 ### Writers
 
 Here you will find the schemas, some gotchas, advice and what nots.
@@ -254,11 +261,13 @@ There is lots of experimenting, series types and use cases provided here
 [See the timeseries doc](./docs/timeseries.md)
 
 
+
 ### UniqueID generation
 
 Notes on how cadent determins a "unique" id for each metric
 
 [See the uniqueid doc](./docs/uniqueid.md)
+
 
 
 ### API/Readers
@@ -289,76 +298,6 @@ http expects the BODY of the request to basically be the lines
 
 There is also a special `listen` called `backend_only` which is simply a place where things can routed to internally
 (from say a `PreReg` filter or `Accumulator`) that then out puts to it's consthash server outgoing list
-    
-### Input line types for no accumulator
-
- 
-    Graphite: <key> <value> <time>
-    Statsd: <key>:<value>|<type>|<samplerate>
-    Regex: (<\d+>)?(?P<Timestamp>[A-Z][a-z]+\s+\d+\s\d+:\d+:\d+) (?P<Key>\S+) (?P<Logger>\S+):(.*)
-    Carbon2: name=val name=val name=val  <meta_tag> <value> <time>
-    Carbon2a: name=value.name=value  <meta_tag> <value> <time>
-    Carbon2b: name=value,name=value  <meta_tag> <value> <time>
-    Carbon2c: name_is_value.name_is_value  <meta_tag> <value> <time>
-
- - note: regex need a `(?P<Key>...)` group to function as that will be the hashing key, other fields are ignored
-
-#### some notes on Carbon2/Metrics2
-
-    - has TWO SPACES between the <tag> and <meta_tag> section
-    - Don't put `.|,|=|\s` in the value of a tag (or any other punctuation really, if you need punctuation
-      in a tag, you're doing something wrong.
-    - <meta_tags> are NOT concidered to signify a different metric
-    - the "<key>" we unique idenfity a metric is a SORTED by name string of the form
-
-        `nameA_is_value.nameB_is_value.nameC_is_value`
-
-    - there are some "fixed" "intrinsict" tags defined for the metrics2.0 layout, these tags
-      are used to determin the <key> and unique ID of a given Stat
-
-
-        "host"
-        "http_method"
-        "http_code"
-        "device"
-        "unit"
-        "what"
-        "type"
-        "result"
-        "stat"
-        "bin_max"
-        "direction"
-        "mtype"
-        "unit"
-        "file"
-        "line"
-        "env"
-        "dc"
-        "zone"
-
-
-    - all other tags are concidered "metatags" and not included in the Unique identifier of a given metric
-    - there are 2 required "tags" for Metrics2.0 to be "proper" `mtype` and `unit`
-
-        mytype = rate|count|counter|gauge|timestamp
-        unit = (k|M|T...)B|jiff|Hz|...
-
-    - the `stat` tag is used for aggregation choosing, if none is present `mean` is the default agg method
-
-        stat = max|min|std|mean|sum|upper_\d+|lower_\d+|min_\d+|max_\d+|count_\d+|median|median_\d+
-
-
-
-### Input line types for using accumulator
-
-    Graphite: <key> <value> <time>
-    Statsd: <key>:<value>|<type>|<samplerate>
-    Carbon2: <tag> <tag> <tag>  <meta_tag> <value> <time>
-    Carbon2a: name=value.name=value  <meta_tag> <value> <time>
-    Carbon2b: name=value,name=value  <meta_tag> <value> <time>
-    Carbon2c: name_is_value.name_is_value  <meta_tag> <value> <time>
-
- - note: carbon2 has TWO SPACES between the <tag> and <meta_tag> section
 
 ### Internal Stats
 
