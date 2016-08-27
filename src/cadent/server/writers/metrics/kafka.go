@@ -274,6 +274,12 @@ func (kf *KafkaMetrics) Write(stat repr.StatRepr) error {
 }
 
 func (kf *KafkaMetrics) PushSeries(name *repr.StatName, points series.TimeSeries) error {
+	if name == nil {
+		return errNameIsNil
+	}
+	if points == nil {
+		return errSeriesIsNil
+	}
 
 	pts, err := points.MarshalBinary()
 	if err != nil {

@@ -197,7 +197,12 @@ func NewCassandraWriter(conf map[string]interface{}) (*CassandraWriter, error) {
 }
 
 func (cass *CassandraWriter) InsertSeries(name *repr.StatName, timeseries series.TimeSeries) (int, error) {
-
+	if name == nil {
+		return 0, errNameIsNil
+	}
+	if timeseries == nil {
+		return 0, errSeriesIsNil
+	}
 	defer stats.StatsdNanoTimeFunc(fmt.Sprintf("writer.cassandra.insert.metric-time-ns"), time.Now())
 
 	l := timeseries.Count()
