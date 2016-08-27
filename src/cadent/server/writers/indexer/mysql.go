@@ -108,12 +108,17 @@ type MySQLIndexer struct {
 	shutdown   chan bool
 	startstop  utils.StartStop
 
+	// tag ID cache so we don't do a bunch of unessesary inserts
+	tagMu      sync.RWMutex
+	tagIdCache map[string]int64
+
 	log *logging.Logger
 }
 
 func NewMySQLIndexer() *MySQLIndexer {
 	my := new(MySQLIndexer)
 	my.log = logging.MustGetLogger("indexer.mysql")
+	my.tagIdCache = make(map[string]int64, 0)
 	return my
 }
 
@@ -270,40 +275,83 @@ func (my *MySQLIndexer) WriteTags(inname *repr.StatName, do_main bool, do_meta b
 	// Tag Time
 	// the ` ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id)` gives us the id no matter if a dupe or not
 	tagQ := fmt.Sprintf(
-		"INSERT IGNORE INTO %s (name, value, is_meta) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id)",
+		"INSERT INTO %s (name, value, is_meta) VALUES (?, ?, ?)",
 		my.db.TagTable(),
 	)
+
 	var tag_ids []int64
 	if have_tgs && do_main {
 
 		for _, tag := range inname.Tags.Tags() {
-			res, err := tx.Exec(tagQ, tag[0], tag[1], false)
-			if err != nil {
-				my.log.Error("Could not write tag %v: %v", tag, err)
-				continue
+			tag_key := tag[0] + tag[1]
+			my.tagMu.RLock()
+			gots, ok := my.tagIdCache[tag_key]
+			my.tagMu.RUnlock()
+			if ok {
+				tag_ids = append(tag_ids, gots)
+			} else {
+				res, err := tx.Exec(tagQ, tag[0], tag[1], false)
+				if err != nil {
+					if strings.Contains(fmt.Sprintf("%s", err), "Duplicate entry") {
+						id, err := my.FindTagId(tag[0], tag[1], false)
+						if err == nil {
+							my.tagMu.Lock()
+							my.tagIdCache[tag_key] = id
+							my.tagMu.Unlock()
+							continue
+						}
+					}
+
+					my.log.Error("Could not write tag %v: %v", tag, err)
+					continue
+				}
+				id, err := res.LastInsertId()
+				if err != nil {
+					my.log.Error("Could not get insert tag ID %v: %v", tag, err)
+					continue
+				}
+				tag_ids = append(tag_ids, id)
+				my.tagMu.Lock()
+				my.tagIdCache[tag_key] = id
+				my.tagMu.Unlock()
 			}
-			id, err := res.LastInsertId()
-			if err != nil {
-				my.log.Error("Could not get insert tag ID %v: %v", tag, err)
-				continue
-			}
-			tag_ids = append(tag_ids, id)
 		}
 	}
 
 	if have_meta && do_meta {
 		for _, tag := range inname.MetaTags.Tags() {
-			res, err := tx.Exec(tagQ, tag[0], tag[1], true)
-			if err != nil {
-				my.log.Error("Could not write tag %v: %v", tag, err)
-				continue
+			tag_key := tag[0] + tag[1]
+			my.tagMu.RLock()
+			gots, ok := my.tagIdCache[tag_key]
+			my.tagMu.RUnlock()
+
+			if ok {
+				tag_ids = append(tag_ids, gots)
+			} else {
+				res, err := tx.Exec(tagQ, tag[0], tag[1], true)
+				if err != nil {
+					if strings.Contains(fmt.Sprintf("%s", err), "Duplicate entry") {
+						id, err := my.FindTagId(tag[0], tag[1], true)
+						if err == nil {
+							my.tagMu.Lock()
+							my.tagIdCache[tag_key] = id
+							my.tagMu.Unlock()
+							continue
+						}
+					}
+					my.log.Error("Could not write tag %v: %v", tag, err)
+					continue
+				}
+				id, err := res.LastInsertId()
+				if err != nil {
+					my.log.Error("Could not get insert tag ID %v: %v", tag, err)
+					continue
+				}
+				tag_ids = append(tag_ids, id)
+				my.tagMu.Lock()
+				my.tagIdCache[tag_key] = id
+				my.tagMu.Unlock()
 			}
-			id, err := res.LastInsertId()
-			if err != nil {
-				my.log.Error("Could not get insert tag ID %v: %v", tag, err)
-				continue
-			}
-			tag_ids = append(tag_ids, id)
 		}
 	}
 
@@ -610,6 +658,29 @@ func (my *MySQLIndexer) Expand(metric string) (MetricExpandItem, error) {
 	}
 	return me, nil
 
+}
+
+func (my *MySQLIndexer) FindTagId(name string, value string, ismeta bool) (int64, error) {
+	sel_tagQ := fmt.Sprintf(
+		"SELECT id FROM %s WHERE name=? AND value=? AND is_meta=?",
+		my.db.TagTable(),
+	)
+
+	rows, err := my.conn.Query(sel_tagQ, name, value, ismeta)
+	if err != nil {
+		my.log.Error("Error Getting Tags: %s : %v", sel_tagQ, err)
+		return 0, err
+	}
+	var id int64
+	for rows.Next() {
+		err = rows.Scan(&id)
+		if err != nil {
+			my.log.Error("Error Getting Tags Iterator: %s : %v", sel_tagQ, err)
+			return 0, err
+		}
+		return id, nil
+	}
+	return 0, nil
 }
 
 func (my *MySQLIndexer) GetTags(unique_id string) (tags repr.SortingTags, metatags repr.SortingTags) {
