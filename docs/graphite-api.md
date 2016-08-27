@@ -94,7 +94,7 @@ the default of `mean`.
 | starts with: stats.gauge |  last |
 | ends with: median |  median |
 | ends with: middle |  median |
-| starts with: median_\d+ |  median |
+| ends with: median_\d+ |  median |
 | DEFAULT | mean |
 
 
