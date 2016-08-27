@@ -194,7 +194,7 @@ func (s *StatName) AggFunc() AGG_FUNC {
 }
 
 func (s *StatName) MergeMetric2Tags(itgs SortingTags) {
-	s.Tags, s.MetaTags = MergeMetric2Tags(itgs, s.Tags, s.MetaTags)
+	s.Tags, s.MetaTags = SplitIntoMetric2Tags(MergeMetric2Tags(itgs, s.Tags, s.MetaTags))
 	// need to invalidate the unique ids as the tags may have changed
 	s.uniqueId = 0
 	s.uniqueIdstr = ""

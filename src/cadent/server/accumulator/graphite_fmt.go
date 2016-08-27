@@ -64,12 +64,12 @@ func (g *GraphiteFormatter) Write(buf io.Writer, name *repr.StatName, val float6
 	if !name.Tags.IsEmpty() {
 		buf.Write(repr.SPACE_SEPARATOR_BYTE)
 		name.Tags.WriteBytes(buf, repr.EQUAL_SEPARATOR_BYTE, repr.SPACE_SEPARATOR_BYTE)
-		if !name.MetaTags.IsEmpty() {
-			buf.Write(repr.SPACE_SEPARATOR_BYTE)
-		}
 	}
 	if !name.MetaTags.IsEmpty() {
-		buf.Write(repr.SPACE_SEPARATOR_BYTE)
+		if !name.Tags.IsEmpty() {
+
+			buf.Write(repr.SPACE_SEPARATOR_BYTE)
+		}
 		name.MetaTags.WriteBytes(buf, repr.EQUAL_SEPARATOR_BYTE, repr.SPACE_SEPARATOR_BYTE)
 	}
 	buf.Write(repr.NEWLINE_SEPARATOR_BYTES)

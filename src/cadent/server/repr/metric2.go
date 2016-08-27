@@ -38,6 +38,8 @@ var METRICS2_ID_TAGS []string = []string{
 	"file",
 	"line",
 	"env",
+	"dc",
+	"zone",
 }
 
 var METRICS2_ID_TAGS_BYTES [][]byte = [][]byte{
@@ -57,6 +59,8 @@ var METRICS2_ID_TAGS_BYTES [][]byte = [][]byte{
 	[]byte("file"),
 	[]byte("line"),
 	[]byte("env"),
+	[]byte("dc"),
+	[]byte("zone"),
 }
 
 func IsMetric2Tag(name string) bool {
@@ -66,6 +70,31 @@ func IsMetric2Tag(name string) bool {
 		}
 	}
 	return false
+}
+
+func SplitIntoMetric2Tags(intag SortingTags, inmeta SortingTags) (SortingTags, SortingTags) {
+	if inmeta.IsEmpty() && intag.IsEmpty() {
+		return intag, inmeta
+	}
+
+	var new_meta SortingTags
+	var new_tag SortingTags
+
+	for _, ntag := range inmeta {
+		if IsMetric2Tag(ntag[0]) {
+			new_tag = new_tag.Set(ntag[0], ntag[1])
+		} else {
+			new_meta = new_meta.Set(ntag[0], ntag[1])
+		}
+	}
+	for _, ntag := range intag {
+		if IsMetric2Tag(ntag[0]) {
+			new_tag = new_tag.Set(ntag[0], ntag[1])
+		} else {
+			new_meta = new_meta.Set(ntag[0], ntag[1])
+		}
+	}
+	return new_tag, new_meta
 }
 
 func MergeMetric2Tags(newtags SortingTags, intag SortingTags, inmeta SortingTags) (SortingTags, SortingTags) {

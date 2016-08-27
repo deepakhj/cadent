@@ -130,7 +130,7 @@ type GraphiteAccumulate struct {
 	InKeepKeys    bool
 	Resolution    time.Duration
 
-	mu sync.Mutex
+	mu sync.RWMutex
 }
 
 func NewGraphiteAccumulate() (*GraphiteAccumulate, error) {
@@ -211,12 +211,24 @@ func (a *GraphiteAccumulate) Reset() error {
 func (a *GraphiteAccumulate) Flush(buf io.Writer) *flushedList {
 	fl := new(flushedList)
 
-	a.mu.Lock()
+	a.mu.RLock()
 	for _, stats := range a.GraphiteStats {
 		stats.Write(buf, a.OutFormat, a)
 		fl.AddStat(stats.Repr())
 	}
-	a.mu.Unlock()
+	a.mu.RUnlock()
+	a.Reset()
+	return fl
+}
+
+func (a *GraphiteAccumulate) FlushList() *flushedList {
+	fl := new(flushedList)
+
+	a.mu.RLock()
+	for _, stats := range a.GraphiteStats {
+		fl.AddStat(stats.Repr())
+	}
+	a.mu.RUnlock()
 	a.Reset()
 	return fl
 }

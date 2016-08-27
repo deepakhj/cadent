@@ -34,6 +34,7 @@ import (
 	"cadent/server/writers/dbs"
 	"cadent/server/writers/indexer"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/Shopify/sarama"
 	logging "gopkg.in/op/go-logging.v1"
@@ -41,6 +42,8 @@ import (
 	"strings"
 	"time"
 )
+
+var errKafkaMetricIsNil = errors.New("The kafka metric is nil")
 
 /** kafka put object **/
 type KafkaMetric struct {
@@ -61,7 +64,7 @@ type KafkaMetric struct {
 }
 
 func (kp *KafkaMetric) ensureEncoded() {
-	if kp.encoded == nil && kp.err == nil {
+	if kp != nil && kp.encoded == nil && kp.err == nil {
 		kp.encoded, kp.err = json.Marshal(kp)
 	}
 }
@@ -72,6 +75,9 @@ func (kp *KafkaMetric) Length() int {
 }
 
 func (kp *KafkaMetric) Encode() ([]byte, error) {
+	if kp == nil {
+		return nil, errKafkaMetricIsNil
+	}
 	kp.ensureEncoded()
 	return kp.encoded, kp.err
 }
@@ -268,6 +274,12 @@ func (kf *KafkaMetrics) Write(stat repr.StatRepr) error {
 }
 
 func (kf *KafkaMetrics) PushSeries(name *repr.StatName, points series.TimeSeries) error {
+	if name == nil {
+		return errNameIsNil
+	}
+	if points == nil {
+		return errSeriesIsNil
+	}
 
 	pts, err := points.MarshalBinary()
 	if err != nil {
