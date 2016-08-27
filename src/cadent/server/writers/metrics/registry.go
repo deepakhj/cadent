@@ -31,6 +31,12 @@ var errMetricsCacheRequired = errors.New("Cache object is required")
 // /cached/series endpoint cannot have multi targets
 var errMultiTargetsNotAllowed = errors.New("Multiple Targets are not allowed")
 
+// somehow a nil name
+var errNameIsNil = errors.New("Name object cannot be nil")
+
+// somehow a nil series
+var errSeriesIsNil = errors.New("Name object cannot be nil")
+
 func NewReaderMetrics(name string) (MetricsReader, error) {
 	switch {
 	case name == "mysql" || name == "mysql-triggered":
