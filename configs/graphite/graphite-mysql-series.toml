@@ -7,6 +7,20 @@
 ##
 
 
+[statsd-proxy-map]
+listen_server="statsd-proxy" # which listener to sit in front of  (must be in the main config)
+default_backend="graphite-proxy"  # failing a match go here
+
+    [statsd-proxy-map.accumulator]
+    backend = "BLACKHOLE"
+#    backend = "graphite-proxy"
+    input_format = "statsd"
+    output_format = "graphite"
+    random_ticker_start = false
+
+    [[statsd-proxy-map.map]]
+        noop="true"
+
 [graphite-proxy-map]
 listen_server="graphite-proxy" # which listener to sit in front of  (must be in the main config)
 default_backend="graphite-proxy"  # failing a match go here
@@ -39,10 +53,9 @@ default_backend="graphite-proxy"  # failing a match go here
     # AND write things to the cassandra DB
     # cassandra api, metrics writer and path indexer
     [graphite-proxy-map.accumulator.writer.metrics]
-        driver = "mysql"
+        driver = "mysql-triggered"
         dsn = "root:@tcp(localhost:3306)/cadent"
         cache = "gorilla"
-
 
     [graphite-proxy-map.accumulator.writer.indexer]
         driver = "mysql"
