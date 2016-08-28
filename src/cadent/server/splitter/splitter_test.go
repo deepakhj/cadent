@@ -38,6 +38,8 @@ func TestRegistryRunner(t *testing.T) {
 		So(re.Name(), ShouldEqual, "regex")
 		ca, _ := NewSplitterItem("carbon2", conf)
 		So(ca.Name(), ShouldEqual, "carbon2")
+		op, _ := NewSplitterItem("opentsdb", conf)
+		So(op.Name(), ShouldEqual, "opentsdb")
 		_, err := NewSplitterItem("nothere", conf)
 		So(err, ShouldNotEqual, nil)
 
@@ -83,6 +85,52 @@ func TestGraphiteRunner(t *testing.T) {
 		gr, _ := NewGraphiteSplitter(conf)
 		spl, err := gr.ProcessLine(good_line)
 		t.Logf("'%s', %v", good_line, spl)
+		So(spl, ShouldEqual, nil)
+		So(err, ShouldNotEqual, nil)
+	})
+
+}
+
+
+func TestOpenTSDBRunner(t *testing.T) {
+
+	conf := make(map[string]interface{})
+	conf["key_index"] = 0
+
+	good_line := []byte("put moo.goo.org 123 1465866540")
+	bad_line := []byte("moo.goo.org 123 1465866540")
+	Convey("Opentsdb Runner should parse lines nicely", t, func() {
+
+		gr, _ := NewOpenTSDBSplitter(conf)
+		spl, _ := gr.ProcessLine(good_line)
+		So(gr.Name(), ShouldEqual, "opentsdb")
+		So(string(spl.Key()), ShouldEqual, "moo.goo.org")
+		So(string(spl.Line()), ShouldEqual, string("moo.goo.org 123 1465866540"))
+		So(spl.OriginName(), ShouldEqual, "")
+		So(spl.Phase(), ShouldEqual, Parsed)
+		So(spl.IsValid(), ShouldEqual, true)
+		So(spl.HasTime(), ShouldEqual, true)
+		So(spl.Timestamp().Unix(), ShouldEqual, 1465866540)
+
+		So(spl.Fields(), ShouldResemble, [][]byte{
+			[]byte("moo.goo.org"),
+			[]byte("123"),
+			[]byte("1465866540"),
+		})
+
+		spl.SetPhase(AccumulatedParsed)
+		So(spl.Phase(), ShouldEqual, AccumulatedParsed)
+		spl.SetOrigin(TCP)
+		So(spl.Origin(), ShouldEqual, TCP)
+		spl.SetOriginName("moo")
+		So(spl.OriginName(), ShouldEqual, "moo")
+	})
+
+	Convey("OpenTSDB Runner should not parser this with a bad key index", t, func() {
+
+		gr, _ := NewOpenTSDBSplitter(conf)
+		spl, err := gr.ProcessLine(bad_line)
+		t.Logf("'%s', %v", bad_line, spl)
 		So(spl, ShouldEqual, nil)
 		So(err, ShouldNotEqual, nil)
 	})

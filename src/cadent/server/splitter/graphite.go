@@ -23,7 +23,6 @@ limitations under the License.
 package splitter
 
 import (
-	"cadent/server/repr"
 	"errors"
 	"fmt"
 	"strconv"
@@ -162,13 +161,12 @@ func (g *GraphiteSplitter) ProcessLine(line []byte) (SplitItem, error) {
 	t_l := string(line)
 	t_l = GRAHITE_REPLACER.Replace(t_l)
 
-	graphite_array := strings.Split(t_l, repr.SPACE_SEPARATOR)
+	graphite_array := strings.Fields(t_l)
 	if len(graphite_array) > g.key_index {
 
 		// graphite timestamps are in unix seconds
 		t := time.Time{}
 		if len(graphite_array) > g.time_index {
-
 			i, err := strconv.ParseInt(graphite_array[g.time_index], 10, 64)
 			if err == nil {
 				// nano or second tstamps
