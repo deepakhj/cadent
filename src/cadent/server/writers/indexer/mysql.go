@@ -273,20 +273,21 @@ func (my *MySQLIndexer) WriteTags(inname *repr.StatName, do_main bool, do_meta b
 	unique_ID := inname.UniqueIdString()
 
 	// Tag Time
-	// the ` ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id)` gives us the id no matter if a dupe or not
 	tagQ := fmt.Sprintf(
 		"INSERT INTO %s (name, value, is_meta) VALUES (?, ?, ?)",
 		my.db.TagTable(),
 	)
+	if have_tgs {
+		my.tagMu.Lock()
+		defer my.tagMu.Unlock()
+	}
 
 	var tag_ids []int64
 	if have_tgs && do_main {
 
 		for _, tag := range inname.Tags.Tags() {
-			tag_key := tag[0] + tag[1]
-			my.tagMu.RLock()
+			tag_key := fmt.Sprintf("%s:%s:%v", tag[0], tag[1], true)
 			gots, ok := my.tagIdCache[tag_key]
-			my.tagMu.RUnlock()
 			if ok {
 				tag_ids = append(tag_ids, gots)
 			} else {
@@ -311,19 +312,15 @@ func (my *MySQLIndexer) WriteTags(inname *repr.StatName, do_main bool, do_meta b
 					continue
 				}
 				tag_ids = append(tag_ids, id)
-				my.tagMu.Lock()
 				my.tagIdCache[tag_key] = id
-				my.tagMu.Unlock()
 			}
 		}
 	}
 
 	if have_meta && do_meta {
 		for _, tag := range inname.MetaTags.Tags() {
-			tag_key := tag[0] + tag[1]
-			my.tagMu.RLock()
+			tag_key := fmt.Sprintf("%s:%s:%v", tag[0], tag[1], true)
 			gots, ok := my.tagIdCache[tag_key]
-			my.tagMu.RUnlock()
 
 			if ok {
 				tag_ids = append(tag_ids, gots)
@@ -348,9 +345,7 @@ func (my *MySQLIndexer) WriteTags(inname *repr.StatName, do_main bool, do_meta b
 					continue
 				}
 				tag_ids = append(tag_ids, id)
-				my.tagMu.Lock()
 				my.tagIdCache[tag_key] = id
-				my.tagMu.Unlock()
 			}
 		}
 	}
