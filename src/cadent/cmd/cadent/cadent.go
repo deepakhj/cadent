@@ -18,6 +18,7 @@ package main
 
 import (
 	cadent "cadent/server"
+	pages "cadent/server/pages"
 	prereg "cadent/server/prereg"
 	"cadent/server/stats"
 	"cadent/server/utils/shutdown"
@@ -30,15 +31,10 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
-	"path"
 	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
-)
-
-const (
-	DEFAULT_INDEX_STATS_FILE = "index.html"
 )
 
 // compile passing -ldflags "-X main.ConstHashBuild <build sha1>"
@@ -95,7 +91,7 @@ func startStatsServer(defaults *cadent.Config, servers []*cadent.Server) {
 
 	fileserve := func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "private, max-age=0, no-cache")
-		http.ServeFile(w, r, path.Join(defaults.HealthServerPath, DEFAULT_INDEX_STATS_FILE))
+		fmt.Fprintf(w, pages.STATS_INDEX_PAGE)
 	}
 
 	status := func(w http.ResponseWriter, r *http.Request) {

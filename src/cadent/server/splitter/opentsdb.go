@@ -60,8 +60,8 @@ func (g *OpenTSDBSplitter) ProcessLine(line []byte) (SplitItem, error) {
 	}
 	if bytes.Equal(OPENTSDB_CMD, line[0:4]) {
 		g_fmat := new(GraphiteSplitter)
-		g_fmat.key_index=0
-		g_fmat.time_index=2
+		g_fmat.key_index = 0
+		g_fmat.time_index = 2
 		return g_fmat.ProcessLine(line[4:])
 
 	}

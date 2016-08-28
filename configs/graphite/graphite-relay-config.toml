@@ -91,9 +91,6 @@ internal_health_server_listen="0.0.0.0:6061"
 ## (use the statsd emitter to store longer term stuff)
 internal_health_server_points=500
 
-## path to the html files for the internal health serer
-internal_health_server_path="/opt/consthash/html"
-
 
 [graphite-proxy]
 

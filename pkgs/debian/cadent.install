@@ -1,6 +1,5 @@
 ../cadent	/opt/cadent/
 ../echoserver	/opt/cadent/
 ../statblast /opt/cadent/
-../html/* /opt/cadent/html/
 ../example-config.toml /opt/cadent/
 ../configs/* /opt/cadent/configs/

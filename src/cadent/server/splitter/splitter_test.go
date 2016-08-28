@@ -91,7 +91,6 @@ func TestGraphiteRunner(t *testing.T) {
 
 }
 
-
 func TestOpenTSDBRunner(t *testing.T) {
 
 	conf := make(map[string]interface{})

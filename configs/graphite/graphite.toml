@@ -6,7 +6,7 @@
 
 
 ## PID file to check if things is running already
-pid_file="/opt/consthash/consthash.pid"
+pid_file="/opt/cadent/cadent.pid"
 
 ## performance tuning suggest that n - 2 is best to avoid over creation
 ## of File Descriptors for the many sockets we need (and thus cause more OS
@@ -90,9 +90,6 @@ internal_health_server_listen="0.0.0.0:6061"
 ## `internal_health_server_points` in RAM (careful with how many you store)
 ## (use the statsd emitter to store longer term stuff)
 internal_health_server_points=500
-
-## path to the html files for the internal health serer
-internal_health_server_path="./html"
 
 
 [statsd-proxy]
