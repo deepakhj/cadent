@@ -70,6 +70,9 @@ func (kp *KafkaMetric) ensureEncoded() {
 }
 
 func (kp *KafkaMetric) Length() int {
+	if kp == nil {
+		return 0
+	}
 	kp.ensureEncoded()
 	return len(kp.encoded)
 }
@@ -229,7 +232,11 @@ func (kf *KafkaMetrics) overFlowWrite() {
 		if !more {
 			return
 		}
-		kf.PushSeries(statitem.(*TotalTimeSeries).Name, statitem.(*TotalTimeSeries).Series)
+		if statitem != nil {
+			kf.PushSeries(statitem.(*TotalTimeSeries).Name, statitem.(*TotalTimeSeries).Series)
+		} else {
+			kf.log.Errorf("%s", errKafkaMetricIsNil)
+		}
 	}
 }
 

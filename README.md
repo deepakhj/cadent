@@ -5,9 +5,9 @@ Cadent
 
 Manipulate your metrics
 
-Philosophy: Measure everything period. If it's not measured it does not exist.
+Philosophy: If it's not measured it does not exist.
 
-Cadent itself spews about 400-500 of it's own metrics for instances (which of course it just emits to itself if configure to).
+Cadent itself spews about 400-500 of it's own metrics for instances (which of course it just emits to itself if configured to).
 As far as i can tell only Kafka followed by Cassandra spew forth more (and Kafka is obscenely verbose, to the point of just not useful really).
 
 ### The beginnings.
@@ -18,13 +18,16 @@ we collect more metrics per second from all the various sources then any sort of
 of magnitude).  It, not being customer facing, (not customer facing in the eyes of the business, but certainly "internal" customer
 facing) the resources allocated to keeping it running and useful are sparse.
 
-But as much as I love, use, hack, tinker and futz with graphite + statsd.  There are three big issues, it's reliance on disks, single threaded and general performance while trying to keep a few TBs of metrics online and queried, make it difficult to scale (not impossible
-by any means, just not easy).
+But as much as I love, use, hack, tinker and futz with graphite + statsd.  There are three big issues, it's reliance on disks,
+single threaded and general performance while trying to keep a few TBs of metrics online and queried, make it difficult to scale (not impossible
+by any means), just not easy.
 
-I think is now a common issue in the ecosphere of metrics/ops folks now.  And as a result _many_ projects exist out there in the echo system that handle lots of "parts" of the problem.  Cadent attempts to "solve it all" (and laughs at itself, as of course it's
+I think is now a common issue in the ecosphere of metrics/ops folks now.  And as a result _many_ projects exist out there in the echo system
+that handle lots of "parts" of the problem.  Cadent attempts to merge many of them (it's
 "standing on the sholders of giants", uses other good opensource pieces in the wild, and is certainly not the most performant things in the world) in one binary.
 Every situation is different, data retention requirement, speed, input volume, query volume, timeording,
-persistence solutions etc.  Each one comes with it's own cost to run (something alot of projects fail to mention).  For instance if you're just starting, you're probably not going to have a good sized cassandra cluster and a good sized kafka cluster, as your app
+persistence solutions etc.  Each one comes with it's own cost to run (something alot of projects fail to mention).  For instance if you're just starting,
+you're probably not going to have a good sized cassandra cluster and a good sized kafka cluster, as your app
 probably runs on one (maybe two) instances.  But you probably have a Database somewhere, or at least a hardrive.
 As you expand, you start to hit the "wall". There's no way around it.  But let's make moving that wall easier.
 
@@ -63,7 +66,9 @@ If metrics collection and manipulating was simple, I would not have to write thi
 
 Visualization: In the visualization world grafana wins, period we're not visualizing things in cadent.
 
-`result = f(timeseries)`: Graphite/graphite-api also win here, by alot.  Their DSL for applying `fancy math` to timeseries is near impossible to match (not impossible, but really hard to recreate it as it's depth is rather mystifying sometimes).
+`result = f(timeseries)`: Graphite/graphite-api also win here, by alot.
+Their DSL for applying `fancy math` to timeseries is near impossible to match (not impossible, but really hard to
+recreate it as it's depth is rather mystifying sometimes).
 
 
 ## Why is it designed this way?
@@ -83,7 +88,7 @@ Installation
 
 Well, first you need to install go .. https://golang.org  >= 1.5.1
 And a kernel that supports SO_REUSEPORT (linux 3.9 or higher and bsd like kernels)
-And make sure to use VENDOR support (in golang 1.6, this is the default)
+And make sure to use VENDOR support (in golang 1.6, this is the default),
 go 1.7 is perfered as it's faster.
 
 
