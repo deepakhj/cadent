@@ -38,6 +38,7 @@ var errBadGraphiteLine = errors.New("Invalid Graphite/Space line")
 var GRAHITE_REPLACER *strings.Replacer
 var GRAHITE_REPLACER_BYTES = [][][]byte{
 	{[]byte(".."), []byte(".")},
+	{[]byte("=="), []byte("=")},
 	{[]byte(","), []byte("_")},
 	{[]byte("*"), []byte("_")},
 	{[]byte("("), []byte("_")},
@@ -51,6 +52,7 @@ func init() {
 	GRAHITE_REPLACER = strings.NewReplacer(
 		"..", ".",
 		",", "_",
+		"==", "=",
 		"*", "_",
 		"(", "_",
 		")", "_",

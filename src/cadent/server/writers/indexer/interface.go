@@ -86,6 +86,15 @@ type TagIndexer interface {
 	// write out tags for a metric
 	WriteTags(inname *repr.StatName, do_main bool, do_meta bool) error
 
-	// get tags for a UidString
-	GetTags(unique_id string) (tags repr.SortingTags, metatags repr.SortingTags)
+	// get tags for a Uid String
+	GetTagsByUid(unique_id string) (tags repr.SortingTags, metatags repr.SortingTags)
+
+	// the incoming can be a Regex of sorts on the name
+	GetTagsByName(name string) repr.SortingTags
+
+	// the incoming can be a Regex of sorts on the value
+	GetTagsByNameValue(name string, value string) repr.SortingTags
+
+	// given some tags, grab all the matching Uids
+	GetUidsByTags(tags repr.SortingTags) []string
 }

@@ -664,7 +664,7 @@ func (my *MySQLIndexer) FindTagId(name string, value string, ismeta bool) (int64
 	return 0, nil
 }
 
-func (my *MySQLIndexer) GetTags(unique_id string) (tags repr.SortingTags, metatags repr.SortingTags) {
+func (my *MySQLIndexer) GetTagsByUid(unique_id string) (tags repr.SortingTags, metatags repr.SortingTags) {
 
 	tag_table := my.db.TagTable()
 	tag_xr_table := my.db.TagTableXref()
@@ -747,7 +747,7 @@ func (my *MySQLIndexer) FindNonRegex(metric string) (MetricFindItems, error) {
 			ms.UniqueId = id
 
 			// grab ze tags
-			ms.Tags, ms.MetaTags = my.GetTags(id)
+			ms.Tags, ms.MetaTags = my.GetTagsByUid(id)
 
 		} else {
 			ms.Expandable = 1

@@ -105,3 +105,63 @@ Their line format is the exact same as graphite's execpt for 4 characters
 So all we really do here is "remove" the `put ` and foward it to a graphite line item.  But due to that, it needs
 to be known that it is a opentsdb line.
 
+
+## Json
+
+`msg_format="json"`
+
+Again much like the OpenTSDB json format,  however, if you are sending this via a "line" protocal, one had best be sure
+the json blob is ON ONE LINE.
+
+As a result there is a http handler for these json formats
+
+    [json-http]
+    listen="http://0.0.0.0:2004/moo"
+    msg_type="json"
+
+This will have a route `http://host:2004/moo/json` which you can post JSON of the form
+
+Single Metric
+
+    {
+        metric: xxx,
+        value: 123,
+        timestamp: 123123,
+        tags: {
+            moo: goo,
+            foo: bar
+        }
+    }
+
+
+Or many metrics
+
+    [
+       {
+            metric: xxx,
+            value: 123,
+            timestamp: 123123,
+            tags: {
+                moo: goo,
+                foo: bar
+            }
+        },
+        ...
+    ]
+
+If you use the tcp line item Or the raw http input route (in the above case `http://host:2004/moo/`) you best "squeeze"
+that json to one line, and ths one does not accept "lists"
+
+
+    [json-tcp]
+    listen="htttcp://0.0.0.0:2004"
+    msg_type="json"
+    
+
+Only the single line is allowed for TCP based inputs or the "raw" http://host:port/
+
+
+    {"metric":"xxxx","value":123,"timestamp":14123123,"tags":{"moo":"goo", "foo":"bar"}}
+
+
+You can also use the UDP accepter, but given the length/size of the metrics in this format, it's not recommended.
