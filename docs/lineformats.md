@@ -154,9 +154,9 @@ that json to one line, and ths one does not accept "lists"
 
 
     [json-tcp]
-    listen="htttcp://0.0.0.0:2004"
+    listen="tcp://0.0.0.0:2004"
     msg_type="json"
-    
+
 
 Only the single line is allowed for TCP based inputs or the "raw" http://host:port/
 
