@@ -115,6 +115,6 @@ func (g *CarbonTwoFormatter) Write(buf io.Writer, name *repr.StatName, val float
 		name.MetaTags.WriteBytes(buf, repr.EQUAL_SEPARATOR_BYTE, repr.SPACE_SEPARATOR_BYTE)
 	}
 	buf.Write(repr.SPACE_SEPARATOR_BYTE)
-	fmt.Fprintf(buf, "%f %d", val, tstamp)
+	fmt.Fprintf(buf, "%v %d", val, tstamp)
 	buf.Write(repr.NEWLINE_SEPARATOR_BYTES)
 }

@@ -153,7 +153,7 @@ func TestStatsdAccumulator(t *testing.T) {
 			}
 			// note: timers don't get the rate dividor
 			//moo.goo.org.upper_95:2.000000|g
-			if strings.Contains(item, "moo.goo.org.upper_95:2.000000|g") {
+			if strings.Contains(item, "moo.goo.org.upper_95:2|g") {
 				have_upper = item
 			}
 		}

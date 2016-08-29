@@ -76,7 +76,7 @@ func (g *StatsdFormatter) Write(buf io.Writer, name *repr.StatName, val float64,
 			strings.Replace(name.Key, "stats.counters.", "", 1),
 			"stats.gauges.", "", 1),
 		"stats.timers.", "", 1)
-	fmt.Fprintf(buf, "%s:%f|%s", key, val, stats_type)
+	fmt.Fprintf(buf, "%s:%v|%s", key, val, stats_type)
 
 	// tags are in the DataGram sort of format
 	// http://docs.datadoghq.com/guides/dogstatsd/#datagram-format

@@ -60,7 +60,7 @@ func (g *GraphiteFormatter) Write(buf io.Writer, name *repr.StatName, val float6
 	// merge things
 	name.MergeMetric2Tags(tags)
 
-	fmt.Fprintf(buf, "%s %f %d", name.Key, val, tstamp)
+	fmt.Fprintf(buf, "%s %v %d", name.Key, val, tstamp)
 	if !name.Tags.IsEmpty() {
 		buf.Write(repr.SPACE_SEPARATOR_BYTE)
 		name.Tags.WriteBytes(buf, repr.EQUAL_SEPARATOR_BYTE, repr.SPACE_SEPARATOR_BYTE)

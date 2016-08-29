@@ -89,7 +89,7 @@ func TestGraphiteAccumulator(t *testing.T) {
 
 		}
 
-		So(strings.Split(buf.String(), "\n")[0], ShouldEqual, "stats.gauges.goo 10.000000 123123 host=me moo=house")
+		So(strings.Split(buf.String(), "\n")[0], ShouldEqual, "stats.gauges.goo 10 123123 host=me moo=house")
 
 	})
 	stsfmt, err := NewFormatterItem("statsd")
@@ -150,10 +150,10 @@ func TestGraphiteAccumulator(t *testing.T) {
 		})
 		strs := strings.Split(buf.String(), "\n")
 		t.Logf(strings.Join(strs, "\n"))
-		So(strs, ShouldContain, "mtype=count unit=jiff what=stats.counters.goo 17.000000 123123")
-		So(strs, ShouldContain, "mtype=count unit=jiff what=moo.goo.avg 5.666667 123123")
-		So(strs, ShouldContain, "mtype=count unit=jiff what=moo.goo.min 2.000000 123123")
-		So(strs, ShouldContain, "mtype=count unit=jiff what=moo.goo.max 10.000000 123123")
+		So(strs, ShouldContain, "mtype=count unit=jiff what=stats.counters.goo 17 123123")
+		So(strs, ShouldContain, "mtype=count unit=jiff what=moo.goo.avg 5.666666666666667 123123")
+		So(strs, ShouldContain, "mtype=count unit=jiff what=moo.goo.min 2 123123")
+		So(strs, ShouldContain, "mtype=count unit=jiff what=moo.goo.max 10 123123")
 
 		statter.SetTags(repr.SortingTags{[]string{"moo", "goo"}, []string{"foo", "bar"}})
 
@@ -165,7 +165,7 @@ func TestGraphiteAccumulator(t *testing.T) {
 		b_arr = statter.Flush(buf)
 		strs = strings.Split(buf.String(), "\n")
 		t.Logf(strings.Join(strs, "\n"))
-		So(strs, ShouldContain, "mtype=count unit=jiff what=stats.counters.goo  foo=bar moo=goo 17.000000 123123")
+		So(strs, ShouldContain, "mtype=count unit=jiff what=stats.counters.goo  foo=bar moo=goo 17 123123")
 
 	})
 }
