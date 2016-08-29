@@ -97,9 +97,7 @@ type MySQLIndexer struct {
 	queue_len   int
 	_accept     bool //shtdown notice
 
-	write_queue      chan dispatch.IJob
-	dispatch_queue   chan chan dispatch.IJob
-	write_dispatcher *dispatch.Dispatch
+	dispatcher *dispatch.DispatchQueue
 
 	cache             *Cacher // simple cache to rate limit and buffer writes
 	writes_per_second int     // rate limit writer
@@ -178,11 +176,9 @@ func (my *MySQLIndexer) Start() {
 		my.log.Notice("starting mysql indexer: %s", my.Name())
 
 		workers := my.num_workers
-		my.write_queue = make(chan dispatch.IJob, my.queue_len)
-		my.dispatch_queue = make(chan chan dispatch.IJob, workers)
-		my.write_dispatcher = dispatch.NewDispatch(workers, my.dispatch_queue, my.write_queue)
-		my.write_dispatcher.SetRetries(2)
-		my.write_dispatcher.Run()
+		retries := 2
+		my.dispatcher = dispatch.NewDispatchQueue(workers, my.queue_len, retries)
+		my.dispatcher.Start()
 
 		my.cache.Start() //start cacher
 
@@ -197,8 +193,8 @@ func (my *MySQLIndexer) Stop() {
 
 		my.log.Notice("shutting down mysql indexer: %s", my.Name())
 		my.cache.Stop()
-		if my.write_queue != nil {
-			my.write_dispatcher.Shutdown()
+		if my.dispatcher != nil {
+			my.dispatcher.Stop()
 		}
 	})
 }
@@ -221,7 +217,7 @@ func (my *MySQLIndexer) sendToWriters() error {
 				time.Sleep(time.Second)
 			default:
 				stats.StatsdClient.Incr(fmt.Sprintf("indexer.cassandra.write.send-to-writers"), 1)
-				my.write_queue <- &MysqlIndexerJob{Msql: my, Stat: skey}
+				my.dispatcher.Add(&MysqlIndexerJob{Msql: my, Stat: skey})
 			}
 		}
 	} else {
@@ -238,7 +234,7 @@ func (my *MySQLIndexer) sendToWriters() error {
 				time.Sleep(time.Second)
 			default:
 				stats.StatsdClient.Incr(fmt.Sprintf("indexer.cassandra.write.send-to-writers"), 1)
-				my.write_queue <- &MysqlIndexerJob{Msql: my, Stat: skey}
+				my.dispatcher.Add(&MysqlIndexerJob{Msql: my, Stat: skey})
 				time.Sleep(dur)
 			}
 		}
