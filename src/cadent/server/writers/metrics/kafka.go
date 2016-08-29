@@ -47,17 +47,17 @@ var errKafkaMetricIsNil = errors.New("The kafka metric is nil")
 
 /** kafka put object **/
 type KafkaMetric struct {
-	Type       string      `json:"type"`
-	Time       int64       `json:"time"`
-	Metric     string      `json:"metric"`
-	Encoding   string      `json:"encoding"`
-	Data       []byte      `json:"data"`
-	Resolution uint32      `json:"resolution"`
-	Id         repr.StatId `json:"id"`
-	Uid        string      `json:"uid"`
-	TTL        uint32      `json:"ttl"`
-	Tags       [][]string  `json:"tags,omitempty"` // key1=value1,key2=value2...
-	MetaTags   [][]string  `json:"meta_tags,omitempty"`
+	Type       string      `json:"type" codec:"type" msg:"type"`
+	Time       int64       `json:"time" codec:"time" msg:"time"`
+	Metric     string      `json:"metric" codec:"metric" msg:"metric"`
+	Encoding   string      `json:"encoding" codec:"encoding" msg:"encoding"`
+	Data       []byte      `json:"data" codec:"data" msg:"data"`
+	Resolution uint32      `json:"resolution" codec:"resolution" msg:"resolution"`
+	Id         repr.StatId `json:"id" codec:"id" msg:"id"`
+	Uid        string      `json:"uid" codec:"uid" msg:"uid"`
+	TTL        uint32      `json:"ttl" codec:"ttl" msg:"ttl"`
+	Tags       [][]string  `json:"tags,omitempty" codec:"tags,omitempty" msg:"tags,omitempty"` // key1=value1,key2=value2...
+	MetaTags   [][]string  `json:"meta_tags,omitempty" codec:"tags,omitempty" msg:"tags,omitempty"`
 
 	encoded []byte
 	err     error
@@ -227,6 +227,12 @@ func (kf *KafkaMetrics) Stop() {
 
 // listen to the overflow chan from the cache and attempt to write "now"
 func (kf *KafkaMetrics) overFlowWrite() {
+	defer func() {
+		if r := recover(); r != nil {
+			kf.log.Critical("Kafka Failure (panic) %v ::", r)
+		}
+	}()
+
 	for {
 		statitem, more := <-kf.cacheOverFlow.Ch
 		if !more {

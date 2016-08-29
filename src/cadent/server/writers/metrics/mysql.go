@@ -987,6 +987,12 @@ func (my *MySQLMetrics) InsertDBSeries(name *repr.StatName, timeseries series.Ti
 		return 0, errSeriesIsNil
 	}
 
+	defer func() {
+		if r := recover(); r != nil {
+			my.log.Critical("Mysql Failure (panic) %v ::", r)
+		}
+	}()
+
 	t_name := my.db.RootMetricsTableName()
 	Q := fmt.Sprintf(
 		"INSERT INTO %s_%ds (uid, path, ptype, points, stime, etime) VALUES ",
