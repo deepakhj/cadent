@@ -306,6 +306,7 @@ func (acc *Accumulator) FlushAndPost(attime time.Time) ([]splitter.SplitItem, er
 	//t := time.Now()
 	out_spl := make([]splitter.SplitItem, 0)
 	var items *flushedList
+
 	// the buck stops here and into writers
 	if acc.ToBackend != BLACK_HOLE_BACKEND {
 

@@ -1162,7 +1162,7 @@ func (server *Server) ProcessSplitItem(splitem splitter.SplitItem, out_queue cha
 		// send to different backend to "repeat" this process
 		// this time we need to dis-avow the fact it came from a socket, as it's no longer pinned to the same
 		// socket it came from
-		//log.Debug("Acc:%v UseBack: %v FromBack: %v Line: %s ", server.PreRegFilter.Accumulator.Name, use_backend, server.Name, splitem.Line())
+		log.Debug("Acc:%v UseBack: %v FromBack: %v Line: %s ", server.PreRegFilter.Accumulator.Name, use_backend, server.Name, splitem.Line())
 		splitem.SetOrigin(splitter.Other)
 		err := SERVER_BACKENDS.Send(use_backend, splitem)
 		if err != nil {

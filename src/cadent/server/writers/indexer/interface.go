@@ -76,3 +76,16 @@ type Indexer interface {
 	// remove an item from the index
 	Delete(name *repr.StatName) error
 }
+
+type TagIndexer interface {
+	Config(map[string]interface{}) error
+
+	// some identifier mostly used for logs
+	Name() string
+
+	// write out tags for a metric
+	WriteTags(inname *repr.StatName, do_main bool, do_meta bool) error
+
+	// get tags for a UidString
+	GetTags(unique_id string) (tags repr.SortingTags, metatags repr.SortingTags)
+}

@@ -34,6 +34,10 @@ func NewSplitterItem(name string, conf map[string]interface{}) (Splitter, error)
 		return NewCarbonTwoSplitter(conf)
 	case name == "regex":
 		return NewRegExSplitter(conf)
+	case name == "opentsdb":
+		return NewOpenTSDBSplitter(conf)
+	case name == "json":
+		return NewJsonSplitter(conf)
 	default:
 		return nil, fmt.Errorf("Invalid splitter `%s`", name)
 	}

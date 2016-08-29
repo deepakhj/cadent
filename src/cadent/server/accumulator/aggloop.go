@@ -416,20 +416,22 @@ func (agg *AggregateLoop) Stop() {
 			agg.OutReader.Stop()
 		}
 
-		var wg sync.WaitGroup
-		stop_writers := func(w *writers.WriterLoop) {
-			w.Stop()
-			wg.Done()
-		}
-
-		for _, mw := range agg.OutWriters {
-			for _, w := range mw.ws {
-				agg.log.Warning("Starting Shutdown of writer `%s:%s`", agg.Name, w.GetName())
-				go stop_writers(w)
-				wg.Add(1)
+		if len(agg.OutWriters) > 0 {
+			var wg sync.WaitGroup
+			stop_writers := func(w *writers.WriterLoop) {
+				w.Stop()
+				wg.Done()
 			}
+
+			for _, mw := range agg.OutWriters {
+				for _, w := range mw.ws {
+					agg.log.Warning("Starting Shutdown of writer `%s:%s`", agg.Name, w.GetName())
+					go stop_writers(w)
+					wg.Add(1)
+				}
+			}
+			wg.Wait()
 		}
-		wg.Wait()
 		agg.log.Warning("Shutdown of aggregator `%s`", agg.Name)
 	})
 }

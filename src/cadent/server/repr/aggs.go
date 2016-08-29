@@ -122,6 +122,14 @@ func GuessAggFuncFromKey(stat string) AGG_FUNC {
 	return ACCUMULATE_FUNC[GuessReprValueFromKey(stat)]
 }
 
+func GuessAggFuncFromName(nm *StatName) AGG_FUNC {
+	tg := nm.Tags.Stat()
+	if len(tg) > 0 {
+		return AggFuncFromTag(tg)
+	}
+	return GuessAggFuncFromKey(nm.Key)
+}
+
 // for sorting
 type AggFloat64 []float64
 
