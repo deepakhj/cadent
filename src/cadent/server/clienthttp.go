@@ -28,12 +28,15 @@ import (
 	"cadent/server/repr"
 	"cadent/server/splitter"
 	"cadent/server/stats"
+	"encoding/json"
 	"fmt"
 	logging "gopkg.in/op/go-logging.v1"
 	"io"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 )
 
 const HTTP_BUFFER_SIZE = 4098
@@ -118,6 +121,117 @@ func (client HTTPClient) Close() {
 	}
 }
 
+/*
+A Json input handler ..
+*/
+func (client *HTTPClient) JsonHandler(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+
+	w.Header().Set("Content-Type", "application/json")
+
+	out_error := func(err error) {
+		w.WriteHeader(http.StatusBadRequest)
+		io.WriteString(w, fmt.Sprintf(`{"status":"error", "error": "%s"}`, err))
+		// flush it
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	}
+
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		out_error(err)
+		return
+	}
+	r.Body = ioutil.NopCloser(bytes.NewReader(body))
+
+	decoder := json.NewDecoder(bytes.NewBuffer(body))
+
+	spl := new(splitter.JsonSplitter)
+	lines := 0
+
+	process_item := func(m *splitter.JsonStructSplitItem) error {
+		splitem, err := spl.ParseJson(m)
+
+		if err != nil {
+			client.log.Errorf("Invalid Json Stat: %s", err)
+			return err
+		}
+		splitem.SetOrigin(splitter.HTTP)
+		splitem.SetOriginName(client.server.Name)
+		stats.StatsdClient.Incr("incoming.http.json.lines", 1)
+		client.server.ValidLineCount.Up(1)
+		client.input_queue <- splitem
+		lines += 1
+		return nil
+	}
+
+	t, err := decoder.Token()
+	if err != nil {
+		client.log.Errorf("Invalid Json: %s", err)
+		out_error(err)
+		return
+	}
+
+	// better be "[" or "{"
+	var in_char string
+	switch t.(type) {
+	case json.Delim:
+		in_char = t.(json.Delim).String()
+	default:
+		err := fmt.Errorf("Invalid Json input")
+		client.log.Errorf("Invalid Json: %s", err)
+		out_error(err)
+		return
+	}
+	if in_char == "[" {
+		// while the array contains values
+		for decoder.More() {
+			var m splitter.JsonStructSplitItem
+			// decode an array value (Message)
+			err = decoder.Decode(&m)
+			if err != nil {
+				client.log.Errorf("Invalid Json Stat: %s", err)
+				out_error(err)
+				return
+
+			}
+			err = process_item(&m)
+			if err != nil {
+				client.log.Errorf("Invalid Json Stat: %s", err)
+				out_error(err)
+				return
+			}
+		}
+	} else {
+		// we have a "{" start, but now the object is a bit funky, but it shuld be a small
+		// string so we can reset the buffer
+		var m splitter.JsonStructSplitItem
+		// decode an array value (Message)
+		err := json.Unmarshal(body, &m)
+
+		if err != nil {
+			client.log.Errorf("Invalid Json Stat: %s", err)
+			out_error(err)
+			return
+
+		}
+		if err != process_item(&m) {
+			client.log.Errorf("Invalid Json Stat: %s", err)
+			out_error(err)
+			return
+		}
+
+	}
+
+	io.WriteString(w, fmt.Sprintf(`{"status": "ok", "processed": %d}`, lines))
+	// flush it
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+	return
+}
+
 func (client *HTTPClient) HttpHandler(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	buf := bufio.NewReaderSize(r.Body, client.BufferSize)
@@ -184,7 +298,13 @@ func (client HTTPClient) handleRequest(out_queue chan splitter.SplitItem, close_
 		pth = "/"
 	}
 	serverMux := http.NewServeMux()
+	json_pth := pth + "json"
+	if !strings.HasSuffix(pth, "/") {
+		json_pth = pth + "/json"
+	}
+	serverMux.HandleFunc(json_pth, client.JsonHandler)
 	serverMux.HandleFunc(pth, client.HttpHandler)
+
 	go http.Serve(client.Connection, serverMux)
 
 	for w := int64(1); w <= client.server.Workers; w++ {

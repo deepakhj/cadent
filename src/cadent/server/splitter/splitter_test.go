@@ -328,6 +328,46 @@ func TestCarbonTwoRunner(t *testing.T) {
 
 }
 
+func TestJsonRunner(t *testing.T) {
+
+	conf := make(map[string]interface{})
+
+	good_line := []byte(`{"metric": "mooo.goo.loo", "timestamp": 1465866540, "value": 345345 }`)
+	bad_line := []byte(`{"metric": "mooo.goo.loo", "timestamp": 1465866540, "value": "qweqwe" }`)
+
+	Convey("Json Runner should parse lines nicely", t, func() {
+
+		gr, _ := NewJsonSplitter(conf)
+		si, _ := gr.ProcessLine(good_line)
+		So(string(si.Key()), ShouldEqual, "mooo.goo.loo")
+		So(gr.Name(), ShouldEqual, "json")
+		So(si.OriginName(), ShouldEqual, "")
+		So(si.IsValid(), ShouldEqual, true)
+		So(string(si.Line()), ShouldEqual, `{"metric":"mooo.goo.loo","value":345345,"timestamp":1465866540}`)
+		So(si.Fields(), ShouldResemble, [][]byte{
+			[]byte("mooo.goo.loo"),
+			[]byte("345345"),
+			[]byte("1465866540"),
+		})
+		So(si.Phase(), ShouldEqual, Parsed)
+		si.SetPhase(AccumulatedParsed)
+		So(si.Phase(), ShouldEqual, AccumulatedParsed)
+		si.SetOrigin(UDP)
+		So(si.Origin(), ShouldEqual, UDP)
+		si.SetOriginName("moo")
+		So(si.OriginName(), ShouldEqual, "moo")
+
+	})
+
+	Convey("Statsd Runner should not parser this", t, func() {
+
+		gr, _ := NewJsonSplitter(conf)
+		si, err := gr.ProcessLine(bad_line)
+		So(si, ShouldEqual, nil)
+		So(err, ShouldNotEqual, nil)
+	})
+
+}
 func TestUnkRunner(t *testing.T) {
 
 	conf := make(map[string]interface{})

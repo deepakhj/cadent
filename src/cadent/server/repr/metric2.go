@@ -71,6 +71,17 @@ func IsMetric2Tag(name string) bool {
 	}
 	return false
 }
+func Metric2FromMap(intag map[string]string) (new_tag SortingTags, new_meta SortingTags) {
+
+	for nkey, nval := range intag {
+		if IsMetric2Tag(nkey) {
+			new_tag = new_tag.Set(nkey, nval)
+		} else {
+			new_meta = new_meta.Set(nkey, nval)
+		}
+	}
+	return new_tag, new_meta
+}
 
 func SplitIntoMetric2Tags(intag SortingTags, inmeta SortingTags) (SortingTags, SortingTags) {
 	if inmeta.IsEmpty() && intag.IsEmpty() {

@@ -30,6 +30,8 @@ func NewAccumulatorItem(name string) (AccumulatorItem, error) {
 		return new(GraphiteAccumulate), nil
 	case name == "statsd":
 		return new(StatsdAccumulate), nil
+	case name == "json":
+		return new(JsonAccumulate), nil
 	case name == "carbon2" || name == "carbontwo":
 		return new(CarbonTwoAccumulate), nil
 	default:

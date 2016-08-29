@@ -175,20 +175,18 @@ func (my *MySQLIndexer) Name() string { return my.indexerId }
 
 func (my *MySQLIndexer) Start() {
 	my.startstop.Start(func() {
-		if atomic.CompareAndSwapUint32(&my.shutitdown, 1, 0) {
-			my.log.Notice("starting mysql indexer: %s", my.Name())
+		my.log.Notice("starting mysql indexer: %s", my.Name())
 
-			workers := my.num_workers
-			my.write_queue = make(chan dispatch.IJob, my.queue_len)
-			my.dispatch_queue = make(chan chan dispatch.IJob, workers)
-			my.write_dispatcher = dispatch.NewDispatch(workers, my.dispatch_queue, my.write_queue)
-			my.write_dispatcher.SetRetries(2)
-			my.write_dispatcher.Run()
+		workers := my.num_workers
+		my.write_queue = make(chan dispatch.IJob, my.queue_len)
+		my.dispatch_queue = make(chan chan dispatch.IJob, workers)
+		my.write_dispatcher = dispatch.NewDispatch(workers, my.dispatch_queue, my.write_queue)
+		my.write_dispatcher.SetRetries(2)
+		my.write_dispatcher.Run()
 
-			my.cache.Start() //start cacher
+		my.cache.Start() //start cacher
 
-			go my.sendToWriters() // the dispatcher
-		}
+		go my.sendToWriters() // the dispatcher
 	})
 }
 
@@ -196,10 +194,6 @@ func (my *MySQLIndexer) Stop() {
 	my.startstop.Stop(func() {
 		shutdown.AddToShutdown()
 		defer shutdown.ReleaseFromShutdown()
-
-		if atomic.SwapUint32(&my.shutitdown, 1) == 1 {
-			return // already did
-		}
 
 		my.log.Notice("shutting down mysql indexer: %s", my.Name())
 		my.cache.Stop()
@@ -296,9 +290,7 @@ func (my *MySQLIndexer) WriteTags(inname *repr.StatName, do_main bool, do_meta b
 					if strings.Contains(fmt.Sprintf("%s", err), "Duplicate entry") {
 						id, err := my.FindTagId(tag[0], tag[1], false)
 						if err == nil {
-							my.tagMu.Lock()
 							my.tagIdCache[tag_key] = id
-							my.tagMu.Unlock()
 							continue
 						}
 					}
@@ -330,9 +322,7 @@ func (my *MySQLIndexer) WriteTags(inname *repr.StatName, do_main bool, do_meta b
 					if strings.Contains(fmt.Sprintf("%s", err), "Duplicate entry") {
 						id, err := my.FindTagId(tag[0], tag[1], true)
 						if err == nil {
-							my.tagMu.Lock()
 							my.tagIdCache[tag_key] = id
-							my.tagMu.Unlock()
 							continue
 						}
 					}

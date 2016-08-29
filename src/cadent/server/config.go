@@ -455,8 +455,8 @@ func (self ConfigServers) ParseConfig(defaults *Config) (out ConfigServers, err 
 		cfg.MsgConfig = make(map[string]interface{})
 
 		//check the message type/regex
-		if cfg.MsgType != "statsd" && cfg.MsgType != "graphite" && cfg.MsgType != "regex" && cfg.MsgType != "carbon2" && cfg.MsgType != "opentsdb" {
-			panic("`msg_type` must be 'statsd', 'graphite', 'carbon2', 'opentsdb' or 'regex'")
+		if cfg.MsgType != "statsd" && cfg.MsgType != "graphite" && cfg.MsgType != "regex" && cfg.MsgType != "carbon2" && cfg.MsgType != "json" && cfg.MsgType != "opentsdb" {
+			panic("`msg_type` must be 'statsd', 'graphite', 'carbon2', 'opentsdb', 'json' or 'regex'")
 		}
 		if cfg.MsgType == "regex" && len(cfg.MsgFormatRegEx) == 0 {
 			panic("`msg_type` of 'regex' needs to have `msg_regex` defined")

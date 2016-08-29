@@ -20,6 +20,7 @@ package main
 
 import (
 	"cadent/server/netpool"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -102,6 +103,29 @@ func sprinterTag(ct int) string {
 	return strings.Join(r_ws, " ")
 }
 
+func tagArr(ct int) []string {
+	// add the "required" tags
+	r_ws := []string{"what=" + RandItem(randWords), "unit=" + RandItem(randUnit), "mtype=" + RandItem(randMtype), "stat=" + RandItem(randStat)}
+
+	for i := 0; i < ct-4; i++ {
+		r_ws = append(r_ws, RandItem(randTagName)+"="+RandItem(randWords))
+	}
+	return r_ws
+}
+
+func tagMap(ct int) map[string]string {
+	// add the "required" tags
+	r_ws := make(map[string]string)
+	r_ws["unit"] = RandItem(randUnit)
+	r_ws["mtype"] = RandItem(randMtype)
+	r_ws["stat"] = RandItem(randStat)
+
+	for i := 0; i < ct-4; i++ {
+		r_ws[RandItem(randTagName)] = RandItem(randWords)
+	}
+	return r_ws
+}
+
 func StatsdStr(ct int) string {
 	cc := Statsdtypes[rand.Intn(len(Statsdtypes))]
 	sample := float32(rand.Intn(1000)) / float32(1000)
@@ -125,6 +149,29 @@ func Carbon2Str(ct int) string {
 		offset+ct,
 		time.Now().Unix(),
 	)
+}
+
+type JsonObj struct {
+	Key   string            `json:"metric"`
+	Value float64           `json:"value"`
+	Time  int64             `json:"timestamp"`
+	Tags  map[string]string `json:"tags"`
+}
+
+func JsonStr(ct int) string {
+	// use the key string to determine "int scale" of things
+	tn := int(time.Now().Hour())
+	key := sprinter(3)
+	offset := 5000*len(key) - 1000*int(math.Sin(float64(tn/24)))
+	j_obj := JsonObj{
+		Tags:  tagMap(numWords),
+		Key:   key,
+		Time:  time.Now().Unix(),
+		Value: float64(offset + ct),
+	}
+	outs, _ := json.Marshal(j_obj)
+
+	return string(outs) + "\n"
 }
 
 // need to up this guy otherwise we quickly run out of sockets
@@ -217,6 +264,8 @@ func Runner(server string, intype string, rate string, buffer int) {
 			oneline = StatsdStr(ct)
 		case "carbon2":
 			oneline = Carbon2Str(ct)
+		case "json":
+			oneline = JsonStr(ct)
 		default:
 			log.Fatalf("Invalid stat type %s", intype)
 		}
@@ -258,7 +307,7 @@ func main() {
 	rand.Seed(time.Now().UnixNano())
 	startTime = time.Now().UnixNano()
 	serverList := flag.String("servers", "tcp://127.0.0.1:8125", "list of servers to open (stdout,tcp://127.0.0.1:6002,tcp://127.0.0.1:6003), you can choose tcp://, udp://, http://, unix://")
-	intype := flag.String("type", "statsd", "statsd or graphite or carbon2")
+	intype := flag.String("type", "statsd", "statsd or graphite or carbon2 or json")
 	rate := flag.String("rate", "0.1s", "fire rate for stat lines")
 	buffer := flag.Int("buffer", 512, "send buffer")
 	concur := flag.Int("forks", 2, "number of concurrent senders")

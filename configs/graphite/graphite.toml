@@ -13,7 +13,7 @@ pid_file="/opt/cadent/cadent.pid"
 ## overhead as time goes on)
 #
 
-# stats_tick=true
+stats_tick=false
 
 num_procs=4
 
@@ -135,7 +135,16 @@ pool_buffersize=16384
 read_buffer_size=8192
 max_buffer_size=819200
 
-# this implies NO backends, which is good if only writers are around
+# this implies NO backends, which is good if only writers are around or if each line gets re-routed to another backend
 # otherwise, you'd basically be doing nothing
 out_dev_null=true
+
+[statsd-proxy]
+listen="udp://0.0.0.0:8125"
+workers=5
+
+msg_type="statsd"
+
+out_dev_null=true
+
 

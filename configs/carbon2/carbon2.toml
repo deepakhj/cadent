@@ -142,3 +142,35 @@ max_buffer_size=819200
 # otherwise, you'd basically be doing nothing
 out_dev_null=true
 
+
+
+[json-http]
+
+### Server sections .. note all the above is overridable in each section
+### (except the `statsd_*` and `internal_health_server_listen`)
+### NOTE: `hasher_replicas` will NOT use the defaults, be explict there
+
+## what port/scheme we are listening on for incoming data
+listen="http://0.0.0.0:2004/"
+workers=5
+
+msg_type="json"
+
+# graphite style
+hasher_algo="md5"
+hasher_elter="graphite"
+hasher_vnodes=1
+
+## need higher timeouts for graphite
+write_timeout=5000
+runner_timeout=5000
+pool_buffersize=16384
+
+# TCP buffers should be smaller then UDP as there can be Many TCP connnections
+read_buffer_size=8192
+max_buffer_size=819200
+
+# this implies NO backends, which is good if only writers are around
+# otherwise, you'd basically be doing nothing
+out_dev_null=true
+

@@ -278,14 +278,17 @@ func (a *GraphiteAccumulate) ProcessLine(linebytes []byte) (err error) {
 	a.mu.Unlock()
 
 	if !ok {
+		tgs, meta := repr.SplitIntoMetric2Tags(repr.SortingTags{}, tags)
+		nm := repr.StatName{Key: key, Tags: tgs, MetaTags: meta}
+
 		gots = &GraphiteBaseStatItem{
 			InType:     "graphite",
 			Time:       a.ResolutionTime(t),
-			InKey:      repr.StatName{Key: key, MetaTags: tags},
+			InKey:      nm,
 			Min:        GRAPHITE_ACC_MIN_FLAG,
 			Max:        GRAPHITE_ACC_MIN_FLAG,
 			Last:       GRAPHITE_ACC_MIN_FLAG,
-			ReduceFunc: repr.GuessAggFuncFromKey(key),
+			ReduceFunc: repr.GuessAggFuncFromName(&nm),
 		}
 	}
 
