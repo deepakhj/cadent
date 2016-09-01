@@ -344,6 +344,7 @@ func (my *MySQLMetrics) Stop() {
 		}
 
 		my.log.Warning("Shutdown finished ... quiting mysql blob writer")
+		return
 	})
 
 }
@@ -630,6 +631,8 @@ func (my *MySQLMetrics) RawDataRenderOne(metric *indexer.MetricFindItem, start i
 	rawd.Step = resolution
 	rawd.Metric = metric.Path
 	rawd.Id = metric.UniqueId
+	rawd.Tags = metric.Tags
+	rawd.MetaTags = metric.MetaTags
 	rawd.RealEnd = u_end
 	rawd.RealStart = u_start
 	rawd.Start = rawd.RealStart
@@ -678,6 +681,8 @@ func (my *MySQLMetrics) RawDataRenderOne(metric *indexer.MetricFindItem, start i
 	mysql_data.Step = resolution
 	mysql_data.Start = u_start
 	mysql_data.End = u_end
+	mysql_data.Tags = metric.Tags
+	mysql_data.MetaTags = metric.MetaTags
 
 	//mysql_data.PrintPoints()
 	if inflight == nil {

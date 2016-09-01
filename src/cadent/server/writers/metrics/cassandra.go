@@ -756,6 +756,8 @@ func (cass *CassandraMetric) RawDataRenderOne(metric *indexer.MetricFindItem, st
 	rawd.RealStart = u_start
 	rawd.Start = rawd.RealStart
 	rawd.End = rawd.RealEnd
+	rawd.Tags = metric.Tags
+	rawd.MetaTags = metric.MetaTags
 	rawd.AggFunc = repr.GuessReprValueFromKey(metric.Id)
 
 	if metric.Leaf == 0 {

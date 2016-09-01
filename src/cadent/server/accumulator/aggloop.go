@@ -39,6 +39,7 @@ import (
 	stats "cadent/server/stats"
 	"cadent/server/utils"
 	writers "cadent/server/writers"
+	"cadent/server/writers/api"
 	metrics "cadent/server/writers/metrics"
 	"fmt"
 	logging "gopkg.in/op/go-logging.v1"
@@ -96,7 +97,7 @@ type AggregateLoop struct {
 	// use the flush duration as a key
 	OutWriters map[int64]*multiWriter
 
-	OutReader *writers.ApiLoop
+	OutReader *api.ApiLoop
 
 	// dispathers
 	stat_dispatcher *dispatch.DispatchQueue
@@ -144,8 +145,8 @@ func (agg *AggregateLoop) getResolutionArray() [][]int {
 }
 
 // config the HTTP interface if desired
-func (agg *AggregateLoop) SetReader(conf writers.ApiConfig) error {
-	rl := new(writers.ApiLoop)
+func (agg *AggregateLoop) SetReader(conf api.ApiConfig) error {
+	rl := new(api.ApiLoop)
 
 	// set the resolution bits
 	res := agg.getResolutionArray()

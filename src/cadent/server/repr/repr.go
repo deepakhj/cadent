@@ -48,6 +48,16 @@ func (s JsonFloat64) MarshalJSON() ([]byte, error) {
 	return []byte(fmt.Sprintf("%v", float64(s))), nil
 }
 
+type NilJsonFloat64 float64
+
+// needed to handle "Inf" values
+func (s NilJsonFloat64) MarshalJSON() ([]byte, error) {
+	if math.IsNaN(float64(s)) || math.IsInf(float64(s), 0) || float64(s) == math.MinInt64 {
+		return []byte("null"), nil
+	}
+	return []byte(fmt.Sprintf("%v", float64(s))), nil
+}
+
 // for GC purposes
 const SPACE_SEPARATOR = " "
 const DOUBLE_SPACE_SEPARATOR = "  "
@@ -102,6 +112,20 @@ func (s *StatName) UniqueId() StatId {
 	buf.Write(byte_buf.Bytes())
 	s.uniqueId = StatId(buf.Sum64())
 	return s.uniqueId
+}
+
+// include both meta and tags and key
+// usefull for "indexers" that don't want to re-index things, but if the meta
+// tags change we need to add those to the xref
+func (s *StatName) UniqueIdAllTags() StatId {
+	buf := fnv.New64a()
+
+	byte_buf := utils.GetBytesBuffer()
+	defer utils.PutBytesBuffer(byte_buf)
+
+	fmt.Fprintf(byte_buf, "%s:%s:%s", s.Key, s.SortedTags(), s.SortedMetaTags())
+	buf.Write(byte_buf.Bytes())
+	return StatId(buf.Sum64())
 }
 
 // nice "sqeeuzed" string

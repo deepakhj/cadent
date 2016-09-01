@@ -197,3 +197,23 @@ func (ws *WhisperIndexer) Expand(metric string) (MetricExpandItem, error) {
 	}
 	return mt, nil
 }
+
+func (ws *WhisperIndexer) List(has_data bool, page int) (MetricFindItems, error) {
+	return MetricFindItems{}, errWillNotBeImplimented
+}
+
+func (ws *WhisperIndexer) GetTagsByUid(unique_id string) (tags repr.SortingTags, metatags repr.SortingTags, err error) {
+	return tags, metatags, errWillNotBeImplimented
+}
+
+func (ws *WhisperIndexer) GetTagsByName(name string, page int) (tags MetricTagItems, err error) {
+	return tags, errWillNotBeImplimented
+}
+
+func (ws *WhisperIndexer) GetTagsByNameValue(name string, value string, page int) (tags MetricTagItems, err error) {
+	return tags, errWillNotBeImplimented
+}
+
+func (ws *WhisperIndexer) GetUidsByTags(key string, tags repr.SortingTags, page int) (uids []string, err error) {
+	return uids, errWillNotBeImplimented
+}

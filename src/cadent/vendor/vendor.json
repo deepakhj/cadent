@@ -270,6 +270,18 @@
 			"revisionTime": "2016-06-12T21:17:59Z"
 		},
 		{
+			"checksumSHA1": "g/V4qrXjUGG9B+e3hB+4NAYJ5Gs=",
+			"path": "github.com/gorilla/context",
+			"revision": "08b5f424b9271eedf6f9f0ce86cb9396ed337a42",
+			"revisionTime": "2016-08-17T18:46:32Z"
+		},
+		{
+			"checksumSHA1": "Nla/xOG5eAKFfvT1qfyycby8sn4=",
+			"path": "github.com/gorilla/mux",
+			"revision": "0b13a922203ebdbfd236c818efcd5ed46097d690",
+			"revisionTime": "2016-08-27T16:50:34Z"
+		},
+		{
 			"checksumSHA1": "O0r0hj4YL+jSRNjnshkeH4GY+4s=",
 			"path": "github.com/hailocab/go-hostpool",
 			"revision": "e80d13ce29ede4452c43dea11e79b9bc8a15b478",

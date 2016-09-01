@@ -685,6 +685,27 @@ func (lp *LevelDBIndexer) Delete(name *repr.StatName) error {
 	return nil
 }
 
+/*************** TAG STUBS ************************/
+func (lp *LevelDBIndexer) List(has_data bool, page int) (MetricFindItems, error) {
+	return MetricFindItems{}, errNotYetImplimented
+}
+
+func (my *LevelDBIndexer) GetTagsByUid(unique_id string) (tags repr.SortingTags, metatags repr.SortingTags, err error) {
+	return tags, metatags, errNotYetImplimented
+}
+
+func (my *LevelDBIndexer) GetTagsByName(name string, page int) (tags MetricTagItems, err error) {
+	return tags, errNotYetImplimented
+}
+
+func (my *LevelDBIndexer) GetTagsByNameValue(name string, value string, page int) (tags MetricTagItems, err error) {
+	return tags, errNotYetImplimented
+}
+
+func (my *LevelDBIndexer) GetUidsByTags(key string, tags repr.SortingTags, page int) (uids []string, err error) {
+	return uids, errNotYetImplimented
+}
+
 /************************************************************************/
 /**********  Standard Worker Dispatcher JOB   ***************************/
 /************************************************************************/

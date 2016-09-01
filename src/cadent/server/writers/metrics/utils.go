@@ -38,9 +38,24 @@ import (
 
 /****************** Helpers *********************/
 // parses things like "-23h" etc
+// or pure date strings of the form 2015-07-01T20:10:30.781Z
 // only does "second" precision which is all graphite can do currently
 func ParseTime(st string) (int64, error) {
-	st = strings.Trim(strings.ToLower(st), " \n\t")
+	st = strings.TrimSpace(strings.ToLower(st))
+
+	// first see if it's a "date string"
+	// of the form 2015-07-01T20:10:30.781Z
+	_time, err := time.Parse("2015-07-01T20:10:30.781Z", st)
+	if err == nil {
+		return _time.Unix(), nil
+	}
+
+	// or Mon Jan 2 15:04:05 -0700 MST 2006
+	_time, err = time.Parse("Mon Jan 2 15:04:05 -0700 MST 2006", st)
+	if err == nil {
+		return _time.Unix(), nil
+	}
+
 	unix_t := int64(time.Now().Unix())
 	if st == "now" {
 		return unix_t, nil

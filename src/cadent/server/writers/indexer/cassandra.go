@@ -515,6 +515,49 @@ func (cass *CassandraIndexer) Expand(metric string) (MetricExpandItem, error) {
 
 }
 
+func (cass *CassandraIndexer) List(has_data bool, page int) (MetricFindItems, error) {
+	defer stats.StatsdSlowNanoTimeFunc("indexer.cassandra.list.get-time-ns", time.Now())
+
+	// since there are and regex like things in the strings, we
+	// need to get the all "items" from where the regex starts then hone down
+
+	// grab all the paths that match this length if there is no regex needed
+	// these are the "data/leaf" nodes
+	cass_Q := fmt.Sprintf(
+		"SELECT id,path FROM %s WHERE has_data=? LIMIT ?,? ALLOW FILTERING",
+		cass.db.PathTable(),
+	)
+	iter := cass.conn.Query(cass_Q, has_data, page*MAX_PER_PAGE, MAX_PER_PAGE).Iter()
+
+	var mt MetricFindItems
+	var ms MetricFindItem
+	var on_pth string
+	var id string
+	// just grab the "n+1" length ones
+	for iter.Scan(&id, &on_pth) {
+
+		//cass.log.Critical("NON REG:::::PATH %s LEN %d m_len: %d", on_pth, pth_len, m_len)
+		spl := strings.Split(on_pth, ".")
+
+		ms.Text = spl[len(spl)-1]
+		ms.Id = on_pth
+		ms.Path = on_pth
+
+		ms.Expandable = 0
+		ms.Leaf = 1
+		ms.AllowChildren = 0
+		ms.UniqueId = id
+
+		mt = append(mt, ms)
+	}
+
+	if err := iter.Close(); err != nil {
+		return mt, err
+	}
+
+	return mt, nil
+}
+
 // basic find for non-regex items
 func (cass *CassandraIndexer) FindNonRegex(metric string) (MetricFindItems, error) {
 
@@ -707,6 +750,24 @@ func (cass *CassandraIndexer) Delete(name *repr.StatName) (err error) {
 		).Exec()
 		return err
 	*/
+}
+
+/*************** TAG STUBS ************************/
+
+func (my *CassandraIndexer) GetTagsByUid(unique_id string) (tags repr.SortingTags, metatags repr.SortingTags, err error) {
+	return tags, metatags, errNotYetImplimented
+}
+
+func (my *CassandraIndexer) GetTagsByName(name string, page int) (tags MetricTagItems, err error) {
+	return tags, errNotYetImplimented
+}
+
+func (my *CassandraIndexer) GetTagsByNameValue(name string, value string, page int) (tags MetricTagItems, err error) {
+	return tags, errNotYetImplimented
+}
+
+func (my *CassandraIndexer) GetUidsByTags(key string, tags repr.SortingTags, page int) (uids []string, err error) {
+	return uids, errNotYetImplimented
 }
 
 /************************************************************************/

@@ -3,28 +3,47 @@
 
 Readers are an attempt to imitate the Graphite API bits and include 3 main endpoints with a few more endpoints
 
+    TimeSeries
 
-    /{root}/find  -- find paths ( ?query=path.*.to.my.*.metric )
-    /{root}/expand -- expand a tree ( ?query=path.*.to.my.*.metric )
     /{root}/metrics -- get metrics in the format graphite needs ( ?target=path.*.to.my.*.metric&from=time&to=time )
     /{root}/rawrender -- get the actual metrics in the internal format ( ?target=path.*.to.my.*.metric&from=time&to=time )
     /{root}/cached/series -- get the BINARY blob of data only ONE metric allowed here ( ?to=now&from=-10m&target=graphitetest.there.now.there )
     /{root}/cache -- get the actual metrics stored in writeback cache ( ?target=path.*.to.my.*.metric&from=time&to=time )
 
-For now, all return types are JSON.
 
-Unlike the Whisper file format which keeps "nils" for no data (i.e. a round robin DB with a fixed step size and known counts),
-the mature of the metrics in our various backends write points at what ever the flush time is, and if there is nothing to write
-does not write "nils" so the `/metrics` endpoint has to return an interpolated set of data to attempt to match what graphite expects
-(this is more a warning for those that may notice some time shifting in some data and "data" holes)
+    Path Indexer
 
-This may mean that you will see some random interspersed `nils` in the data on small time ranges.  There are a variety of reasons for this
-1) flush times are not "exact" go's in the concurrency world, not everything is run exactly when we want it do so over time some "drift" will occur.
-2) Since we are both "flushing to disk" and "flushing from buffers" from many buffers at different times, sometimes they just don't line up
+    /{root}/find  -- find paths ( ?query=path.*.to.my.*.metric )
+    /{root}/expand -- expand a tree ( ?query=path.*.to.my.*.metric )
 
-*NOTE*  Currently only Cassandra, MySQL and Whisper "render apis" are valid. File and Kafka writers can have no render apis.
+    Tag Indexer (in the works)
 
-*NOTE* the `/cached/series` endpoint only makes since for TimeSeries based writers, as a result only Cassandra, MySQL, kafka series writers implement this
+    /{root}/tag/findbyname -- find tags values by name (?name=host) this can be a typeahead form (?name=ho.*)
+    /{root}/tag/findbynamevalue -- find tags values by name and value (?name=host&value=moo.*) `value` can be of typeahead form
+                                   NOT name here
+    /{root}/tag/uidbytags -- get uniqueIdStrings (?query=metric_key{name=val,name=val})
+                             no regexes allowed here.  You can omit the `metric_key` as well.
+
+
+For now, all return types are JSON, except the `/{root}/cached/series` which is binary/base64.
+
+Items `/{root}/metrics` will be interpolated for have "nils" for data points that do not exist
+(graphite expects a nice `{to - from}/step` span in the return vector).  `rawrender, cache*` endpoints will have just
+the points that exists.
+
+Upcoming Tag stuff
+
+Indexing tags properly requires basically a trigram/inverted Lucene
+like index.  Which we can impliment using ElasticSearch (or Solr).  However, most of the other DBs included here
+(leveldb, mysql) do support some level of internal filtering, but mostly only in the "typeahead" sence
+(i.e. find things like `ho.*`, then `hos.*` ..).  Cassandra is pretty bad here as in order to do that sort of typehead
+filtering we acctually need to query and filter then entire tags space, which is not a good thing for big volumes.
+So while we can use cassandra as the "tag -> UniqueId" map, we still need a way to find the tags we want first.
+
+Mysql here is pretty good in that we can easily search for `select * from tags where name='ho%'`.  LevelDB/BoltDB
+are also made for this very sort of prefix filtering as well, but are localized to just one machine (which might be ok
+for your use case).
+
 
 ## Table of implemented apis and writers
 
@@ -78,7 +97,6 @@ the default of `mean`.
 | ends with: request(s\|ed?) |  sum |
 | ends with: select(s\|ed?) |  sum |
 | ends with: add(s\|ed)? |  sum |
-| ends with: remove(s?) |  sum |
 | ends with: remove(s\|d?) |  sum |
 | ends with: consume(d?) |  sum |
 | ends with: sum |  sum |
@@ -92,11 +110,21 @@ the default of `mean`.
 | ends with: lower_\d+ |  min |
 | ends with: gauge |  last |
 | starts with: stats.gauge |  last |
+| starts with: stats.set |  sum |
 | ends with: median |  median |
 | ends with: middle |  median |
 | ends with: median_\d+ |  median |
 | DEFAULT | mean |
 
+
+## Tag API
+
+Since there can easily be some insanely bad queries (`name=* for instance`) All things are limited to 2048 items returned
+(even this is alot), but think of what would happen if you tried to do a graphite query of `*.*.*.*.*`.
+
+For tags, we will use the OpenTSDB format which is of the form `metric_key{name=val, name=val, ...}`
+
+For the metrics 2.0 world, the `metric_key` is redendent and can be omitted and just use the tags.
 
 
 ## API Reader config

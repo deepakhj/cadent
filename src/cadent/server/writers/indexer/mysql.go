@@ -174,13 +174,11 @@ func (my *MySQLIndexer) Name() string { return my.indexerId }
 func (my *MySQLIndexer) Start() {
 	my.startstop.Start(func() {
 		my.log.Notice("starting mysql indexer: %s", my.Name())
-
-		workers := my.num_workers
 		retries := 2
-		my.dispatcher = dispatch.NewDispatchQueue(workers, my.queue_len, retries)
+		my.dispatcher = dispatch.NewDispatchQueue(my.num_workers, my.queue_len, retries)
 		my.dispatcher.Start()
-
 		my.cache.Start() //start cacher
+		my.shutitdown = 0
 
 		go my.sendToWriters() // the dispatcher
 	})
@@ -193,9 +191,7 @@ func (my *MySQLIndexer) Stop() {
 
 		my.log.Notice("shutting down mysql indexer: %s", my.Name())
 		my.cache.Stop()
-		if my.dispatcher != nil {
-			my.dispatcher.Stop()
-		}
+		my.shutitdown = 1
 	})
 }
 
@@ -216,7 +212,7 @@ func (my *MySQLIndexer) sendToWriters() error {
 			case true:
 				time.Sleep(time.Second)
 			default:
-				stats.StatsdClient.Incr(fmt.Sprintf("indexer.cassandra.write.send-to-writers"), 1)
+				stats.StatsdClient.Incr(fmt.Sprintf("indexer.mysql.write.send-to-writers"), 1)
 				my.dispatcher.Add(&MysqlIndexerJob{Msql: my, Stat: skey})
 			}
 		}
@@ -233,7 +229,7 @@ func (my *MySQLIndexer) sendToWriters() error {
 			case true:
 				time.Sleep(time.Second)
 			default:
-				stats.StatsdClient.Incr(fmt.Sprintf("indexer.cassandra.write.send-to-writers"), 1)
+				stats.StatsdClient.Incr(fmt.Sprintf("indexer.mysql.write.send-to-writers"), 1)
 				my.dispatcher.Add(&MysqlIndexerJob{Msql: my, Stat: skey})
 				time.Sleep(dur)
 			}
@@ -254,6 +250,8 @@ func (my *MySQLIndexer) WriteTags(inname *repr.StatName, do_main bool, do_meta b
 		return nil
 	}
 
+	// be warned .. found this out the hard way .. the transaction lock interfears w/ this lock
+	// so it must go first
 	tx, err := my.conn.Begin()
 	if err != nil {
 		my.log.Error("Failure in Index Write getting transations: %v", tx)
@@ -267,17 +265,15 @@ func (my *MySQLIndexer) WriteTags(inname *repr.StatName, do_main bool, do_meta b
 		"INSERT INTO %s (name, value, is_meta) VALUES (?, ?, ?)",
 		my.db.TagTable(),
 	)
-	if have_tgs {
-		my.tagMu.Lock()
-		defer my.tagMu.Unlock()
-	}
 
 	var tag_ids []int64
 	if have_tgs && do_main {
 
 		for _, tag := range inname.Tags.Tags() {
 			tag_key := fmt.Sprintf("%s:%s:%v", tag[0], tag[1], true)
+			my.tagMu.RLock()
 			gots, ok := my.tagIdCache[tag_key]
+			my.tagMu.RUnlock()
 			if ok {
 				tag_ids = append(tag_ids, gots)
 			} else {
@@ -286,7 +282,9 @@ func (my *MySQLIndexer) WriteTags(inname *repr.StatName, do_main bool, do_meta b
 					if strings.Contains(fmt.Sprintf("%s", err), "Duplicate entry") {
 						id, err := my.FindTagId(tag[0], tag[1], false)
 						if err == nil {
+							my.tagMu.Lock()
 							my.tagIdCache[tag_key] = id
+							my.tagMu.Unlock()
 							continue
 						}
 					}
@@ -308,7 +306,9 @@ func (my *MySQLIndexer) WriteTags(inname *repr.StatName, do_main bool, do_meta b
 	if have_meta && do_meta {
 		for _, tag := range inname.MetaTags.Tags() {
 			tag_key := fmt.Sprintf("%s:%s:%v", tag[0], tag[1], true)
+			my.tagMu.RLock()
 			gots, ok := my.tagIdCache[tag_key]
+			my.tagMu.RUnlock()
 
 			if ok {
 				tag_ids = append(tag_ids, gots)
@@ -318,7 +318,9 @@ func (my *MySQLIndexer) WriteTags(inname *repr.StatName, do_main bool, do_meta b
 					if strings.Contains(fmt.Sprintf("%s", err), "Duplicate entry") {
 						id, err := my.FindTagId(tag[0], tag[1], true)
 						if err == nil {
+							my.tagMu.Lock()
 							my.tagIdCache[tag_key] = id
+							my.tagMu.Unlock()
 							continue
 						}
 					}
@@ -331,7 +333,10 @@ func (my *MySQLIndexer) WriteTags(inname *repr.StatName, do_main bool, do_meta b
 					continue
 				}
 				tag_ids = append(tag_ids, id)
+				my.tagMu.Lock()
 				my.tagIdCache[tag_key] = id
+				my.tagMu.Unlock()
+
 			}
 		}
 	}
@@ -369,27 +374,22 @@ func (my *MySQLIndexer) WriteOne(inname *repr.StatName) error {
 	skey := inname.Key
 	s_parts := strings.Split(skey, ".")
 	p_len := len(s_parts)
+	unique_ID := inname.UniqueIdString()
 
 	// we are going to assume that if the path is already in the system, we've indexed it and therefore
 	// do not need to do the super loop (which is very expensive)
 	SelQ := fmt.Sprintf(
-		"SELECT path, length, has_data FROM %s WHERE pos=? AND segment=?",
+		"SELECT uid FROM %s WHERE has_data=? AND segment=? AND path=? LIMIT 1",
 		my.db.PathTable(),
 	)
 
-	var _pth string
-	var _len int
-	var _dd bool
-
-	rows, gerr := my.conn.Query(SelQ, p_len-1, skey)
-
-	// already indexed
-	if gerr == nil {
+	if rows, gerr := my.conn.Query(SelQ, true, skey, skey); gerr == nil {
+		// already indexed
+		var uid string
+		defer rows.Close()
 		for rows.Next() {
-			if err := rows.Scan(&_pth, &_len, &_dd); err != nil {
-				if _pth == skey && _dd && _len == p_len-1 {
-					return my.WriteTags(inname, false, true)
-				}
+			if err := rows.Scan(&uid); err == nil && uid == unique_ID {
+				return my.WriteTags(inname, false, true)
 			}
 		}
 	}
@@ -398,7 +398,6 @@ func (my *MySQLIndexer) WriteOne(inname *repr.StatName) error {
 	cur_part := ""
 	segments := []CassSegment{}
 	paths := []CassPath{}
-	unique_ID := inname.UniqueIdString()
 
 	for idx, part := range s_parts {
 		if len(cur_part) > 1 {
@@ -641,6 +640,8 @@ func (my *MySQLIndexer) Expand(metric string) (MetricExpandItem, error) {
 
 }
 
+/******************* TAG METHODS **********************************/
+
 func (my *MySQLIndexer) FindTagId(name string, value string, ismeta bool) (int64, error) {
 	sel_tagQ := fmt.Sprintf(
 		"SELECT id FROM %s WHERE name=? AND value=? AND is_meta=?",
@@ -652,6 +653,7 @@ func (my *MySQLIndexer) FindTagId(name string, value string, ismeta bool) (int64
 		my.log.Error("Error Getting Tags: %s : %v", sel_tagQ, err)
 		return 0, err
 	}
+	defer rows.Close()
 	var id int64
 	for rows.Next() {
 		err = rows.Scan(&id)
@@ -664,7 +666,7 @@ func (my *MySQLIndexer) FindTagId(name string, value string, ismeta bool) (int64
 	return 0, nil
 }
 
-func (my *MySQLIndexer) GetTagsByUid(unique_id string) (tags repr.SortingTags, metatags repr.SortingTags) {
+func (my *MySQLIndexer) GetTagsByUid(unique_id string) (tags repr.SortingTags, metatags repr.SortingTags, err error) {
 
 	tag_table := my.db.TagTable()
 	tag_xr_table := my.db.TagTableXref()
@@ -682,6 +684,7 @@ func (my *MySQLIndexer) GetTagsByUid(unique_id string) (tags repr.SortingTags, m
 		my.log.Error("Error Getting Tags: %s : %v", tgsQ, err)
 		return
 	}
+	defer rows.Close()
 	for rows.Next() {
 		err = rows.Scan(&name, &value, &is_meta)
 		if err != nil {
@@ -693,7 +696,214 @@ func (my *MySQLIndexer) GetTagsByUid(unique_id string) (tags repr.SortingTags, m
 			tags = tags.Set(name, value)
 		}
 	}
-	return tags, metatags
+	return tags, metatags, err
+}
+
+func (my *MySQLIndexer) GetTagsByName(name string, page int) (tags MetricTagItems, err error) {
+	sel_tagQ := fmt.Sprintf(
+		"SELECT id, name, value, is_meta FROM %s WHERE name=? LIMIT ?, ?",
+		my.db.TagTable(),
+	)
+	use_name := name
+
+	if needRegex(name) {
+		sel_tagQ = fmt.Sprintf(
+			"SELECT id, name, value, is_meta FROM %s WHERE name REGEXP ? LIMIT ?, ?",
+			my.db.TagTable(),
+		)
+		use_name = regifyMysqlKeyString(name)
+	}
+
+	rows, err := my.conn.Query(sel_tagQ, use_name, page*MAX_PER_PAGE, MAX_PER_PAGE)
+	if err != nil {
+		my.log.Error("Error Getting Tags: %s : %v", sel_tagQ, err)
+		return tags, err
+	}
+	var tname string
+	var id int64
+	var is_meta bool
+	var value string
+	defer rows.Close()
+	for rows.Next() {
+		err = rows.Scan(&id, &tname, &value, &is_meta)
+		if err != nil {
+			my.log.Error("Error Getting Tags Iterator: %s : %v", sel_tagQ, err)
+			return
+		}
+		tags = append(tags, MetricTagItem{Name: tname, Value: value, Id: id, IsMeta: is_meta})
+	}
+	return
+}
+
+func (my *MySQLIndexer) GetTagsByNameValue(name string, value string, page int) (tags MetricTagItems, err error) {
+	sel_tagQ := fmt.Sprintf(
+		"SELECT id, name, value, is_meta FROM %s WHERE name=? AND value=? LIMIT ?, ?",
+		my.db.TagTable(),
+	)
+	use_name := name
+	use_val := value
+
+	if needRegex(name) {
+		return tags, fmt.Errorf("only the `value` can be a regex for tags by name and value")
+	}
+
+	if needRegex(value) {
+		sel_tagQ = fmt.Sprintf(
+			"SELECT id, name, value, is_meta FROM %s WHERE name=? AND value REGEXP ? LIMIT ?, ?",
+			my.db.TagTable(),
+		)
+		use_val = regifyMysqlKeyString(value)
+	}
+	rows, err := my.conn.Query(sel_tagQ, use_name, regifyMysqlKeyString(use_val), page*MAX_PER_PAGE, MAX_PER_PAGE)
+	if err != nil {
+		my.log.Error("Error Getting Tags: %s : %v", sel_tagQ, err)
+		return tags, err
+	}
+	var tname string
+	var id int64
+	var is_meta bool
+	var tvalue string
+	defer rows.Close()
+	for rows.Next() {
+		err = rows.Scan(&id, &tname, &tvalue, &is_meta)
+		if err != nil {
+			my.log.Error("Error Getting Tags Iterator: %s : %v", sel_tagQ, err)
+			return
+		}
+		tags = append(tags, MetricTagItem{Name: tname, Value: tvalue, Id: id, IsMeta: is_meta})
+	}
+	return
+}
+
+func (my *MySQLIndexer) GetUidsByTags(key string, tags repr.SortingTags, page int) (uids []string, err error) {
+
+	tags_idsQ := fmt.Sprintf(
+		"SELECT DISTINCT id FROM %s WHERE name=? AND value=?",
+		my.db.TagTable(),
+	)
+	var q_params []interface{}
+
+	sel_tagQ := fmt.Sprintf(
+		"SELECT uid FROM %s WHERE tag_id = ? ",
+		my.db.TagTableXref(),
+	)
+
+	nested_q := fmt.Sprintf(
+		" (SELECT uid "+
+			"FROM %s WHERE tag_id = ?) ",
+		my.db.TagTableXref(),
+	)
+
+	// add the key query if there
+	key_q := ""
+	if len(key) > 0 {
+		key_q = fmt.Sprintf(
+			"SELECT DISTINCT uid FROM %s WHERE segment=? AND has_data=1 AND uid IN ",
+			my.db.PathTable(),
+		)
+		q_params = append(q_params, key)
+	}
+
+	for idx, ontag := range tags {
+		rows, err := my.conn.Query(tags_idsQ, ontag[0], ontag[1])
+		if err != nil {
+			my.log.Error("Error Getting Uid: %v", err)
+			return uids, err
+		}
+		defer rows.Close()
+		var tid int64
+		for rows.Next() {
+			err = rows.Scan(&tid)
+			if err != nil {
+				my.log.Error("Error Getting Tags Id: %s : %v", tags_idsQ, tid)
+				return uids, err
+			}
+			q_params = append(q_params, tid)
+			if idx > 0 {
+				sel_tagQ += " AND uid IN (" + nested_q + ")"
+			}
+		}
+	}
+
+	if len(q_params) == 0 {
+		return
+	}
+
+	q_params = append(q_params, page*MAX_PER_PAGE)
+	q_params = append(q_params, MAX_PER_PAGE)
+
+	if len(key_q) > 0 {
+		sel_tagQ = key_q + " (" + sel_tagQ + ")"
+	}
+	sel_tagQ += " LIMIT ?, ? "
+
+	rows, err := my.conn.Query(sel_tagQ, q_params...)
+	if err != nil {
+		my.log.Error("Error Getting Uid: %v", err)
+		return uids, err
+	}
+	defer rows.Close()
+
+	var uid string
+	for rows.Next() {
+		err = rows.Scan(&uid)
+		if err != nil {
+			my.log.Error("Error Getting Tags Uid: %s : %v", sel_tagQ, err)
+			return
+		}
+		uids = append(uids, uid)
+	}
+	return
+
+}
+
+/********************* UID metric finders ***********************/
+
+// List all paths w/ data
+func (my *MySQLIndexer) List(has_data bool, page int) (MetricFindItems, error) {
+
+	defer stats.StatsdSlowNanoTimeFunc("indexer.mysql.list.get-time-ns", time.Now())
+
+	// grab all the paths that match this length if there is no regex needed
+	// these are the "data/leaf" nodes .. alow or uid lookups too
+	pathQ := fmt.Sprintf(
+		"SELECT uid,path FROM %s WHERE has_data=? AND segment=path LIMIT ?,?",
+		my.db.PathTable(),
+	)
+
+	var mt MetricFindItems
+	var ms MetricFindItem
+	var on_pth string
+	var id string
+	rows, err := my.conn.Query(pathQ, has_data, page*MAX_PER_PAGE, MAX_PER_PAGE)
+	if err != nil {
+		return mt, err
+	}
+	for rows.Next() {
+		err = rows.Scan(&id, &on_pth)
+		if err != nil {
+			return mt, err
+		}
+
+		spl := strings.Split(on_pth, ".")
+
+		ms.Text = spl[len(spl)-1]
+		ms.Id = on_pth
+		ms.Path = on_pth
+
+		ms.Expandable = 0
+		ms.Leaf = 1
+		ms.AllowChildren = 0
+		ms.UniqueId = id
+
+		mt = append(mt, ms)
+	}
+
+	if err := rows.Close(); err != nil {
+		return mt, err
+	}
+
+	return mt, nil
 }
 
 // basic find for non-regex items
@@ -708,9 +918,9 @@ func (my *MySQLIndexer) FindNonRegex(metric string) (MetricFindItems, error) {
 	m_len := len(paths)
 
 	// grab all the paths that match this length if there is no regex needed
-	// these are the "data/leaf" nodes
+	// these are the "data/leaf" nodes .. alow or uid lookups too
 	pathQ := fmt.Sprintf(
-		"SELECT uid,path,length,has_data FROM %s WHERE pos=? AND segment=?",
+		"SELECT uid,path,length,has_data FROM %s WHERE (pos=? AND segment=?) OR (uid = ?)",
 		my.db.PathTable(),
 	)
 
@@ -721,7 +931,7 @@ func (my *MySQLIndexer) FindNonRegex(metric string) (MetricFindItems, error) {
 	var id string
 	var has_data bool
 
-	rows, err := my.conn.Query(pathQ, m_len-1, metric)
+	rows, err := my.conn.Query(pathQ, m_len-1, metric, metric)
 	if err != nil {
 		return mt, err
 	}
@@ -747,7 +957,7 @@ func (my *MySQLIndexer) FindNonRegex(metric string) (MetricFindItems, error) {
 			ms.UniqueId = id
 
 			// grab ze tags
-			ms.Tags, ms.MetaTags = my.GetTagsByUid(id)
+			ms.Tags, ms.MetaTags, err = my.GetTagsByUid(id)
 
 		} else {
 			ms.Expandable = 1

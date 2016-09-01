@@ -112,6 +112,7 @@ func (wc *Cacher) Start() {
 func (wc *Cacher) Stop() {
 	wc.starstop.Stop(func() {
 		shutdown.AddToShutdown()
+		defer shutdown.ReleaseFromShutdown() //release me as i'm done
 		wc.shutdown <- true
 	})
 }
@@ -126,7 +127,6 @@ func (wc *Cacher) statsTick() {
 			ticker.Stop()
 			wc.log.Warning("Index Cache shutdown .. stopping accepts")
 
-			shutdown.ReleaseFromShutdown() //release me as i'm done
 			return
 
 		case <-ticker.C:
@@ -159,7 +159,7 @@ func (wc *Cacher) Add(metric repr.StatName) error {
 		wc.log.Critical("ADDING: %s Time: %d, Val: %f", metric, time, value)
 	}
 	*/
-	uid := metric.UniqueId()
+	uid := metric.UniqueIdAllTags()
 	if _, ok := wc.AlreadyWrittenCache[uid]; ok {
 		stats.StatsdClient.Incr("cacher.indexer.already-written", 1)
 		return nil
@@ -179,7 +179,7 @@ func (wc *Cacher) Add(metric repr.StatName) error {
 func (wc *Cacher) Get(metric repr.StatName) repr.StatName {
 	wc.mu.Lock()
 	defer wc.mu.Unlock()
-	gots, ok := wc.Cache[metric.UniqueId()]
+	gots, ok := wc.Cache[metric.UniqueIdAllTags()]
 	if !ok {
 		return repr.StatName{}
 	}
@@ -190,9 +190,8 @@ func (wc *Cacher) GetNextMetric() repr.StatName {
 	wc.mu.Lock()
 	defer wc.mu.Unlock()
 
-	for k := range wc.Cache {
+	for k, g := range wc.Cache {
 		wc.AlreadyWrittenCache[k] = true
-		g := wc.Cache[k]
 		wc.curSize -= int64(g.ByteSize())
 		delete(wc.Cache, k)
 		return g
@@ -207,7 +206,7 @@ func (wc *Cacher) Pop() repr.StatName {
 // add a metrics/point list back on the queue as it either "failed" or was ratelimited
 func (wc *Cacher) AddBack(metric repr.StatName) {
 	wc.mu.Lock()
-	delete(wc.AlreadyWrittenCache, metric.UniqueId())
+	delete(wc.AlreadyWrittenCache, metric.UniqueIdAllTags())
 	wc.mu.Unlock()
 	wc.Add(metric)
 }

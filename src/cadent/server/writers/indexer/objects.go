@@ -23,7 +23,11 @@ package indexer
 
 import (
 	"cadent/server/repr"
+	"errors"
 )
+
+var errWillNotBeImplimented = errors.New("CANNOT BE IMPLIMENTED")
+var errNotYetImplimented = errors.New("Not yet implimented")
 
 // the basic metric json blob for find
 type MetricFindItem struct {
@@ -60,3 +64,13 @@ type MetricFindItems []MetricFindItem
 type MetricExpandItem struct {
 	Results []string `json:"results"`
 }
+
+// Tag finder objects
+type MetricTagItem struct {
+	Id     interface{} `json:"id"`
+	Name   string      `json:"name"`
+	Value  string      `json:"value"`
+	IsMeta bool        `json:"is_meta"`
+}
+
+type MetricTagItems []MetricTagItem

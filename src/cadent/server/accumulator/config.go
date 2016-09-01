@@ -56,6 +56,7 @@ times = ["5s", "1m", "1h"]
 import (
 	"cadent/server/repr"
 	writers "cadent/server/writers"
+	"cadent/server/writers/api"
 	"fmt"
 	"github.com/BurntSushi/toml"
 	logging "gopkg.in/op/go-logging.v1"
@@ -82,7 +83,7 @@ type ConfigAccumulator struct {
 	Option            [][]string           `toml:"options"`   // option=[ [key, value], [key, value] ...]
 	Tags              repr.SortingTags     `toml:"tags"`
 	Writer            writers.WriterConfig `toml:"writer"`
-	Reader            writers.ApiConfig    `toml:"api"`                 // http server for reading
+	Reader            api.ApiConfig        `toml:"api"`                 // http server for reading
 	Times             []string             `toml:"times"`               // Aggregate Timers (or the first will be used for Accumulator flushes)
 	AccTimer          string               `toml:"accumulate_flush"`    // if specified will be the "main Accumulator" flusher otherwise it will choose the first in the Timers
 	RandomTickerStart bool                 `toml:"random_ticker_start"` // if true will set the flusher to basically started at "now" time otherwise it will use time % duration

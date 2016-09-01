@@ -16,7 +16,7 @@ limitations under the License.
 
 /** HTTP loggers **/
 
-package writers
+package api
 
 import (
 	golanglog "log"

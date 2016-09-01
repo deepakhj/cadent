@@ -119,7 +119,7 @@ out_dev_null=true
 ### NOTE: `hasher_replicas` will NOT use the defaults, be explict there
 
 ## what port/scheme we are listening on for incoming data
-listen="tcp://0.0.0.0:2003"
+    listen="tcp://0.0.0.0:2003"
 workers=5
 
 msg_type="carbon2"

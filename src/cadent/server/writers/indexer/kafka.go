@@ -191,10 +191,29 @@ func (kf *KafkaIndexer) Delete(skey *repr.StatName) error {
 
 /**** READER ***/
 // just to match the interface, as there's no way to do this really
+func (kf *KafkaIndexer) List(has_data bool, page int) (MetricFindItems, error) {
+	return MetricFindItems{}, errWillNotBeImplimented
+}
 func (kf *KafkaIndexer) Find(metric string) (MetricFindItems, error) {
-	return MetricFindItems{}, fmt.Errorf("KAFKA FIND CANNOT BE IMPLIMENTED")
+	return MetricFindItems{}, errWillNotBeImplimented
 }
 
 func (kf *KafkaIndexer) Expand(metric string) (MetricExpandItem, error) {
-	return MetricExpandItem{}, fmt.Errorf("KAFKA EXPAND CANNOT BE IMPLIMENTED")
+	return MetricExpandItem{}, errWillNotBeImplimented
+}
+
+func (my *KafkaIndexer) GetTagsByUid(unique_id string) (tags repr.SortingTags, metatags repr.SortingTags, err error) {
+	return tags, metatags, errWillNotBeImplimented
+}
+
+func (my *KafkaIndexer) GetTagsByName(name string, page int) (tags MetricTagItems, err error) {
+	return tags, errWillNotBeImplimented
+}
+
+func (my *KafkaIndexer) GetTagsByNameValue(name string, value string, page int) (tags MetricTagItems, err error) {
+	return tags, errWillNotBeImplimented
+}
+
+func (my *KafkaIndexer) GetUidsByTags(key string, tags repr.SortingTags, page int) (uids []string, err error) {
+	return uids, errWillNotBeImplimented
 }

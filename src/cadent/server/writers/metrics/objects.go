@@ -198,12 +198,12 @@ func NullRawDataPoint(time uint32) RawDataPoint {
 		Min:   math.NaN(),
 		Max:   math.NaN(),
 		Last:  math.NaN(),
-		Count: math.MinInt64,
+		Count: 0,
 	}
 }
 
 func (r *RawDataPoint) IsNull() bool {
-	return r.Count == math.MinInt64 && math.IsNaN(r.Sum) && math.IsNaN(r.Last) && math.IsNaN(r.Min) && math.IsNaN(r.Max)
+	return r.Count == 0 && math.IsNaN(r.Sum) && math.IsNaN(r.Last) && math.IsNaN(r.Min) && math.IsNaN(r.Max)
 }
 
 func (r *RawDataPoint) String() string {
@@ -257,9 +257,9 @@ func (r *RawDataPoint) Merge(d *RawDataPoint) {
 		r.Last = d.Last
 	}
 
-	if r.Count == math.MinInt64 && d.Count > math.MinInt64 {
+	if r.Count == 0 && d.Count > 0 {
 		r.Count = d.Count
-	} else if r.Count != math.MinInt64 && d.Count != math.MinInt64 {
+	} else if r.Count != 0 && d.Count != 0 {
 		r.Count += d.Count
 	}
 
@@ -661,6 +661,9 @@ func (r *RawRenderItem) Merge(m *RawRenderItem) error {
 			r.Data[i] = m.Data[i]
 		}
 	}
+
+	r.Tags.Merge(m.Tags)
+	r.MetaTags.Merge(m.MetaTags)
 	return nil
 }
 

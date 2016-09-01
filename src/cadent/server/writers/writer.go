@@ -28,6 +28,7 @@ import (
 	"cadent/server/writers/metrics"
 	logging "gopkg.in/op/go-logging.v1"
 
+	"cadent/server/utils"
 	"errors"
 	"fmt"
 	"strings"
@@ -42,7 +43,7 @@ const (
 )
 
 var errNeedCacheName = errors.New("`Name` is required")
-var errCacheOptionRequired = errors.New("Metrics configs need a `cache` option")
+var ErrCacheOptionRequired = errors.New("Metrics configs need a `cache` option")
 var errCacheNotFound = errors.New("Count not find cache with the provided name")
 
 // toml config for Internal Caches
@@ -130,7 +131,7 @@ func (wc WriterMetricConfig) NewMetrics(duration time.Duration, cache_config []W
 
 	// use the defined cacher object
 	if len(wc.UseCache) == 0 {
-		return nil, errCacheOptionRequired
+		return nil, ErrCacheOptionRequired
 	}
 
 	// find the proper cache to use
@@ -215,6 +216,7 @@ type WriterLoop struct {
 	MetricQLen   int
 	IndexerQLen  int
 	log          *logging.Logger
+	startstop    utils.StartStop
 	stopped      bool
 }
 
@@ -353,38 +355,43 @@ func (loop *WriterLoop) Full() bool {
 }
 
 func (loop *WriterLoop) Start() {
-	loop.log.Notice("Starting Writer `%s`", loop.name)
-	loop.write_chan = make(chan *repr.StatRepr, loop.MetricQLen)
-	// indexing is slow, so we'll need to buffer things a bit more
-	loop.indexer_chan = make(chan *repr.StatName, loop.IndexerQLen)
+	loop.startstop.Start(func() {
+		loop.log.Notice("Starting Writer `%s`", loop.name)
 
-	go loop.metrics.Start()
-	go loop.indexer.Start()
-	go loop.indexLoop()
-	go loop.procLoop()
-	go loop.processQueue()
-	go loop.statTick()
+		loop.write_chan = make(chan *repr.StatRepr, loop.MetricQLen)
+		// indexing is slow, so we'll need to buffer things a bit more
+		loop.indexer_chan = make(chan *repr.StatName, loop.IndexerQLen)
+
+		go loop.metrics.Start()
+		go loop.indexer.Start()
+		go loop.indexLoop()
+		go loop.procLoop()
+		go loop.processQueue()
+		go loop.statTick()
+	})
 }
 
 func (loop *WriterLoop) Stop() {
-	if loop.stopped {
-		return
-	}
-	loop.stopped = true
-	loop.log.Warning("Shutting down writer `%s`", loop.name)
-	loop.shutdowner.Send(true)
-	if loop.indexer_chan != nil {
-		close(loop.indexer_chan)
-		loop.indexer_chan = nil
-	}
-	if loop.write_chan != nil {
-		close(loop.write_chan)
-		loop.write_chan = nil
-	}
-	loop.log.Warning("Shutting down metrics writer `%s`", loop.name)
-	loop.metrics.Stop()
-	loop.log.Warning("Shutting down index writer `%s`", loop.name)
-	loop.indexer.Stop()
+	loop.startstop.Stop(func() {
+		if loop.stopped {
+			return
+		}
+		loop.stopped = true
+		loop.log.Warning("Shutting down writer `%s`", loop.name)
+		loop.shutdowner.Send(true)
+		if loop.indexer_chan != nil {
+			close(loop.indexer_chan)
+			loop.indexer_chan = nil
+		}
+		if loop.write_chan != nil {
+			close(loop.write_chan)
+			loop.write_chan = nil
+		}
+		loop.log.Warning("Shutting down metrics writer `%s`", loop.name)
+		loop.metrics.Stop()
+		loop.log.Warning("Shutting down index writer `%s`", loop.name)
+		loop.indexer.Stop()
+	})
 }
 
 /******************************************************************

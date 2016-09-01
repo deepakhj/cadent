@@ -661,6 +661,8 @@ func (ws *WhisperMetrics) RawDataRenderOne(metric indexer.MetricFindItem, start 
 	rawd.Step = 1 // just for something in case of errors
 	rawd.Metric = metric.Id
 	rawd.Id = metric.UniqueId
+	rawd.Tags = metric.Tags
+	rawd.MetaTags = metric.MetaTags
 
 	//cache check
 	// the read cache should have "all" the points from a "start" to "end" if the read cache has been activated for

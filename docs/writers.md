@@ -1,5 +1,5 @@
 
-### Writers
+# Writers
 
 Accumulators can "write" to something other then a tcp/udp/http/socket, to say things like a FILE, MySQL DB or cassandra.
 (since this is Golang all writer types need to have their own driver embed in).  If you only want accumulators to write out to
@@ -21,6 +21,8 @@ Indexers: take a metrics "name" which has the form
 
     StatName{
         Key string
+        UniqueId uint64
+        UniqueIdString string
         Tags  [][]string
         MetaTags [][]string
         Resolution uint32
@@ -38,7 +40,7 @@ This can cause a little confusion as to what the unique ID is.  For instance in 
  `pth.to.my.metric`.  In the [metrics2.0](https://github.com/metrics20/spec) spec there is no "key" so
  the acctuall key is derived inside cadent as `name1=value1.name2=value2...` but the unique ID would then be
 
-    FNV64a("name1=value1.name2=value2..." + ":" + "name1=value1.name2=value2...")
+    FNV64a("name1_is_value1.name2_is_value2..." + ":" + "name1=value1 name2=value2 ..")
 
 So it's a bit of doulbing up on the key + tags set, but for systems that do both a "key" and tags (influx, etc) then
 this method provides some resolution for differeing injection systems.
@@ -74,17 +76,17 @@ A "total" metric has the form
          Metric StatMetric
     }
 
-### "You" Need To Add your schemas
+## "You" Need To Add your schemas
 
 Cadent could inject the schemas for you.  But as a long time ops person, not every schema is geared towards use cases.
-The scemas presented below are what cardent expects in it's tables, so one will at least need to match them in some form
+The scemas presented below are what cadent expects in it's tables, so one will at least need to match them in some form
 For MySQL, for instance, if you wanted to do TTLs on data, you would need to partition the table to allow for easy
 dropping of data at the proper time (and thus some of your indexes may change).  Cassandra is a bit more tricky as the
 query patterns expect some element of consitency in the Primary key, but you may want different replication,
 drivers, and other options that make your environment happy.
 
 
-### Status
+## Status
 
 Not everything is "done" .. as there are many things to write and verify, this is the status of the pieces.
 
@@ -113,7 +115,7 @@ Not everything is "done" .. as there are many things to write and verify, this i
 `No` means it probably be done, just not complete.
 
 
-#### When to choose and why
+## When to choose and why
 
 The main writers are
 
@@ -155,8 +157,85 @@ The main writers are
 
         Toss stats into a kafka topic (no readers/render api for this mode) for processing by some other entity
 
+## Indexing
 
-#### Triggered Rollups
+
+This is probably the most tricky part to get "correct".  There are many possible ways to do this, but we need to rememeber
+we have a few fundemental things we want to be able to do.
+
+For more info on how things are passed around [see the uniqueid doc](./uniqueid.md).
+
+
+### Metric Path
+
+The first is to behave and act like good-old-graphite, where there are not "tags" and just "metric paths" of the form
+
+    my.metric.is.fun
+
+To query these we can simply split the paths by the `.` and index things accordingly.  Since the original graphite
+pattern is basically to do file system globs, finding something like
+
+    `my.m*.{is,are}.*`
+
+can easily map to a file system glob, or a nice text based index file and a brute force regex can be done.
+
+The trouble is that this is a very "local" experience, the index live on just the machine in question.  We would like some
+redendency in the mix, so we need to port this behavior to various other Database systems.  We end up doing something like
+an inverted index, which is an expensive operation to compute.
+
+We take the metric path, break it up into each set and insert
+
+    my.metric.is.fun ->
+        segment=my hasdata=false base=my.metric.is.fun baselen=4
+        segment=my.metric hasdata=false base=my.metric.is.fun baselen=4
+        segment=my.metric.is hasdata=false base=my.metric.is.fun baselen=4
+        segment=my.metric.is.fun hasdata=true base=my.metric.is.fun baselen=4
+
+Now we can easily query the database for `my.m*.{is,are}.*` by doing
+
+    foreach row in (select * from table where baselen=4 and segment="my"):
+         if regex.Match(row.base):
+             return row.base
+
+
+## Tags
+
+Tags add yet another layer to things.  Where we now can crawl the metric path tree, tags are effectively filtering
+metric paths, and since we don't know the combo of tags before hand, this can lead to some large space scans
+
+    my.metric.path{unit=jiff,instance=r3.xl} -> pretty narrow unless you have alot of r3.xls each with hundered of this metric
+    my.metric.path{host=abc,unit=jiff} --> pretty narrow as we have the host, and a unit
+    my.metric.path{host=abc} --> also pretty narrow (unless this is kafka and there will litteraly be 10000 of these per host)
+    my.metric.path{type=cpu} --> can be HUGE, all cpu metrics for the materics key
+
+Thus the issue becomes one of being able to effecitvely query all the metrics that may be in a tags subset (we can easily
+be in the many thousands, which for alerting/graphing/just looking so down right silly.  But we still need some cross reference
+tables that map `metric path -> tag`.  This cross reference table can be huge.
+
+If in a Mysql world, then there will be a row for every tag, path combo.  In Cassandra we can take advantage of the
+"list" type which is then `path -> <list>(tags)` and query that by `where <tag> in <list>`.
+
+We also need to maintain a `tag name` index (so we can find what our tags acctually are), and a `tag name -> value` index.
+
+Finally each metric has a "uniqueId" that is a hash of the `path + tags` so the real mapping of the unique number of metrics
+is much bigger then just the simple "path" method.  If you have 1 million "path"s (in the old graphite world), and
+start to add tags to them, you have effectively exponentially increased the number of unique metrics in the system by tag
+permutations.
+
+So what have we learned from this ::
+
+    - If using tags, keep the `metric path` unique counts down to a nice small number
+    - If not using tags, just keep on keepin' on
+
+
+### Metrics2.0 + Carbon2
+
+This is a "pure" tag format, there is no "key".  The closest thing to a "key" in this format is the "what" tag.
+The metrics key is thus infered from the tag list.  So basically this is a sort of redundent indexing mechanism, but it
+allows us to use the usual graphite like "finders" for metrics.
+
+
+## Triggered Rollups
 
 For the mysql and cassandra series wrtiers, there is an option to "trigger" rollups from the lowest resolution
 rather then storing them in RAM.  Once the lowest resolution is "written" it will trigger a rollup event for the lower
@@ -381,7 +460,7 @@ If your for times are `times = ["10s", "1m", "10m"]` you should make 3 tables na
     {tablebase}_60s
     {tablebase}_600s
 
-And only ONE path table
+And only ONE path/tag tables
 
     {path_table}, {tag_table}, and {tag_table_xref}
 
@@ -432,7 +511,13 @@ The acctual "get" query is `select point_type, points where uid={uiqueid} and et
 So the index of (etime, stime) is proper.
 
 
-Config OPtions
+Config Options
+
+    [[mypregename.accumulator.caches]]
+    name="gorilla-sql"
+    series_encoding="gorilla"
+    bytes_per_metric=1024
+    max_metrics=1024000
 
     [mypregename.accumulator.writer]
     driver = "mysql"
@@ -440,8 +525,7 @@ Config OPtions
         [mypregename.accumulator.writer.options]
         table = "metrics"
         path_table = "metrics_path"
-        cache_series_type="gorilla"  # the "blob" series type to store
-        cache_byte_size=8192 # size in bytes of the "blob" before we write it
+        cache = "gorilla-sql"
         tags = "host=localhost,env=dev" # static tags to include w/ every metric
 
 
@@ -626,7 +710,7 @@ Since different resolutions in cassandra are stored in one super table, we need 
             points blob,
             PRIMARY KEY (mid, etime, stime)
         ) WITH COMPACT STORAGE
-            AND CLUSTERING ORDER BY etime ASC)
+            AND CLUSTERING ORDER BY etime ASC
             AND compaction = {
                 'class': 'DateTieredCompactionStrategy',
                 'min_threshold': '12',
@@ -762,7 +846,8 @@ already and consumers can deal with indexing)
 
 
         INDEX {
-            id: [uint32 MMH3],
+            id: uint64 FNVa,
+            uid: base36(id),
     	    type: "index | delete-index",
     	    path: "my.metric.is.good",
     	    segments: ["my", "metric", "is", "good"],
@@ -777,7 +862,7 @@ The "Flat" format is
     	    type: "metric",
     	    time: [int64 unix Nano second time stamp],
     	    metric: "my.metric.is.good",
-    	    id: [uint64 FNVa],
+    	    id: uint64 FNVa,
     	    uid: string // base 36 from the ID
     	    sum: float64,
     	    min: float64,
@@ -796,7 +881,7 @@ The "Blob" format is
     	    type: "metricblob",
     	    time: [int64 unix Nano second time stamp],
     	    metric: "my.metric.is.good",
-    	    id: [uint64 FNVa],
+    	    id: uint64 FNVa,
     	    uid: string // base 36 from the ID
     	    data: bytes,
     	    encoding: string // the series encoding gorilla, protobuf, etc
@@ -810,16 +895,18 @@ Where as the "flat" format is basically a stream of inciming accumulated values,
 
 Here are the configuration options
 
+            [[to-kafka.accumulator.writer.caches]]
+                    name="gorilla-kafak"
+                    series_encoding="gorilla"
+                    bytes_per_metric=1024
+                    max_metrics=1024000
+
             [to-kafka.accumulator.writer.metrics]
             driver = "kafka" // or "kafka-flat"
             dsn = "pathtokafka:9092,pathtokafka2:9092"
             index_topic = "cadent" # topic for index message (default: cadent)
         	metric_topic = "cadent" # topic for data messages (default: cadent)
-
-        	# Options for "Blob" formats
-        	cache_metric_size=1024000 # number of metrics to aggrigate before we must drop
-        	series_encoding="gorilla" # protobuf, msgpack, etc
-        	cache_byte_size=8192 # size of blob before we flush it
+        	cache="gorilla-kafka" # number of metrics to aggrigate before we must drop
 
         	# some kafka options
         	compress = "snappy|gzip|none" (default: none)

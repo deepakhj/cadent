@@ -30,6 +30,8 @@ package indexer
 
 import "cadent/server/repr"
 
+const MAX_PER_PAGE = 2048
+
 /****************** Data writers *********************/
 type Indexer interface {
 	Config(map[string]interface{}) error
@@ -55,6 +57,9 @@ type Indexer interface {
 	*/
 	Find(metric string) (MetricFindItems, error)
 
+	// list all "paths" w/ data
+	List(has_data bool, page int) (MetricFindItems, error)
+
 	// /metric/expand?query=stats.counters.consthash-graphite.all-1-stats-infra-integ.mfpaws.com.success.*
 	/*
 		{
@@ -66,6 +71,7 @@ type Indexer interface {
 		]
 		}
 	*/
+
 	Expand(metric string) (MetricExpandItem, error)
 
 	Start()
@@ -75,26 +81,16 @@ type Indexer interface {
 
 	// remove an item from the index
 	Delete(name *repr.StatName) error
-}
-
-type TagIndexer interface {
-	Config(map[string]interface{}) error
-
-	// some identifier mostly used for logs
-	Name() string
-
-	// write out tags for a metric
-	WriteTags(inname *repr.StatName, do_main bool, do_meta bool) error
 
 	// get tags for a Uid String
-	GetTagsByUid(unique_id string) (tags repr.SortingTags, metatags repr.SortingTags)
+	GetTagsByUid(unique_id string) (tags repr.SortingTags, metatags repr.SortingTags, err error)
 
 	// the incoming can be a Regex of sorts on the name
-	GetTagsByName(name string) repr.SortingTags
+	GetTagsByName(name string, page int) (MetricTagItems, error)
 
 	// the incoming can be a Regex of sorts on the value
-	GetTagsByNameValue(name string, value string) repr.SortingTags
+	GetTagsByNameValue(name string, value string, page int) (MetricTagItems, error)
 
 	// given some tags, grab all the matching Uids
-	GetUidsByTags(tags repr.SortingTags) []string
+	GetUidsByTags(key string, tags repr.SortingTags, page int) ([]string, error)
 }

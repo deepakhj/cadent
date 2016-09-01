@@ -22,7 +22,6 @@ package indexer
 
 import (
 	"cadent/server/repr"
-	"fmt"
 )
 
 type NoopIndexer struct{}
@@ -42,10 +41,28 @@ func (my *NoopIndexer) Delete(name *repr.StatName) error { return nil }
 func (my *NoopIndexer) Write(metric repr.StatName) error {
 	return nil
 }
+func (my *NoopIndexer) List(has_data bool, page int) (MetricFindItems, error) {
+	return MetricFindItems{}, errWillNotBeImplimented
+}
 func (my *NoopIndexer) Find(metric string) (MetricFindItems, error) {
-	return MetricFindItems{}, fmt.Errorf("Noop indexer cannot find anything")
+	return MetricFindItems{}, errWillNotBeImplimented
+}
+func (my *NoopIndexer) Expand(metric string) (MetricExpandItem, error) {
+	return MetricExpandItem{}, errWillNotBeImplimented
 }
 
-func (my *NoopIndexer) Expand(metric string) (MetricExpandItem, error) {
-	return MetricExpandItem{}, fmt.Errorf("Noop indexer cannot expand anything")
+func (my *NoopIndexer) GetTagsByUid(unique_id string) (tags repr.SortingTags, metatags repr.SortingTags, err error) {
+	return tags, metatags, errWillNotBeImplimented
+}
+
+func (my *NoopIndexer) GetTagsByName(name string, page int) (tags MetricTagItems, err error) {
+	return tags, errWillNotBeImplimented
+}
+
+func (my *NoopIndexer) GetTagsByNameValue(name string, value string, page int) (tags MetricTagItems, err error) {
+	return tags, errWillNotBeImplimented
+}
+
+func (my *NoopIndexer) GetUidsByTags(key string, tags repr.SortingTags, page int) (uids []string, err error) {
+	return uids, errWillNotBeImplimented
 }

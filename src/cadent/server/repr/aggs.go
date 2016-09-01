@@ -49,7 +49,7 @@ func init() {
 type AggType uint8
 
 const (
-	MEAN AggType = iota
+	MEAN AggType = iota + 1
 	SUM
 	FIRST
 	LAST
@@ -73,7 +73,7 @@ func AggTypeFromTag(stat string) AggType {
 		return SUM
 	case stat == "consume" || stat == "consumed":
 		return SUM
-	case stat == "gauge" || stat == "abs" || stat == "absolute":
+	case stat == "gauge" || stat == "last" || stat == "abs" || stat == "absolute":
 		return LAST
 	case stat == "std" || _stdReg.MatchString(stat):
 		return STD
@@ -95,7 +95,7 @@ func GuessReprValueFromKey(metric string) AggType {
 
 	// statsd like things are "mean_XX", "upper_XX", "lower_XX", "count_XX"
 	switch {
-	case last_path == "count" || strings.HasPrefix(metric, "stats.count") || _countReg.MatchString(metric):
+	case last_path == "count" || strings.HasPrefix(metric, "stats.count") || strings.HasPrefix(metric, "stats.set") || _countReg.MatchString(metric):
 		return SUM
 	case last_path == "last" || last_path == "gauge" || strings.HasPrefix(metric, "stats.gauge"):
 		return LAST
