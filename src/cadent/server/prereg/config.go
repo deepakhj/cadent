@@ -89,10 +89,10 @@ listen_server="statsd-servers" # this needs to be an actual SOCKET based server 
 */
 
 import (
-	"github.com/BurntSushi/toml"
 	logging "gopkg.in/op/go-logging.v1"
 
 	accumulator "cadent/server/accumulator"
+	"cadent/server/utils/tomlenv"
 	"fmt"
 )
 
@@ -227,7 +227,7 @@ func (l ListofConfigMaps) ParseConfig() (PreRegMap, error) {
 func ParseConfigFile(filename string) (pr PreRegMap, err error) {
 
 	lcfg := make(ListofConfigMaps)
-	if _, err := toml.DecodeFile(filename, &lcfg); err != nil {
+	if _, err := tomlenv.DecodeFile(filename, &lcfg); err != nil {
 		log.Critical("Error decoding config file: %s", err)
 		return nil, err
 	}
@@ -238,7 +238,7 @@ func ParseConfigFile(filename string) (pr PreRegMap, err error) {
 func ParseConfigString(inconf string) (pr PreRegMap, err error) {
 
 	lcfg := make(ListofConfigMaps)
-	if _, err := toml.Decode(inconf, &lcfg); err != nil {
+	if _, err := tomlenv.Decode(inconf, &lcfg); err != nil {
 		log.Critical("Error decoding config file: %s", err)
 		return nil, err
 	}

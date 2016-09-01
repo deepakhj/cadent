@@ -3,7 +3,7 @@
 
 Readers are an attempt to imitate the Graphite API bits and include 3 main endpoints with a few more endpoints
 
-    TimeSeries
+TimeSeries
 
     /{root}/metrics -- get metrics in the format graphite needs ( ?target=path.*.to.my.*.metric&from=time&to=time )
     /{root}/rawrender -- get the actual metrics in the internal format ( ?target=path.*.to.my.*.metric&from=time&to=time )
@@ -11,17 +11,19 @@ Readers are an attempt to imitate the Graphite API bits and include 3 main endpo
     /{root}/cache -- get the actual metrics stored in writeback cache ( ?target=path.*.to.my.*.metric&from=time&to=time )
 
 
-    Path Indexer
+Path Indexer
 
     /{root}/find  -- find paths ( ?query=path.*.to.my.*.metric )
     /{root}/expand -- expand a tree ( ?query=path.*.to.my.*.metric )
+    /{root}/list -- list all metric names ( ?page=? ) limited to 2048 at a time
 
-    Tag Indexer (in the works)
 
-    /{root}/tag/findbyname -- find tags values by name (?name=host) this can be a typeahead form (?name=ho.*)
-    /{root}/tag/findbynamevalue -- find tags values by name and value (?name=host&value=moo.*) `value` can be of typeahead form
+Tag Indexer (in the works)
+
+    /{root}/tag/find/byname -- find tags values by name (?name=host) this can be a typeahead form (?name=ho.*)
+    /{root}/tag/find/bynamevalue -- find tags values by name and value (?name=host&value=moo.*) `value` can be of typeahead form
                                    NOT name here
-    /{root}/tag/uidbytags -- get uniqueIdStrings (?query=metric_key{name=val,name=val})
+    /{root}/tag/uid/bytags -- get uniqueIdStrings (?query=metric_key{name=val,name=val})
                              no regexes allowed here.  You can omit the `metric_key` as well.
 
 

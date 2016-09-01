@@ -412,6 +412,15 @@ func (my *MySQLMetrics) Write(stat repr.StatRepr) error {
 	} else {
 		my.cacher.Add(&stat.Name, &stat)
 	}
+
+	// and now add it to the readcache iff it's been activated
+	r_cache := GetReadCache()
+	if my.currentResolution == my.resolutions[0][0] {
+		if r_cache != nil {
+			r_cache.InsertQueue <- &stat
+		}
+	}
+
 	return nil
 }
 

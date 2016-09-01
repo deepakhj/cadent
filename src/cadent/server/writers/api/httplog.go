@@ -19,6 +19,7 @@ limitations under the License.
 package api
 
 import (
+	"io"
 	golanglog "log"
 	"net/http"
 	"os"
@@ -27,7 +28,11 @@ import (
 
 // mock struct to be a writer interface
 type statusWriter struct {
+	io.Writer
 	http.ResponseWriter
+	http.Hijacker
+	http.Flusher
+	http.CloseNotifier
 	status int
 	length int
 }
@@ -51,12 +56,35 @@ func WriteLog(handle http.Handler, fileHandler *os.File) http.HandlerFunc {
 	logger := golanglog.New(fileHandler, "", 0)
 	return func(w http.ResponseWriter, request *http.Request) {
 		start := time.Now()
-		writer := statusWriter{w, 0, 0}
-		handle.ServeHTTP(&writer, request)
+
+		h, hok := w.(http.Hijacker)
+		if !hok {
+			h = nil
+		}
+
+		f, fok := w.(http.Flusher)
+		if !fok {
+			f = nil
+		}
+
+		cn, cnok := w.(http.CloseNotifier)
+		if !cnok {
+			cn = nil
+		}
+
+		wr := &statusWriter{
+			Writer:         w,
+			ResponseWriter: w,
+			Hijacker:       h,
+			Flusher:        f,
+			CloseNotifier:  cn,
+		}
+
+		handle.ServeHTTP(wr, request)
 		end := time.Now()
 		latency := end.Sub(start)
-		statusCode := writer.status
-		length := writer.length
+		statusCode := wr.status
+		length := wr.length
 		if request.URL.RawQuery != "" {
 			logger.Printf(
 				"%v %s %s \"%s %s%s%s %s\" %d %d \"%s\" %v",

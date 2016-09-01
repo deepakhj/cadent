@@ -55,10 +55,10 @@ times = ["5s", "1m", "1h"]
 
 import (
 	"cadent/server/repr"
+	"cadent/server/utils/tomlenv"
 	writers "cadent/server/writers"
 	"cadent/server/writers/api"
 	"fmt"
-	"github.com/BurntSushi/toml"
 	logging "gopkg.in/op/go-logging.v1"
 	"math"
 	"strings"
@@ -229,7 +229,7 @@ func (cf *ConfigAccumulator) GetAccumulator() (*Accumulator, error) {
 func DecodeConfigString(inconf string) (cf *ConfigAccumulator, err error) {
 
 	cf = new(ConfigAccumulator)
-	if _, err = toml.Decode(inconf, cf); err != nil {
+	if _, err = tomlenv.Decode(inconf, cf); err != nil {
 		log.Critical("Error decoding config string: %s", err)
 		return nil, err
 	}

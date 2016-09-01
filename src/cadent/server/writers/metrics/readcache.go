@@ -44,6 +44,7 @@ limitations under the License.
 package metrics
 
 import (
+	"cadent/server/broadcast"
 	"cadent/server/lrucache"
 	"cadent/server/repr"
 	"cadent/server/series"
@@ -213,6 +214,9 @@ type ReadCache struct {
 
 	shutdown    chan bool
 	InsertQueue chan *repr.StatRepr
+
+	// a broadcast channel for things that want to attach to the incoming
+	listeners *broadcast.Broadcaster
 }
 
 // this will estimate the bytes needed for the cache, since the key names
@@ -224,6 +228,7 @@ func NewReadCache(max_bytes int, max_bytes_per_metric int, maxback time.Duration
 		MaxBytesPerMetric: max_bytes_per_metric,
 		shutdown:          make(chan bool),
 		InsertQueue:       make(chan *repr.StatRepr, 512), // a little buffer, just more to make "adding async"
+		listeners:         broadcast.New(128),
 	}
 
 	// lru capacity is the size of a stat object * MaxItemsPerMetric * MaxItems
@@ -234,12 +239,17 @@ func NewReadCache(max_bytes int, max_bytes_per_metric int, maxback time.Duration
 	return rc
 }
 
+func (rc *ReadCache) ListenerChan() *broadcast.Listener {
+	return rc.listeners.Listen()
+}
+
 // start up the insert queue
 func (rc *ReadCache) Start() {
 	for {
 		select {
 		case stat := <-rc.InsertQueue:
 			rc.Put(stat.Name.Key, stat)
+			rc.listeners.Send(stat) //broadcast to any listeners
 		case <-rc.shutdown:
 			shutdown.ReleaseFromShutdown()
 			return
@@ -249,6 +259,7 @@ func (rc *ReadCache) Start() {
 
 func (rc *ReadCache) Stop() {
 	shutdown.AddToShutdown()
+	rc.listeners.Close()
 	rc.shutdown <- true
 }
 

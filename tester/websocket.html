@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<head>
+<meta charset="utf-8">
+<script>  
+
+window.addEventListener("load", function(evt) {
+    var output = document.getElementById("output");
+    var input = document.getElementById("input");
+    var ws;
+    var print = function(message) {
+        //var d = document.createElement("div");
+        output.innerHTML = message + output.innerHTML;
+        //output.appendChild(d);
+    };
+    
+    cur_targ = false;
+    
+    function onSend(){
+        if(ws){
+            ws.close()
+        }
+        
+        met = input.value
+        if(met.length == 0){
+            alert("metric is required")
+            return
+        }
+        URL = "ws://localhost:8083/graphite/ws/metric?target=" + met
+        console.log(URL)
+        try{
+            ws = new WebSocket(URL);
+        }catch(e){
+            print("ERROR: " + e)
+        }
+        ws.onmessage = function(evt) {
+            print(evt.data);
+        }
+        ws.onerror = function(evt) {
+            print("ERROR: " + evt.data);
+        }
+    }
+    
+   
+    document.getElementById("send").onclick = function(evt) {
+        onSend()
+        return false;
+    };
+    document.getElementById("close").onclick = function(evt) {
+        if (!ws) {
+            return false;
+        }
+        ws.close();
+        ws = false;
+        return false;
+    };
+});
+</script>
+</head>
+<body>
+<table>
+<tr><td valign="top" width="50%">
+<p>Read Dem Metrics
+<p>
+<form>
+<p><input id="input" type="text" value="">
+<button id="send">Start</button>
+<button id="close">Stop</button>
+</form>
+</td><td valign="top" width="50%">
+<div id="output"></div>
+</td></tr></table>
+</body>
+</html>

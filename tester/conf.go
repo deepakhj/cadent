@@ -22,6 +22,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"log"
 	"os"
+	"cadent/server/utils/tomlenv"
 )
 
 type server struct {
@@ -37,7 +38,7 @@ func parseConfigFile(filename string) (err error) {
 
 	var cfg ConfigServers
 
-	if _, err := toml.DecodeFile(filename, &cfg); err != nil {
+	if _, err := tomlenv.DecodeFile(filename, &cfg); err != nil {
 		log.Printf("Error decoding config file: %s", err)
 		return err
 	}

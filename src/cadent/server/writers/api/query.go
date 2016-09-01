@@ -26,7 +26,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/gorilla/mux"
-	"log"
 	"net/http"
 	"strconv"
 	"strings"

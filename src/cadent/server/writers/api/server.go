@@ -213,31 +213,8 @@ func (re *ApiLoop) NoOp(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-func (re *ApiLoop) corsHandler(handler http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Add("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
-
-		if r.Method == "OPTIONS" {
-			// nothing to do, CORS headers already sent
-			return
-		}
-		handler(w, r)
-	}
-}
-
 func (re *ApiLoop) Start() error {
-	mux := mux.NewRouter()
 	re.log.Notice("Starting reader http server on %s, base path: %s", re.Conf.Listen, re.Conf.BasePath)
-
-	sub_r := mux.PathPrefix(re.Conf.BasePath).Subrouter()
-	// the mess of handlers
-	NewFindAPI(re).AddHandlers(sub_r)
-	NewCacheAPI(re).AddHandlers(sub_r)
-	NewMetricsAPI(re).AddHandlers(sub_r)
-	NewTagAPI(re).AddHandlers(sub_r)
-	NewPrometheusAPI(re).AddHandlers(sub_r)
-	mux.HandleFunc("/", re.NoOp)
 
 	var outlog *os.File
 	var err error
@@ -269,7 +246,26 @@ func (re *ApiLoop) Start() error {
 	// start up the activateCacheLoop
 	go re.activateCacheLoop()
 
-	go http.Serve(conn, re.corsHandler(WriteLog(mux, outlog)))
+	r := mux.NewRouter()
+	base := r.PathPrefix(re.Conf.BasePath).Subrouter()
+
+	// the mess of handlers
+	NewFindAPI(re).AddHandlers(base)
+	NewCacheAPI(re).AddHandlers(base)
+	NewMetricsAPI(re).AddHandlers(base)
+	NewTagAPI(re).AddHandlers(base)
+	NewPrometheusAPI(re).AddHandlers(base)
+
+	// websocket routes (need a brand new one lest the middleware get mixed)
+	ws := base.PathPrefix("/ws").Subrouter()
+	NewMetricsSocket(re).AddHandlers(ws)
+
+	mux := http.NewServeMux()
+	mux.Handle("/ws", WriteLog(ws, outlog))
+	mux.Handle("/", WriteLog(CompressHandler(CorsHandler(base)), outlog))
+	//mux.Handle("/", WriteLog(base, outlog))
+
+	go http.Serve(conn, mux)
 
 	re.shutdown = make(chan bool, 5)
 	re.started = true

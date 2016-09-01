@@ -22,8 +22,8 @@ import (
 	"cadent/server/accumulator"
 	"cadent/server/prereg"
 	"cadent/server/stats"
+	"cadent/server/utils/tomlenv"
 	"fmt"
-	"github.com/BurntSushi/toml"
 	logging "gopkg.in/op/go-logging.v1"
 	"math"
 	"net/url"
@@ -493,7 +493,7 @@ func (self ConfigServers) ParseConfig(defaults *Config) (out ConfigServers, err 
 
 func ParseConfigFile(filename string) (cfg ConfigServers, err error) {
 
-	if _, err := toml.DecodeFile(filename, &cfg); err != nil {
+	if _, err := tomlenv.DecodeFile(filename, &cfg); err != nil {
 		log.Critical("Error decoding config file: %s", err)
 		return nil, err
 	}
@@ -507,7 +507,7 @@ func ParseConfigFile(filename string) (cfg ConfigServers, err error) {
 
 func ParseConfigString(instr string) (cfg ConfigServers, err error) {
 
-	if _, err := toml.Decode(instr, &cfg); err != nil {
+	if _, err := tomlenv.Decode(instr, &cfg); err != nil {
 		log.Critical("Error decoding config file: %s", err)
 		return nil, err
 	}
