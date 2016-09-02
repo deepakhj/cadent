@@ -18,6 +18,12 @@
 			"revisionTime": "2016-04-26T10:16:13Z"
 		},
 		{
+			"checksumSHA1": "eruIVA8JnsB23rVKjETHvqJ0sj8=",
+			"path": "github.com/DataDog/zstd",
+			"revision": "2bf71ec4836011b92dc78df3b9ace6b40e65f7df",
+			"revisionTime": "2016-07-06T22:07:25Z"
+		},
+		{
 			"checksumSHA1": "KCBN4RiAzn7E20SFuXwpcYb8Uuw=",
 			"path": "github.com/Shopify/sarama",
 			"revision": "f4a626377cb2c5dee4cc644e941775138c9fbc80",
