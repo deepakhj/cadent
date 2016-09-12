@@ -501,14 +501,13 @@ If this becomes an issue while testing, the write-queue mechanism will be re-ins
       `stime` bigint(20) unsigned NOT NULL,
       `etime` bigint(20) unsigned NOT NULL,
       PRIMARY KEY (`id`),
-      KEY `uid` (`uid`),
-      KEY `path` (`path`),
-      KEY `time` (`etime`,`stime`)
+      KEY `uid` (`uid`, `etime`),
+      KEY `path` (`path`)
     ) ENGINE=InnoDB;
 
 
 The acctual "get" query is `select point_type, points where uid={uiqueid} and etime >= {starttime} and etime <= {endtime}`.
-So the index of (etime, stime) is proper.
+So the index of (uid, etime) is proper.
 
 
 Config Options
