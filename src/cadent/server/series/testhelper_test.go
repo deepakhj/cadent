@@ -27,6 +27,7 @@ import (
 	"compress/lzw"
 	"compress/zlib"
 	"fmt"
+	"github.com/DataDog/zstd"
 	"github.com/golang/snappy"
 	. "github.com/smartystreets/goconvey/convey"
 	"io"
@@ -309,6 +310,36 @@ func benchmarkSnappyCompress(b *testing.B, stype string, n_stat int) {
 		runs++
 	}
 	b.Logf("Snappy: Average PreComp size: %v, Post: %v Bytes per stat: %v", pre_len/runs, comp_len/runs, b_per_stat/runs)
+
+}
+
+func benchmarkZStdCompress(b *testing.B, stype string, n_stat int) {
+
+	stat, n := dummyStat()
+	runs := int64(0)
+	comp_len := int64(0)
+	b_per_stat := int64(0)
+	pre_len := int64(0)
+	b.SetBytes(int64(8 * 8 * n_stat)) //8 64byte numbers
+	_benchReset(b)
+
+	for i := 0; i < b.N; i++ {
+		ser, _ := NewTimeSeries(stype, n.UnixNano(), NewDefaultOptions())
+		addStats(ser, stat, n_stat, true)
+		bss, _ := ser.MarshalBinary()
+		c_bss := new(bytes.Buffer)
+
+		zipper := zstd.NewWriterLevel(c_bss, zstd.BestCompression)
+		zipper.Write(bss)
+		zipper.Close()
+
+		pre_len += int64(len(bss))
+		c_len := int64(c_bss.Len())
+		comp_len += int64(c_len)
+		b_per_stat += int64(c_len / int64(n_stat))
+		runs++
+	}
+	b.Logf("Zstd: Average PreComp size: %v, Post: %v Bytes per stat: %v", pre_len/runs, comp_len/runs, b_per_stat/runs)
 
 }
 

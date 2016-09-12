@@ -31,6 +31,8 @@ import (
 	"time"
 )
 
+const CASSANDRA_DEFAULT_CONNECTIONS int64 = 10
+
 // the singleton as we really ONLY want one connection per DSN
 var _SESSION_SINGLETON map[string]*gocql.Session
 var _session_mutex sync.Mutex
@@ -144,7 +146,7 @@ func (cass *CassandraDB) Config(conf map[string]interface{}) (err error) {
 		timeout = ok
 	}
 
-	numcons := int64(5)
+	numcons := CASSANDRA_DEFAULT_CONNECTIONS
 	_numcons := conf["numcons"]
 	if _numcons != nil {
 		numcons = _numcons.(int64)

@@ -32,10 +32,13 @@ import (
 	"time"
 )
 
+const MAX_QUANTIZE_POINTS = 10000
+
 /** errors **/
 var errMergeStepSizeError = errors.New("To merge 2 RawRenderItems, the step size needs to be the same")
 var errQuantizeTooLittleData = errors.New("Cannot quantize to step: too little data")
 var errQuantizeStepTooSmall = fmt.Errorf("Cannot quantize: to a '0' step size ...")
+var errQuantizeStepTooManyPoints = fmt.Errorf("Cannot quantize: Over the 10,000 point threashold, please try a smaller time window")
 
 /******************  a simple union of series.TimeSeries and repr.StatName *********************/
 type TotalTimeSeries struct {
@@ -62,19 +65,19 @@ func (d *DBSeries) Iter() (series.TimeSeriesIter, error) {
 
 type DBSeriesList []*DBSeries
 
-func (mb *DBSeriesList) Start() int64 {
+func (mb DBSeriesList) Start() int64 {
 	t_s := int64(0)
-	for idx, d := range *mb {
-		if idx == 0 || d.Start < t_s {
+	for idx, d := range mb {
+		if idx == 0 || (d.Start < t_s && d.Start != 0) {
 			t_s = d.Start
 		}
 	}
 	return t_s
 }
 
-func (mb *DBSeriesList) End() int64 {
+func (mb DBSeriesList) End() int64 {
 	t_s := int64(0)
-	for idx, d := range *mb {
+	for idx, d := range mb {
 		if idx == 0 || d.End > t_s {
 			t_s = d.End
 		}
@@ -82,9 +85,9 @@ func (mb *DBSeriesList) End() int64 {
 	return t_s
 }
 
-func (mb *DBSeriesList) ToRawRenderItem() (*RawRenderItem, error) {
+func (mb DBSeriesList) ToRawRenderItem() (*RawRenderItem, error) {
 	rawd := new(RawRenderItem)
-	for _, d := range *mb {
+	for _, d := range mb {
 		iter, err := d.Iter()
 		if err != nil {
 			return nil, err
@@ -256,6 +259,9 @@ func (r *RawDataPoint) Merge(d *RawDataPoint) {
 	if d.Time != 0 && d.Time > r.Time && !math.IsNaN(d.Last) {
 		r.Last = d.Last
 	}
+	if math.IsNaN(r.Last) && !math.IsNaN(d.Last) {
+		r.Last = d.Last
+	}
 
 	if r.Count == 0 && d.Count > 0 {
 		r.Count = d.Count
@@ -394,7 +400,7 @@ func (r *RawRenderItem) TrunctateTo(start uint32, end uint32) int {
 // If moving from a "large" time step to a "smaller" one you WILL GET NULL values for
 // time slots that do not match anything .. we cannot (will not) interpolate data like that
 // as it's 99% statistically "wrong"
-func (r *RawRenderItem) Resample(step uint32) {
+func (r *RawRenderItem) ResampleAndQuantize(step uint32) {
 
 	cur_len := uint32(len(r.Data))
 	// nothing we can do here
@@ -505,6 +511,69 @@ func (r *RawRenderItem) Resample(step uint32) {
 	r.Data = data
 }
 
+// reample but "skip" and nils
+func (r *RawRenderItem) Resample(step uint32) error {
+	// based on the start, stop and step.  Fill in the gaps in missing
+	// slots (w/ nulls) as graphite does not like "missing times" (expects things to have a constant
+	// length over the entire interval)
+	// You should Put in an "End" time of "ReadData + Step" to avoid loosing the last point as things
+	// are  [Start, End) not [Start, End]
+
+	if step <= 0 {
+		return errQuantizeStepTooSmall
+	}
+
+	// make sure the start/ends are nicely divisible by the Step
+	start := r.Start
+
+	left := start % step
+	if left != 0 {
+		start = start + step - left
+	}
+
+	end := r.End
+
+	endTime := (end - 1) - ((end - 1) % step) + step
+
+	// make sure in time order
+	sort.Sort(r.Data)
+
+	// 'i' iterates Original Data.
+	// 'o' iterates Incoming Data.
+	// 'n' iterates New Data.
+	// t is the current time we need to fill/merge
+	var t uint32
+	var i, n int
+
+	i_len := len(r.Data)
+	data := make([]RawDataPoint, 0)
+
+	for t, i, n = start, 0, -1; t <= endTime; t += step {
+		dp := NullRawDataPoint(t)
+		// loop through the orig data until we hit a time > then the current one
+		for ; i < i_len; i++ {
+			if r.Data[i].Time > t {
+				break
+			}
+			dp.Merge(&r.Data[i])
+		}
+
+		if !dp.IsNull() {
+			data = append(data, dp)
+			n++
+		}
+	}
+
+	r.Start = start
+	r.RealStart = start
+	r.Step = step
+	r.End = endTime
+	r.RealEnd = endTime
+	r.Data = data
+	return nil
+
+}
+
 func (r *RawRenderItem) Quantize() error {
 	return r.QuantizeToStep(r.Step)
 }
@@ -549,8 +618,14 @@ func (r *RawRenderItem) QuantizeToStep(step uint32) error {
 		return nil
 	}
 
+	// trap too many points
+	num_pts := ((endTime - start) / step) + 1
+	if num_pts >= MAX_QUANTIZE_POINTS {
+		return errQuantizeStepTooManyPoints
+	}
+
 	// data length of the new data array
-	data := make([]RawDataPoint, ((endTime-start)/step)+1)
+	data := make([]RawDataPoint, num_pts)
 	cur_len := uint32(len(r.Data))
 
 	// 'i' iterates Original Data.
@@ -651,8 +726,14 @@ func (r *RawRenderItem) Merge(m *RawRenderItem) error {
 	}
 
 	// both series should be the same size after this step
-	r.Quantize()
-	m.Quantize()
+	err := r.Quantize()
+	if err != nil {
+		return err
+	}
+	err = m.Quantize()
+	if err != nil {
+		return err
+	}
 
 	// find the "longest" one
 	cur_len := len(m.Data)

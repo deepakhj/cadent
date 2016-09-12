@@ -131,7 +131,7 @@ func (ws *WhisperIndexer) Find(metric string) (MetricFindItems, error) {
 		t = strings.Replace(t, ".wsp", "", -1)
 		//ws.log.Critical("REG: %s, %s, %s", glob_path, reg_str, p)
 
-		if !reger.Match([]byte(p)) {
+		if !reger.MatchString(p) {
 			continue
 		}
 		t = strings.Replace(t, "/", ".", -1)

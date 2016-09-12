@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 /*
-	based on https://github.com/dgryski/go-tsz
+	apadapted and manipulated from the original algo on https://github.com/dgryski/go-tsz
 
 	but modified to handle "multiple" values the original is simply
 	T,V
@@ -78,6 +78,7 @@ package series
 import (
 	"cadent/server/repr"
 	"cadent/server/utils"
+	"errors"
 	"fmt"
 	"github.com/dgryski/go-bits"
 	"math"
@@ -92,7 +93,7 @@ const (
 	GORILLA_NAME                      = "gorilla"
 )
 
-/** shamelessly taken from https://github.com/dgryski/go-tsz/blob/master/bstream.go */
+var errNegativeTimeDelta = errors.New("Gorilla format cannot have out-of-order time points")
 
 // this can only handle "future pushing times" not random times
 type GorillaTimeSeries struct {
@@ -113,7 +114,7 @@ type GorillaTimeSeries struct {
 	trailingMs uint8
 
 	numValues uint8
-	curVals   []float64 //want 6 vals, min, max, sum, last, count
+	curVals   []float64 //want 6 vals: min, max, sum, last, count
 	leading   []uint8
 	trailing  []uint8
 
@@ -306,6 +307,9 @@ func (s *GorillaTimeSeries) AddTime(t int64) error {
 
 	tDelta := ut - s.curTime
 	dod := int32(tDelta - s.curDelta)
+	if tDelta < 0 {
+		return errNegativeTimeDelta
+	}
 
 	switch {
 	case dod == 0:

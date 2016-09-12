@@ -51,6 +51,10 @@ func Benchmark_Gob_NonRandom_SingleVal_Raw_Size(b *testing.B) {
 	benchmarkNonRandomRawSizeSingleStat(b, "binary", testDefaultByteSize)
 }
 
+func Benchmark_GOB_______________ZStd_Compress(b *testing.B) {
+	benchmarkZStdCompress(b, "binary", testDefaultByteSize)
+}
+
 func Benchmark_Gob______________Snappy_Compress(b *testing.B) {
 	benchmarkSnappyCompress(b, "binary", testDefaultByteSize)
 }

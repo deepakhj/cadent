@@ -249,7 +249,7 @@ func (rc *ReadCache) Start() {
 		select {
 		case stat := <-rc.InsertQueue:
 			rc.Put(stat.Name.Key, stat)
-			rc.listeners.Send(stat) //broadcast to any listeners
+			rc.listeners.Send(*stat) //broadcast to any listeners
 		case <-rc.shutdown:
 			shutdown.ReleaseFromShutdown()
 			return

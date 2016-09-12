@@ -96,7 +96,15 @@ func (re *MetricsAPI) Render(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	resample := args.Step
+	if resample > 0 {
+		for idx := range data {
+			// graphite needs the "nils"
+			data[idx].ResampleAndQuantize(resample)
+		}
+	}
 	render_data := re.ToGraphiteRender(data)
+
 	re.a.AddToCache(data)
 
 	re.a.OutJson(w, render_data)
@@ -121,6 +129,13 @@ func (re *MetricsAPI) RawRender(w http.ResponseWriter, r *http.Request) {
 	if data == nil {
 		re.a.OutError(w, "No data found", http.StatusNoContent)
 		return
+	}
+
+	resample := args.Step
+	if resample > 0 {
+		for idx := range data {
+			data[idx].Resample(resample)
+		}
 	}
 
 	re.a.AddToCache(data)

@@ -873,7 +873,6 @@ func (cass *CassandraFlatMetric) RawRenderOne(metric indexer.MetricFindItem, sta
 	rawd.Id = metric.UniqueId
 	rawd.Data = d_points
 	rawd.AggFunc = repr.GuessReprValueFromKey(m_key)
-	rawd.Quantize() // fill out all the "blanks"
 
 	return rawd, nil
 }
@@ -990,69 +989,6 @@ func (cass *CassandraFlatMetric) RenderOne(metric indexer.MetricFindItem, from i
 
 	whis.Series[m_key] = interp_vec
 
-	return whis, nil
-}
-
-func (cass *CassandraFlatMetric) Render(path string, from int64, to int64) (WhisperRenderItem, error) {
-
-	defer stats.StatsdSlowNanoTimeFunc("reader.cassandraflat.render.get-time-ns", time.Now())
-
-	var whis WhisperRenderItem
-	whis.Series = make(map[string][]DataPoint)
-	paths := strings.Split(path, ",")
-	var metrics []indexer.MetricFindItem
-
-	for _, pth := range paths {
-		mets, err := cass.indexer.Find(pth)
-		if err != nil {
-			continue
-		}
-		metrics = append(metrics, mets...)
-	}
-
-	render_wg := utils.GetWaitGroup()
-	defer utils.PutWaitGroup(render_wg)
-
-	render_mu := utils.GetMutex()
-	defer utils.PutMutex(render_mu)
-
-	// ye old fan out technique
-	render_one := func(metric indexer.MetricFindItem) {
-		defer render_wg.Done()
-		timeout := time.NewTimer(cass.render_timeout)
-		for {
-			select {
-			case <-timeout.C:
-				cass.writer.log.Error("Render Timeout for %s (%d->%d)", path, from, to)
-				timeout.Stop()
-				return
-			default:
-			}
-			_ri, err := cass.RenderOne(metric, from, to)
-
-			if err != nil {
-				return
-			}
-			render_mu.Lock()
-			for k, rr := range _ri.Series {
-				whis.Series[k] = rr
-			}
-			whis.Start = _ri.Start
-			whis.End = _ri.End
-			whis.RealStart = _ri.RealStart
-			whis.RealEnd = _ri.RealEnd
-			whis.Step = _ri.Step
-			render_mu.Unlock()
-
-			return
-		}
-	}
-
-	for _, metric := range metrics {
-		render_wg.Add(1)
-		go render_one(metric)
-	}
-	render_wg.Wait()
 	return whis, nil
 }
 

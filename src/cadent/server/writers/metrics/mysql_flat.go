@@ -244,9 +244,6 @@ func (my *MySQLFlatMetrics) Write(stat repr.StatRepr) error {
 /**** READER ***/
 // XXX TODO
 
-func (my *MySQLFlatMetrics) Render(path string, from int64, to int64) (WhisperRenderItem, error) {
-	return WhisperRenderItem{}, fmt.Errorf("MYSQL READER NOT YET DONE")
-}
 func (my *MySQLFlatMetrics) RawRender(path string, from int64, to int64) ([]*RawRenderItem, error) {
 	return []*RawRenderItem{}, fmt.Errorf("MYSQL READER NOT YET DONE")
 }

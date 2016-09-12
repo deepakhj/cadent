@@ -40,6 +40,7 @@ import (
 	logging "gopkg.in/op/go-logging.v1"
 	"math"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -64,6 +65,14 @@ type KafkaMetric struct {
 }
 
 func (kp *KafkaMetric) ensureEncoded() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Errorf("Kafka Encoding error: %v", r)
+			kp.err = fmt.Errorf("%v", r)
+			kp.encoded = nil
+		}
+	}()
+
 	if kp != nil && kp.encoded == nil && kp.err == nil {
 		kp.encoded, kp.err = json.Marshal(kp)
 	}
@@ -102,14 +111,11 @@ type KafkaMetrics struct {
 
 	resolution uint32
 
-	// this is for Render where we may have several caches, but only "one"
-	// cacher get picked for the default render (things share the cache from writers
-	// and the api render, but not all the caches, so we need to be able to get the
-	// the cache singleton keys
-	// `cache:series:seriesMaxMetrics:seriesEncoding:seriesMaxBytes:maxTimeInCache`
 	cacherPrefix  string
 	cacher        *Cacher
 	cacheOverFlow *broadcast.Listener // on byte overflow of cacher force a write
+	is_primary    bool                // is this the primary writer to the cache?
+
 }
 
 func NewKafkaMetrics() *KafkaMetrics {
@@ -118,6 +124,7 @@ func NewKafkaMetrics() *KafkaMetrics {
 	kf.log = logging.MustGetLogger("writers.kafka.metrics")
 
 	kf.shutitdown = false
+	kf.is_primary = false
 	return kf
 }
 
@@ -153,6 +160,18 @@ func (kf *KafkaMetrics) Config(conf map[string]interface{}) error {
 	}
 	kf.cacher = _cache.(*Cacher)
 	kf.cacherPrefix = kf.cacher.Prefix
+
+	// for the overflow cached items::
+	// these caches can be shared for a given writer set, and the caches may provide the data for
+	// multiple writers, we need to specify that ONE of the writers is the "main" one otherwise
+	// the Metrics Write function will add the points over again, which is not a good thing
+	// when the accumulator flushes things to the multi wrtiers
+	// The Writer needs to know it's "not" the primary writer and thus will not "add" points to the
+	// cache .. so the cache basically gets "one" primary writer pointed (first come first serve)
+	kf.is_primary = kf.cacher.SetPrimaryWriter(kf)
+	if kf.is_primary {
+		kf.log.Notice("Kafka series writer is the primary writer to write back cache %s", kf.cacher.Name)
+	}
 	return nil
 }
 
@@ -169,6 +188,8 @@ func (kf *KafkaMetrics) Start() {
 		// only register this if we are really going to consume it
 		kf.cacheOverFlow = kf.cacher.GetOverFlowChan()
 		go kf.overFlowWrite()
+		go kf.onError()
+		go kf.onSuccess()
 	})
 }
 
@@ -189,9 +210,11 @@ func (kf *KafkaMetrics) Stop() {
 		kf.log.Warning("Shutting down %s and exhausting the queue (%d items) and quiting", kf.cacher.Name, mets_l)
 
 		// full tilt write out
-		go_do := make(chan *TotalTimeSeries, 16)
-		done := make(chan bool, 1)
-		go func() {
+		procs := 16
+		go_do := make(chan *TotalTimeSeries, procs)
+		wg := sync.WaitGroup{}
+
+		goInsert := func() {
 			for {
 				select {
 				case s, more := <-go_do:
@@ -200,14 +223,17 @@ func (kf *KafkaMetrics) Stop() {
 					}
 					stats.StatsdClient.Incr(fmt.Sprintf("writer.cache.shutdown.send-to-writers"), 1)
 					kf.PushSeries(s.Name, s.Series)
-				case <-done:
-					return
+					wg.Done()
 				}
 			}
-		}()
+		}
+		for i := 0; i < procs; i++ {
+			go goInsert()
+		}
 
 		did := 0
 		for _, queueitem := range mets {
+			wg.Add(1)
 			if did%100 == 0 {
 				kf.log.Warning("shutdown purge: written %d/%d...", did, mets_l)
 			}
@@ -216,7 +242,7 @@ func (kf *KafkaMetrics) Stop() {
 			}
 			did++
 		}
-		close(done)
+		wg.Wait()
 		close(go_do)
 		kf.log.Warning("shutdown purge: written %d/%d...", did, mets_l)
 
@@ -225,11 +251,34 @@ func (kf *KafkaMetrics) Stop() {
 	})
 }
 
+func (kf *KafkaMetrics) onError() {
+
+	for {
+		err, more := <-kf.conn.Errors()
+		if !more {
+			return
+		}
+		stats.StatsdClientSlow.Incr("writer.kafka.metrics.writes.error", 1)
+		kf.log.Errorf("%s", err)
+	}
+}
+
+func (kf *KafkaMetrics) onSuccess() {
+
+	for {
+		_, more := <-kf.conn.Successes()
+		if !more {
+			return
+		}
+		stats.StatsdClientSlow.Incr("writer.kafka.metrics.writes.success", 1)
+	}
+}
+
 // listen to the overflow chan from the cache and attempt to write "now"
 func (kf *KafkaMetrics) overFlowWrite() {
 	defer func() {
 		if r := recover(); r != nil {
-			kf.log.Critical("Kafka Failure (panic) %v ::", r)
+			kf.log.Critical("Kafka Failure (panic) %v", r)
 		}
 	}()
 
@@ -239,7 +288,8 @@ func (kf *KafkaMetrics) overFlowWrite() {
 			return
 		}
 		if statitem != nil {
-			kf.PushSeries(statitem.(*TotalTimeSeries).Name, statitem.(*TotalTimeSeries).Series)
+			ts := statitem.(*TotalTimeSeries)
+			kf.PushSeries(ts.Name, ts.Series)
 		} else {
 			kf.log.Errorf("%s", errKafkaMetricIsNil)
 		}
@@ -282,6 +332,10 @@ func (kf *KafkaMetrics) Write(stat repr.StatRepr) error {
 	// merge the tags in
 	stat.Name.MergeMetric2Tags(kf.static_tags)
 	kf.indexer.Write(stat.Name) // to the indexer
+	// not primary writer .. move along
+	if !kf.is_primary {
+		return nil
+	}
 	kf.cacher.Add(&stat.Name, &stat)
 	return nil
 }
@@ -355,9 +409,6 @@ func (kf *KafkaMetrics) GetFromWriteCache(metric *repr.StatName, start uint32, e
 
 // needed to match interface, but we obviously cannot do this
 
-func (kf *KafkaMetrics) Render(path string, from int64, to int64) (WhisperRenderItem, error) {
-	return WhisperRenderItem{}, errKafkaReaderNotImplimented
-}
 func (kf *KafkaMetrics) RawRender(path string, from int64, to int64) ([]*RawRenderItem, error) {
 	return []*RawRenderItem{}, errKafkaReaderNotImplimented
 }

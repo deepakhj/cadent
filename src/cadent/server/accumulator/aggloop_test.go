@@ -52,7 +52,10 @@ func TestAccumualtorAggLoop(t *testing.T) {
 	input_format = "graphite"
 	output_format = "graphite"
 	times = ["3s:5s"]
+	[[writer.caches]]
+	name="tester"
 	[writer.metrics]
+	cache="tester"
 	driver = "file"
 	dsn = "/tmp/tt"
 	[writer.indexer]

@@ -173,7 +173,7 @@ func (my *MySQLIndexer) Name() string { return my.indexerId }
 
 func (my *MySQLIndexer) Start() {
 	my.startstop.Start(func() {
-		my.log.Notice("starting mysql indexer: %s", my.Name())
+		my.log.Notice("starting mysql indexer: %s/%s/%s", my.db.PathTable(), my.db.SegmentTable(), my.db.TagTable())
 		retries := 2
 		my.dispatcher = dispatch.NewDispatchQueue(my.num_workers, my.queue_len, retries)
 		my.dispatcher.Start()
@@ -189,7 +189,7 @@ func (my *MySQLIndexer) Stop() {
 		shutdown.AddToShutdown()
 		defer shutdown.ReleaseFromShutdown()
 
-		my.log.Notice("shutting down mysql indexer: %s", my.Name())
+		my.log.Notice("shutting down mysql indexer: %s/%s/%s", my.db.PathTable(), my.db.SegmentTable(), my.db.TagTable())
 		my.cache.Stop()
 		my.shutitdown = 1
 	})
@@ -628,7 +628,7 @@ func (my *MySQLIndexer) Expand(metric string) (MetricExpandItem, error) {
 		}
 		//cass.log.Debug("SEG: %s", seg)
 
-		if !the_reg.Match([]byte(seg)) {
+		if !the_reg.MatchString(seg) {
 			continue
 		}
 		me.Results = append(me.Results, seg)
@@ -918,9 +918,9 @@ func (my *MySQLIndexer) FindNonRegex(metric string) (MetricFindItems, error) {
 	m_len := len(paths)
 
 	// grab all the paths that match this length if there is no regex needed
-	// these are the "data/leaf" nodes .. alow or uid lookups too
+	// these are the "data/leaf" nodes .. allow or uid lookups too
 	pathQ := fmt.Sprintf(
-		"SELECT uid,path,length,has_data FROM %s WHERE (pos=? AND segment=?) OR (uid = ?)",
+		"SELECT uid,path,length,has_data FROM %s WHERE (pos=? AND segment=?) OR (uid = ? AND segment = path AND has_data=1)",
 		my.db.PathTable(),
 	)
 
@@ -935,12 +935,14 @@ func (my *MySQLIndexer) FindNonRegex(metric string) (MetricFindItems, error) {
 	if err != nil {
 		return mt, err
 	}
+	defer rows.Close()
 	for rows.Next() {
 		err = rows.Scan(&id, &on_pth, &pth_len, &has_data)
 		if err != nil {
 			return mt, err
 		}
-		if pth_len > m_len {
+		// mlen 1 == uid lookup
+		if m_len != 1 && pth_len > m_len {
 			continue
 		}
 		//cass.log.Critical("NON REG:::::PATH %s LEN %d m_len: %d", on_pth, pth_len, m_len)
@@ -966,10 +968,6 @@ func (my *MySQLIndexer) FindNonRegex(metric string) (MetricFindItems, error) {
 		}
 
 		mt = append(mt, ms)
-	}
-
-	if err := rows.Close(); err != nil {
-		return mt, err
 	}
 
 	return mt, nil

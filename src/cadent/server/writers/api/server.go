@@ -154,6 +154,9 @@ func (re *ApiLoop) activateCacheLoop() {
 }
 
 func (re *ApiLoop) AddToCache(data []*metrics.RawRenderItem) {
+	if re.activate_cache_chan == nil {
+		return
+	}
 	for _, d := range data {
 		// send to activator
 		re.activate_cache_chan <- d
@@ -263,7 +266,6 @@ func (re *ApiLoop) Start() error {
 	mux := http.NewServeMux()
 	mux.Handle("/ws", WriteLog(ws, outlog))
 	mux.Handle("/", WriteLog(CompressHandler(CorsHandler(base)), outlog))
-	//mux.Handle("/", WriteLog(base, outlog))
 
 	go http.Serve(conn, mux)
 

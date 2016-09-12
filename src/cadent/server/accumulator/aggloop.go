@@ -93,7 +93,7 @@ type AggregateLoop struct {
 	shutitdown bool
 	InputChan  chan repr.StatRepr
 
-	// write to a DB of some kind on flush snce there can be multiple writers
+	// write to a DB of some kind on flush sense there can be multiple writers
 	// use the flush duration as a key
 	OutWriters map[int64]*multiWriter
 
@@ -207,6 +207,7 @@ func (agg *AggregateLoop) SetWriter(conf writers.WriterConfig, mainorsub string)
 		if err != nil {
 			return err
 		}
+
 		wr.SetName(dur.String())
 
 		mets.SetIndexer(idx)
@@ -216,8 +217,7 @@ func (agg *AggregateLoop) SetWriter(conf writers.WriterConfig, mainorsub string)
 		wr.SetIndexer(idx)
 
 		dur_s := dur.Nanoseconds()
-		_, ok := agg.OutWriters[dur_s]
-		if !ok {
+		if _, ok := agg.OutWriters[dur_s]; !ok {
 			agg.OutWriters[dur_s] = &multiWriter{
 				ws:    []*writers.WriterLoop{wr},
 				mu:    new(sync.Mutex),

@@ -57,6 +57,8 @@ func (sa *Aggregator) MapKey(id string, t time.Time) string {
 }
 
 func (sa *Aggregator) Len() int {
+	sa.mu.RLock()
+	defer sa.mu.RUnlock()
 	return len(sa.Items)
 }
 
@@ -74,16 +76,22 @@ func (sa *Aggregator) GetAndClear() map[string]*StatRepr {
 }
 
 func (sa *Aggregator) Add(stat *StatRepr) error {
-	sa.mu.Lock()
-	defer sa.mu.Unlock()
 
 	res_time := sa.ResolutionTime(stat.Time)
 	m_k := sa.MapKey(stat.Name.UniqueIdString(), stat.Time)
+	sa.mu.RLock()
 	element, ok := sa.Items[m_k]
+	sa.mu.RUnlock()
+
 	if !ok {
-		sa.Items[m_k] = stat
+		sa.mu.Lock()
+		sa.Items[m_k] = stat.Copy()
+		sa.mu.Unlock()
+
 		return nil
 	}
+	sa.mu.Lock()
+	defer sa.mu.Unlock()
 
 	element.Last = stat.Last
 
@@ -97,7 +105,10 @@ func (sa *Aggregator) Add(stat *StatRepr) error {
 	element.Sum += stat.Sum
 	element.Time = res_time
 	element.Name.Resolution = uint32(sa.Resolution.Seconds())
-	//sa.Items[m_k] = element
+	/*sa.mu.Lock()
+	sa.Items[m_k] = element
+	sa.mu.Unlock()*/
+
 	return nil
 }
 

@@ -97,6 +97,8 @@ type OutputMessage struct {
 
 //helper object for json'ing the basic stat data
 type ServerStats struct {
+	mu *sync.RWMutex
+
 	ValidLineCount       int64 `json:"valid_line_count"`
 	WorkerValidLineCount int64 `json:"worker_line_count"`
 	InvalidLineCount     int64 `json:"invalid_line_count"`
@@ -160,8 +162,6 @@ type ServerStats struct {
 	MaxReadBufferSize     int64 `json:"max_read_buffer_size"`
 	InputQueueSize        int   `json:"input_queue_size"`
 	WorkQueueSize         int   `json:"work_queue_size"`
-
-	mu sync.Mutex
 }
 
 // helper object for the json info about a single "key"
@@ -279,6 +279,8 @@ type Server struct {
 
 func (server *Server) InitCounters() {
 	//pref := fmt.Sprintf("%p", server)
+
+	server.stats.mu = new(sync.RWMutex)
 
 	server.ValidLineCount = stats.NewStatCount(server.Name + "-ValidLineCount")
 	server.WorkerValidLineCount = stats.NewStatCount(server.Name + "-WorkerValidLineCount")
@@ -883,6 +885,7 @@ func (server *Server) tickDisplay() {
 	for {
 		select {
 		case <-ticker.C:
+			runtime.GC() // clean things each tick
 			server.stats.mu.Lock()
 			server.StatsTick()
 			if server.ShowStats {

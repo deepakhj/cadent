@@ -88,14 +88,28 @@ var SPACES_BYTES = []byte("\r\n\t ")
 
 type StatId uint64
 
+const (
+	TAG_METRICS2 uint8 = iota + 1
+	TAG_ALLTAGS
+)
+
 type StatName struct {
 	Key         string      `json:"key"`
 	Tags        SortingTags `json:"tags,omitempty"`
 	MetaTags    SortingTags `json:"meta_tags,omitempty"`
 	Resolution  uint32      `json:"resolution"`
 	TTL         uint32      `json:"ttl"`
+	TagMode     uint8       `json:"-"`
 	uniqueId    StatId
 	uniqueIdstr string
+}
+
+func (s *StatName) SetTagMode(mode string) {
+	s.TagMode = TAG_METRICS2
+	switch mode {
+	case "all":
+		s.TagMode = TAG_ALLTAGS
+	}
 }
 
 // take the various "parts" (keys, resolution, tags) and return a basic md5 hash of things
@@ -108,8 +122,16 @@ func (s *StatName) UniqueId() StatId {
 	byte_buf := utils.GetBytesBuffer()
 	defer utils.PutBytesBuffer(byte_buf)
 
-	fmt.Fprintf(byte_buf, "%s:%s", s.Key, s.SortedTags())
-	buf.Write(byte_buf.Bytes())
+	// all tags or just intrinsic tags
+	switch s.TagMode {
+	case TAG_ALLTAGS:
+		fmt.Fprintf(byte_buf, "%s:%s:%s", s.Key, s.SortedTags(), s.SortedMetaTags())
+		buf.Write(byte_buf.Bytes())
+	default:
+		fmt.Fprintf(byte_buf, "%s:%s", s.Key, s.SortedTags())
+		buf.Write(byte_buf.Bytes())
+	}
+
 	s.uniqueId = StatId(buf.Sum64())
 	return s.uniqueId
 }

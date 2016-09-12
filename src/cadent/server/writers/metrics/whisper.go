@@ -680,7 +680,6 @@ func (ws *WhisperMetrics) RawDataRenderOne(metric indexer.MetricFindItem, start 
 		cached.Start = uint32(start)
 		cached.End = uint32(end)
 		cached.AggFunc = rawd.AggFunc
-		cached.Quantize()
 		return cached, nil
 	}
 	path := ws.writer.getFilePath(stat_name.Key)
@@ -699,8 +698,6 @@ func (ws *WhisperMetrics) RawDataRenderOne(metric indexer.MetricFindItem, start 
 			inflight_renderitem.Metric = metric.Id
 			inflight_renderitem.Id = metric.UniqueId
 			inflight_renderitem.AggFunc = rawd.AggFunc
-
-			err = inflight_renderitem.Quantize()
 			return inflight_renderitem, err
 		} else {
 			ws.writer.log.Error("Could not open file %s", path)
@@ -760,7 +757,7 @@ func (ws *WhisperMetrics) RawDataRenderOne(metric indexer.MetricFindItem, start 
 	if err == nil && inflight_data != nil && len(inflight_data.Data) > 1 {
 		inflight_data.Step = step_t // need to force this step size
 		//merge with any inflight bits (inflight has higher precedence over the file)
-		inflight_data.Merge(rawd)
+		inflight_data.MergeWithResample(rawd, step_t)
 		return inflight_data, nil
 	}
 
@@ -774,33 +771,6 @@ func (ws *WhisperMetrics) RawRenderOne(metric indexer.MetricFindItem, from int64
 
 	return ws.RawDataRenderOne(metric, from, to)
 
-}
-
-func (ws *WhisperMetrics) Render(path string, from int64, to int64) (WhisperRenderItem, error) {
-
-	raw_data, err := ws.RawRender(path, from, to)
-
-	if err != nil {
-		return WhisperRenderItem{}, err
-	}
-
-	var whis WhisperRenderItem
-	whis.Series = make(map[string][]DataPoint)
-	for _, data := range raw_data {
-		whis.End = data.End
-		whis.Start = data.Start
-		whis.Step = data.Step
-		whis.RealEnd = data.RealEnd
-		whis.RealStart = data.RealStart
-
-		d_points := make([]DataPoint, 0)
-		for _, d := range data.Data {
-			v := d.AggValue(data.AggFunc)
-			d_points = append(d_points, DataPoint{Time: d.Time, Value: &v})
-		}
-		whis.Series[data.Metric] = d_points
-	}
-	return whis, err
 }
 
 func (ws *WhisperMetrics) RawRender(path string, from int64, to int64) ([]*RawRenderItem, error) {

@@ -81,6 +81,10 @@ type Listener struct {
 	id int
 }
 
+func (b *Broadcaster) IsClosed() bool {
+	return b.closed
+}
+
 // Send broadcasts a message to the channel.
 // Sending on a closed channel causes a runtime panic.
 func (b *Broadcaster) Send(v interface{}) {
@@ -103,6 +107,13 @@ func (b *Broadcaster) Close() {
 	for _, l := range b.listeners {
 		close(l)
 	}
+}
+
+// Num listeners
+func (b *Broadcaster) Len() int {
+	b.m.Lock()
+	defer b.m.Unlock()
+	return len(b.listeners)
 }
 
 // Listen returns a Listener for the broadcast channel.

@@ -95,7 +95,7 @@ func TestWriterObjects(t *testing.T) {
 		So(rl.Len(), ShouldEqual, len(t_list2))
 	})
 
-	Convey("Raw Data Item Resample", t, func() {
+	Convey("Raw Data Item ResampleAndQuantize", t, func() {
 
 		// this should "expand" in size to fill in the end points
 		rl := &RawRenderItem{
@@ -107,7 +107,7 @@ func TestWriterObjects(t *testing.T) {
 		for _, d := range rl.Data {
 			t.Logf("Pre Data: %v", d)
 		}
-		rl.Resample(2)
+		rl.ResampleAndQuantize(2)
 		for _, d := range rl.Data {
 			t.Logf("Data: %v", d)
 		}
@@ -122,7 +122,7 @@ func TestWriterObjects(t *testing.T) {
 		for _, d := range rl.Data {
 			t.Logf("Pre Data: %v", d)
 		}
-		rl.Resample(20)
+		rl.ResampleAndQuantize(20)
 		for _, d := range rl.Data {
 			t.Logf("Data: %v", d)
 		}
@@ -130,7 +130,7 @@ func TestWriterObjects(t *testing.T) {
 		t_l := len(t_list4)
 		So(rl.Len(), ShouldBeIn, []int{t_l/2 - 1, t_l / 2, t_l/2 + 1})
 
-		rl.Resample(5)
+		rl.ResampleAndQuantize(5)
 		for _, d := range rl.Data {
 			t.Logf("RE2 Data: %v", d)
 		}

@@ -503,7 +503,7 @@ func (cass *CassandraIndexer) Expand(metric string) (MetricExpandItem, error) {
 	for iter.Scan(&seg) {
 		//cass.log.Debug("SEG: %s", seg)
 
-		if !the_reg.Match([]byte(seg)) {
+		if !the_reg.MatchString(seg) {
 			continue
 		}
 		me.Results = append(me.Results, seg)
@@ -523,18 +523,30 @@ func (cass *CassandraIndexer) List(has_data bool, page int) (MetricFindItems, er
 
 	// grab all the paths that match this length if there is no regex needed
 	// these are the "data/leaf" nodes
+
+	//cassandra does "auto pagination" but we really do not want to send back all the rows
+	// so we instead need to walk the itterator
 	cass_Q := fmt.Sprintf(
-		"SELECT id,path FROM %s WHERE has_data=? LIMIT ?,? ALLOW FILTERING",
+		"SELECT id,path FROM %s WHERE has_data=? ALLOW FILTERING",
 		cass.db.PathTable(),
 	)
-	iter := cass.conn.Query(cass_Q, has_data, page*MAX_PER_PAGE, MAX_PER_PAGE).Iter()
+	iter := cass.conn.Query(cass_Q, has_data).PageSize(MAX_PER_PAGE).Iter()
 
 	var mt MetricFindItems
 	var ms MetricFindItem
 	var on_pth string
 	var id string
+
+	cur_page := 0
 	// just grab the "n+1" length ones
 	for iter.Scan(&id, &on_pth) {
+
+		if iter.WillSwitchPage() {
+			cur_page += 1
+		}
+		if cur_page < page {
+			continue
+		}
 
 		//cass.log.Critical("NON REG:::::PATH %s LEN %d m_len: %d", on_pth, pth_len, m_len)
 		spl := strings.Split(on_pth, ".")

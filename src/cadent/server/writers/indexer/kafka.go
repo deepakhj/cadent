@@ -170,7 +170,7 @@ func (kf *KafkaIndexer) Delete(skey *repr.StatName) error {
 	}
 
 	item := &KafkaPath{
-		Type:     "delete-index",
+		Type:     "delete",
 		Id:       skey.UniqueId(),
 		Path:     skey.Key,
 		Segments: strings.Split(skey.Key, "."),

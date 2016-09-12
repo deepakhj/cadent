@@ -37,13 +37,13 @@ var _countReg *regexp.Regexp
 var _stdReg *regexp.Regexp
 
 func init() {
-	_upperReg, _ = regexp.Compile(".*upper_[0-9]+$")
-	_upperMaxReg, _ = regexp.Compile(".*max_[0-9]+$")
-	_lowerReg, _ = regexp.Compile(".*lower_[0-9]+$")
-	_lowerMinReg, _ = regexp.Compile(".*min_[0-9]+$")
-	_medianReg, _ = regexp.Compile(".*median_[0-9]+$")
-	_countReg, _ = regexp.Compile(".*count_[0-9]+$")
-	_stdReg, _ = regexp.Compile(".*std_[0-9]+$")
+	_upperReg = regexp.MustCompile(".*upper_[0-9]+$")
+	_upperMaxReg = regexp.MustCompile(".*max_[0-9]+$")
+	_lowerReg = regexp.MustCompile(".*lower_[0-9]+$")
+	_lowerMinReg = regexp.MustCompile(".*min_[0-9]+$")
+	_medianReg = regexp.MustCompile(".*median_[0-9]+$")
+	_countReg = regexp.MustCompile(".*count_[0-9]+$")
+	_stdReg = regexp.MustCompile(".*std_[0-9]+$")
 }
 
 type AggType uint8
@@ -69,7 +69,7 @@ func AggTypeFromTag(stat string) AggType {
 		return MAX
 	case stat == "sum" || stat == "count" || stat == "add" || stat == "counter" || stat == "requests" || _countReg.MatchString(stat):
 		return SUM
-	case stat == "select" || stat == "selects" || stat == "selected" || stat == "updates" || stat == "update" || stat == "inserts" || stat == "insert" || stat == "delete" || stat == "deletes" || stat == "deleted":
+	case stat == "select" || stat == "selects" || stat == "selected" || stat == "updated" || stat == "update" || stat == "inserts" || stat == "insert" || stat == "delete" || stat == "deletes" || stat == "deleted":
 		return SUM
 	case stat == "consume" || stat == "consumed":
 		return SUM

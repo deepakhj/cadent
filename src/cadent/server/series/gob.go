@@ -79,7 +79,13 @@ func (e *gobBuffer) Len() int {
 }
 
 func (e *gobBuffer) Bytes() []byte {
-	return e.data
+	return e.Clone()
+}
+
+func (e *gobBuffer) Clone() []byte {
+	d := make([]byte, len(e.data))
+	copy(d, e.data)
+	return d
 }
 
 func (e *gobBuffer) Reset() {
@@ -147,7 +153,7 @@ func (s *GobTimeSeries) UnmarshalBinary(data []byte) error {
 
 func (s *GobTimeSeries) Bytes() []byte {
 	s.mu.Lock()
-	byts := s.buf.Bytes()
+	byts := s.buf.Clone()
 	s.mu.Unlock()
 	return byts
 }
@@ -160,16 +166,22 @@ func (s *GobTimeSeries) MarshalBinary() ([]byte, error) {
 	return s.Bytes(), nil
 }
 
-func (s *GobTimeSeries) Len() int {
-	return s.buf.Len()
-}
-
 func (s *GobTimeSeries) StartTime() int64 {
-	return s.T0
+	if s.fullResolution {
+		return s.T0
+	}
+	return combineSecNano(uint32(s.T0), 0)
 }
 
 func (s *GobTimeSeries) LastTime() int64 {
-	return s.curTime
+	if s.fullResolution {
+		return s.curTime
+	}
+	return combineSecNano(uint32(s.curTime), 0)
+}
+
+func (s *GobTimeSeries) Len() int {
+	return s.buf.Len()
 }
 
 func (s *GobTimeSeries) Iter() (TimeSeriesIter, error) {

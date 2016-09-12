@@ -31,54 +31,69 @@ func TestStatReprAggregator(t *testing.T) {
 		Min:   1,
 		Max:   3,
 		Count: 4,
+		Last:  1,
 		Time:  t_time,
 	}
 	ssM := StatRepr{
-		Name: StatName{Key: "moo", Resolution: 1},
-
+		Name:  StatName{Key: "moo", Resolution: 1},
 		Sum:   5,
 		Min:   0,
 		Max:   8,
 		Count: 4,
+		Last:  2,
 		Time:  t_time,
 	}
 	ss2 := StatRepr{
-		Name: StatName{Key: "goo", Resolution: 2},
-
+		Name:  StatName{Key: "goo", Resolution: 2},
 		Sum:   5,
 		Min:   1,
 		Max:   3,
 		Count: 4,
+		Last:  4,
 		Time:  t_time,
 	}
 
 	Convey("Aggregator", t, func() {
-		sc := NewAggregator(time.Duration(10 * time.Second))
 
-		sc.Add(ss)
 		Convey("Should have one elment", func() {
+			sc := NewAggregator(time.Duration(10 * time.Second))
+			sc.Add(&ss)
 			So(sc.Len(), ShouldEqual, 1)
 		})
-		sc.Add(ss2)
 		Convey("Should have two", func() {
+			sc := NewAggregator(time.Duration(10 * time.Second))
+			sc.Add(&ss)
+			sc.Add(&ss2)
 			So(sc.Len(), ShouldEqual, 2)
 		})
 
-		sc.Add(ss)
-		m_key := sc.MapKey(ss.Name.UniqueIdString(), t_time)
 		Convey("Should have been aggrigated", func() {
+			sc := NewAggregator(time.Duration(10 * time.Second))
+			sc.Add(&ss)
+			sc.Add(&ss2)
+			sc.Add(&ss)
+			m_key := sc.MapKey(ss.Name.UniqueIdString(), t_time)
+
 			gots := sc.Items[m_key]
 			So(gots.Sum, ShouldEqual, 10)
 			So(gots.Min, ShouldEqual, 1)
 			So(gots.Count, ShouldEqual, 8)
 		})
-		sc.Add(ssM)
 		Convey("Should have been aggrigated Again", func() {
+			sc := NewAggregator(time.Duration(10 * time.Second))
+
+			sc.Add(&ss)
+			sc.Add(&ss2)
+			sc.Add(&ss)
+			sc.Add(&ssM)
+			m_key := sc.MapKey(ss.Name.UniqueIdString(), t_time)
 			gots := sc.Items[m_key]
+			t.Logf("STAT: %v", sc.Items)
 			So(gots.Sum, ShouldEqual, 15)
 			So(gots.Min, ShouldEqual, 0)
 			So(gots.Max, ShouldEqual, 8)
 		})
+
 	})
 
 	Convey("MultiAggregator", t, func() {
@@ -92,13 +107,13 @@ func TestStatReprAggregator(t *testing.T) {
 			So(sc.Len(), ShouldEqual, 3)
 		})
 
-		sc.Add(ss)
+		sc.Add(&ss)
 		Convey("Each Agg Should have one elment", func() {
 			for _, agg := range sc.Aggs {
 				So(agg.Len(), ShouldEqual, 1)
 			}
 		})
-		sc.Add(ss2)
+		sc.Add(&ss2)
 		Convey("Should have two", func() {
 			for _, agg := range sc.Aggs {
 				So(agg.Len(), ShouldEqual, 2)

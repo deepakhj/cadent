@@ -36,6 +36,9 @@ import (
 	"net/http"
 )
 
+var errWsNoData = []byte(fmt.Sprintf("%dNo data found", http.StatusNoContent))
+var errWsTooManyMetrics = []byte(fmt.Sprintf("%dOnly one metric can be watched", http.StatusBadRequest))
+
 type MetricsSocket struct {
 	a       *ApiLoop
 	Indexer indexer.Indexer
@@ -71,26 +74,33 @@ func (re *MetricsSocket) MetricSocket(w http.ResponseWriter, r *http.Request) {
 		re.a.log.Errorf("Error making socket: %v", err)
 		return
 	}
-	defer c.Close()
+	defer func() {
+		c.Close()
+		re.a.log.Notice("Closing Web socket from %s", r.RequestURI)
+	}()
 
 	args, err := ParseMetricQuery(r)
 	if err != nil {
+		c.WriteMessage(websocket.CloseMessage, []byte(fmt.Sprintf("%d%v", http.StatusBadRequest, err)))
 		re.a.OutError(w, fmt.Sprintf("%v", err), http.StatusBadRequest)
 		return
 	}
 
 	data, err := re.Metrics.RawRender(args.Target, args.Start, args.End)
 	if err != nil {
+		c.WriteMessage(websocket.CloseMessage, []byte(fmt.Sprintf("%d%v", http.StatusServiceUnavailable, err)))
 		re.a.OutError(w, fmt.Sprintf("%v", err), http.StatusServiceUnavailable)
 		return
 	}
 	if data == nil || len(data) == 0 {
+		c.WriteMessage(websocket.CloseMessage, errWsNoData)
 		re.a.OutError(w, "No data found", http.StatusNoContent)
 		return
 	}
 
 	// we can onlyone metrics
 	if len(data) > 1 {
+		c.WriteMessage(websocket.CloseMessage, errWsTooManyMetrics)
 		re.a.OutError(w, "Only one metric can be watched", http.StatusBadRequest)
 		return
 	}
@@ -98,6 +108,7 @@ func (re *MetricsSocket) MetricSocket(w http.ResponseWriter, r *http.Request) {
 	re.a.AddToCache(data)
 
 	on_uid := data[0].Id
+	re.a.log.Notice("Starting Web socket from %s", r.RequestURI)
 
 	listen := re.a.ReadCache.ListenerChan()
 	defer listen.Close()
@@ -106,13 +117,17 @@ func (re *MetricsSocket) MetricSocket(w http.ResponseWriter, r *http.Request) {
 		if !more {
 			return
 		}
-		ss := stat.(*repr.StatRepr)
+		if stat == nil {
+			continue
+		}
+		ss := stat.(repr.StatRepr)
 		if ss.Name.UniqueIdString() != on_uid {
 			continue
 		}
 		err = c.WriteJSON(ss)
 		stats.StatsdClient.Incr("reader.http.websocket.send", 1)
 		if err != nil {
+			stats.StatsdClient.Incr("reader.http.websocket.error", 1)
 			re.a.log.Errorf("Error writing to socket: %v", err)
 			break
 		}

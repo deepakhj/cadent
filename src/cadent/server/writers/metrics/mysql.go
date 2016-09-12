@@ -83,6 +83,7 @@ import (
 	logging "gopkg.in/op/go-logging.v1"
 	"math"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -140,6 +141,7 @@ type MySQLMetrics struct {
 	cacherPrefix  string
 	cacher        *Cacher
 	cacheOverFlow *broadcast.Listener // on byte overflow of cacher force a write
+	is_primary    bool                // is this the primary writer to the cache?
 
 	// if the rolluptype == cached, then we this just uses the internal RAM caches
 	// otherwise if "trigger" we only have the lowest res cache, and trigger rollups on write
@@ -162,6 +164,7 @@ type MySQLMetrics struct {
 func NewMySQLMetrics() *MySQLMetrics {
 	my := new(MySQLMetrics)
 	my.driver = "mysql"
+	my.is_primary = false
 	my.log = logging.MustGetLogger("writers.mysql")
 	return my
 }
@@ -169,6 +172,7 @@ func NewMySQLMetrics() *MySQLMetrics {
 func NewMySQLTriggeredMetrics() *MySQLMetrics {
 	my := new(MySQLMetrics)
 	my.driver = "mysql-triggered"
+	my.is_primary = false
 	my.log = logging.MustGetLogger("writers.mysql")
 	return my
 }
@@ -236,6 +240,18 @@ func (my *MySQLMetrics) Config(conf map[string]interface{}) error {
 	}
 	my.cacher = _cache.(*Cacher)
 	my.cacherPrefix = my.cacher.Prefix
+
+	// for the overflow cached items::
+	// these caches can be shared for a given writer set, and the caches may provide the data for
+	// multiple writers, we need to specify that ONE of the writers is the "main" one otherwise
+	// the Metrics Write function will add the points over again, which is not a good thing
+	// when the accumulator flushes things to the multi wrtiers
+	// The Writer needs to know it's "not" the primary writer and thus will not "add" points to the
+	// cache .. so the cache basically gets "one" primary writer pointed (first come first serve)
+	my.is_primary = my.cacher.SetPrimaryWriter(my)
+	if my.is_primary {
+		my.log.Notice("Mysql series writer is the primary writer to write back cache for %s", my.cacher.Name)
+	}
 
 	if my.rollupType == "triggered" {
 		my.driver = "mysql-triggered"
@@ -305,9 +321,11 @@ func (my *MySQLMetrics) Stop() {
 		my.log.Warning("Shutting down %s and exhausting the queue (%d items) and quiting", my.cacher.Name, mets_l)
 
 		// full tilt write out
-		go_do := make(chan *TotalTimeSeries, 16)
-		done := make(chan bool, 1)
-		go func() {
+		procs := 16
+		go_do := make(chan *TotalTimeSeries, procs)
+		wg := sync.WaitGroup{}
+
+		goInsert := func() {
 			for {
 				select {
 				case s, more := <-go_do:
@@ -319,14 +337,18 @@ func (my *MySQLMetrics) Stop() {
 					if my.doRollup {
 						my.rollup.DoRollup(s)
 					}
-				case <-done:
-					return
+					wg.Done()
 				}
 			}
-		}()
+		}
+		for i := 0; i < procs; i++ {
+			go goInsert()
+		}
 
 		did := 0
 		for _, queueitem := range mets {
+			wg.Add(1)
+
 			if did%100 == 0 {
 				my.log.Warning("shutdown purge: written %d/%d...", did, mets_l)
 			}
@@ -335,7 +357,8 @@ func (my *MySQLMetrics) Stop() {
 			}
 			did++
 		}
-		close(done)
+		wg.Wait()
+
 		close(go_do)
 		my.log.Warning("shutdown purge: written %d/%d...", did, mets_l)
 
@@ -350,10 +373,11 @@ func (my *MySQLMetrics) Stop() {
 }
 func (my *MySQLMetrics) doInsert(ts *TotalTimeSeries) error {
 	stats.StatsdClientSlow.Incr("writer.mysql.consume.add", 1)
-	//my.log.Debug("Cache Write byte overflow %s.", statitem.Name.Key)
 	_, err := my.InsertSeries(ts.Name, ts.Series)
 	if err == nil && my.doRollup {
 		my.rollup.Add(ts)
+	} else if err != nil {
+		my.log.Errorf("Failed to add series to DB: %s (%s) %v", ts.Name.Key, ts.Name.UniqueIdString(), err)
 	}
 	return err
 }
@@ -374,7 +398,6 @@ func (my *MySQLMetrics) overFlowWrite() {
 				Ts: statitem.(*TotalTimeSeries),
 			},
 		)
-
 	}
 }
 
@@ -405,12 +428,10 @@ func (my *MySQLMetrics) Write(stat repr.StatRepr) error {
 	if my.currentResolution == my.resolutions[0][0] {
 		my.indexer.Write(stat.Name)
 	}
-	if my.rollupType == "triggered" {
-		if my.currentResolution == my.resolutions[0][0] {
-			my.cacher.Add(&stat.Name, &stat)
-		}
-	} else {
-		my.cacher.Add(&stat.Name, &stat)
+
+	// not primary writer .. move along
+	if !my.is_primary {
+		return nil
 	}
 
 	// and now add it to the readcache iff it's been activated
@@ -419,6 +440,14 @@ func (my *MySQLMetrics) Write(stat repr.StatRepr) error {
 		if r_cache != nil {
 			r_cache.InsertQueue <- &stat
 		}
+	}
+
+	if my.rollupType == "triggered" {
+		if my.currentResolution == my.resolutions[0][0] {
+			my.cacher.Add(&stat.Name, &stat)
+		}
+	} else {
+		my.cacher.Add(&stat.Name, &stat)
 	}
 
 	return nil
@@ -594,8 +623,11 @@ func (my *MySQLMetrics) GetFromWriteCache(metric *indexer.MetricFindItem, start 
 	// if we are "triggered" rollups then there is only the lowest res cache,
 	// but we can get that data too and resample to proper resolution
 	cache_db := fmt.Sprintf("%s:%d", my.cacherPrefix, resolution)
+	use_res := resolution
+
 	if my.rollupType == "triggered" {
 		cache_db = fmt.Sprintf("%s:%d", my.cacherPrefix, my.resolutions[0][0])
+		use_res = uint32(my.resolutions[0][0])
 	}
 
 	use_cache := GetCacherByName(cache_db)
@@ -603,6 +635,7 @@ func (my *MySQLMetrics) GetFromWriteCache(metric *indexer.MetricFindItem, start 
 		use_cache = my.cacher
 	}
 	inflight, err := use_cache.GetAsRawRenderItem(metric.StatName())
+
 	if err != nil {
 		return nil, err
 	}
@@ -617,7 +650,7 @@ func (my *MySQLMetrics) GetFromWriteCache(metric *indexer.MetricFindItem, start 
 
 	inflight.Metric = metric.Path
 	inflight.Id = metric.UniqueId
-	inflight.Step = resolution
+	inflight.Step = use_res
 	inflight.Start = start
 	inflight.End = end
 	inflight.Tags = metric.Tags
@@ -665,19 +698,16 @@ func (my *MySQLMetrics) RawDataRenderOne(metric *indexer.MetricFindItem, start i
 
 	// need at LEAST 2 points to get the proper step size
 	if inflight != nil && err == nil && len(inflight.Data) > 1 {
-		// all the data we need is in the inflight
-		in_range := inflight.DataInRange(u_start, u_end)
 		// if all the data is in this list we don't need to go any further
-		if in_range {
+		if inflight.DataInRange(u_start, u_end) {
 			// move the times to the "requested" ones and quantize the list
 			inflight.RealEnd = u_end
 			inflight.RealStart = u_start
-			err = inflight.Quantize()
 			return inflight, err
 		}
 	}
 	if err != nil {
-		my.log.Error("Mysql: Erroring getting inflight data: %v", err)
+		my.log.Errorf("Mysql: Error getting inflight data: %v", err)
 	}
 
 	// and now for the mysql Query otherwise
@@ -694,15 +724,15 @@ func (my *MySQLMetrics) RawDataRenderOne(metric *indexer.MetricFindItem, start i
 	mysql_data.MetaTags = metric.MetaTags
 
 	//mysql_data.PrintPoints()
-	if inflight == nil {
-		mysql_data.Quantize()
+	if inflight == nil || len(inflight.Data) == 0 {
 		return mysql_data, nil
 	}
 
-	if len(mysql_data.Data) > 0 && len(inflight.Data) > 1 {
+	if len(mysql_data.Data) > 0 && len(inflight.Data) > 0 {
 		//inflight.Quantize()
 		//mysql_data.Quantize()
-		inflight.Merge(mysql_data)
+		inflight.MergeWithResample(mysql_data, resolution)
+
 		/*oo_data := inflight.Data[0:]
 		for idx, d := range oo_data {
 			fmt.Printf("%d: %d: %f | %f | %f\n", idx, d.Time, d.Sum, mysql_data.Data[idx].Sum, inflight.Data[idx].Sum)
@@ -710,7 +740,6 @@ func (my *MySQLMetrics) RawDataRenderOne(metric *indexer.MetricFindItem, start i
 		*/
 		return inflight, nil
 	}
-	inflight.Quantize()
 	return inflight, nil
 }
 
@@ -718,32 +747,6 @@ func (my *MySQLMetrics) RawDataRenderOne(metric *indexer.MetricFindItem, start i
 // will make the read-cache much smaller (will compress just the Mean value as the count is 1)
 func (my *MySQLMetrics) RawRenderOne(metric indexer.MetricFindItem, from int64, to int64) (*RawRenderItem, error) {
 	return my.RawDataRenderOne(&metric, from, to)
-}
-
-func (my *MySQLMetrics) Render(path string, from int64, to int64) (WhisperRenderItem, error) {
-	raw_data, err := my.RawRender(path, from, to)
-
-	if err != nil {
-		return WhisperRenderItem{}, err
-	}
-
-	var whis WhisperRenderItem
-	whis.Series = make(map[string][]DataPoint)
-	for _, data := range raw_data {
-		whis.End = data.End
-		whis.Start = data.Start
-		whis.Step = data.Step
-		whis.RealEnd = data.RealEnd
-		whis.RealStart = data.RealStart
-
-		d_points := make([]DataPoint, 0)
-		for _, d := range data.Data {
-			v := d.AggValue(data.AggFunc)
-			d_points = append(d_points, DataPoint{Time: d.Time, Value: &v})
-		}
-		whis.Series[data.Metric] = d_points
-	}
-	return whis, err
 }
 
 func (my *MySQLMetrics) RawRender(path string, from int64, to int64) ([]*RawRenderItem, error) {
@@ -768,18 +771,16 @@ func (my *MySQLMetrics) RawRender(path string, from int64, to int64) ([]*RawRend
 	// ye old fan out technique
 	render_one := func(metric indexer.MetricFindItem, idx int) {
 		defer render_wg.Done()
-		timeout := time.NewTimer(my.renderTimeout)
 		for {
 			select {
-			case <-timeout.C:
-				my.log.Error("Render Timeout for %s (%d->%d)", path, from, to)
-				timeout.Stop()
+			case <-time.After(my.renderTimeout):
+				my.log.Errorf("Render Timeout for %s (%d->%d)", path, from, to)
 				return
 			default:
 				_ri, err := my.RawRenderOne(metric, from, to)
 
 				if err != nil {
-					my.log.Error("Read Error for %s (%d->%d) : %v", path, from, to, err)
+					my.log.Errorf("Read Error for %s (%d->%d) : %v", path, from, to, err)
 					return
 				}
 				rawd[idx] = _ri
@@ -1004,6 +1005,7 @@ func (my *MySQLMetrics) InsertDBSeries(name *repr.StatName, timeseries series.Ti
 	defer func() {
 		if r := recover(); r != nil {
 			my.log.Critical("Mysql Failure (panic) %v ::", r)
+			err = fmt.Errorf("%v", r)
 		}
 	}()
 
@@ -1013,27 +1015,23 @@ func (my *MySQLMetrics) InsertDBSeries(name *repr.StatName, timeseries series.Ti
 		t_name, resolution,
 	)
 
-	vals := []interface{}{}
-
 	pts := timeseries.Bytes()
 	s_time := timeseries.StartTime()
 	e_time := timeseries.LastTime()
 
 	Q += "(?,?,?,?,?,?)"
-	vals = append(
-		vals,
+	vals := []interface{}{
 		name.UniqueIdString(),
 		name.Key,
 		series.IdFromName(timeseries.Name()),
 		pts,
 		s_time,
 		e_time,
-	)
+	}
 
-	//format all vals at once
 	_, err = my.conn.Exec(Q, vals...)
 	if err != nil {
-		my.log.Error("Mysql Driver: Metric insert failed, %v", err)
+		my.log.Errorf("Mysql Driver: Metric insert failed, %v", err)
 		return 0, err
 	}
 

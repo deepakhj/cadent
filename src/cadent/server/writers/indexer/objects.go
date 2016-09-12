@@ -55,7 +55,7 @@ func (m *MetricFindItem) SelectValue() repr.AggType {
 	return repr.GuessReprValueFromKey(m.Id)
 }
 func (m *MetricFindItem) StatName() *repr.StatName {
-	return &repr.StatName{Key: m.Id, Tags: m.Tags, MetaTags: m.MetaTags}
+	return &repr.StatName{Key: m.Path, Tags: m.Tags, MetaTags: m.MetaTags}
 }
 
 type MetricFindItems []MetricFindItem

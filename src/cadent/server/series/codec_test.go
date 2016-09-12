@@ -22,95 +22,102 @@ import (
 
 /* binc */
 
-func Test_Binc_TimeSeries(t *testing.T) {
+func Test_Binc________________________TimeSeries(t *testing.T) {
 	opts := NewDefaultOptions()
 	opts.Handler = "binc"
 	genericTestSeries(t, "binc", opts)
 }
 
-func Benchmark_Binc_Put(b *testing.B) {
+func Benchmark_Binc___________________________Put(b *testing.B) {
 	benchmarkSeriesPut(b, "binc", testDefaultByteSize)
 }
 
-func Benchmark_Binc_8k(b *testing.B) {
+func Benchmark_Binc____________________________8k(b *testing.B) {
 	benchmarkSeriesPut8kRandom(b, "binc")
 }
 
-func Benchmark_Binc_Raw_Size(b *testing.B) {
+func Benchmark_Binc______________________Raw_Size(b *testing.B) {
 	benchmarkRawSize(b, "binc", testDefaultByteSize)
 }
 
-func Benchmark_Binc_SingleVal_Raw_Size(b *testing.B) {
+func Benchmark_Binc____________SingleVal_Raw_Size(b *testing.B) {
 	benchmarkRawSizeSingleStat(b, "binc", testDefaultByteSize)
 }
 
-func Benchmark_Binc_NonRandom_SingleVal_Raw_Size(b *testing.B) {
+func Benchmark_Binc__NonRandom_SingleVal_Raw_Size(b *testing.B) {
 	benchmarkNonRandomRawSizeSingleStat(b, "binc", testDefaultByteSize)
 }
 
-func Benchmark_Binc_Snappy_Compress(b *testing.B) {
+func Benchmark_Binc_________________ZStd_Compress(b *testing.B) {
+	benchmarkZStdCompress(b, "binc", testDefaultByteSize)
+}
+func Benchmark_Binc_______________Snappy_Compress(b *testing.B) {
 	benchmarkSnappyCompress(b, "binc", testDefaultByteSize)
 }
 
-func Benchmark_Binc_Flate_Compress(b *testing.B) {
+func Benchmark_Binc________________Flate_Compress(b *testing.B) {
 	benchmarkFlateCompress(b, "binc", testDefaultByteSize)
 }
 
-func Benchmark_Binc_Zip_Compress(b *testing.B) {
+func Benchmark_Binc__________________Zip_Compress(b *testing.B) {
 	benchmarkZipCompress(b, "binc", testDefaultByteSize)
 }
 
-func Benchmark_Binc_LZW_Compress(b *testing.B) {
+func Benchmark_Binc__________________LZW_Compress(b *testing.B) {
 	benchmarkLZWCompress(b, "binc", testDefaultByteSize)
 }
-func Benchmark_Binc_Reading(b *testing.B) {
+func Benchmark_Binc_______________________Reading(b *testing.B) {
 	benchmarkSeriesReading(b, "binc", testDefaultByteSize)
 }
 
 /* cbor */
 
-func Test_Cbor_TimeSeries(t *testing.T) {
+func Test_Cbor_________________________TimeSeries(t *testing.T) {
 	opts := NewDefaultOptions()
 	opts.Handler = "cbor"
 	genericTestSeries(t, "cbor", opts)
 }
 
-func Benchmark_Cbor_Put(b *testing.B) {
+func Benchmark_Cbor___________________________Put(b *testing.B) {
 	benchmarkSeriesPut(b, "cbor", testDefaultByteSize)
 }
 
-func Benchmark_Cbor_8k(b *testing.B) {
+func Benchmark_Cbor____________________________8k(b *testing.B) {
 	benchmarkSeriesPut8kRandom(b, "cbor")
 }
 
-func Benchmark_Cbor_Raw_Size(b *testing.B) {
+func Benchmark_Cbor______________________Raw_Size(b *testing.B) {
 	benchmarkRawSize(b, "cbor", testDefaultByteSize)
 }
 
-func Benchmark_Cbor_SingleVal_Raw_Size(b *testing.B) {
+func Benchmark_Cbor____________SingleVal_Raw_Size(b *testing.B) {
 	benchmarkRawSizeSingleStat(b, "cbor", testDefaultByteSize)
 }
 
-func Benchmark_Cbor_NonRandom_SingleVal_Raw_Size(b *testing.B) {
+func Benchmark_Cbor__NonRandom_SingleVal_Raw_Size(b *testing.B) {
 	benchmarkNonRandomRawSizeSingleStat(b, "cbor", testDefaultByteSize)
 }
 
-func Benchmark_Cbor_Snappy_Compress(b *testing.B) {
+func Benchmark_Cbor_______________Snappy_Compress(b *testing.B) {
 	benchmarkSnappyCompress(b, "cbor", testDefaultByteSize)
 }
 
-func Benchmark_Cbor_Flate_Compress(b *testing.B) {
+func Benchmark_Cbor_________________ZStd_Compress(b *testing.B) {
+	benchmarkZStdCompress(b, "cbor", testDefaultByteSize)
+}
+
+func Benchmark_Cbor________________Flate_Compress(b *testing.B) {
 	benchmarkFlateCompress(b, "cbor", testDefaultByteSize)
 }
 
-func Benchmark_Cbor_Zip_Compress(b *testing.B) {
+func Benchmark_Cbor__________________Zip_Compress(b *testing.B) {
 	benchmarkZipCompress(b, "cbor", testDefaultByteSize)
 }
 
-func Benchmark_Cbor_LZW_Compress(b *testing.B) {
+func Benchmark_Cbor__________________LZW_Compress(b *testing.B) {
 	benchmarkLZWCompress(b, "cbor", testDefaultByteSize)
 }
 
-func Benchmark_Cbor_Reading(b *testing.B) {
+func Benchmark_Cbor_______________________Reading(b *testing.B) {
 	benchmarkSeriesReading(b, "cbor", testDefaultByteSize)
 }
