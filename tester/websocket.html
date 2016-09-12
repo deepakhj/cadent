@@ -26,7 +26,6 @@ window.addEventListener("load", function(evt) {
             return
         }
         URL = "ws://localhost:8083/graphite/ws/metric?target=" + met
-        console.log(URL)
         try{
             ws = new WebSocket(URL);
         }catch(e){
@@ -38,10 +37,14 @@ window.addEventListener("load", function(evt) {
         ws.onerror = function(evt) {
             print("ERROR: " + evt.data);
         }
+        ws.onclose = function(evt) {
+            print("CLOSE: " + evt.code +":" + evt.reason);
+        }
     }
     
    
     document.getElementById("send").onclick = function(evt) {
+        output.innerHTML = "";
         onSend()
         return false;
     };
