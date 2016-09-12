@@ -26,6 +26,7 @@ import (
 	"flag"
 	"fmt"
 	logging "gopkg.in/op/go-logging.v1"
+	"io"
 	"io/ioutil"
 	"net/http"
 	_ "net/http/pprof"
@@ -42,9 +43,32 @@ var ConstHashBuild string
 
 var log = logging.MustGetLogger("main")
 
-func logInit() {
-	var format = "%{color}%{time:2006-01-02 15:04:05.000} [%{module}] ▶ %{level:.4s} %{color:reset} %{message}"
-	logBackend := logging.NewLogBackend(os.Stderr, "", 0)
+func logInit(file string, format string) {
+	if format == "" {
+		format = "%{color}%{time:2006-01-02 15:04:05.000} [%{module}] (%{shortfile}) ▶ %{level:.4s} %{color:reset} %{message}"
+	}
+
+	var file_o io.Writer
+	var err error
+	switch file {
+	case "stdout":
+		file_o = os.Stdout
+	case "":
+		file_o = os.Stdout
+	case "stderr":
+		file_o = os.Stderr
+	default:
+
+		file_o, err = os.OpenFile(file, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
+		if os.IsNotExist(err) {
+			err = nil
+			file_o, err = os.Create(file)
+		}
+		if err != nil {
+			panic(err)
+		}
+	}
+	logBackend := logging.NewLogBackend(file_o, "", 0)
 	logging.SetFormatter(logging.MustStringFormatter(format))
 	logging.SetBackend(logBackend)
 }
@@ -182,6 +206,7 @@ func main() {
 	configFile := flag.String("config", "config.toml", "Consitent Hash configuration file")
 	regConfigFile := flag.String("prereg", "", "File that contains the Regex/Filtering by key to various backends")
 	loglevel := flag.String("loglevel", "DEBUG", "Log Level (debug, info, warning, error, critical)")
+	logfile := flag.String("logfile", "stdout", "Log File (stdout, stderr, path/to/file)")
 
 	flag.Parse()
 
@@ -190,7 +215,7 @@ func main() {
 		os.Exit(0)
 	}
 
-	logInit()
+	logInit(*logfile, "")
 
 	log.Info("Cadent version %s", ConstHashBuild)
 
