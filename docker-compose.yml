@@ -76,3 +76,12 @@ services:
       image: cassandra
       ports:
         - "0.0.0.0:9042:9042"
+        - "0.0.0.0:7199:7199"
+        - "0.0.0.0:9160:9160"
+
+    opscenter:
+          image: abh1nav/opscenter:latest
+          links:
+            - cassandra
+          ports:
+            - "0.0.0.0:8888:8888"
