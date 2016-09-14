@@ -88,17 +88,6 @@ mfp-cadent (${ON_VERIONS}.${GIT_VERSION}) unstable; urgency=low
 
 EOF
 
-## remove lock file if no other proc is running
-RUNNING=`ps --no-headers -Creprepro | wc -l`
-if [ ${RUNNING} -gt 1 ]; then
-  echo "Previous reprepro is still running. must exit"
-  exit 1
-fi 
-
-sudo rm -f /vol/mfp-jenkins-deb/repo//db/lockfile
-
-#progress Staging for angstrom packager
-#"${SOURCE}/angstrom/package" "${APP_NAME:-unknown}" "${BUILDID:-develop}" "${WORKSPACE:-.}/staging" "${WORKSPACE:-.}/output"
 progress Build complete.
 
 
