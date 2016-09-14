@@ -52,7 +52,7 @@ Has a pipeline feel but optimized for what we really need
  - relay replication
  - accumulation and aggregation
  - time series DB writing
- - graphite-api endpoints
+ - api endpoints
 
 Yes "each" of the above can be handled by a standalone app (and many do exist in the echo system) .. however at the volume
 we want to address .. there's nothing like raw RAM/CPU power on a local node (the internet, slow, ram, fast).
@@ -64,7 +64,7 @@ If metrics collection and manipulating was simple, I would not have to write thi
 
 ### What it does not do.
 
-Visualization: In the visualization world grafana wins, period we're not visualizing things in cadent.
+Visualization: In the visualization world grafana wins, period, we're not visualizing things in cadent.
 
 `result = f(timeseries)`: Graphite/graphite-api also win here, by alot.
 Their DSL for applying `fancy math` to timeseries is near impossible to match (not impossible, but really hard to
@@ -144,7 +144,7 @@ waste sockets and time sending one line at a time for things that can support mu
 
 And then ...
 
-A "PreRegex" filter on all incoming lines to either shift them to other backends (defined in the config) or
+A "Regex" filter on all incoming lines to either shift them to other backends (defined in the config) or
 simply reject the incoming line (you can thank kafka for this addition ;)
 
 And then ...
@@ -172,7 +172,7 @@ of some kind)
 
 And then ..
 
-GraphiteAPI.  Special datastores need to be able to hook into the mighty graphite eco system.  We don't yet want to imitate the
+HTTP APIs.  Special datastores need to be able to hook into the mighty graphite eco system.  We don't yet want to imitate the
 full DSL of graphite, that's really hard.
 
 And then ..
@@ -346,9 +346,9 @@ Notes on how cadent determins a "unique" id for each metric
 
 ### API/Readers
 
-Graphite like API for querying
+HTTP API for querying
 
-[See the graphite api doc](./docs/graphite-api.md)
+[See the graphite api doc](./docs/api.md)
 
 
 ### Listen Server Types
