@@ -519,12 +519,13 @@ Config Options
 
     [mypregename.accumulator.writer]
     driver = "mysql"
-    dsn = "root:password@tcp(localhost:3306)/test"
+    dsn = "$ENV{MYSQL_USER:admin}:$ENV{MYSQL_PASS:}@tcp(localhost:3306)/cadent"
         [mypregename.accumulator.writer.options]
         table = "metrics"
         path_table = "metrics_path"
         cache = "gorilla-sql"
         tags = "host=localhost,env=dev" # static tags to include w/ every metric
+        expire_on_ttl = true        # this will run a periodic job to purge "TTL'ed" data in all the tables of metrics
 
 
 
@@ -902,16 +903,18 @@ Here are the configuration options
             [to-kafka.accumulator.writer.metrics]
             driver = "kafka" // or "kafka-flat"
             dsn = "pathtokafka:9092,pathtokafka2:9092"
-            index_topic = "cadent" # topic for index message (default: cadent)
-        	metric_topic = "cadent" # topic for data messages (default: cadent)
-        	cache="gorilla-kafka" # number of metrics to aggrigate before we must drop
+            cache="gorilla-kafka" # number of metrics to aggrigate before we must drop
+            [to-kafka.accumulator.writer.metrics.options]
+        	    # some kafka options
+        	    compress = "snappy|gzip|none" (default: none)
+        	    max_retry = 10
+        	    ack_type = "local" # (all = all replicas ack, default "local")
+        	    flush_time = "1s" # flush produced messages ever tick (default "1s")
+        	    tags = "host=host1,env=prod" # these are static for whatever process is running this
+        	    index_topic = "cadent" # topic for index message (default: cadent)
+                metric_topic = "cadent" # topic for data messages (default: cadent)
+                encoding = "msgpack"  # can be "json" or "msgpack"
 
-        	# some kafka options
-        	compress = "snappy|gzip|none" (default: none)
-        	max_retry = 10
-        	ack_type = "local" # (all = all replicas ack, default "local")
-        	flush_time = "1s" # flush produced messages ever tick (default "1s")
-        	tags = "host=host1,env=prod" # these are static for whatever process is running this
 
         	[to-kafka..accumulator.writer.indexer]
             driver = "kafka"
