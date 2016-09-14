@@ -30,7 +30,6 @@ import (
 	"cadent/server/utils/shutdown"
 	"cadent/server/writers/dbs"
 	"cadent/server/writers/indexer"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/Shopify/sarama"
@@ -39,43 +38,6 @@ import (
 )
 
 var errKafkaReaderNotImplimented = errors.New("KAFKA READER NOT IMPLMENTED")
-
-/** kafka put object **/
-type KafkaMetricObj struct {
-	Type       string           `json:"type"`
-	Time       int64            `json:"time"`
-	Metric     string           `json:"metric"`
-	Sum        repr.JsonFloat64 `json:"sum"`
-	Min        repr.JsonFloat64 `json:"min"`
-	Max        repr.JsonFloat64 `json:"max"`
-	Count      int64            `json:"count"`
-	Last       repr.JsonFloat64 `json:"last"`
-	Resolution uint32           `json:"resolution"`
-	Id         repr.StatId      `json:"id"`
-	Uid        string           `json:"uid"`
-	TTL        uint32           `json:"ttl"`
-	Tags       [][]string       `json:"tags,omitempty"` // key1=value1,key2=value2...
-	MetaTags   [][]string       `json:"meta_tags,omitempty"`
-
-	encoded []byte
-	err     error
-}
-
-func (kp *KafkaMetricObj) ensureEncoded() {
-	if kp.encoded == nil && kp.err == nil {
-		kp.encoded, kp.err = json.Marshal(kp)
-	}
-}
-
-func (kp *KafkaMetricObj) Length() int {
-	kp.ensureEncoded()
-	return len(kp.encoded)
-}
-
-func (kp *KafkaMetricObj) Encode() ([]byte, error) {
-	kp.ensureEncoded()
-	return kp.encoded, kp.err
-}
 
 /****************** Interfaces *********************/
 type KafkaFlatMetrics struct {
@@ -89,6 +51,7 @@ type KafkaFlatMetrics struct {
 	shutitdown bool
 	startstop  utils.StartStop
 
+	enctype KafkaEncodingType
 	batches int // number of stats to "batch" per message (default 0)
 	log     *logging.Logger
 }
@@ -110,6 +73,11 @@ func (kf *KafkaFlatMetrics) Config(conf map[string]interface{}) error {
 	db, err := dbs.NewDB("kafka", dsn, conf)
 	if err != nil {
 		return err
+	}
+
+	enct, ok := conf["encoding"]
+	if ok {
+		kf.enctype = KafkaEncodingFromString(enct.(string))
 	}
 
 	kf.db = db.(*dbs.KafkaDB)
@@ -171,17 +139,18 @@ func (kf *KafkaFlatMetrics) Write(stat repr.StatRepr) error {
 		Type:       "metric",
 		Metric:     stat.Name.Key,
 		Time:       time.Now().UnixNano(),
-		Sum:        stat.Sum,
-		Last:       stat.Last,
+		Sum:        float64(stat.Sum),
+		Last:       float64(stat.Last),
 		Count:      stat.Count,
-		Max:        stat.Max,
-		Min:        stat.Min,
+		Max:        float64(stat.Max),
+		Min:        float64(stat.Min),
 		Resolution: stat.Name.Resolution,
 		TTL:        stat.Name.TTL,
-		Id:         stat.Name.UniqueId(),
+		Id:         uint64(stat.Name.UniqueId()),
 		Uid:        stat.Name.UniqueIdString(),
 		Tags:       stat.Name.SortedTags(),
 		MetaTags:   stat.Name.SortedMetaTags(),
+		encodetype: kf.enctype,
 	}
 
 	stats.StatsdClientSlow.Incr("writer.kafkaflat.metrics.writes", 1)

@@ -30,6 +30,7 @@ import (
 	"compress/flate"
 	"encoding/gob"
 	"io"
+	"math"
 	"sync"
 )
 
@@ -41,14 +42,19 @@ const (
 
 // this can only handle "future pushing times" not random times
 type ZipGobTimeSeries struct {
-	mu   sync.Mutex
+	mu   *sync.Mutex
 	sTag string
 
 	T0       int64
 	curCount int
 
-	curDelta       int64
-	curTime        int64
+	curDelta      int64
+	curTime       int64
+	curCountDelta int64
+	curVals       []float64
+	curValDeltas  []uint64
+	curValCount   int64
+
 	fullResolution bool
 
 	buf     *gobBuffer
@@ -63,6 +69,9 @@ func NewZipGobTimeSeries(t0 int64, options *Options) *ZipGobTimeSeries {
 		curTime:        0,
 		curDelta:       0,
 		curCount:       0,
+		curVals:        make([]float64, 4),
+		curValDeltas:   make([]uint64, 4),
+		mu:             new(sync.Mutex),
 		fullResolution: options.HighTimeResolution,
 		buf:            new(gobBuffer),
 	}
@@ -135,8 +144,23 @@ func (s *ZipGobTimeSeries) Iter() (TimeSeriesIter, error) {
 	return NewZipGobIter(bytes.NewBuffer(s.Bytes()))
 }
 
+func (s *ZipGobTimeSeries) Copy() TimeSeries {
+	g := *s
+	g.mu = new(sync.Mutex)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.zip.Flush()
+	g.buf = new(gobBuffer)
+	g.buf.Write(s.buf.Clone())
+
+	return &g
+}
+
 // the t is the "time we want to add
 func (s *ZipGobTimeSeries) AddPoint(t int64, min float64, max float64, last float64, sum float64, count int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	use_t := t
 	if !s.fullResolution {
 		tt, _ := splitNano(t)
@@ -145,26 +169,57 @@ func (s *ZipGobTimeSeries) AddPoint(t int64, min float64, max float64, last floa
 
 	if s.curTime == 0 {
 		s.curDelta = use_t - s.T0
+		s.curVals[0] = min
+		s.curVals[1] = max
+		s.curVals[2] = last
+		s.curVals[3] = sum
+		s.curValCount = count
 	} else {
 		s.curDelta = use_t - s.curTime
+		s.curValDeltas[0] = math.Float64bits(s.curVals[0]) ^ math.Float64bits(min)
+		s.curVals[0] = min
+
+		s.curValDeltas[1] = math.Float64bits(s.curVals[1]) ^ math.Float64bits(max)
+		s.curVals[1] = max
+
+		s.curValDeltas[2] = math.Float64bits(s.curVals[2]) ^ math.Float64bits(last)
+		s.curVals[2] = last
+
+		s.curValDeltas[3] = math.Float64bits(s.curVals[3]) ^ math.Float64bits(sum)
+		s.curVals[3] = sum
+
+		s.curCountDelta = count - s.curValCount
 	}
 
-	s.curTime = use_t
-	s.mu.Lock()
 	s.encoder.Encode(s.curDelta)
 	if count == 1 || sameFloatVals(min, max, last, sum) {
 		s.encoder.Encode(false)
-		s.encoder.Encode(sum) // just the sum
+		if s.curTime == 0 {
+			s.encoder.Encode(s.curVals[3]) // just the sum
+		} else {
+			s.encoder.Encode(s.curValDeltas[3]) // just the sum
+		}
 	} else {
 		s.encoder.Encode(true)
-		s.encoder.Encode(min)
-		s.encoder.Encode(max)
-		s.encoder.Encode(last)
-		s.encoder.Encode(sum)
-		s.encoder.Encode(count)
+		if s.curTime == 0 {
+			s.encoder.Encode(s.curVals[0])
+			s.encoder.Encode(s.curVals[1])
+			s.encoder.Encode(s.curVals[2])
+			s.encoder.Encode(s.curVals[3])
+			s.encoder.Encode(s.curValCount)
+
+		} else {
+			s.encoder.Encode(s.curValDeltas[0])
+			s.encoder.Encode(s.curValDeltas[1])
+			s.encoder.Encode(s.curValDeltas[2])
+			s.encoder.Encode(s.curValDeltas[3])
+			s.encoder.Encode(s.curCountDelta)
+		}
 	}
-	s.mu.Unlock()
-	s.curCount++
+	s.curTime = use_t
+	s.curValCount = count
+
+	s.curCount += 1
 	return nil
 }
 

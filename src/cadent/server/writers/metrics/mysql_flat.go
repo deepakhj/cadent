@@ -46,6 +46,7 @@ package metrics
 
 import (
 	"cadent/server/repr"
+	"cadent/server/utils"
 	"cadent/server/utils/shutdown"
 	"cadent/server/writers/dbs"
 	"cadent/server/writers/indexer"
@@ -75,6 +76,7 @@ type MySQLFlatMetrics struct {
 
 	shutitdown bool
 	shutdown   chan bool
+	startstop  utils.StartStop
 }
 
 func NewMySQLFlatMetrics() *MySQLFlatMetrics {
@@ -132,17 +134,28 @@ func (my *MySQLFlatMetrics) Driver() string {
 }
 
 func (my *MySQLFlatMetrics) Stop() {
-	if my.shutitdown {
-		return
-	}
-	my.shutitdown = true
-	shutdown.AddToShutdown()
-	my.shutdown <- true
+	my.startstop.Stop(func() {
+		if my.shutitdown {
+			return
+		}
+
+		my.shutitdown = true
+		shutdown.AddToShutdown()
+		my.shutdown <- true
+	})
 	return
 }
 
 func (my *MySQLFlatMetrics) Start() {
-	go my.PeriodFlush()
+	my.startstop.Start(func() {
+		go my.PeriodFlush()
+
+		// now we make sure the metrics schemas are added
+		err := NewMySQLMetricsSchema(my.conn, my.db.RootMetricsTableName(), my.resolutions, "flat").AddMetricsTable()
+		if err != nil {
+			panic(err)
+		}
+	})
 }
 
 func (my *MySQLFlatMetrics) SetIndexer(idx indexer.Indexer) error {
@@ -244,7 +257,7 @@ func (my *MySQLFlatMetrics) Write(stat repr.StatRepr) error {
 /**** READER ***/
 // XXX TODO
 
-func (my *MySQLFlatMetrics) RawRender(path string, from int64, to int64) ([]*RawRenderItem, error) {
+func (my *MySQLFlatMetrics) RawRender(path string, from int64, to int64, tags repr.SortingTags) ([]*RawRenderItem, error) {
 	return []*RawRenderItem{}, fmt.Errorf("MYSQL READER NOT YET DONE")
 }
 func (my *MySQLFlatMetrics) CacheRender(path string, from int64, to int64, tags repr.SortingTags) ([]*RawRenderItem, error) {

@@ -46,6 +46,7 @@ import (
 	"cadent/server/repr"
 	"encoding/gob"
 	"io"
+	"math"
 	"sync"
 	"time"
 )
@@ -94,14 +95,18 @@ func (e *gobBuffer) Reset() {
 
 // this can only handle "future pushing times" not random times
 type GobTimeSeries struct {
-	mu sync.Mutex
+	mu *sync.Mutex
 
 	T0             int64
 	fullResolution bool // true for nanosecond, false for just second
 	sTag           string
 
-	curDelta int64
-	curTime  int64
+	curDelta      int64
+	curTime       int64
+	curCountDelta int64
+	curVals       []float64
+	curValDeltas  []uint64
+	curValCount   int64
 
 	buf      *gobBuffer
 	encoder  *gob.Encoder
@@ -115,6 +120,10 @@ func NewGobTimeSeries(t0 int64, options *Options) *GobTimeSeries {
 		curTime:        0,
 		curDelta:       0,
 		curCount:       0,
+		curCountDelta:  0,
+		mu:             new(sync.Mutex),
+		curVals:        make([]float64, 4),
+		curValDeltas:   make([]uint64, 4),
 		sTag:           SIMPLE_BIN_SERIES_TAG,
 		buf:            new(gobBuffer),
 	}
@@ -193,6 +202,15 @@ func (s *GobTimeSeries) HighResolution() bool {
 	return s.fullResolution
 }
 
+func (s *GobTimeSeries) Copy() TimeSeries {
+	g := *s
+	g.mu = new(sync.Mutex)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	g.buf.data = s.buf.Clone()
+	return &g
+}
+
 // the t is the "time we want to add
 func (s *GobTimeSeries) AddPoint(t int64, min float64, max float64, last float64, sum float64, count int64) error {
 	s.mu.Lock()
@@ -206,23 +224,56 @@ func (s *GobTimeSeries) AddPoint(t int64, min float64, max float64, last float64
 
 	if s.curTime == 0 {
 		s.curDelta = use_t - s.T0
+		s.curVals[0] = min
+		s.curVals[1] = max
+		s.curVals[2] = last
+		s.curVals[3] = sum
+		s.curValCount = count
 	} else {
 		s.curDelta = use_t - s.curTime
+		s.curValDeltas[0] = math.Float64bits(s.curVals[0]) ^ math.Float64bits(min)
+		s.curVals[0] = min
+
+		s.curValDeltas[1] = math.Float64bits(s.curVals[1]) ^ math.Float64bits(max)
+		s.curVals[1] = max
+
+		s.curValDeltas[2] = math.Float64bits(s.curVals[2]) ^ math.Float64bits(last)
+		s.curVals[2] = last
+
+		s.curValDeltas[3] = math.Float64bits(s.curVals[3]) ^ math.Float64bits(sum)
+		s.curVals[3] = sum
+
+		s.curCountDelta = count - s.curValCount
 	}
 
-	s.curTime = use_t
 	s.encoder.Encode(s.curDelta)
 	if count == 1 || sameFloatVals(min, max, last, sum) {
 		s.encoder.Encode(false)
-		s.encoder.Encode(sum) // just the sum
+		if s.curTime == 0 {
+			s.encoder.Encode(s.curVals[3]) // just the sum
+		} else {
+			s.encoder.Encode(s.curValDeltas[3]) // just the sum
+		}
 	} else {
 		s.encoder.Encode(true)
-		s.encoder.Encode(min)
-		s.encoder.Encode(max)
-		s.encoder.Encode(last)
-		s.encoder.Encode(sum)
-		s.encoder.Encode(count)
+		if s.curTime == 0 {
+			s.encoder.Encode(s.curVals[0])
+			s.encoder.Encode(s.curVals[1])
+			s.encoder.Encode(s.curVals[2])
+			s.encoder.Encode(s.curVals[3])
+			s.encoder.Encode(s.curValCount)
+
+		} else {
+			s.encoder.Encode(s.curValDeltas[0])
+			s.encoder.Encode(s.curValDeltas[1])
+			s.encoder.Encode(s.curValDeltas[2])
+			s.encoder.Encode(s.curValDeltas[3])
+			s.encoder.Encode(s.curCountDelta)
+		}
 	}
+	s.curTime = use_t
+	s.curValCount = count
+
 	s.curCount += 1
 	return nil
 }
@@ -234,16 +285,22 @@ func (s *GobTimeSeries) AddStat(stat *repr.StatRepr) error {
 // Iter lets you iterate over a series.  It is not concurrency-safe.
 // but you should give it a "copy" of any byte array
 type GobIter struct {
-	T0             int64
-	curTime        int64
-	fullResolution bool // true for nanosecond, false for just second
+	T0      int64
+	curTime int64
 
-	tDelta int64
-	min    float64
-	max    float64
-	last   float64
-	sum    float64
-	count  int64
+	tDelta     int64
+	countDelta int64
+	minDelta   uint64
+	maxDelta   uint64
+	lastDelta  uint64
+	sumDelta   uint64
+
+	fullResolution bool // true for nanosecond, false for just second
+	min            float64
+	max            float64
+	last           float64
+	sum            float64
+	count          int64
 
 	decoder *gob.Decoder
 
@@ -266,6 +323,7 @@ func NewGobIter(buf *bytes.Buffer, tag string) (*GobIter, error) {
 
 	// need to pull the start time
 	err = it.decoder.Decode(&it.T0)
+
 	return it, err
 }
 
@@ -286,6 +344,8 @@ func (it *GobIter) Next() bool {
 		return false
 	}
 
+	is_start := it.curTime == 0
+
 	it.tDelta = it.tDelta + int64(t_delta)
 	it.curTime = it.T0 + it.tDelta
 
@@ -302,51 +362,103 @@ func (it *GobIter) Next() bool {
 
 	// if the full.small bit is false, just one val to decode
 	if !f_bit {
-		var val float64
-		err = it.decoder.Decode(&val)
+		if is_start {
+			err = it.decoder.Decode(&it.sum)
+		} else {
+			err = it.decoder.Decode(&it.sumDelta)
+		}
 		if err != nil {
 			it.finished = true
 			it.err = err
 			return false
 		}
-		it.min = val
-		it.max = val
-		it.last = val
+
+		if !is_start {
+			it.sum = math.Float64frombits(math.Float64bits(it.sum) ^ it.sumDelta)
+		}
+
+		it.min = it.sum
+		it.max = it.sum
+		it.last = it.sum
 		it.count = 1
-		it.sum = val
+		it.sum = it.sum
 		return true
 	}
 
-	err = it.decoder.Decode(&it.min)
-	if err != nil {
-		it.finished = true
-		it.err = err
-		return false
+	if is_start {
+		err = it.decoder.Decode(&it.min)
+		if err != nil {
+			it.finished = true
+			it.err = err
+			return false
+		}
+		err = it.decoder.Decode(&it.max)
+		if err != nil {
+			it.finished = true
+			it.err = err
+			return false
+		}
+		err = it.decoder.Decode(&it.last)
+		if err != nil {
+			it.finished = true
+			it.err = err
+			return false
+		}
+		err = it.decoder.Decode(&it.sum)
+		if err != nil {
+			it.finished = true
+			it.err = err
+			return false
+		}
+		err = it.decoder.Decode(&it.count)
+		if err != nil {
+			it.finished = true
+			it.err = err
+			return false
+		}
+	} else {
+
+		err = it.decoder.Decode(&it.minDelta)
+		if err != nil {
+			it.finished = true
+			it.err = err
+			return false
+		}
+		it.min = math.Float64frombits(math.Float64bits(it.min) ^ it.minDelta)
+
+		err = it.decoder.Decode(&it.maxDelta)
+		if err != nil {
+			it.finished = true
+			it.err = err
+			return false
+		}
+		it.max = math.Float64frombits(math.Float64bits(it.max) ^ it.maxDelta)
+
+		err = it.decoder.Decode(&it.lastDelta)
+		if err != nil {
+			it.finished = true
+			it.err = err
+			return false
+		}
+		it.last = math.Float64frombits(math.Float64bits(it.last) ^ it.lastDelta)
+
+		err = it.decoder.Decode(&it.sumDelta)
+		if err != nil {
+			it.finished = true
+			it.err = err
+			return false
+		}
+		it.sum = math.Float64frombits(math.Float64bits(it.sum) ^ it.sumDelta)
+
+		err = it.decoder.Decode(&it.countDelta)
+		if err != nil {
+			it.finished = true
+			it.err = err
+			return false
+		}
+		it.count += it.countDelta
 	}
-	err = it.decoder.Decode(&it.max)
-	if err != nil {
-		it.finished = true
-		it.err = err
-		return false
-	}
-	err = it.decoder.Decode(&it.last)
-	if err != nil {
-		it.finished = true
-		it.err = err
-		return false
-	}
-	err = it.decoder.Decode(&it.sum)
-	if err != nil {
-		it.finished = true
-		it.err = err
-		return false
-	}
-	err = it.decoder.Decode(&it.count)
-	if err != nil {
-		it.finished = true
-		it.err = err
-		return false
-	}
+
 	return true
 }
 

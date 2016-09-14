@@ -174,6 +174,10 @@ func (my *MySQLIndexer) Name() string { return my.indexerId }
 func (my *MySQLIndexer) Start() {
 	my.startstop.Start(func() {
 		my.log.Notice("starting mysql indexer: %s/%s/%s", my.db.PathTable(), my.db.SegmentTable(), my.db.TagTable())
+		err := NewMySQLIndexSchema(my.conn, my.db.SegmentTable(), my.db.PathTable(), my.db.TagTable()).AddIndexTables()
+		if err != nil {
+			panic(err)
+		}
 		retries := 2
 		my.dispatcher = dispatch.NewDispatchQueue(my.num_workers, my.queue_len, retries)
 		my.dispatcher.Start()
@@ -270,21 +274,16 @@ func (my *MySQLIndexer) WriteTags(inname *repr.StatName, do_main bool, do_meta b
 	if have_tgs && do_main {
 
 		for _, tag := range inname.Tags.Tags() {
-			tag_key := fmt.Sprintf("%s:%s:%v", tag[0], tag[1], true)
-			my.tagMu.RLock()
-			gots, ok := my.tagIdCache[tag_key]
-			my.tagMu.RUnlock()
-			if ok {
-				tag_ids = append(tag_ids, gots)
+			c_id, c_meta := my.inTagCache(tag[0], tag[1])
+			if c_id > 0 && c_meta == false {
+				tag_ids = append(tag_ids, c_id)
 			} else {
 				res, err := tx.Exec(tagQ, tag[0], tag[1], false)
 				if err != nil {
 					if strings.Contains(fmt.Sprintf("%s", err), "Duplicate entry") {
 						id, err := my.FindTagId(tag[0], tag[1], false)
 						if err == nil {
-							my.tagMu.Lock()
-							my.tagIdCache[tag_key] = id
-							my.tagMu.Unlock()
+							tag_ids = append(tag_ids, id)
 							continue
 						}
 					}
@@ -298,29 +297,23 @@ func (my *MySQLIndexer) WriteTags(inname *repr.StatName, do_main bool, do_meta b
 					continue
 				}
 				tag_ids = append(tag_ids, id)
-				my.tagIdCache[tag_key] = id
+				my.setTagCache(id, tag[0], tag[1], false)
 			}
 		}
 	}
 
 	if have_meta && do_meta {
 		for _, tag := range inname.MetaTags.Tags() {
-			tag_key := fmt.Sprintf("%s:%s:%v", tag[0], tag[1], true)
-			my.tagMu.RLock()
-			gots, ok := my.tagIdCache[tag_key]
-			my.tagMu.RUnlock()
-
-			if ok {
-				tag_ids = append(tag_ids, gots)
+			c_id, c_meta := my.inTagCache(tag[0], tag[1])
+			if c_id > 0 && c_meta == true {
+				tag_ids = append(tag_ids, c_id)
 			} else {
 				res, err := tx.Exec(tagQ, tag[0], tag[1], true)
 				if err != nil {
 					if strings.Contains(fmt.Sprintf("%s", err), "Duplicate entry") {
 						id, err := my.FindTagId(tag[0], tag[1], true)
 						if err == nil {
-							my.tagMu.Lock()
-							my.tagIdCache[tag_key] = id
-							my.tagMu.Unlock()
+							tag_ids = append(tag_ids, id)
 							continue
 						}
 					}
@@ -333,9 +326,7 @@ func (my *MySQLIndexer) WriteTags(inname *repr.StatName, do_main bool, do_meta b
 					continue
 				}
 				tag_ids = append(tag_ids, id)
-				my.tagMu.Lock()
-				my.tagIdCache[tag_key] = id
-				my.tagMu.Unlock()
+				my.setTagCache(id, tag[0], tag[1], true)
 
 			}
 		}
@@ -641,8 +632,40 @@ func (my *MySQLIndexer) Expand(metric string) (MetricExpandItem, error) {
 }
 
 /******************* TAG METHODS **********************************/
+func (my *MySQLIndexer) inTagCache(name string, value string) (tag_id int64, ismeta bool) {
+	tag_key := fmt.Sprintf("%s:%s:%v", name, value, true)
+	tag_mkey := fmt.Sprintf("%s:%s:%v", name, value, false)
+
+	my.tagMu.RLock()
+	defer my.tagMu.RUnlock()
+
+	have_cache := false
+	tag_id, have_cache = my.tagIdCache[tag_key]
+	if have_cache {
+		return tag_id, true
+	}
+
+	tag_id, have_cache = my.tagIdCache[tag_mkey]
+	if have_cache {
+		return tag_id, false
+	}
+	return 0, false
+}
+func (my *MySQLIndexer) setTagCache(id int64, name string, value string, ismeta bool) {
+	tag_key := fmt.Sprintf("%s:%s:%v", name, value, ismeta)
+	my.tagMu.Lock()
+	defer my.tagMu.Unlock()
+	my.tagIdCache[tag_key] = id
+}
 
 func (my *MySQLIndexer) FindTagId(name string, value string, ismeta bool) (int64, error) {
+
+	// see if in the writer tag cache
+	c_id, c_meta := my.inTagCache(name, value)
+	if ismeta == c_meta && c_id > 0 {
+		return c_id, nil
+	}
+
 	sel_tagQ := fmt.Sprintf(
 		"SELECT id FROM %s WHERE name=? AND value=? AND is_meta=?",
 		my.db.TagTable(),
@@ -661,6 +684,8 @@ func (my *MySQLIndexer) FindTagId(name string, value string, ismeta bool) (int64
 			my.log.Error("Error Getting Tags Iterator: %s : %v", sel_tagQ, err)
 			return 0, err
 		}
+		my.setTagCache(id, name, value, ismeta)
+
 		return id, nil
 	}
 	return 0, nil
@@ -689,6 +714,7 @@ func (my *MySQLIndexer) GetTagsByUid(unique_id string) (tags repr.SortingTags, m
 		err = rows.Scan(&name, &value, &is_meta)
 		if err != nil {
 			my.log.Error("Error Getting Tags Iterator: %s : %v", tgsQ, err)
+			continue
 		}
 		if is_meta {
 			metatags = metatags.Set(name, value)
@@ -731,6 +757,7 @@ func (my *MySQLIndexer) GetTagsByName(name string, page int) (tags MetricTagItem
 			return
 		}
 		tags = append(tags, MetricTagItem{Name: tname, Value: value, Id: id, IsMeta: is_meta})
+		my.setTagCache(id, tname, value, is_meta)
 	}
 	return
 }
@@ -753,8 +780,17 @@ func (my *MySQLIndexer) GetTagsByNameValue(name string, value string, page int) 
 			my.db.TagTable(),
 		)
 		use_val = regifyMysqlKeyString(value)
+	} else {
+		// see if in cache
+		c_id, c_meta := my.inTagCache(name, value)
+		if c_id > 0 {
+			tags = append(tags, MetricTagItem{Name: name, Value: value, Id: c_id, IsMeta: c_meta})
+			return tags, nil
+		}
+
 	}
-	rows, err := my.conn.Query(sel_tagQ, use_name, regifyMysqlKeyString(use_val), page*MAX_PER_PAGE, MAX_PER_PAGE)
+	my.log.Errorf("Q: %v | %s, %s", sel_tagQ, use_name, use_val)
+	rows, err := my.conn.Query(sel_tagQ, use_name, use_val, page*MAX_PER_PAGE, MAX_PER_PAGE)
 	if err != nil {
 		my.log.Error("Error Getting Tags: %s : %v", sel_tagQ, err)
 		return tags, err
@@ -771,6 +807,10 @@ func (my *MySQLIndexer) GetTagsByNameValue(name string, value string, page int) 
 			return
 		}
 		tags = append(tags, MetricTagItem{Name: tname, Value: tvalue, Id: id, IsMeta: is_meta})
+
+		// add to caches
+		my.setTagCache(id, tname, tvalue, is_meta)
+
 	}
 	return
 }
@@ -789,8 +829,7 @@ func (my *MySQLIndexer) GetUidsByTags(key string, tags repr.SortingTags, page in
 	)
 
 	nested_q := fmt.Sprintf(
-		" (SELECT uid "+
-			"FROM %s WHERE tag_id = ?) ",
+		" (SELECT uid FROM %s WHERE tag_id = ?) ",
 		my.db.TagTableXref(),
 	)
 
@@ -907,7 +946,7 @@ func (my *MySQLIndexer) List(has_data bool, page int) (MetricFindItems, error) {
 }
 
 // basic find for non-regex items
-func (my *MySQLIndexer) FindNonRegex(metric string) (MetricFindItems, error) {
+func (my *MySQLIndexer) FindNonRegex(metric string, tags repr.SortingTags) (MetricFindItems, error) {
 
 	defer stats.StatsdSlowNanoTimeFunc("indexer.mysql.findnoregex.get-time-ns", time.Now())
 
@@ -924,6 +963,37 @@ func (my *MySQLIndexer) FindNonRegex(metric string) (MetricFindItems, error) {
 		my.db.PathTable(),
 	)
 
+	args := []interface{}{
+		m_len - 1, metric, metric,
+	}
+
+	// if "tags" we need to find the tag Ids, and do the cross join
+	tag_ids := make([]int64, 0)
+	for _, tag := range tags {
+		t_ids, _ := my.GetTagsByNameValue(tag[0], tag[1], 0)
+		for _, tg := range t_ids {
+			tag_ids = append(tag_ids, tg.Id.(int64))
+		}
+	}
+
+	if len(tag_ids) > 0 {
+		pathQ = fmt.Sprintf(
+			"SELECT uid,path,length,has_data FROM %s "+
+				" WHERE ((pos=? AND segment=?) OR (uid = ? AND segment = path AND has_data=1)) AND"+
+				" uid IN (SELECT uid FROM %s WHERE %s.tag_id IN ",
+			my.db.PathTable(), my.db.TagTableXref(), my.db.TagTableXref(),
+		)
+		pathQ += "("
+		for idx, tgid := range tag_ids {
+			pathQ += "?"
+			if idx != len(tag_ids)-1 {
+				pathQ += ","
+			}
+			args = append(args, tgid)
+		}
+		pathQ += "))"
+	}
+
 	var mt MetricFindItems
 	var ms MetricFindItem
 	var on_pth string
@@ -931,7 +1001,7 @@ func (my *MySQLIndexer) FindNonRegex(metric string) (MetricFindItems, error) {
 	var id string
 	var has_data bool
 
-	rows, err := my.conn.Query(pathQ, m_len-1, metric, metric)
+	rows, err := my.conn.Query(pathQ, args...)
 	if err != nil {
 		return mt, err
 	}
@@ -960,6 +1030,16 @@ func (my *MySQLIndexer) FindNonRegex(metric string) (MetricFindItems, error) {
 
 			// grab ze tags
 			ms.Tags, ms.MetaTags, err = my.GetTagsByUid(id)
+
+			// the above query "prefilters" tags, but it's an "OR" statement, we really want an
+			// "And" but that join is not an "easy" one to really do, so we do the "and" here
+			if len(tag_ids) > 0 && err == nil {
+				m_tags := ms.Tags
+				m_tags = m_tags.Merge(ms.MetaTags)
+				if !m_tags.HasAllTags(tags) {
+					continue
+				}
+			}
 
 		} else {
 			ms.Expandable = 1
@@ -1017,7 +1097,7 @@ func (my *MySQLIndexer) FindRoot() (MetricFindItems, error) {
 }
 
 // to allow for multiple targets
-func (my *MySQLIndexer) Find(metric string) (MetricFindItems, error) {
+func (my *MySQLIndexer) Find(metric string, tags repr.SortingTags) (MetricFindItems, error) {
 	// the regex case is a bit more complicated as we need to grab ALL the segments of a given length.
 	// see if the match the regex, and then add them to the lists since cassandra does not provide regex abilities
 	// on the server side
@@ -1046,7 +1126,7 @@ func (my *MySQLIndexer) Find(metric string) (MetricFindItems, error) {
 
 	//cass.log.Debug("HasReg: %v Metric: %s", needs_regex, metric)
 	if !needs_regex {
-		return my.FindNonRegex(metric)
+		return my.FindNonRegex(metric, tags)
 	}
 
 	// convert the "graphite regex" into something golang understands (just the "."s really)
@@ -1079,7 +1159,7 @@ func (my *MySQLIndexer) Find(metric string) (MetricFindItems, error) {
 		if !the_reg.MatchString(seg) {
 			continue
 		}
-		items, err := my.FindNonRegex(seg)
+		items, err := my.FindNonRegex(seg, tags)
 		if err != nil {
 			my.log.Warning("could not get segments for `%s` :: %v", seg, err)
 			continue

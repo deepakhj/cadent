@@ -48,6 +48,11 @@ func NewFindAPI(a *ApiLoop) *FindAPI {
 }
 
 func (f *FindAPI) AddHandlers(mux *mux.Router) {
+	// these are for a "raw" graphite like finder (skipping the graphite-api)
+	mux.HandleFunc("/metrics/find/", f.Find)
+	mux.HandleFunc("/metrics/find", f.Find)
+
+	// for 'py-cadent'
 	mux.HandleFunc("/find", f.Find)
 	mux.HandleFunc("/paths", f.Find)
 	mux.HandleFunc("/expand", f.Expand)
@@ -56,16 +61,18 @@ func (f *FindAPI) AddHandlers(mux *mux.Router) {
 func (re *FindAPI) Find(w http.ResponseWriter, r *http.Request) {
 	defer stats.StatsdNanoTimeFunc("reader.http.find.get-time-ns", time.Now())
 	r.ParseForm()
-	var query string
 
-	query = strings.TrimSpace(r.Form.Get("query"))
+	args, err := ParseFindQuery(r)
+	if err != nil {
+		re.a.OutError(w, fmt.Sprintf("%v", err), http.StatusBadRequest)
+	}
 
-	if len(query) == 0 {
+	if len(args.Query) == 0 {
 		re.a.OutError(w, "Query is required", http.StatusBadRequest)
 		return
 	}
 
-	data, err := re.indexer.Find(query)
+	data, err := re.indexer.Find(args.Query, args.Tags)
 	if err != nil {
 		re.a.OutError(w, fmt.Sprintf("%v", err), http.StatusServiceUnavailable)
 		return

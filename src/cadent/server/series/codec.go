@@ -44,7 +44,7 @@ const (
 )
 
 type CodecTimeSeries struct {
-	mu sync.Mutex
+	mu *sync.Mutex
 
 	T0      int64
 	curTime int64
@@ -60,6 +60,7 @@ func NewCodecTimeSeries(t0 int64, options *Options) *CodecTimeSeries {
 	ret := &CodecTimeSeries{
 		T0:  t0,
 		ct:  0,
+		mu:  new(sync.Mutex),
 		buf: new(bytes.Buffer),
 	}
 
@@ -145,6 +146,17 @@ func (s *CodecTimeSeries) StartTime() int64 {
 
 func (s *CodecTimeSeries) LastTime() int64 {
 	return s.curTime
+}
+
+func (s *CodecTimeSeries) Copy() TimeSeries {
+	g := *s
+	g.mu = new(sync.Mutex)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	g.buf = &bytes.Buffer{}
+	io.Copy(g.buf, s.buf)
+
+	return &g
 }
 
 // the t is the "time we want to add

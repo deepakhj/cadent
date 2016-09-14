@@ -97,7 +97,7 @@ var errNegativeTimeDelta = errors.New("Gorilla format cannot have out-of-order t
 
 // this can only handle "future pushing times" not random times
 type GorillaTimeSeries struct {
-	sync.Mutex
+	mu *sync.Mutex
 
 	curCount       int
 	fullResolution bool // true for nanosecond, false for just second
@@ -127,6 +127,7 @@ func NewGoriallaTimeSeries(t0 int64, options *Options) *GorillaTimeSeries {
 
 	ret := &GorillaTimeSeries{
 		Ts:             ts,
+		mu:             new(sync.Mutex),
 		Tms:            tms,
 		fullResolution: options.HighTimeResolution,
 		curDelta:       0,
@@ -189,8 +190,8 @@ func (s *GorillaTimeSeries) HighResolution() bool {
 }
 
 func (s *GorillaTimeSeries) Finish() {
-	s.Lock()
-	defer s.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	setFinished(&s.bw)
 }
 
@@ -202,8 +203,8 @@ func (s *GorillaTimeSeries) MarshalBinary() ([]byte, error) {
 }
 
 func (s *GorillaTimeSeries) Bytes() []byte {
-	s.Lock()
-	defer s.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	bb := s.bw.Clone()
 	setFinished(bb)
@@ -212,8 +213,8 @@ func (s *GorillaTimeSeries) Bytes() []byte {
 }
 
 func (s *GorillaTimeSeries) Len() int {
-	s.Lock()
-	defer s.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return len(s.bw.Bytes())
 }
 
@@ -232,6 +233,15 @@ func (s *GorillaTimeSeries) Iter() (TimeSeriesIter, error) {
 func (s *GorillaTimeSeries) UnmarshalBinary(data []byte) error {
 	s.bw.SetStream(data)
 	return nil
+}
+
+func (s *GorillaTimeSeries) Copy() TimeSeries {
+	g := *s
+	g.mu = new(sync.Mutex)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	g.bw = *s.bw.Clone()
+	return &g
 }
 
 // compress a float64 based on the last value added
@@ -348,8 +358,8 @@ func (s *GorillaTimeSeries) AddTime(t int64) error {
 }
 
 func (s *GorillaTimeSeries) AddPoint(t int64, min float64, max float64, last float64, sum float64, count int64) error {
-	s.Lock()
-	defer s.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	start := s.curTime == 0
 	err := s.AddTime(t)

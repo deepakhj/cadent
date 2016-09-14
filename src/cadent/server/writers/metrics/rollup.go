@@ -58,8 +58,8 @@ import (
 )
 
 const (
-	ROLLUP_QUEUE_LENGTH = 2048
-	ROLLUP_NUM_WORKERS  = 8
+	ROLLUP_QUEUE_LENGTH = 4096
+	ROLLUP_NUM_WORKERS  = 32
 	ROLLUP_NUM_RETRIES  = 2
 )
 
@@ -229,7 +229,7 @@ func (rl *RollupMetric) DoRollup(tseries *TotalTimeSeries) error {
 
 		// we may need to add multiple chunks based on the chunk size we have
 		m_tseries := make([]series.TimeSeries, 0)
-		//rl.log.Debug("WRITE: %d %d %s Data: %d", rawd.RealStart, rawd.RealEnd, tseries.Name.Key, len(rawd.Data))
+		rl.log.Debug("WRITE: %d %d %s Data: %d", rawd.RealStart, rawd.RealEnd, tseries.Name.Key, len(rawd.Data))
 		for _, point := range rawd.Data {
 			// skip it if not a real point
 			if point.IsNull() {
@@ -239,15 +239,12 @@ func (rl *RollupMetric) DoRollup(tseries *TotalTimeSeries) error {
 			use_t := time.Unix(int64(point.Time), 0).UnixNano()
 			err := nseries.AddPoint(use_t, point.Min, point.Max, point.Last, point.Sum, point.Count)
 			if err != nil {
-				rl.log.Error("Add point failed: %v", err)
+				rl.log.Errorf("Add point failed: %v", err)
 				continue
 			}
 			// need a new series
 			if nseries.Len() > rl.blobMaxBytes {
 				m_tseries = append(m_tseries, nseries)
-
-				n_opts := series.NewDefaultOptions()
-				n_opts.HighTimeResolution = tseries.Series.HighResolution()
 				nseries, err = series.NewTimeSeries(tseries.Series.Name(), use_t, n_opts)
 				if err != nil {
 					return err
@@ -268,16 +265,27 @@ func (rl *RollupMetric) DoRollup(tseries *TotalTimeSeries) error {
 		l_old := len(old_data)
 		for idx, ts := range m_tseries {
 			if l_old > idx {
-				rl.log.Debug("Update Series Resolution %d: %s %d->%d", resolution, old_data[idx].Uid, old_data[idx].Start, old_data[idx].End)
+				rl.log.Debug(
+					"Update Series Resolution %d: %s Old: %d -> %d New: %d -> %d (%d -> %d points)",
+					resolution,
+					old_data[idx].Uid,
+					old_data[idx].Start,
+					old_data[idx].End,
+					ts.StartTime(),
+					ts.LastTime(),
+					len(rawd.Data),
+					ts.Count(),
+				)
 				rl.writer.UpdateDBSeries(old_data[idx], ts)
 			} else {
 				rl.log.Debug(
-					"Insert New Series Resolution %d: %s (%s) %d->%d",
+					"Insert New Series Resolution %d: %s (%s) %d->%d (%d points)",
 					resolution,
 					new_name.Key,
 					new_name.UniqueIdString(),
 					ts.StartTime(),
 					ts.LastTime(),
+					ts.Count(),
 				)
 				_, err = rl.writer.InsertDBSeries(new_name, ts, uint32(resolution))
 				if err != nil {
@@ -291,15 +299,15 @@ func (rl *RollupMetric) DoRollup(tseries *TotalTimeSeries) error {
 
 	// now march through the higher resolutions .. the resolution objects
 	// is [ resolution, ttl ]
-	nano_s := int64(time.Second)
+	//nano_s := int64(time.Second)
 	for _, res := range rl.resolutions {
 		step := res[0]
 		ttl := res[1]
 		t_new_data := *new_data
 
 		// use nicely truncated blocks
-		t_start := uint32(TruncateTimeTo(int64(new_data.Start), step))
-		t_end := uint32(TruncateTimeTo(int64(new_data.End)+int64(step), step))
+		t_start := uint32(TruncateTimeTo(int64(t_new_data.RealStart), step))
+		t_end := uint32(TruncateTimeTo(int64(t_new_data.RealEnd)+int64(step), step))
 
 		// if the start|End time is 0 then there is trouble w/ the series itself
 		// and attempting a rollup is next to suicide
@@ -308,8 +316,15 @@ func (rl *RollupMetric) DoRollup(tseries *TotalTimeSeries) error {
 			continue
 		}
 
-		// first see if the "latest" series does our case 1 or 2
-		r_stats, err := rl.writer.GetLatestFromDB(tseries.Name, uint32(step))
+		r_stats, err := rl.writer.GetRangeFromDB(tseries.Name, t_start-uint32(step), t_end, uint32(step))
+
+		if len(r_stats) == 0 {
+			r_stats, err = rl.writer.GetLatestFromDB(tseries.Name, uint32(step))
+			if err != nil {
+				rl.log.Errorf("Rollup failure: Error in query: %v", err)
+				continue
+			}
+		}
 
 		if len(r_stats) > 0 && (r_stats.Start() == 0 || r_stats.End() == 0) {
 			rl.log.Errorf("Rollup failure: Start|End time is 0 in the DB, the series is corrupt cannot rollup")
@@ -318,10 +333,7 @@ func (rl *RollupMetric) DoRollup(tseries *TotalTimeSeries) error {
 
 		// we have a "new" series to write
 		if len(r_stats) == 0 {
-			t_new_data.Start = t_start
-			t_new_data.RealStart = t_start
-			t_new_data.RealEnd = t_end
-			t_new_data.End = t_end
+			t_new_data.Resample(uint32(step))
 			err = writeOne(&t_new_data, nil, step, ttl)
 			if err != nil {
 				rl.log.Errorf("Rollup failure: %v", err)
@@ -329,50 +341,7 @@ func (rl *RollupMetric) DoRollup(tseries *TotalTimeSeries) error {
 			continue
 		}
 
-		t_start_nano := nano_s * int64(t_new_data.Start)
-		t_end_nano := nano_s * int64(t_new_data.End)
-
-		if t_start_nano >= r_stats.End() || (t_start_nano >= r_stats.Start() && t_end_nano >= r_stats.End()) {
-			old_data, err := r_stats.ToRawRenderItem()
-
-			// if this fails, means our old data is corrupt, and the only real recourse is to add a new row
-			if err != nil {
-				rl.log.Errorf("Rollup Get failure, need to write a new row: `%v`", err)
-				t_new_data.Start = t_start
-				t_new_data.RealStart = t_start
-				t_new_data.RealEnd = t_end
-				t_new_data.End = t_end
-				err = writeOne(&t_new_data, nil, step, ttl)
-				if err != nil {
-					rl.log.Errorf("Rollup failure: %v", err)
-				}
-
-				continue
-			}
-
-			old_data.Id = t_new_data.Id
-			old_data.Step = uint32(step)
-			old_data.Metric = t_new_data.Metric
-			//fmt.Println("CASE1: Old Points:", old_data)
-			//old_data.PrintPoints()
-			//fmt.Println("Pre Merge Points")
-			//t_new_data.PrintPoints()
-			err = t_new_data.MergeWithResample(old_data, uint32(step))
-			if err != nil {
-				rl.log.Errorf("Rollup Merge failure: %v", err)
-				continue
-			}
-			//fmt.Println("New Points:", t_new_data.String())
-			//t_new_data.PrintPoints()
-			err = writeOne(&t_new_data, r_stats, step, ttl)
-			if err != nil {
-				rl.log.Errorf("Rollup Write failure: %v", err)
-			}
-			continue
-		}
-
 		// need to get more data in our range
-		r_stats, err = rl.writer.GetRangeFromDB(tseries.Name, t_start, t_end, uint32(step))
 		if err != nil {
 			rl.log.Errorf("Rollup Range Get failure: %v", err)
 			continue
@@ -393,9 +362,8 @@ func (rl *RollupMetric) DoRollup(tseries *TotalTimeSeries) error {
 		//old_data.PrintPoints()
 		//fmt.Println("Pre Merge Points")
 		//t_new_data.PrintPoints()
-		t_new_data.MergeAndAggregate(old_data)
-		t_new_data.Start = t_start
-		t_new_data.End = t_end
+		t_new_data.MergeWithResample(old_data, old_data.Step)
+
 		//fmt.Println("New Points")
 		//t_new_data.PrintPoints()
 		//now simply either replace the old data with new ones

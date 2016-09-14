@@ -473,7 +473,7 @@ func (cass *CassandraMetric) Stop() {
 
 		// full tilt write out
 		procs := 16
-		go_do := make(chan *TotalTimeSeries, procs)
+		go_do := make(chan TotalTimeSeries, procs)
 		wg := sync.WaitGroup{}
 
 		goInsert := func() {
@@ -486,7 +486,7 @@ func (cass *CassandraMetric) Stop() {
 					stats.StatsdClient.Incr(fmt.Sprintf("writer.cache.shutdown.send-to-writers"), 1)
 					cass.writer.InsertSeries(s.Name, s.Series)
 					if cass.doRollup {
-						cass.rollup.DoRollup(s)
+						cass.rollup.DoRollup(&s)
 					}
 					wg.Done()
 
@@ -503,7 +503,7 @@ func (cass *CassandraMetric) Stop() {
 				cass.writer.log.Warning("shutdown purge: written %d/%d...", did, mets_l)
 			}
 			if queueitem.Series != nil {
-				go_do <- &TotalTimeSeries{Name: queueitem.Name, Series: queueitem.Series}
+				go_do <- TotalTimeSeries{Name: queueitem.Name, Series: queueitem.Series.Copy()}
 			}
 			did++
 		}
@@ -847,6 +847,9 @@ func (cass *CassandraMetric) RawDataRenderOne(metric *indexer.MetricFindItem, st
 		inflight.MergeWithResample(cass_data, resolution)
 		return inflight, nil
 	}
+	if inflight.Step != resolution {
+		inflight.Resample(resolution)
+	}
 	return inflight, nil
 }
 
@@ -856,7 +859,7 @@ func (cass *CassandraMetric) RawRenderOne(metric *indexer.MetricFindItem, from i
 	return cass.RawDataRenderOne(metric, from, to)
 }
 
-func (cass *CassandraMetric) RawRender(path string, start int64, end int64) ([]*RawRenderItem, error) {
+func (cass *CassandraMetric) RawRender(path string, start int64, end int64, tags repr.SortingTags) ([]*RawRenderItem, error) {
 
 	defer stats.StatsdSlowNanoTimeFunc("reader.cassandra.rawrender.get-time-ns", time.Now())
 
@@ -867,7 +870,7 @@ func (cass *CassandraMetric) RawRender(path string, start int64, end int64) ([]*
 	defer utils.PutWaitGroup(render_wg)
 
 	for _, pth := range paths {
-		mets, err := cass.indexer.Find(pth)
+		mets, err := cass.indexer.Find(pth, tags)
 		if err != nil {
 			continue
 		}
@@ -925,7 +928,7 @@ func (cass *CassandraMetric) CacheRender(path string, start int64, end int64, ta
 	defer utils.PutWaitGroup(render_wg)
 
 	for _, pth := range paths {
-		mets, err := cass.indexer.Find(pth)
+		mets, err := cass.indexer.Find(pth, tags)
 		if err != nil {
 			continue
 		}

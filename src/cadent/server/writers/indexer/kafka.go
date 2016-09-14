@@ -194,7 +194,7 @@ func (kf *KafkaIndexer) Delete(skey *repr.StatName) error {
 func (kf *KafkaIndexer) List(has_data bool, page int) (MetricFindItems, error) {
 	return MetricFindItems{}, errWillNotBeImplimented
 }
-func (kf *KafkaIndexer) Find(metric string) (MetricFindItems, error) {
+func (kf *KafkaIndexer) Find(metric string, tags repr.SortingTags) (MetricFindItems, error) {
 	return MetricFindItems{}, errWillNotBeImplimented
 }
 

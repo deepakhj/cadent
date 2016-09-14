@@ -45,12 +45,18 @@ func NewMetricsAPI(a *ApiLoop) *MetricsAPI {
 }
 
 func (m *MetricsAPI) AddHandlers(mux *mux.Router) {
-	mux.HandleFunc("/render", m.Render)
+	// raw graphite (skipping graphite-api)
+	mux.HandleFunc("/render", m.GraphiteRender)
+
+	// for py-cadent
 	mux.HandleFunc("/metrics", m.Render)
+
+	// cadent specific
 	mux.HandleFunc("/rawrender", m.RawRender)
 }
 
 // take a rawrender and make it a graphite api json format
+// meant for PyCadent hooked into the graphite-api backend storage item
 func (re *MetricsAPI) ToGraphiteRender(raw_data []*metrics.RawRenderItem) *metrics.WhisperRenderItem {
 	whis := new(metrics.WhisperRenderItem)
 	whis.Series = make(map[string][]metrics.DataPoint)
@@ -77,16 +83,50 @@ func (re *MetricsAPI) ToGraphiteRender(raw_data []*metrics.RawRenderItem) *metri
 	return whis
 }
 
-func (re *MetricsAPI) Render(w http.ResponseWriter, r *http.Request) {
+// take a rawrender and make it a graphite api json format
+// meant for PyCadent hooked into the graphite-api backend storage item
+type GraphiteApiItem struct {
+	Target     string              `json:"target"`
+	Datapoints []metrics.DataPoint `json:"datapoints"`
+}
+type GraphiteApiItems []*GraphiteApiItem
 
-	defer stats.StatsdNanoTimeFunc("reader.http.render.get-time-ns", time.Now())
+func (re *MetricsAPI) ToGraphiteApiRender(raw_data []*metrics.RawRenderItem) GraphiteApiItems {
+	graphite := make(GraphiteApiItems, 0)
+
+	if raw_data == nil {
+		return nil
+	}
+
+	for _, data := range raw_data {
+		if data == nil {
+			continue
+		}
+		g_item := new(GraphiteApiItem)
+		d_points := make([]metrics.DataPoint, data.Len(), data.Len())
+		g_item.Target = data.Metric
+
+		for idx, d := range data.Data {
+			v := d.AggValue(data.AggFunc)
+			d_points[idx] = metrics.DataPoint{Time: d.Time, Value: &v}
+		}
+		g_item.Datapoints = d_points
+		graphite = append(graphite, g_item)
+	}
+	return graphite
+}
+
+// if using another system (aka grafan, that expects the graphite-api delivered format)
+func (re *MetricsAPI) GraphiteRender(w http.ResponseWriter, r *http.Request) {
+
+	defer stats.StatsdNanoTimeFunc("reader.http.graphite-render.get-time-ns", time.Now())
 
 	args, err := ParseMetricQuery(r)
 	if err != nil {
 		re.a.OutError(w, fmt.Sprintf("%v", err), http.StatusBadRequest)
 	}
 
-	data, err := re.Metrics.RawRender(args.Target, args.Start, args.End)
+	data, err := re.Metrics.RawRender(args.Target, args.Start, args.End, args.Tags)
 	if err != nil {
 		re.a.OutError(w, fmt.Sprintf("%v", err), http.StatusServiceUnavailable)
 		return
@@ -99,7 +139,45 @@ func (re *MetricsAPI) Render(w http.ResponseWriter, r *http.Request) {
 	resample := args.Step
 	if resample > 0 {
 		for idx := range data {
-			// graphite needs the "nils"
+			// graphite needs the "nils" and expects a "full list" to match the step + start/end
+			data[idx].Start = uint32(args.Start)
+			data[idx].End = uint32(args.End)
+			data[idx].ResampleAndQuantize(resample)
+		}
+	}
+	render_data := re.ToGraphiteApiRender(data)
+
+	re.a.AddToCache(data)
+
+	re.a.OutJson(w, render_data)
+	return
+}
+
+func (re *MetricsAPI) Render(w http.ResponseWriter, r *http.Request) {
+
+	defer stats.StatsdNanoTimeFunc("reader.http.render.get-time-ns", time.Now())
+
+	args, err := ParseMetricQuery(r)
+	if err != nil {
+		re.a.OutError(w, fmt.Sprintf("%v", err), http.StatusBadRequest)
+	}
+
+	data, err := re.Metrics.RawRender(args.Target, args.Start, args.End, args.Tags)
+	if err != nil {
+		re.a.OutError(w, fmt.Sprintf("%v", err), http.StatusServiceUnavailable)
+		return
+	}
+	if data == nil {
+		re.a.OutError(w, "No data found", http.StatusNoContent)
+		return
+	}
+
+	resample := args.Step
+	if resample > 0 {
+		for idx := range data {
+			// graphite needs the "nils" and expects a "full list" to match the step + start/end
+			data[idx].Start = uint32(args.Start)
+			data[idx].End = uint32(args.End)
 			data[idx].ResampleAndQuantize(resample)
 		}
 	}
@@ -120,7 +198,7 @@ func (re *MetricsAPI) RawRender(w http.ResponseWriter, r *http.Request) {
 		re.a.OutError(w, fmt.Sprintf("%v", err), http.StatusBadRequest)
 	}
 
-	data, err := re.Metrics.RawRender(args.Target, args.Start, args.End)
+	data, err := re.Metrics.RawRender(args.Target, args.Start, args.End, args.Tags)
 	if err != nil {
 		re.a.OutError(w, fmt.Sprintf("%v", err), http.StatusServiceUnavailable)
 		return

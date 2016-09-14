@@ -773,7 +773,7 @@ func (ws *WhisperMetrics) RawRenderOne(metric indexer.MetricFindItem, from int64
 
 }
 
-func (ws *WhisperMetrics) RawRender(path string, from int64, to int64) ([]*RawRenderItem, error) {
+func (ws *WhisperMetrics) RawRender(path string, from int64, to int64, tags repr.SortingTags) ([]*RawRenderItem, error) {
 	defer stats.StatsdSlowNanoTimeFunc("reader.whisper.rawrender.get-time-ns", time.Now())
 
 	paths := strings.Split(path, ",")
@@ -783,7 +783,7 @@ func (ws *WhisperMetrics) RawRender(path string, from int64, to int64) ([]*RawRe
 	defer utils.PutWaitGroup(render_wg)
 
 	for _, pth := range paths {
-		mets, err := ws.indexer.Find(pth)
+		mets, err := ws.indexer.Find(pth, tags)
 		if err != nil {
 			continue
 		}

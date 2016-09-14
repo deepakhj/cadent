@@ -93,7 +93,7 @@ Not everything is "done" .. as there are many things to write and verify, this i
 | Driver   | IndexSupport  |  TagSupport |  SeriesSupport | LineSupport  | TriggerSupport | DriverNames |
 |---|---|---|---|---|---|---|
 | cassandra | write+read  | No  | write+read | write+read | Yes | Index: "cassandra", Line: "cassandra-flat", Series: "cassandra", Series Triggered: "cassandra-triggered" |
-| mysql  | write+read  | write  | write+read  | write+read  | Yes | Index: "mysql", Line: "mysql-flat", Series: "mysql",  Series Triggered: "cassandra-triggered" |
+| mysql  | write+read  | write+read  | write+read  | write+read  | Yes | Index: "mysql", Line: "mysql-flat", Series: "mysql",  Series Triggered: "cassandra-triggered" |
 | kafka  |  write | write | write  | write  | n/a | Index: "kafka", Line: "kafka-flat", Series: "kafka" |
 | whisper|  read | n/a | n/a  | write+read |  n/a | Index: "whisper", Line: "whisper", Series: "n/a" |
 | leveldb |  write+read | No | No  | No |  n/a | Index: "leveldb", Line: "n/a", Series: "n/a" |
@@ -438,21 +438,20 @@ useful for key space lookups
     );
 
 
-    CREATE TABLE `{table}_{resolution}s` (
-      `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-      `uid` varchar(50) CHARACTER SET ascii NOT NULL,
-      `path` varchar(255) NOT NULL DEFAULT '',
-      `sum` float NOT NULL,
-      `min` float NOT NULL,
-      `max` float NOT NULL,
-      `last` float NOT NULL,
-      `count` float NOT NULL,
-      `time` datetime(6) NOT NULL,
-      PRIMARY KEY (`id`),
-      KEY `uid` (`uid`),
-      KEY `path` (`path`),
-      KEY `time` (`time`)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+    CREATE TABLE {table}_{resolution}s (
+          id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+          uid varchar(50) CHARACTER SET ascii NOT NULL,
+          path varchar(255) NOT NULL DEFAULT '',
+          sum float NULL,
+          min float NULL,
+          max float NULL,
+          last float NULL,
+          count float NULL,
+          time datetime(6) NOT NULL,
+          PRIMARY KEY (id),
+          KEY uid (uid),
+          KEY time (time)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 If your for times are `times = ["10s", "1m", "10m"]` you should make 3 tables named
 

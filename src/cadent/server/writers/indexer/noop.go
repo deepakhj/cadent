@@ -44,7 +44,7 @@ func (my *NoopIndexer) Write(metric repr.StatName) error {
 func (my *NoopIndexer) List(has_data bool, page int) (MetricFindItems, error) {
 	return MetricFindItems{}, errWillNotBeImplimented
 }
-func (my *NoopIndexer) Find(metric string) (MetricFindItems, error) {
+func (my *NoopIndexer) Find(metric string, tags repr.SortingTags) (MetricFindItems, error) {
 	return MetricFindItems{}, errWillNotBeImplimented
 }
 func (my *NoopIndexer) Expand(metric string) (MetricExpandItem, error) {

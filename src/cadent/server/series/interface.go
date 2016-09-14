@@ -47,6 +47,7 @@ type TimeSeries interface {
 	LastTime() int64
 	HighResolution() bool
 	Name() string
+	Copy() TimeSeries
 }
 
 type TimeSeriesIter interface {

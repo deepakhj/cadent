@@ -61,7 +61,7 @@ type jsonStat struct {
 type JsonStats []jsonStat
 
 type JsonTimeSeries struct {
-	mu sync.Mutex
+	mu *sync.Mutex
 
 	T0      int64
 	curTime int64
@@ -71,6 +71,7 @@ type JsonTimeSeries struct {
 func NewJsonTimeSeries(t0 int64, options *Options) *JsonTimeSeries {
 	ret := &JsonTimeSeries{
 		T0:    t0,
+		mu:    new(sync.Mutex),
 		Stats: make(JsonStats, 0),
 	}
 	return ret
@@ -123,6 +124,19 @@ func (s *JsonTimeSeries) StartTime() int64 {
 
 func (s *JsonTimeSeries) LastTime() int64 {
 	return s.curTime
+}
+
+func (s *JsonTimeSeries) Copy() TimeSeries {
+
+	g := *s
+	g.mu = new(sync.Mutex)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	g.Stats = make(JsonStats, len(s.Stats))
+	copy(g.Stats, s.Stats)
+
+	return &g
 }
 
 // the t is the "time we want to add

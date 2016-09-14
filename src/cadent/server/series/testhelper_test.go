@@ -580,10 +580,10 @@ func genericTestSeries(t *testing.T, stype string, options *Options) {
 				//t.Logf("BIT Repr: %v", r)
 				idx++
 			}
-			So(idx, ShouldEqual, n_stats)
 			if it.Error() != nil {
 				t.Fatalf("Iter Error: %v", it.Error())
 			}
+			So(idx, ShouldEqual, n_stats)
 
 			// compression, iterator R/W test
 			bss := ser.Bytes()

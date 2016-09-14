@@ -48,7 +48,7 @@ var errNoFilePointer = errors.New("Cannot write point, no file pointer")
 var errFileReaderNotImplemented = errors.New("FILE READER NOT IMPLMENTED")
 
 /****************** Interfaces *********************/
-type FileMetrics struct {
+type CSVFileMetrics struct {
 	fp                *os.File
 	filename          string
 	prefix            string
@@ -66,18 +66,18 @@ type FileMetrics struct {
 }
 
 // Make a new RotateWriter. Return nil if error occurs during setup.
-func NewFileMetrics() *FileMetrics {
-	fc := new(FileMetrics)
+func NewCSVFileMetrics() *CSVFileMetrics {
+	fc := new(CSVFileMetrics)
 	fc.shutdown = broadcast.New(1)
-	fc.log = logging.MustGetLogger("writers.file")
+	fc.log = logging.MustGetLogger("writers.csvfile")
 	return fc
 }
 
-func (fi *FileMetrics) Driver() string {
-	return "file"
+func (fi *CSVFileMetrics) Driver() string {
+	return "csvfile"
 }
 
-func (fi *FileMetrics) Stop() {
+func (fi *CSVFileMetrics) Stop() {
 	fi.startstop.Stop(func() {
 		shutdown.AddToShutdown()
 
@@ -85,13 +85,13 @@ func (fi *FileMetrics) Stop() {
 	})
 }
 
-func (fi *FileMetrics) Start() {
+func (fi *CSVFileMetrics) Start() {
 	fi.startstop.Start(func() {
 		go fi.PeriodicRotate()
 	})
 }
 
-func (fi *FileMetrics) SetIndexer(idx indexer.Indexer) error {
+func (fi *CSVFileMetrics) SetIndexer(idx indexer.Indexer) error {
 	fi.indexer = idx
 	return nil
 }
@@ -99,16 +99,16 @@ func (fi *FileMetrics) SetIndexer(idx indexer.Indexer) error {
 // Resoltuions should be of the form
 // [BinTime, TTL]
 // we select the BinTime based on the TTL
-func (fi *FileMetrics) SetResolutions(res [][]int) int {
+func (fi *CSVFileMetrics) SetResolutions(res [][]int) int {
 	fi.resolutions = res
 	return len(res) // need as many writers as bins
 }
 
-func (fi *FileMetrics) SetCurrentResolution(res int) {
+func (fi *CSVFileMetrics) SetCurrentResolution(res int) {
 	fi.currentResolution = res
 }
 
-func (fi *FileMetrics) Config(conf map[string]interface{}) error {
+func (fi *CSVFileMetrics) Config(conf map[string]interface{}) error {
 	gots := conf["dsn"]
 	if gots == nil {
 		return fmt.Errorf("`dsn` (/path/to/file) needed for FileWriter")
@@ -142,11 +142,11 @@ func (fi *FileMetrics) Config(conf map[string]interface{}) error {
 	return nil
 }
 
-func (fi *FileMetrics) Filename() string {
+func (fi *CSVFileMetrics) Filename() string {
 	return fi.filename + fi.prefix
 }
 
-func (fi *FileMetrics) PeriodicRotate() (err error) {
+func (fi *CSVFileMetrics) PeriodicRotate() (err error) {
 	shuts := fi.shutdown.Listen()
 	ticks := time.NewTicker(fi.rotate_check)
 	for {
@@ -170,7 +170,7 @@ func (fi *FileMetrics) PeriodicRotate() (err error) {
 }
 
 // Perform the actual act of rotating and reopening file.
-func (fi *FileMetrics) Rotate() (err error) {
+func (fi *CSVFileMetrics) Rotate() (err error) {
 	fi.write_lock.Lock()
 	defer fi.write_lock.Unlock()
 
@@ -210,7 +210,7 @@ func (fi *FileMetrics) Rotate() (err error) {
 	}
 }
 
-func (fi *FileMetrics) WriteLine(line string) (int, error) {
+func (fi *CSVFileMetrics) WriteLine(line string) (int, error) {
 	fi.write_lock.Lock()
 	defer fi.write_lock.Unlock()
 	if fi.fp == nil {
@@ -219,7 +219,7 @@ func (fi *FileMetrics) WriteLine(line string) (int, error) {
 	return fi.fp.Write([]byte(line))
 }
 
-func (fi *FileMetrics) Write(stat repr.StatRepr) error {
+func (fi *CSVFileMetrics) Write(stat repr.StatRepr) error {
 
 	// stat\tuid\tsum\tmin\tmax\tlast\tcount\tresoltion\ttime\tttl
 
@@ -237,15 +237,12 @@ func (fi *FileMetrics) Write(stat repr.StatRepr) error {
 
 /**** READER ***/
 
-func (fi *FileMetrics) Render(path string, from int64, to int64) (WhisperRenderItem, error) {
-	return WhisperRenderItem{}, errFileReaderNotImplemented
-}
-func (fi *FileMetrics) RawRender(path string, from int64, to int64) ([]*RawRenderItem, error) {
+func (fi *CSVFileMetrics) RawRender(path string, from int64, to int64, tags repr.SortingTags) ([]*RawRenderItem, error) {
 	return nil, errFileReaderNotImplemented
 }
-func (fi *FileMetrics) CacheRender(path string, from int64, to int64, tags repr.SortingTags) ([]*RawRenderItem, error) {
+func (fi *CSVFileMetrics) CacheRender(path string, from int64, to int64, tags repr.SortingTags) ([]*RawRenderItem, error) {
 	return nil, errFileReaderNotImplemented
 }
-func (fi *FileMetrics) CachedSeries(path string, from int64, to int64, tags repr.SortingTags) (*TotalTimeSeries, error) {
+func (fi *CSVFileMetrics) CachedSeries(path string, from int64, to int64, tags repr.SortingTags) (*TotalTimeSeries, error) {
 	return nil, errFileReaderNotImplemented
 }

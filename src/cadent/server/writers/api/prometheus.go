@@ -125,7 +125,7 @@ func (p *PrometheusAPI) QueryRange(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		p.OutError(w, fmt.Sprintf("%v", err), http.StatusBadRequest)
 	}
-	datas, err := p.Metrics.RawRender(args.Target, args.Start, args.End)
+	datas, err := p.Metrics.RawRender(args.Target, args.Start, args.End, args.Tags)
 	if err != nil {
 		p.OutError(w, fmt.Sprintf("%v", err), http.StatusServiceUnavailable)
 		return

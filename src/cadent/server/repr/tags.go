@@ -96,10 +96,16 @@ func (s SortingTags) Tags() [][]string {
 }
 
 func (s SortingTags) SetTags(tgs [][]string) {
-	s = tgs
+	s = SortingTags(tgs)
 }
 
 func (s SortingTags) Merge(tags SortingTags) SortingTags {
+	if len(tags) == 0 {
+		return s
+	}
+	if len(s) == 0 {
+		return tags
+	}
 	n_tags := make(SortingTags, 0)
 	for _, tag := range tags {
 		got := false
@@ -115,6 +121,24 @@ func (s SortingTags) Merge(tags SortingTags) SortingTags {
 		}
 	}
 	return n_tags
+}
+
+func (s SortingTags) HasAllTags(tags SortingTags) bool {
+	if len(tags) == 0 {
+		return true
+	}
+	if len(s) == 0 && len(tags) > 0 {
+		return false
+	}
+	have_ct := 0
+	for _, tag := range tags {
+		for _, o_tag := range s {
+			if tag[0] == o_tag[0] && tag[1] == o_tag[1] {
+				have_ct++
+			}
+		}
+	}
+	return have_ct == len(tags)
 }
 
 func (s SortingTags) ToStringSep(wordsep string, tagsep string) string {

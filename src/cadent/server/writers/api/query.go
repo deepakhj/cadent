@@ -152,11 +152,11 @@ func ParseMetricQuery(r *http.Request) (mq MetricQuery, err error) {
 	}
 
 	if len(target) > 0 {
-		// see if the name is a key{tag,tag} thinggy
+		// see if the name has a key{tag,tag}
 		a_key, a_tags, err := ParseNameToTags(target)
 		if err == nil {
 			target = a_key
-			tags.Merge(a_tags)
+			tags = tags.Merge(a_tags)
 		}
 	}
 
@@ -217,9 +217,11 @@ func ParseMetricQuery(r *http.Request) (mq MetricQuery, err error) {
 }
 
 type IndexQuery struct {
-	Query   string
-	Value   string
-	Page    int
+	Query string
+	Value string
+	Page  int
+	Tags  repr.SortingTags
+
 	HasData bool
 }
 
@@ -236,14 +238,48 @@ func ParseFindQuery(r *http.Request) (mq IndexQuery, err error) {
 	if len(query) == 0 {
 		query = strings.TrimSpace(r.Form.Get("query"))
 	}
+	// try target from the params
+	if len(query) == 0 {
+		query = strings.TrimSpace(r.Form.Get("target"))
+	}
+	// try name from the URL
 	if len(query) == 0 {
 		query = vars["name"]
+	}
+	// try target from the url
+	if len(query) == 0 {
+		query = vars["target"]
 	}
 
 	if len(val) == 0 {
 		val = vars["value"]
 	}
 
+	var _tags string
+	var tags repr.SortingTags
+
+	l := len(r.Form["tags"])
+	for idx, tgs := range r.Form["tags"] {
+		_tags += strings.TrimSpace(tgs)
+		switch {
+		case idx < l-1:
+			_tags += ","
+		}
+	}
+	if _tags != "" {
+		tags = repr.SortingTagsFromString(_tags)
+	}
+
+	if len(query) > 0 {
+		// see if the name has a key{tag,tag}
+		a_key, a_tags, err := ParseNameToTags(query)
+		if err == nil {
+			query = a_key
+			tags.Merge(a_tags)
+		}
+	}
+
+	mq.Tags = tags
 	mq.Query = query
 	mq.Value = val
 	mq.HasData = true

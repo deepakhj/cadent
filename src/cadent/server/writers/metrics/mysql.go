@@ -26,9 +26,8 @@ limitations under the License.
       `stime` BIGINT unsigned NOT NULL,
       `etime` BIGINT unsigned NOT NULL,
       PRIMARY KEY (`id`),
-      KEY `uid` (`uid`),
-      KEY `path` (`path`),
-      KEY `time` (`etime`, `stime`)
+      KEY `uid` (`uid`, `etime`),
+      KEY `path` (`path`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 	Prefixes are `_{resolution}s` (i.e. "_" + (uint32 resolution) + "s")
@@ -93,6 +92,7 @@ const (
 	MYSQL_DEFAULT_METRIC_WORKERS   = 16
 	MYSQL_DEFAULT_METRIC_QUEUE_LEN = 1024 * 100
 	MYSQL_DEFAULT_METRIC_RETRIES   = 2
+	MYSQL_DEFAULT_EXPIRE_TICK      = "1m"
 )
 
 // common errors to avoid GC pressure
@@ -132,6 +132,11 @@ type MySQLMetrics struct {
 	resolutions       [][]int
 	currentResolution int
 	static_tags       repr.SortingTags
+
+	// run an periodic "expire" (aka delete) metrics from the tables
+	// based on the TTLs given and the "endtime" in the DB
+	runExpire  bool
+	expireTick time.Duration
 
 	// this is for Render where we may have several caches, but only "one"
 	// cacher get picked for the default render (things share the cache from writers
@@ -234,6 +239,17 @@ func (my *MySQLMetrics) Config(conf map[string]interface{}) error {
 		my.dispatch_retries = int(_rt.(int64))
 	}
 
+	_exp := conf["expire_on_ttl"]
+	my.runExpire = true
+	if _exp != nil {
+		my.runExpire = _exp.(bool)
+	}
+
+	my.expireTick, err = time.ParseDuration(MYSQL_DEFAULT_EXPIRE_TICK)
+	if err != nil {
+		return err
+	}
+
 	_cache := conf["cache"]
 	if _cache == nil {
 		return errMetricsCacheRequired
@@ -273,6 +289,13 @@ func (my *MySQLMetrics) Driver() string {
 
 func (my *MySQLMetrics) Start() {
 	my.startstop.Start(func() {
+
+		// now we make sure the metrics schemas are added
+		err := NewMySQLMetricsSchema(my.conn, my.db.RootMetricsTableName(), my.resolutions, "blob").AddMetricsTable()
+		if err != nil {
+			panic(err)
+		}
+
 		my.log.Notice("Starting mysql writer for %s at %d bytes per series", my.db.Tablename(), my.cacher.maxBytes)
 
 		my.cacher.overFlowMethod = "chan"
@@ -301,6 +324,10 @@ func (my *MySQLMetrics) Start() {
 			my.dispatch_retries,
 		)
 		my.dispatcher.Start()
+
+		if my.runExpire {
+			go my.RunPeriodicExpire()
+		}
 	})
 }
 
@@ -322,7 +349,7 @@ func (my *MySQLMetrics) Stop() {
 
 		// full tilt write out
 		procs := 16
-		go_do := make(chan *TotalTimeSeries, procs)
+		go_do := make(chan TotalTimeSeries, procs)
 		wg := sync.WaitGroup{}
 
 		goInsert := func() {
@@ -333,10 +360,14 @@ func (my *MySQLMetrics) Stop() {
 						return
 					}
 					stats.StatsdClient.Incr(fmt.Sprintf("writer.cache.shutdown.send-to-writers"), 1)
-					my.InsertSeries(s.Name, s.Series)
+					_, err := my.InsertSeries(s.Name, s.Series)
 					if my.doRollup {
-						my.rollup.DoRollup(s)
+						my.rollup.DoRollup(&s)
 					}
+					if err != nil {
+						my.log.Errorf("Insert error: %v", err)
+					}
+
 					wg.Done()
 				}
 			}
@@ -353,7 +384,7 @@ func (my *MySQLMetrics) Stop() {
 				my.log.Warning("shutdown purge: written %d/%d...", did, mets_l)
 			}
 			if queueitem.Series != nil {
-				go_do <- &TotalTimeSeries{Name: queueitem.Name, Series: queueitem.Series}
+				go_do <- TotalTimeSeries{Name: queueitem.Name, Series: queueitem.Series.Copy()}
 			}
 			did++
 		}
@@ -369,14 +400,16 @@ func (my *MySQLMetrics) Stop() {
 		my.log.Warning("Shutdown finished ... quiting mysql blob writer")
 		return
 	})
-
 }
-func (my *MySQLMetrics) doInsert(ts *TotalTimeSeries) error {
+
+func (my *MySQLMetrics) doInsert(ts *TotalTimeSeries) (err error) {
 	stats.StatsdClientSlow.Incr("writer.mysql.consume.add", 1)
-	_, err := my.InsertSeries(ts.Name, ts.Series)
-	if err == nil && my.doRollup {
+
+	if my.doRollup {
 		my.rollup.Add(ts)
-	} else if err != nil {
+	}
+	_, err = my.InsertSeries(ts.Name, ts.Series)
+	if err != nil {
 		my.log.Errorf("Failed to add series to DB: %s (%s) %v", ts.Name.Key, ts.Name.UniqueIdString(), err)
 	}
 	return err
@@ -416,6 +449,39 @@ func (my *MySQLMetrics) SetResolutions(res [][]int) int {
 
 func (my *MySQLMetrics) SetCurrentResolution(res int) {
 	my.currentResolution = res
+}
+
+func (my *MySQLMetrics) RunPeriodicExpire() {
+
+	ticker := time.NewTicker(my.expireTick)
+	base_Q := "DELETE FROM %s_%ds WHERE etime < ?"
+	for {
+		<-ticker.C
+		for _, res := range my.resolutions {
+			// ttls are in seconds
+			ttl := res[1]
+			if ttl <= 0 {
+				continue
+			}
+
+			t_name := my.db.RootMetricsTableName()
+			Q := fmt.Sprintf(base_Q, t_name, res[0])
+
+			exp_time := (time.Now().Unix() - int64(ttl)) * int64(time.Second)
+
+			my.log.Info("Running expire for all metrics older then %d in the %ds resolution", exp_time, res[0])
+			result, err := my.conn.Exec(Q, exp_time)
+
+			if err != nil {
+				my.log.Errorf("Failed to delete metrics older then %d in %ds resolution", exp_time, res[0])
+			} else {
+				r_eff, _ := result.RowsAffected()
+				my.log.Noticef("Removed %d metrics older then %d in the %ds resolution", r_eff, exp_time, res[0])
+
+			}
+		}
+	}
+
 }
 
 func (my *MySQLMetrics) InsertSeries(name *repr.StatName, timeseries series.TimeSeries) (int, error) {
@@ -643,11 +709,6 @@ func (my *MySQLMetrics) GetFromWriteCache(metric *indexer.MetricFindItem, start 
 		return nil, nil
 	}
 
-	// resample to the res we want
-	if my.rollupType == "triggered" && uint32(my.currentResolution) != resolution {
-		inflight.Resample(resolution)
-	}
-
 	inflight.Metric = metric.Path
 	inflight.Id = metric.UniqueId
 	inflight.Step = use_res
@@ -675,8 +736,6 @@ func (my *MySQLMetrics) RawDataRenderOne(metric *indexer.MetricFindItem, start i
 	rawd.Id = metric.UniqueId
 	rawd.Tags = metric.Tags
 	rawd.MetaTags = metric.MetaTags
-	rawd.RealEnd = u_end
-	rawd.RealStart = u_start
 	rawd.Start = rawd.RealStart
 	rawd.End = rawd.RealEnd
 	rawd.AggFunc = repr.GuessReprValueFromKey(metric.Id)
@@ -700,9 +759,9 @@ func (my *MySQLMetrics) RawDataRenderOne(metric *indexer.MetricFindItem, start i
 	if inflight != nil && err == nil && len(inflight.Data) > 1 {
 		// if all the data is in this list we don't need to go any further
 		if inflight.DataInRange(u_start, u_end) {
-			// move the times to the "requested" ones and quantize the list
-			inflight.RealEnd = u_end
-			inflight.RealStart = u_start
+			if inflight.Step != resolution {
+				inflight.Resample(resolution)
+			}
 			return inflight, err
 		}
 	}
@@ -713,7 +772,7 @@ func (my *MySQLMetrics) RawDataRenderOne(metric *indexer.MetricFindItem, start i
 	// and now for the mysql Query otherwise
 	mysql_data, err := my.GetFromDatabase(metric, resolution, start, end)
 	if err != nil {
-		my.log.Error("Mysql: Error getting from DB: %v", err)
+		my.log.Errorf("Mysql: Error getting from DB: %v", err)
 		return rawd, err
 	}
 
@@ -740,6 +799,9 @@ func (my *MySQLMetrics) RawDataRenderOne(metric *indexer.MetricFindItem, start i
 		*/
 		return inflight, nil
 	}
+	if inflight.Step != resolution {
+		inflight.Resample(resolution)
+	}
 	return inflight, nil
 }
 
@@ -749,7 +811,7 @@ func (my *MySQLMetrics) RawRenderOne(metric indexer.MetricFindItem, from int64, 
 	return my.RawDataRenderOne(&metric, from, to)
 }
 
-func (my *MySQLMetrics) RawRender(path string, from int64, to int64) ([]*RawRenderItem, error) {
+func (my *MySQLMetrics) RawRender(path string, from int64, to int64, tags repr.SortingTags) ([]*RawRenderItem, error) {
 	defer stats.StatsdSlowNanoTimeFunc("reader.mysql.rawrender.get-time-ns", time.Now())
 
 	paths := strings.Split(path, ",")
@@ -759,7 +821,7 @@ func (my *MySQLMetrics) RawRender(path string, from int64, to int64) ([]*RawRend
 	defer utils.PutWaitGroup(render_wg)
 
 	for _, pth := range paths {
-		mets, err := my.indexer.Find(pth)
+		mets, err := my.indexer.Find(pth, tags)
 		if err != nil {
 			continue
 		}
@@ -815,7 +877,7 @@ func (my *MySQLMetrics) CacheRender(path string, start int64, end int64, tags re
 	defer utils.PutWaitGroup(render_wg)
 
 	for _, pth := range paths {
-		mets, err := my.indexer.Find(pth)
+		mets, err := my.indexer.Find(pth, tags)
 		if err != nil {
 			continue
 		}
@@ -958,7 +1020,7 @@ func (my *MySQLMetrics) GetRangeFromDB(name *repr.StatName, start uint32, end ui
 	var id, t_start, t_end int64
 	for rows.Next() {
 		if err := rows.Scan(&id, &uid, &t_start, &t_end, &p_type, &p_bytes); err != nil {
-			return nil, err
+			return rawd, err
 		}
 		dataums := &DBSeries{
 			Id:         id,
@@ -1028,8 +1090,12 @@ func (my *MySQLMetrics) InsertDBSeries(name *repr.StatName, timeseries series.Ti
 		s_time,
 		e_time,
 	}
-
-	_, err = my.conn.Exec(Q, vals...)
+	trans, err := my.conn.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer trans.Commit()
+	_, err = trans.Exec(Q, vals...)
 	if err != nil {
 		my.log.Errorf("Mysql Driver: Metric insert failed, %v", err)
 		return 0, err

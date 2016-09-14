@@ -668,7 +668,7 @@ func (cass *CassandraIndexer) FindRoot() (MetricFindItems, error) {
 }
 
 // to allow for multiple targets
-func (cass *CassandraIndexer) Find(metric string) (MetricFindItems, error) {
+func (cass *CassandraIndexer) Find(metric string, tags repr.SortingTags) (MetricFindItems, error) {
 	// the regex case is a bit more complicated as we need to grab ALL the segments of a given length.
 	// see if the match the regex, and then add them to the lists since cassandra does not provide regex abilities
 	// on the server side

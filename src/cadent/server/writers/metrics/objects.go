@@ -104,17 +104,17 @@ func (mb DBSeriesList) ToRawRenderItem() (*RawRenderItem, error) {
 				Last:  ls,
 				Time:  t,
 			})
-
-			if rawd.RealEnd < t {
-				rawd.RealEnd = t
-			}
-			if rawd.RealStart > t || rawd.RealStart == 0 {
-				rawd.RealStart = t
-			}
 		}
 	}
-	rawd.Start = rawd.RealStart
-	rawd.End = rawd.RealEnd
+	sort.Sort(rawd.Data)
+	if len(rawd.Data) > 0 {
+		rawd.RealStart = rawd.Data[0].Time
+		rawd.Start = rawd.RealStart
+
+		rawd.End = rawd.Data[len(rawd.Data)-1].Time
+		rawd.RealEnd = rawd.End
+	}
+
 	return rawd, nil
 
 }
@@ -309,16 +309,17 @@ func NewRawRenderItemFromSeriesIter(iter series.TimeSeriesIter) (*RawRenderItem,
 			Last:  ls,
 			Time:  t,
 		})
-
-		if rawd.RealEnd < t {
-			rawd.RealEnd = t
-		}
-		if rawd.RealStart > t || rawd.RealStart == 0 {
-			rawd.RealStart = t
-		}
 	}
-	rawd.Start = rawd.RealStart
-	rawd.End = rawd.RealEnd
+	if len(rawd.Data) > 0 {
+		sort.Sort(rawd.Data)
+
+		rawd.RealStart = rawd.Data[0].Time
+		rawd.Start = rawd.RealStart
+
+		rawd.End = rawd.Data[len(rawd.Data)-1].Time
+		rawd.RealEnd = rawd.End
+	}
+
 	return rawd, nil
 }
 
@@ -400,6 +401,8 @@ func (r *RawRenderItem) TrunctateTo(start uint32, end uint32) int {
 // If moving from a "large" time step to a "smaller" one you WILL GET NULL values for
 // time slots that do not match anything .. we cannot (will not) interpolate data like that
 // as it's 99% statistically "wrong"
+// this will "quantize" things the Start/End set times, not the RealStart/End
+//
 func (r *RawRenderItem) ResampleAndQuantize(step uint32) {
 
 	cur_len := uint32(len(r.Data))
@@ -524,14 +527,14 @@ func (r *RawRenderItem) Resample(step uint32) error {
 	}
 
 	// make sure the start/ends are nicely divisible by the Step
-	start := r.Start
+	start := r.RealStart
 
 	left := start % step
 	if left != 0 {
 		start = start + step - left
 	}
 
-	end := r.End
+	end := r.RealEnd
 
 	endTime := (end - 1) - ((end - 1) % step) + step
 
@@ -814,9 +817,9 @@ func (r *RawRenderItem) MergeWithResample(d *RawRenderItem, step uint32) error {
 	}
 
 	// make sure the start/ends are nicely divisible by the Step
-	start := r.Start
-	if d.Start < start {
-		start = d.Start
+	start := r.RealStart
+	if d.RealStart < start {
+		start = d.RealStart
 	}
 
 	left := start % step
@@ -824,9 +827,9 @@ func (r *RawRenderItem) MergeWithResample(d *RawRenderItem, step uint32) error {
 		start = start + step - left
 	}
 
-	end := r.End
-	if d.End > r.End {
-		end = d.End
+	end := r.RealEnd
+	if d.RealEnd > r.RealEnd {
+		end = d.RealEnd
 	}
 
 	endTime := (end - 1) - ((end - 1) % step) + step

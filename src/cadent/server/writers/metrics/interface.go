@@ -93,7 +93,7 @@ type MetricsReader interface {
 	// need an Indexer 99% of the time to deal with render
 	SetIndexer(indexer.Indexer) error
 
-	RawRender(path string, from int64, to int64) ([]*RawRenderItem, error)
+	RawRender(path string, from int64, to int64, tags repr.SortingTags) ([]*RawRenderItem, error)
 
 	// just get data in the write-back caches
 	CacheRender(path string, from int64, to int64, tags repr.SortingTags) ([]*RawRenderItem, error)

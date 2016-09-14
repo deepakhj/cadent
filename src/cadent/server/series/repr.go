@@ -35,7 +35,7 @@ const (
 
 // this can only handle "future pushing times" not random times
 type ReprTimeSeries struct {
-	mu sync.Mutex
+	mu *sync.Mutex
 
 	T0      int64
 	curTime int64
@@ -45,6 +45,7 @@ type ReprTimeSeries struct {
 func NewReprTimeSeries(t0 int64, options *Options) *ReprTimeSeries {
 	ret := &ReprTimeSeries{
 		T0:    t0,
+		mu:    new(sync.Mutex),
 		Stats: make(repr.StatReprSlice, 0),
 	}
 	return ret
@@ -97,6 +98,19 @@ func (s *ReprTimeSeries) StartTime() int64 {
 
 func (s *ReprTimeSeries) LastTime() int64 {
 	return s.curTime
+}
+
+func (s *ReprTimeSeries) Copy() TimeSeries {
+
+	g := *s
+	g.mu = new(sync.Mutex)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	g.Stats = make(repr.StatReprSlice, len(s.Stats))
+	copy(g.Stats, s.Stats)
+
+	return &g
 }
 
 // the t is the "time we want to add

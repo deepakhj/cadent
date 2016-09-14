@@ -63,7 +63,7 @@ func NewWriterMetrics(name string) (MetricsWriter, error) {
 	case name == "mysql-flat":
 		return NewMySQLFlatMetrics(), nil
 	case name == "file":
-		return NewFileMetrics(), nil
+		return NewCSVFileMetrics(), nil
 	case name == "cassandra":
 		return NewCassandraMetrics(), nil
 	case name == "cassandra-triggered":

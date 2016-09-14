@@ -552,7 +552,7 @@ func (lp *LevelDBIndexer) findingIter(metric string) (iter leveldb_iter.Iterator
 }
 
 // basic find for non-regex items
-func (lp *LevelDBIndexer) Find(metric string) (mt MetricFindItems, err error) {
+func (lp *LevelDBIndexer) Find(metric string, tags repr.SortingTags) (mt MetricFindItems, err error) {
 
 	defer stats.StatsdSlowNanoTimeFunc("indexer.leveldb.find.get-time-ns", time.Now())
 

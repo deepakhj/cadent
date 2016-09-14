@@ -992,7 +992,7 @@ func (cass *CassandraFlatMetric) RenderOne(metric indexer.MetricFindItem, from i
 	return whis, nil
 }
 
-func (cass *CassandraFlatMetric) RawRender(path string, from int64, to int64) ([]*RawRenderItem, error) {
+func (cass *CassandraFlatMetric) RawRender(path string, from int64, to int64, tags repr.SortingTags) ([]*RawRenderItem, error) {
 
 	defer stats.StatsdSlowNanoTimeFunc("reader.cassandraflat.rawrender.get-time-ns", time.Now())
 
@@ -1000,7 +1000,7 @@ func (cass *CassandraFlatMetric) RawRender(path string, from int64, to int64) ([
 	var metrics []indexer.MetricFindItem
 
 	for _, pth := range paths {
-		mets, err := cass.indexer.Find(pth)
+		mets, err := cass.indexer.Find(pth, tags)
 		if err != nil {
 			continue
 		}

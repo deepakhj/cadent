@@ -94,7 +94,7 @@ func (ws *WhisperIndexer) toGlob(metric string) (string, string, []string) {
 }
 
 /**** READER ***/
-func (ws *WhisperIndexer) Find(metric string) (MetricFindItems, error) {
+func (ws *WhisperIndexer) Find(metric string, tags repr.SortingTags) (MetricFindItems, error) {
 
 	stats.StatsdClientSlow.Incr("indexer.whisper.finds", 1)
 

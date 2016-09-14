@@ -39,7 +39,7 @@ const (
 
 // this can only handle "future pushing times" not random times
 type ProtobufTimeSeries struct {
-	mu sync.Mutex
+	mu *sync.Mutex
 
 	T0      int64
 	curTime int64
@@ -50,6 +50,7 @@ func NewProtobufTimeSeries(t0 int64, options *Options) *ProtobufTimeSeries {
 
 	ret := &ProtobufTimeSeries{
 		T0:    t0,
+		mu:    new(sync.Mutex),
 		Stats: new(ProtStats),
 	}
 	ret.Stats.FullTimeResolution = options.HighTimeResolution
@@ -131,6 +132,19 @@ func (s *ProtobufTimeSeries) StartTime() int64 {
 
 func (s *ProtobufTimeSeries) LastTime() int64 {
 	return s.curTime
+}
+
+func (s *ProtobufTimeSeries) Copy() TimeSeries {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	g := *s
+	g.mu = new(sync.Mutex)
+	g.Stats = new(ProtStats)
+	g.Stats.Stats = make([]*ProtStat, len(s.Stats.Stats))
+	copy(g.Stats.Stats, s.Stats.Stats)
+
+	return &g
 }
 
 // the t is the "time we want to add

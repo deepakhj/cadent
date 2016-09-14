@@ -38,7 +38,7 @@ const (
 )
 
 type MsgpackTimeSeries struct {
-	mu sync.Mutex
+	mu *sync.Mutex
 
 	T0      int64
 	curTime int64
@@ -53,6 +53,7 @@ func NewMsgpackTimeSeries(t0 int64, options *Options) *MsgpackTimeSeries {
 	ret := &MsgpackTimeSeries{
 		T0:  t0,
 		ct:  0,
+		mu:  new(sync.Mutex),
 		buf: new(bytes.Buffer),
 	}
 	ret.writer = msgp.NewWriter(ret.buf)
@@ -109,6 +110,18 @@ func (s *MsgpackTimeSeries) StartTime() int64 {
 
 func (s *MsgpackTimeSeries) LastTime() int64 {
 	return s.curTime
+}
+
+func (s *MsgpackTimeSeries) Copy() TimeSeries {
+
+	g := *s
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	g.mu = new(sync.Mutex)
+
+	io.Copy(g.buf, s.buf)
+
+	return &g
 }
 
 // the t is the "time we want to add

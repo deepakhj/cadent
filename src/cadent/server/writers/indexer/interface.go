@@ -55,7 +55,7 @@ type Indexer interface {
 			}
 			]
 	*/
-	Find(metric string) (MetricFindItems, error)
+	Find(metric string, tags repr.SortingTags) (MetricFindItems, error)
 
 	// list all "paths" w/ data
 	List(has_data bool, page int) (MetricFindItems, error)

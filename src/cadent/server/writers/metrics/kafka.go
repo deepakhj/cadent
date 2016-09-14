@@ -33,7 +33,6 @@ import (
 	"cadent/server/utils/shutdown"
 	"cadent/server/writers/dbs"
 	"cadent/server/writers/indexer"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/Shopify/sarama"
@@ -45,54 +44,6 @@ import (
 )
 
 var errKafkaMetricIsNil = errors.New("The kafka metric is nil")
-
-/** kafka put object **/
-type KafkaMetric struct {
-	Type       string      `json:"type" codec:"type" msg:"type"`
-	Time       int64       `json:"time" codec:"time" msg:"time"`
-	Metric     string      `json:"metric" codec:"metric" msg:"metric"`
-	Encoding   string      `json:"encoding" codec:"encoding" msg:"encoding"`
-	Data       []byte      `json:"data" codec:"data" msg:"data"`
-	Resolution uint32      `json:"resolution" codec:"resolution" msg:"resolution"`
-	Id         repr.StatId `json:"id" codec:"id" msg:"id"`
-	Uid        string      `json:"uid" codec:"uid" msg:"uid"`
-	TTL        uint32      `json:"ttl" codec:"ttl" msg:"ttl"`
-	Tags       [][]string  `json:"tags,omitempty" codec:"tags,omitempty" msg:"tags,omitempty"` // key1=value1,key2=value2...
-	MetaTags   [][]string  `json:"meta_tags,omitempty" codec:"tags,omitempty" msg:"tags,omitempty"`
-
-	encoded []byte
-	err     error
-}
-
-func (kp *KafkaMetric) ensureEncoded() {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Errorf("Kafka Encoding error: %v", r)
-			kp.err = fmt.Errorf("%v", r)
-			kp.encoded = nil
-		}
-	}()
-
-	if kp != nil && kp.encoded == nil && kp.err == nil {
-		kp.encoded, kp.err = json.Marshal(kp)
-	}
-}
-
-func (kp *KafkaMetric) Length() int {
-	if kp == nil {
-		return 0
-	}
-	kp.ensureEncoded()
-	return len(kp.encoded)
-}
-
-func (kp *KafkaMetric) Encode() ([]byte, error) {
-	if kp == nil {
-		return nil, errKafkaMetricIsNil
-	}
-	kp.ensureEncoded()
-	return kp.encoded, kp.err
-}
 
 /****************** Interfaces *********************/
 type KafkaMetrics struct {
@@ -110,6 +61,8 @@ type KafkaMetrics struct {
 	startstop  utils.StartStop
 
 	resolution uint32
+
+	enctype KafkaEncodingType
 
 	cacherPrefix  string
 	cacher        *Cacher
@@ -152,6 +105,11 @@ func (kf *KafkaMetrics) Config(conf map[string]interface{}) error {
 	g_tag, ok := conf["tags"]
 	if ok {
 		kf.static_tags = repr.SortingTagsFromString(g_tag.(string))
+	}
+
+	enct, ok := conf["encoding"]
+	if ok {
+		kf.enctype = KafkaEncodingFromString(enct.(string))
 	}
 
 	_cache := conf["cache"]
@@ -211,7 +169,7 @@ func (kf *KafkaMetrics) Stop() {
 
 		// full tilt write out
 		procs := 16
-		go_do := make(chan *TotalTimeSeries, procs)
+		go_do := make(chan TotalTimeSeries, procs)
 		wg := sync.WaitGroup{}
 
 		goInsert := func() {
@@ -238,7 +196,7 @@ func (kf *KafkaMetrics) Stop() {
 				kf.log.Warning("shutdown purge: written %d/%d...", did, mets_l)
 			}
 			if queueitem.Series != nil {
-				go_do <- &TotalTimeSeries{Name: queueitem.Name, Series: queueitem.Series}
+				go_do <- TotalTimeSeries{Name: queueitem.Name, Series: queueitem.Series.Copy()}
 			}
 			did++
 		}
@@ -361,10 +319,11 @@ func (kf *KafkaMetrics) PushSeries(name *repr.StatName, points series.TimeSeries
 		Encoding:   points.Name(),
 		Resolution: name.Resolution,
 		TTL:        name.TTL,
-		Id:         name.UniqueId(),
+		Id:         uint64(name.UniqueId()),
 		Uid:        name.UniqueIdString(),
 		Tags:       name.SortedTags(),
 		MetaTags:   name.SortedMetaTags(),
+		encodetype: kf.enctype,
 	}
 
 	kf.conn.Input() <- &sarama.ProducerMessage{
@@ -409,7 +368,7 @@ func (kf *KafkaMetrics) GetFromWriteCache(metric *repr.StatName, start uint32, e
 
 // needed to match interface, but we obviously cannot do this
 
-func (kf *KafkaMetrics) RawRender(path string, from int64, to int64) ([]*RawRenderItem, error) {
+func (kf *KafkaMetrics) RawRender(path string, from int64, to int64, tags repr.SortingTags) ([]*RawRenderItem, error) {
 	return []*RawRenderItem{}, errKafkaReaderNotImplimented
 }
 

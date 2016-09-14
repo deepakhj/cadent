@@ -25,3 +25,4 @@ src/gopkg.in
 !src/cadent/cmd/*
 src/cadent/cmd/.DS_Store
 .cache
+/src/golang.org
