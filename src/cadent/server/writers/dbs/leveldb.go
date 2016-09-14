@@ -39,6 +39,7 @@ import (
 	leveldb_opt "github.com/syndtr/goleveldb/leveldb/opt"
 
 	"fmt"
+	leveldb_storage "github.com/syndtr/goleveldb/leveldb/storage"
 	logging "gopkg.in/op/go-logging.v1"
 	"path/filepath"
 )
@@ -98,12 +99,28 @@ func (lb *LevelDB) Config(conf map[string]interface{}) (err error) {
 
 	lb.tag_conn, err = leveldb.OpenFile(lb.TagTableName(), lb.level_opts)
 	if err != nil {
-		return err
+		if _, ok := err.(*leveldb_storage.ErrCorrupted); ok {
+			lb.log.Notice("Tab DB is corrupt. Recovering.")
+			lb.segment_conn, err = leveldb.RecoverFile(lb.TagTableName(), lb.level_opts)
+			if err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
 	}
 
 	lb.segment_conn, err = leveldb.OpenFile(lb.SegmentTableName(), lb.level_opts)
 	if err != nil {
-		return err
+		if _, ok := err.(*leveldb_storage.ErrCorrupted); ok {
+			lb.log.Notice("segment DB is corrupt. Recovering.")
+			lb.segment_conn, err = leveldb.RecoverFile(lb.SegmentTableName(), lb.level_opts)
+			if err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
 	}
 
 	return nil
