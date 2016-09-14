@@ -476,6 +476,7 @@ func (my *MySQLMetrics) RunPeriodicExpire() {
 				my.log.Errorf("Failed to delete metrics older then %d in %ds resolution", exp_time, res[0])
 			} else {
 				r_eff, _ := result.RowsAffected()
+				stats.StatsdClientSlow.Incr(fmt.Sprintf("writer.mysql.expire.%ds.rows.deleted", res[0]), r_eff)
 				my.log.Noticef("Removed %d metrics older then %d in the %ds resolution", r_eff, exp_time, res[0])
 
 			}

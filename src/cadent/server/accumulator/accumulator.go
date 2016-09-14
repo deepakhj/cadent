@@ -68,6 +68,7 @@ type Accumulator struct {
 	FlushTimes        []time.Duration `json:"flush_time"`
 	TTLTimes          []time.Duration `json:"ttl_times"`
 	RandomTickerStart bool            `json:"random_ticker_start"`
+	TagMode           uint8           // see repr.TAG_MODE
 
 	Accumulate AccumulatorItem
 	Formatter  FormatterItem
@@ -114,6 +115,7 @@ func NewAccumlator(inputtype string, outputtype string, keepkeys bool, name stri
 		AccumulateTime:    time.Duration(time.Second),
 		LineQueue:         make(chan []byte, 10000),
 		shutitdown:        false,
+		TagMode:           repr.TAG_METRICS2,
 		timer:             nil,
 		RandomTickerStart: false,
 	}

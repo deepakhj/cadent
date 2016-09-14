@@ -15,7 +15,13 @@ limitations under the License.
 */
 
 /*
-   An aggrigated stat object
+   An aggregated stat object
+
+   a note  on TagMode ::
+
+    the default behavior is to have metrics2 "identifier" tags, and all other tags are meta tags
+    sometimes this is not desired, so if the StatName.SetTagMode("all") will make all tags
+    identifiers
 */
 
 package repr
@@ -240,7 +246,13 @@ func (s *StatName) AggFunc() AGG_FUNC {
 }
 
 func (s *StatName) MergeMetric2Tags(itgs SortingTags) {
-	s.Tags, s.MetaTags = SplitIntoMetric2Tags(MergeMetric2Tags(itgs, s.Tags, s.MetaTags))
+	switch s.TagMode {
+	case TAG_ALLTAGS:
+		s.Tags = s.Tags.Merge(itgs)
+		s.MetaTags = SortingTags{}
+	default:
+		s.Tags, s.MetaTags = SplitIntoMetric2Tags(MergeMetric2Tags(itgs, s.Tags, s.MetaTags))
+	}
 	// need to invalidate the unique ids as the tags may have changed
 	s.uniqueId = 0
 	s.uniqueIdstr = ""

@@ -789,7 +789,7 @@ func (my *MySQLIndexer) GetTagsByNameValue(name string, value string, page int) 
 		}
 
 	}
-	my.log.Errorf("Q: %v | %s, %s", sel_tagQ, use_name, use_val)
+	//my.log.Errorf("Q: %v | %s, %s", sel_tagQ, use_name, use_val)
 	rows, err := my.conn.Query(sel_tagQ, use_name, use_val, page*MAX_PER_PAGE, MAX_PER_PAGE)
 	if err != nil {
 		my.log.Error("Error Getting Tags: %s : %v", sel_tagQ, err)
@@ -977,12 +977,27 @@ func (my *MySQLIndexer) FindNonRegex(metric string, tags repr.SortingTags) (Metr
 	}
 
 	if len(tag_ids) > 0 {
-		pathQ = fmt.Sprintf(
-			"SELECT uid,path,length,has_data FROM %s "+
-				" WHERE ((pos=? AND segment=?) OR (uid = ? AND segment = path AND has_data=1)) AND"+
-				" uid IN (SELECT uid FROM %s WHERE %s.tag_id IN ",
-			my.db.PathTable(), my.db.TagTableXref(), my.db.TagTableXref(),
-		)
+		limitQ := ""
+		// support non-target tag only things
+		// but we need to limit the number returned in that case
+		if len(metric) == 0 {
+			pathQ = fmt.Sprintf(
+				"SELECT uid,path,length,has_data FROM %s "+
+					" WHERE has_data=1 AND segment = path AND "+
+					" uid IN (SELECT uid FROM %s WHERE %s.tag_id IN ",
+				my.db.PathTable(), my.db.TagTableXref(), my.db.TagTableXref(),
+			)
+			args = []interface{}{}
+			limitQ = " LIMIT ?,?"
+		} else {
+
+			pathQ = fmt.Sprintf(
+				"SELECT uid,path,length,has_data FROM %s "+
+					" WHERE ((pos=? AND segment=?) OR (uid = ? AND segment = path AND has_data=1)) AND"+
+					" uid IN (SELECT uid FROM %s WHERE %s.tag_id IN ",
+				my.db.PathTable(), my.db.TagTableXref(), my.db.TagTableXref(),
+			)
+		}
 		pathQ += "("
 		for idx, tgid := range tag_ids {
 			pathQ += "?"
@@ -992,6 +1007,11 @@ func (my *MySQLIndexer) FindNonRegex(metric string, tags repr.SortingTags) (Metr
 			args = append(args, tgid)
 		}
 		pathQ += "))"
+		if len(limitQ) > 0 {
+			pathQ += limitQ
+			args = append(args, 0)
+			args = append(args, MAX_PER_PAGE)
+		}
 	}
 
 	var mt MetricFindItems

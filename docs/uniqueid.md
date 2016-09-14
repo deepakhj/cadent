@@ -114,6 +114,30 @@ Where again the tags included are *only* the intrinsict ones.
 This means that the carbon2 format is acctually "doubled up" in a fashion
 
 
+### TagMode
+
+The default mode is "metrics2" which means that any tag names that are not in the list above are NOT concidered
+for UniqueID ... but this may not work for all systems and use cases, so we have a TagMode of `all` which
+basically "breaks this intrinsitic tag vs metatags and all tags are concidered "intrinsitic"
+
+An example in the Accumulator/Prereg config file
+
+    [graphite-map]
+     listen_server="graphite-in" # which listener to sit in front of  (must be in the main config)
+     default_backend="graphite-in"  # failing a match go here
+
+         [graphite-map.accumulator]
+         backend = "BLACKHOLE"
+         input_format = "carbon2"
+         output_format = "carbon2"
+         random_ticker_start = false
+         tag_mode = "all"  # set to all use all tags for unique ID generation
+
+         accumulate_flush = "1s"
+         times = ["1s:1h", "5s:12h", "1m:168h"]
+
+
+
 ## UniqueID String
 
 Some database systems (cassandra for instance) overflow on a full uint64, so we need to have a format that pretty much

@@ -37,6 +37,7 @@ to_prereg_group="graphite-proxy"
 keep_keys = true
 random_ticker_start = true # flush time will not be time % duration but whenever things start
 tags = [["moo", "goo"], ["foo", "bar"]]
+tag_mode = "metrics2"  # can be "all" or "metrics2"  if metrics 2 only "metric2" tags will be included in identifiers
 
 
 # external writer
@@ -87,6 +88,7 @@ type ConfigAccumulator struct {
 	Times             []string             `toml:"times"`               // Aggregate Timers (or the first will be used for Accumulator flushes)
 	AccTimer          string               `toml:"accumulate_flush"`    // if specified will be the "main Accumulator" flusher otherwise it will choose the first in the Timers
 	RandomTickerStart bool                 `toml:"random_ticker_start"` // if true will set the flusher to basically started at "now" time otherwise it will use time % duration
+	TagMode           string               `toml:"tag_mode"`            // "all" "metrics2" -- default to metrics2 -- Will set how tags identify a unique metric
 
 	accumulate_time time.Duration
 	durations       []time.Duration
@@ -177,6 +179,15 @@ func (cf *ConfigAccumulator) GetAccumulator() (*Accumulator, error) {
 	ac.AccumulateTime = cf.accumulate_time
 	ac.FlushTimes = cf.durations
 	ac.TTLTimes = cf.ttls
+
+	// TagMode
+	ac.TagMode = repr.TAG_METRICS2
+	if cf.TagMode == "all" {
+		ac.TagMode = repr.TAG_ALLTAGS
+	}
+
+	// need to reset this mode in the accumulator object to the config desired
+	ac.Accumulate.SetTagMode(ac.TagMode)
 
 	if len(cf.ToBackend) == 0 {
 		return nil, fmt.Errorf("Need a `backend` for post delegation")

@@ -139,6 +139,7 @@ type JsonAccumulate struct {
 	InTags     repr.SortingTags
 	InKeepKeys bool
 	Resolution time.Duration
+	TagMode    uint8
 
 	mu sync.RWMutex
 }
@@ -153,7 +154,10 @@ func NewJsonAccumulate() (*JsonAccumulate, error) {
 func (s *JsonAccumulate) ResolutionTime(t time.Time) time.Time {
 	return t.Truncate(s.Resolution)
 }
-
+func (s *JsonAccumulate) SetTagMode(mode uint8) error {
+	s.TagMode = mode
+	return nil
+}
 func (s *JsonAccumulate) MapKey(name string, t time.Time) string {
 	return fmt.Sprintf("%s-%d", name, s.ResolutionTime(t).UnixNano())
 }
@@ -261,15 +265,24 @@ func (a *JsonAccumulate) ProcessLine(linebytes []byte) (err error) {
 		}
 	}
 
-	stat_key := a.MapKey(spl.Metric, t)
+	//tag mode
+	var tgs, metatags repr.SortingTags
+	switch a.TagMode {
+	case repr.TAG_ALLTAGS:
+		break
+	default:
+		tgs, metatags = repr.Metric2FromMap(spl.Tags)
+
+	}
+
+	stat_key := a.MapKey(spl.Metric+tgs.ToStringSep(repr.DOT_SEPARATOR, repr.DOT_SEPARATOR), t)
 	// now the accumlator
 	a.mu.RLock()
 	gots, ok := a.JsonStats[stat_key]
 	a.mu.RUnlock()
 
 	if !ok {
-		tgs, meta := repr.Metric2FromMap(spl.Tags)
-		nm := repr.StatName{Key: spl.Metric, MetaTags: meta, Tags: tgs}
+		nm := repr.StatName{Key: spl.Metric, MetaTags: metatags, Tags: tgs, TagMode: a.TagMode}
 		gots = &JsonBaseStatItem{
 			InType:     "json",
 			Time:       a.ResolutionTime(t),

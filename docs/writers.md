@@ -740,13 +740,7 @@ in order to basically not die a horrible death of RAM consumption and deadlocks.
 
 As a result .. don't use cassandra 2.1, use at least cassandra 2.2
 
-Time Drift :: Golang's concurency and timers are not "realtime" meaning over time (like 30 min) the flush windows will actually
-move (i.e. 10s -> 10.00001s -> 10.00003s -> 10.0002s ...) as a result the metrics that get written will start to not be exactly
-10s appart, but start to drift from each other.  In Graphite this will cause some "holes" as it expect "exact" 10s offsets, but we need
-to interpolate the approximate bin shift windows for graphite to consume.  Golang's `Tickers` do attempt to compensate for drift
-but nothing is perfect.  Graphite uses only Seconds for TimeStamps, so all should be pretty well contained in that time bound.
-
-To help with this, the tickers here attempt to try to flush things on proper mod internals
+The tickers for the flushes attempt to try to flush things on proper mod internals
 The ticker will try to start on `time % duration == 0` this is not exact, but it usually hits within a few milliseconds of the correct mode.
 i.e. a "timer" of "10s" should start on `14579895[0-9]0`
 
@@ -764,7 +758,7 @@ To further make Cassandra data points and timers align, FLUSH times should all b
     output_format = "graphite"
 
     # push out to writer aggregator collector and the backend every 10s
-    # this should match the FIRST time in your times below
+    # this should match the FIRST time in your times below, but is not totally nessesary
     accumulate_flush = "10s"
 
     # aggregate bin counts

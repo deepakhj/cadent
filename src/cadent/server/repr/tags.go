@@ -99,6 +99,8 @@ func (s SortingTags) SetTags(tgs [][]string) {
 	s = SortingTags(tgs)
 }
 
+// merge two tag sets
+// NOTE: the Incoming tags will overwrite any ones in the based tags set if they are the same name
 func (s SortingTags) Merge(tags SortingTags) SortingTags {
 	if len(tags) == 0 {
 		return s
@@ -106,12 +108,12 @@ func (s SortingTags) Merge(tags SortingTags) SortingTags {
 	if len(s) == 0 {
 		return tags
 	}
-	n_tags := make(SortingTags, 0)
+	n_tags := s
 	for _, tag := range tags {
 		got := false
-		for _, o_tag := range s {
+		for idx, o_tag := range n_tags {
 			if tag[0] == o_tag[0] {
-				n_tags = append(n_tags, []string{tag[0], tag[1]})
+				n_tags[idx][1] = tag[1]
 				got = true
 				break
 			}

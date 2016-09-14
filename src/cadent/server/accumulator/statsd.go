@@ -576,6 +576,7 @@ type StatsdAccumulate struct {
 	OutFormat   FormatterItem
 	InTags      repr.SortingTags
 	InKeepKeys  bool
+	TagMode     uint8
 
 	// statsd like options
 	LegacyStatsd  bool
@@ -672,6 +673,11 @@ func (s *StatsdAccumulate) GetOption(opt string, defaults interface{}) interface
 
 // noops for statsd
 func (s *StatsdAccumulate) SetResolution(dur time.Duration) error {
+	return nil
+}
+
+func (s *StatsdAccumulate) SetTagMode(mode uint8) error {
+	s.TagMode = mode
 	return nil
 }
 
@@ -832,7 +838,7 @@ func (a *StatsdAccumulate) ProcessLine(lineb []byte) (err error) {
 				Max:              STATSD_ACC_MIN_FLAG,
 				Last:             STATSD_ACC_MIN_FLAG,
 				Count:            0,
-				InKey:            repr.StatName{Key: key, Tags: tags},
+				InKey:            repr.StatName{Key: key, Tags: tags, TagMode: a.TagMode},
 				PercentThreshold: thres,
 				SampleSum:        0,
 			}
@@ -840,7 +846,7 @@ func (a *StatsdAccumulate) ProcessLine(lineb []byte) (err error) {
 			gots = &StatsdSetStatItem{
 				InType: "s",
 				Values: make(map[uint64]bool, 0),
-				InKey:  repr.StatName{Key: key, Tags: tags},
+				InKey:  repr.StatName{Key: key, Tags: tags, TagMode: a.TagMode},
 			}
 		default:
 			gots = &StatsdBaseStatItem{
@@ -849,7 +855,7 @@ func (a *StatsdAccumulate) ProcessLine(lineb []byte) (err error) {
 				Min:    STATSD_ACC_MIN_FLAG,
 				Max:    STATSD_ACC_MIN_FLAG,
 				Last:   STATSD_ACC_MIN_FLAG,
-				InKey:  repr.StatName{Key: key, Tags: tags},
+				InKey:  repr.StatName{Key: key, Tags: tags, TagMode: a.TagMode},
 			}
 
 		}

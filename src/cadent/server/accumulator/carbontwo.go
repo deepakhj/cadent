@@ -133,6 +133,7 @@ type CarbonTwoAccumulate struct {
 	InTags         repr.SortingTags
 	InKeepKeys     bool
 	Resolution     time.Duration
+	TagMode        uint8
 
 	mu sync.RWMutex
 }
@@ -154,6 +155,10 @@ func (s *CarbonTwoAccumulate) MapKey(name string, t time.Time) string {
 
 func (s *CarbonTwoAccumulate) SetResolution(dur time.Duration) error {
 	s.Resolution = dur
+	return nil
+}
+func (s *CarbonTwoAccumulate) SetTagMode(mode uint8) error {
+	s.TagMode = mode
 	return nil
 }
 
@@ -304,15 +309,25 @@ func (a *CarbonTwoAccumulate) ProcessLine(lineb []byte) (err error) {
 	}
 
 	// the sorted tags give us a string of goodies
-	// make it name_is_val.name_is_val
-	sort.Sort(tags)
-	unique_key := tags.ToStringSep(repr.IS_SEPARATOR, repr.DOT_SEPARATOR)
-	stat_key := a.MapKey(unique_key, t)
+	// make it name.val.name.val
 	var meta_tags repr.SortingTags
 	// now for the "other" tags
 	if l_vals > 2 {
 		meta_tags = repr.SortingTagsFromArray(vals[0:(l_vals - 2)])
 	}
+	//tag mode
+
+	switch a.TagMode {
+	case repr.TAG_ALLTAGS:
+		tags = tags.Merge(meta_tags)
+		meta_tags = repr.SortingTags{} // null it out
+	default:
+		break
+	}
+
+	sort.Sort(tags)
+	unique_key := tags.ToStringSep(repr.IS_SEPARATOR, repr.DOT_SEPARATOR)
+	stat_key := a.MapKey(unique_key, t)
 
 	// now the accumlator
 	a.mu.RLock()
@@ -320,11 +335,12 @@ func (a *CarbonTwoAccumulate) ProcessLine(lineb []byte) (err error) {
 	a.mu.RUnlock()
 
 	if !ok {
+
 		// based on the stat key (if present) figure out the agg
 		gots = &CarbonTwoBaseStatItem{
 			InType:     "carbontwo",
 			Time:       a.ResolutionTime(t),
-			InKey:      repr.StatName{Key: unique_key, Tags: tags, MetaTags: meta_tags},
+			InKey:      repr.StatName{Key: unique_key, Tags: tags, MetaTags: meta_tags, TagMode: a.TagMode},
 			Min:        CARBONTWO_ACC_MIN_FLAG,
 			Max:        CARBONTWO_ACC_MIN_FLAG,
 			Last:       CARBONTWO_ACC_MIN_FLAG,

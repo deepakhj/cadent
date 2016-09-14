@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -129,6 +130,7 @@ type GraphiteAccumulate struct {
 	InTags        repr.SortingTags
 	InKeepKeys    bool
 	Resolution    time.Duration
+	TagMode       uint8 // see repr.TAG_MODE
 
 	mu sync.RWMutex
 }
@@ -146,6 +148,11 @@ func (s *GraphiteAccumulate) ResolutionTime(t time.Time) time.Time {
 
 func (s *GraphiteAccumulate) MapKey(name string, t time.Time) string {
 	return fmt.Sprintf("%s-%d", name, s.ResolutionTime(t).UnixNano())
+}
+
+func (s *GraphiteAccumulate) SetTagMode(mode uint8) error {
+	s.TagMode = mode
+	return nil
 }
 
 func (s *GraphiteAccumulate) SetResolution(dur time.Duration) error {
@@ -270,16 +277,25 @@ func (a *GraphiteAccumulate) ProcessLine(linebytes []byte) (err error) {
 		tags = repr.SortingTagsFromArray(stats_arr[3:])
 	}
 
-	stat_key := a.MapKey(key, t)
-	// now the accumlator
-	a.mu.Lock()
+	// obey tag mode
+	var tgs, meta repr.SortingTags
+	switch a.TagMode {
+	case repr.TAG_ALLTAGS:
+		tgs = tags
+	default:
+		tgs, meta = repr.SplitIntoMetric2Tags(repr.SortingTags{}, tags)
 
+	}
+	sort.Sort(tgs)
+	stat_key := a.MapKey(key+tgs.ToStringSep(repr.DOT_SEPARATOR, repr.DOT_SEPARATOR), t)
+	// now the accumlator
+	a.mu.RLock()
 	gots, ok := a.GraphiteStats[stat_key]
-	a.mu.Unlock()
+	a.mu.RUnlock()
 
 	if !ok {
-		tgs, meta := repr.SplitIntoMetric2Tags(repr.SortingTags{}, tags)
-		nm := repr.StatName{Key: key, Tags: tgs, MetaTags: meta}
+
+		nm := repr.StatName{Key: key, Tags: tgs, MetaTags: meta, TagMode: a.TagMode}
 
 		gots = &GraphiteBaseStatItem{
 			InType:     "graphite",

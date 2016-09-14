@@ -77,39 +77,6 @@ func TestStatAccumulatorRepr(t *testing.T) {
 		})
 	})
 
-	Convey("Tags", t, func() {
-		t_str := "moo=goo loo=baz"
-		t_str_1 := "moo=goo.loo=baz"
-		t_str_2 := "moo=goo,loo=baz"
-		t_str_3 := "moo_is_goo,loo_is_baz"
-		outs := SortingTags{
-			[]string{"moo", "goo"},
-			[]string{"loo", "baz"},
-		}
-		Convey("spaced tags should parse", func() {
-			tags := SortingTagsFromString(t_str)
-			So(tags, ShouldResemble, outs)
-		})
-		Convey("dots tags should parse", func() {
-			tags := SortingTagsFromString(t_str_1)
-			So(tags, ShouldResemble, outs)
-		})
-		Convey("comma tags should parse", func() {
-			tags := SortingTagsFromString(t_str_2)
-			So(tags, ShouldResemble, outs)
-		})
-		Convey("_is_ tags should parse", func() {
-			tags := SortingTagsFromString(t_str_3)
-			So(tags, ShouldResemble, outs)
-		})
-
-		arr_str := []string{"moo=goo", "loo=baz"}
-		Convey("array tags should parse", func() {
-			tags := SortingTagsFromArray(arr_str)
-			So(tags, ShouldResemble, outs)
-		})
-	})
-
 	STAT_REPR_CACHE.Add(ss)
 	Convey("Global Cacher", t, func() {
 

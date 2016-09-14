@@ -33,7 +33,7 @@ func TestCarbontwoAccumulator(t *testing.T) {
 	grp, err := NewFormatterItem("graphite")
 	statter, err := NewAccumulatorItem("carbon2")
 	statter.Init(grp)
-
+	statter.SetTagMode(1)
 	Convey("Given an CarbontwoAcc w/ Carbontwo Formatter", t, func() {
 
 		Convey("Error should be nil", func() {
@@ -182,6 +182,36 @@ func TestCarbontwoAccumulator(t *testing.T) {
 		So(strs, ShouldContain, "mtype=gauge stat=min unit=B what=house  house=spam moo=goo 2 123123")
 		So(strs, ShouldContain, "mtype=rate stat=mean unit=B what=house  house=spam moo=goo 5.666666666666667 123123")
 		So(strs, ShouldContain, "mtype=counter stat=max unit=B what=house  house=spam moo=goo 10 123123")
+
+	})
+
+	grmode, err := NewFormatterItem("statsd")
+	statter.Init(grmode)
+	statter.SetTagMode(2)
+	Convey("Set the formatter to Graphite Tagmode=all ", t, func() {
+
+		err = statter.ProcessLine([]byte("stat=max unit=B mtype=counter what=house  moo=goo house=spam 2 123123"))
+		err = statter.ProcessLine([]byte("stat=max unit=B mtype=counter what=house  moo=goo house=spam 5 123123"))
+		err = statter.ProcessLine([]byte("stat=max unit=B mtype=counter what=house  moo=goo house=spam 10 123123"))
+
+		err = statter.ProcessLine([]byte("stat=min unit=B mtype=gauge what=house  moo=goo house=spam 2 123123"))
+		err = statter.ProcessLine([]byte("stat=min unit=B mtype=gauge what=house  moo=goo house=spam 5 123123"))
+		err = statter.ProcessLine([]byte("stat=min unit=B mtype=gauge what=house  moo=goo house=spam 10 123123"))
+
+		err = statter.ProcessLine([]byte("stat=mean unit=B mtype=rate what=house  moo=goo house=spam 2 123123"))
+		err = statter.ProcessLine([]byte("stat=mean unit=B mtype=rate what=house  moo=goo house=spam 5 123123"))
+		err = statter.ProcessLine([]byte("stat=mean unit=B mtype=rate what=house  moo=goo house=spam 10 123123"))
+
+		buf := new(bytes.Buffer)
+		b_arr := statter.Flush(buf)
+		Convey("statsd out: Flush should give us data", func() {
+			So(len(b_arr.Stats), ShouldEqual, 3)
+		})
+		strs := strings.Split(buf.String(), "\n")
+		t.Logf("Stats: %v", strs)
+		So(strs, ShouldContain, "house_is_spam.moo_is_goo.mtype_is_counter.stat_is_max.unit_is_B.what_is_house:10|c|#house:spam,moo:goo,mtype:counter,stat:max,unit:B,what:house")
+		So(strs, ShouldContain, "house_is_spam.moo_is_goo.mtype_is_gauge.stat_is_min.unit_is_B.what_is_house:2|g|#house:spam,moo:goo,mtype:gauge,stat:min,unit:B,what:house")
+		So(strs, ShouldContain, "house_is_spam.moo_is_goo.mtype_is_rate.stat_is_mean.unit_is_B.what_is_house:5.666666666666667|ms|#house:spam,moo:goo,mtype:rate,stat:mean,unit:B,what:house")
 
 	})
 }

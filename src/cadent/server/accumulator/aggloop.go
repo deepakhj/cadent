@@ -251,7 +251,10 @@ func (agg *AggregateLoop) startInputLooper() {
 
 	for {
 		select {
-		case stat := <-agg.InputChan:
+		case stat, more := <-agg.InputChan:
+			if !more {
+				return
+			}
 			agg.stat_dispatcher.Add(StatJob{Aggregators: agg.Aggregators, Stat: &stat})
 			//agg.Aggregators.Add(stat)
 		case <-shut.Ch:

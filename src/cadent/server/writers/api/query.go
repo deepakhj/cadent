@@ -163,7 +163,7 @@ func ParseMetricQuery(r *http.Request) (mq MetricQuery, err error) {
 	from = strings.TrimSpace(r.Form.Get("from"))
 	to = strings.TrimSpace(r.Form.Get("to"))
 
-	if len(target) == 0 {
+	if len(target) == 0 && len(tags) == 0 {
 		return mq, errTargetRequired
 	}
 
