@@ -92,7 +92,7 @@ const (
 	MYSQL_DEFAULT_METRIC_WORKERS   = 16
 	MYSQL_DEFAULT_METRIC_QUEUE_LEN = 1024 * 100
 	MYSQL_DEFAULT_METRIC_RETRIES   = 2
-	MYSQL_DEFAULT_EXPIRE_TICK      = "1m"
+	MYSQL_DEFAULT_EXPIRE_TICK      = "3m"
 )
 
 // common errors to avoid GC pressure
@@ -490,7 +490,9 @@ func (my *MySQLMetrics) InsertSeries(name *repr.StatName, timeseries series.Time
 }
 
 func (my *MySQLMetrics) Write(stat repr.StatRepr) error {
+
 	stat.Name.MergeMetric2Tags(my.static_tags)
+
 	// only need to do this if the first resolution
 	if my.currentResolution == my.resolutions[0][0] {
 		my.indexer.Write(stat.Name)
@@ -516,7 +518,6 @@ func (my *MySQLMetrics) Write(stat repr.StatRepr) error {
 	} else {
 		my.cacher.Add(&stat.Name, &stat)
 	}
-
 	return nil
 }
 

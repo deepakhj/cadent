@@ -978,9 +978,11 @@ func (my *MySQLIndexer) FindNonRegex(metric string, tags repr.SortingTags) (Metr
 
 	if len(tag_ids) > 0 {
 		limitQ := ""
+		qend := ""
 		// support non-target tag only things
-		// but we need to limit the number returned in that case
+		// but we need to have a fancier query
 		if len(metric) == 0 {
+
 			pathQ = fmt.Sprintf(
 				"SELECT uid,path,length,has_data FROM %s "+
 					" WHERE has_data=1 AND segment = path AND "+
@@ -988,13 +990,17 @@ func (my *MySQLIndexer) FindNonRegex(metric string, tags repr.SortingTags) (Metr
 				my.db.PathTable(), my.db.TagTableXref(), my.db.TagTableXref(),
 			)
 			args = []interface{}{}
+			qend = fmt.Sprintf(
+				" GROUP BY UID %s.tag_id HAVING COUNT(%s.tag_id) = %d ",
+				my.db.TagTableXref(), my.db.TagTableXref(), len(tag_ids),
+			)
 			limitQ = " LIMIT ?,?"
 		} else {
 
 			pathQ = fmt.Sprintf(
 				"SELECT uid,path,length,has_data FROM %s "+
 					" WHERE ((pos=? AND segment=?) OR (uid = ? AND segment = path AND has_data=1)) AND"+
-					" uid IN (SELECT uid FROM %s WHERE %s.tag_id IN ",
+					" uid IN (SELECT DISTINCT uid FROM %s WHERE %s.tag_id IN ",
 				my.db.PathTable(), my.db.TagTableXref(), my.db.TagTableXref(),
 			)
 		}
@@ -1006,7 +1012,7 @@ func (my *MySQLIndexer) FindNonRegex(metric string, tags repr.SortingTags) (Metr
 			}
 			args = append(args, tgid)
 		}
-		pathQ += "))"
+		pathQ += qend + "))"
 		if len(limitQ) > 0 {
 			pathQ += limitQ
 			args = append(args, 0)

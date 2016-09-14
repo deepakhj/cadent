@@ -131,7 +131,11 @@ func (s *StatName) UniqueId() StatId {
 	// all tags or just intrinsic tags
 	switch s.TagMode {
 	case TAG_ALLTAGS:
-		fmt.Fprintf(byte_buf, "%s:%s:%s", s.Key, s.SortedTags(), s.SortedMetaTags())
+		if len(s.MetaTags) > 0 {
+			fmt.Fprintf(byte_buf, "%s:%s:%s", s.Key, s.SortedTags(), s.SortedMetaTags())
+		} else {
+			fmt.Fprintf(byte_buf, "%s:%s", s.Key, s.SortedTags())
+		}
 		buf.Write(byte_buf.Bytes())
 	default:
 		fmt.Fprintf(byte_buf, "%s:%s", s.Key, s.SortedTags())
