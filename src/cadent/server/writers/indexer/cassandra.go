@@ -697,11 +697,11 @@ func (cass *CassandraIndexer) Find(metric string, tags repr.SortingTags) (Metric
 
 	// special case for "root" == "*"
 	// check cache
-	/*items := cass.indexCache.Get(metric, tags)
+	items := cass.indexCache.Get(metric, tags)
 	if items != nil {
 		stats.StatsdClientSlow.Incr("indexer.cassandra.find.cached", 1)
 		return *items, nil
-	}*/
+	}
 
 	if metric == "*" {
 		return cass.FindRoot()
