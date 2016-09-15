@@ -787,7 +787,7 @@ func (cass *CassandraFlatMetric) getResolution(from int64, to int64) uint32 {
 	back_f := n - int(from)
 	back_t := n - int(to)
 	for _, res := range cass.resolutions {
-		if diff < res[1] && back_f < res[1] && back_t < res[1] {
+		if diff <= res[1] && back_f <= res[1] && back_t <= res[1] {
 			return uint32(res[0])
 		}
 	}
