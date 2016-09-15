@@ -30,6 +30,12 @@
 			"revisionTime": "2016-09-07T20:18:35Z"
 		},
 		{
+			"checksumSHA1": "+tmOxLkLwkVVakYY1XRLjbfawX0=",
+			"path": "github.com/bsm/sarama-cluster",
+			"revision": "6d37f561b2a131e011c0cecf8a4d3c96b1e0a940",
+			"revisionTime": "2016-08-17T13:23:50Z"
+		},
+		{
 			"checksumSHA1": "5rPfda8jFccr3A6heL+JAmi9K9g=",
 			"path": "github.com/davecgh/go-spew/spew",
 			"revision": "5215b55f46b2b919f50a1df0eaa5886afe4e3b3d",

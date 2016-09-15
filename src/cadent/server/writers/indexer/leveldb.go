@@ -64,6 +64,7 @@ import (
 	"cadent/server/repr"
 	"cadent/server/stats"
 	"cadent/server/utils"
+	"cadent/server/utils/options"
 	"cadent/server/utils/shutdown"
 	"cadent/server/writers/dbs"
 	"fmt"
@@ -360,13 +361,11 @@ func NewLevelDBIndexer() *LevelDBIndexer {
 	return lb
 }
 
-func (lb *LevelDBIndexer) Config(conf map[string]interface{}) error {
-
-	gots := conf["dsn"]
-	if gots == nil {
+func (lb *LevelDBIndexer) Config(conf options.Options) (err error) {
+	dsn, err := conf.StringRequired("dsn")
+	if err != nil {
 		return fmt.Errorf("Indexer: `dsn` (/path/to/dbs) is needed for leveldb config")
 	}
-	dsn := gots.(string)
 
 	db, err := dbs.NewDB("leveldb", dsn, conf)
 	if err != nil {
@@ -388,24 +387,9 @@ func (lb *LevelDBIndexer) Config(conf map[string]interface{}) error {
 		lb.cache.maxKeys = int(_ms.(int64))
 	}
 
-	lb.writes_per_second = LEVELDB_WRITES_PER_SECOND
-	_ws := conf["writes_per_second"]
-	if _ws != nil {
-		lb.writes_per_second = int(_ws.(int64))
-	}
-
-	// tweak queus and worker sizes
-	_workers := conf["write_workers"]
-	lb.num_workers = LEVELDB_INDEXER_WORKERS
-	if _workers != nil {
-		lb.num_workers = int(_workers.(int64))
-	}
-
-	_qs := conf["write_queue_length"]
-	lb.queue_len = LEVELDB_INDEXER_QUEUE_LEN
-	if _qs != nil {
-		lb.queue_len = int(_qs.(int64))
-	}
+	lb.writes_per_second = int(conf.Int64("writes_per_second", LEVELDB_WRITES_PER_SECOND))
+	lb.num_workers = int(conf.Int64("write_workers", LEVELDB_INDEXER_WORKERS))
+	lb.queue_len = int(conf.Int64("write_queue_length", LEVELDB_INDEXER_QUEUE_LEN))
 
 	lb.indexerId = fmt.Sprintf("leveldb:%s", dsn)
 

@@ -39,6 +39,7 @@ limitations under the License.
 package api
 
 import (
+	"cadent/server/utils/options"
 	"cadent/server/writers"
 	"cadent/server/writers/indexer"
 	"cadent/server/writers/metrics"
@@ -46,10 +47,10 @@ import (
 )
 
 type ApiMetricConfig struct {
-	Driver   string                 `toml:"driver"`
-	DSN      string                 `toml:"dsn"`
-	UseCache string                 `toml:"cache"`
-	Options  map[string]interface{} `toml:"options"` // option=[ [key, value], [key, value] ...]
+	Driver   string          `toml:"driver"`
+	DSN      string          `toml:"dsn"`
+	UseCache string          `toml:"cache"`
+	Options  options.Options `toml:"options"` // option=[ [key, value], [key, value] ...]
 }
 
 type ApiIndexerConfig struct {
@@ -107,7 +108,7 @@ func (re *ApiConfig) GetIndexer() (indexer.Indexer, error) {
 		return nil, err
 	}
 	if re.ApiIndexerOptions.Options == nil {
-		re.ApiIndexerOptions.Options = make(map[string]interface{})
+		re.ApiIndexerOptions.Options = options.New()
 	}
 	re.ApiIndexerOptions.Options["dsn"] = re.ApiIndexerOptions.DSN
 	err = idx.Config(re.ApiIndexerOptions.Options)

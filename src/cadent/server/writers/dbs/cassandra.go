@@ -26,6 +26,7 @@ import (
 	"github.com/gocql/gocql"
 	logging "gopkg.in/op/go-logging.v1"
 
+	"cadent/server/utils/options"
 	"strings"
 	"sync"
 	"time"
@@ -76,98 +77,39 @@ func NewCassandraDB() *CassandraDB {
 	return cass
 }
 
-func (cass *CassandraDB) Config(conf map[string]interface{}) (err error) {
-	gots := conf["dsn"]
-	if gots == nil {
+func (cass *CassandraDB) Config(conf options.Options) (err error) {
+	dsn, err := conf.StringRequired("dsn")
+	if err != nil {
 		return fmt.Errorf("`dsn` (server1,server2,server3) is needed for cassandra config")
 	}
-	dsn := gots.(string)
 
-	port := 9042
-	_port := conf["port"]
-	if _port != nil {
-		port = int(_port.(int64))
-	}
+	port := int(conf.Int64("port", 9042))
 
-	cass.keyspace = "metric"
-	_keyspace := conf["keyspace"]
-	if _keyspace != nil {
-		cass.keyspace = _keyspace.(string)
-	}
+	cass.keyspace = conf.String("keyspace", "metric")
+	cass.metric_table = conf.String("metrics_table", "metric")
+	cass.path_table = conf.String("path_table", "path")
 
-	cass.metric_table = "metric"
-	_table := conf["metrics_table"]
-	if _table != nil {
-		cass.metric_table = _table.(string)
-	}
+	cass.segment_table = conf.String("segment_table", "segment")
 
-	cass.path_table = "path"
-	_ptable := conf["path_table"]
-	if _ptable != nil {
-		cass.path_table = _ptable.(string)
-	}
-	cass.segment_table = "segment"
-	_stable := conf["segment_table"]
-	if _stable != nil {
-		cass.segment_table = _stable.(string)
-	}
-
-	w_consistency := "one"
+	w_consistency := conf.String("write_consistency", "one")
 	cass.write_consistency = gocql.LocalOne
-	_wconsistency := conf["write_consistency"]
-	if _wconsistency != nil {
-		w_consistency = _wconsistency.(string)
-		if w_consistency == "local_quorum" {
-			cass.write_consistency = gocql.LocalQuorum
-		} else if w_consistency == "quorum" {
-			cass.write_consistency = gocql.Quorum
-		}
+	if w_consistency == "local_quorum" {
+		cass.write_consistency = gocql.LocalQuorum
+	} else if w_consistency == "quorum" {
+		cass.write_consistency = gocql.Quorum
 	}
 
-	r_consistency := "one"
+	r_consistency := conf.String("read_consistency", "one")
 	cass.read_consistency = gocql.LocalOne
-	_rconsistency := conf["read_consistency"]
-	if _rconsistency != nil {
-		r_consistency = _rconsistency.(string)
-		if r_consistency == "local_quorum" {
-			cass.read_consistency = gocql.LocalQuorum
-		} else if r_consistency == "quorum" {
-			cass.read_consistency = gocql.Quorum
-		}
+	if r_consistency == "local_quorum" {
+		cass.read_consistency = gocql.LocalQuorum
+	} else if r_consistency == "quorum" {
+		cass.read_consistency = gocql.Quorum
 	}
 
-	timeout := time.Duration(30 * time.Second)
-	_timeout := conf["timeout"]
-	if _rconsistency != nil {
-		ok, err := time.ParseDuration(_timeout.(string))
-		if err != nil {
-			return err
-		}
-		timeout = ok
-	}
+	timeout := conf.Duration("timeout", time.Duration(30*time.Second))
 
-	numcons := CASSANDRA_DEFAULT_CONNECTIONS
-	_numcons := conf["numcons"]
-	if _numcons != nil {
-		numcons = _numcons.(int64)
-	}
-
-	// cassandra does not like batch of large proportions .. so this is rather "not relevant"
-	// and we need to insert things One At A Time
-	/*
-		_wr_buffer := conf["batch_count"]
-		if _wr_buffer == nil {
-			cass.max_write_size = 100
-		} else {
-			// toml things generic ints are int64
-			cass.max_write_size = int(_wr_buffer.(int64))
-			//cassandra has a batch limit (on input queries) so we force 100
-			if cass.max_write_size > 100 {
-				cass.log.Warning("Batch size too large, need to reduce to 100")
-				cass.max_write_size = 100
-			}
-		}
-	*/
+	numcons := conf.Int64("numcons", CASSANDRA_DEFAULT_CONNECTIONS)
 
 	con_key := fmt.Sprintf("%s:%v/%v/%v|%v|%v", dsn, port, cass.keyspace, cass.metric_table, cass.path_table, cass.segment_table)
 

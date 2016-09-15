@@ -21,7 +21,7 @@ limitations under the License.
 */
 //go:generate msgp -o kafka_msgp.go --file kafka.msgp.go
 
-package metrics
+package schemas
 
 import (
 	"encoding/json"
@@ -45,7 +45,7 @@ func KafkaEncodingFromString(enc string) KafkaEncodingType {
 }
 
 /** kafka put object **/
-type KafkaMetric struct {
+type KafkaSeriesMetric struct {
 	Type       string     `json:"type" codec:"type" msg:"type"`
 	Id         uint64     `json:"id" codec:"id" msg:"id"`
 	Uid        string     `json:"uid" codec:"uid" msg:"uid"`
@@ -63,10 +63,13 @@ type KafkaMetric struct {
 	err        error
 }
 
-func (kp *KafkaMetric) ensureEncoded() {
+func (kp *KafkaSeriesMetric) SetEncoding(enc KafkaEncodingType) {
+	kp.encodetype = enc
+}
+
+func (kp *KafkaSeriesMetric) ensureEncoded() {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Errorf("Kafka Encoding error: %v", r)
 			kp.err = fmt.Errorf("%v", r)
 			kp.encoded = nil
 		}
@@ -83,7 +86,7 @@ func (kp *KafkaMetric) ensureEncoded() {
 	}
 }
 
-func (kp *KafkaMetric) Length() int {
+func (kp *KafkaSeriesMetric) Length() int {
 	if kp == nil {
 		return 0
 	}
@@ -91,9 +94,9 @@ func (kp *KafkaMetric) Length() int {
 	return len(kp.encoded)
 }
 
-func (kp *KafkaMetric) Encode() ([]byte, error) {
+func (kp *KafkaSeriesMetric) Encode() ([]byte, error) {
 	if kp == nil {
-		return nil, errKafkaMetricIsNil
+		return nil, ErrMetricIsNil
 	}
 	kp.ensureEncoded()
 	return kp.encoded, kp.err
@@ -102,7 +105,7 @@ func (kp *KafkaMetric) Encode() ([]byte, error) {
 /**** Flat metrics ****/
 
 /** kafka put object **/
-type KafkaMetricObj struct {
+type KafkaSingleMetric struct {
 	Type       string     `json:"type" msg:"type"`
 	Id         uint64     `json:"id" msg:"id"`
 	Uid        string     `json:"uid" msg:"uid"`
@@ -123,10 +126,9 @@ type KafkaMetricObj struct {
 	err        error
 }
 
-func (kp *KafkaMetricObj) ensureEncoded() {
+func (kp *KafkaSingleMetric) ensureEncoded() {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Errorf("Kafka Encoding error: %v", r)
 			kp.err = fmt.Errorf("%v", r)
 			kp.encoded = nil
 		}
@@ -142,12 +144,16 @@ func (kp *KafkaMetricObj) ensureEncoded() {
 	}
 }
 
-func (kp *KafkaMetricObj) Length() int {
+func (kp *KafkaSingleMetric) SetEncoding(enc KafkaEncodingType) {
+	kp.encodetype = enc
+}
+
+func (kp *KafkaSingleMetric) Length() int {
 	kp.ensureEncoded()
 	return len(kp.encoded)
 }
 
-func (kp *KafkaMetricObj) Encode() ([]byte, error) {
+func (kp *KafkaSingleMetric) Encode() ([]byte, error) {
 	kp.ensureEncoded()
 	return kp.encoded, kp.err
 }

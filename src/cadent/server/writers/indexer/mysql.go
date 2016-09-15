@@ -67,6 +67,7 @@ import (
 	"cadent/server/repr"
 	"cadent/server/stats"
 	"cadent/server/utils"
+	"cadent/server/utils/options"
 	"cadent/server/utils/shutdown"
 	"cadent/server/writers/dbs"
 	"database/sql"
@@ -121,12 +122,12 @@ func NewMySQLIndexer() *MySQLIndexer {
 	return my
 }
 
-func (my *MySQLIndexer) Config(conf map[string]interface{}) error {
-	gots := conf["dsn"]
-	if gots == nil {
+func (my *MySQLIndexer) Config(conf options.Options) (err error) {
+	dsn, err := conf.StringRequired("dsn")
+	if err != nil {
 		return fmt.Errorf("`dsn` (user:pass@tcp(host:port)/db) is needed for mysql config")
 	}
-	dsn := gots.(string)
+
 	db, err := dbs.NewDB("mysql", dsn, conf)
 	if err != nil {
 		return err
@@ -136,17 +137,8 @@ func (my *MySQLIndexer) Config(conf map[string]interface{}) error {
 	my.conn = db.Connection().(*sql.DB)
 
 	// tweak queues and worker sizes
-	_workers := conf["write_workers"]
-	my.num_workers = MYSQL_INDEXER_WORKERS
-	if _workers != nil {
-		my.num_workers = int(_workers.(int64))
-	}
-
-	_qs := conf["write_queue_length"]
-	my.queue_len = MYSQL_INDEXER_QUEUE_LEN
-	if _qs != nil {
-		my.queue_len = int(_qs.(int64))
-	}
+	my.num_workers = int(conf.Int64("write_workers", MYSQL_INDEXER_WORKERS))
+	my.queue_len = int(conf.Int64("write_queue_length", MYSQL_INDEXER_QUEUE_LEN))
 
 	my.indexerId = "indexer:mysql:" + dsn
 	my.cache, err = getCacherSingleton(my.indexerId)
@@ -154,16 +146,8 @@ func (my *MySQLIndexer) Config(conf map[string]interface{}) error {
 		return err
 	}
 
-	_ms := conf["cache_index_size"]
-	if _ms != nil {
-		my.cache.maxKeys = int(_ms.(int64))
-	}
-
-	my.writes_per_second = MYSQL_WRITES_PER_SECOND
-	_ws := conf["writes_per_second"]
-	if _ws != nil {
-		my.writes_per_second = int(_ws.(int64))
-	}
+	my.writes_per_second = int(conf.Int64("writes_per_second", MYSQL_WRITES_PER_SECOND))
+	my.cache.maxKeys = int(conf.Int64("cache_index_size", CACHER_METRICS_KEYS))
 
 	atomic.StoreUint32(&my.shutitdown, 1)
 	my.shutdown = make(chan bool)

@@ -88,6 +88,7 @@ import (
 	logging "gopkg.in/op/go-logging.v1"
 
 	"cadent/server/utils"
+	"cadent/server/utils/options"
 	"cadent/server/utils/shutdown"
 	"strings"
 	"sync"
@@ -202,12 +203,20 @@ func (cass *CassandraIndexer) Stop() {
 	})
 }
 
-func (cass *CassandraIndexer) Config(conf map[string]interface{}) (err error) {
-	gots := conf["dsn"]
-	if gots == nil {
+func (cass *CassandraIndexer) Config(conf options.Options) (err error) {
+	dsn, err := conf.StringRequired("dsn")
+	if err != nil {
 		return fmt.Errorf("Indexer: `dsn` (server1,server2,server3) is needed for cassandra config")
 	}
-	cass.indexerId = fmt.Sprintf("%v:%v/%v/%v|%v", gots, conf["port"], conf["keyspace"], conf["path_table"], conf["segment_table"])
+	cass.indexerId = fmt.Sprintf(
+		"%v:%v/%v/%v|%v",
+		dsn,
+		conf.Int64("port", 9042),
+		conf.String("keyspace", "metric"),
+		conf.String("path_table", "path"),
+		conf.String("segment_table", "segment"),
+	)
+
 	cass.log.Notice("Connecting Indexer to Cassandra %s", cass.indexerId)
 	db, err := dbs.NewDB("cassandra", cass.indexerId, conf)
 	if err != nil {
@@ -217,36 +226,16 @@ func (cass *CassandraIndexer) Config(conf map[string]interface{}) (err error) {
 	cass.conn = db.Connection().(*gocql.Session)
 
 	// tweak queues and worker sizes
-	_workers := conf["write_workers"]
-	cass.num_workers = CASSANDRA_INDEXER_WORKERS
-	if _workers != nil {
-		cass.num_workers = int(_workers.(int64))
-	}
-
-	_qs := conf["write_queue_length"]
-	cass.queue_len = CASSANDRA_INDEXER_QUEUE_LEN
-	if _qs != nil {
-		cass.queue_len = int(_qs.(int64))
-	}
+	cass.num_workers = int(conf.Int64("write_workers", CASSANDRA_INDEXER_WORKERS))
+	cass.queue_len = int(conf.Int64("write_queue_length", CASSANDRA_INDEXER_QUEUE_LEN))
 
 	c_key := "indexer:cassandra:" + cass.indexerId
 	cass.cache, err = getCacherSingleton(c_key)
 	if err != nil {
 		return err
 	}
-
-	_ms := conf["cache_index_size"]
-	if _ms != nil {
-		cass.cache.maxKeys = int(_ms.(int64))
-	}
-
-	cass.writes_per_second = CASSANDRA_WRITES_PER_SECOND
-	_ws := conf["writes_per_second"]
-	if _ws != nil {
-		cass.writes_per_second = int(_ws.(int64))
-	}
-
-	//cass.Start() // fire it up
+	cass.cache.maxKeys = int(conf.Int64("cache_index_size", CACHER_METRICS_KEYS))
+	cass.writes_per_second = int(conf.Int64("writes_per_second", CASSANDRA_WRITES_PER_SECOND))
 
 	return nil
 }

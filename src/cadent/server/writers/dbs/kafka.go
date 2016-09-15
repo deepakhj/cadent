@@ -41,6 +41,7 @@ package dbs
 
 import (
 	"cadent/server/stats"
+	"cadent/server/utils/options"
 	"fmt"
 	"github.com/Shopify/sarama"
 	logging "gopkg.in/op/go-logging.v1"
@@ -54,7 +55,6 @@ const (
 	DEFAULT_KAFKA_DATA_TOPIC  = "cadent"
 	DEFAULT_KAFKA_RETRY       = 10
 	DEFAULT_KAFKA_ACK         = "local"
-	DEFAULT_KAFKA_FLUSH       = "1s"
 	DEFAULT_KAFKA_COMPRESSION = "snappy"
 )
 
@@ -75,75 +75,29 @@ func NewKafkaDB() *KafkaDB {
 	return kf
 }
 
-func (kf *KafkaDB) Config(conf map[string]interface{}) error {
-	gots := conf["dsn"]
-	if gots == nil {
+func (kf *KafkaDB) Config(conf options.Options) error {
+	dsn, err := conf.StringRequired("dsn")
+	if err != nil {
 		return fmt.Errorf("`dsn` (kafkahost1,kafkahost2...) is needed for kafka config")
 	}
-	dsn := gots.(string)
-	var err error
 
-	if err != nil {
-		return err
-	}
-	_table := conf["index_topic"]
-	if _table == nil {
-		kf.index_topic = DEFAULT_KAFKA_INDEX_TOPIC
-	} else {
-		kf.index_topic = _table.(string)
-	}
-
-	_ptable := conf["metric_topic"]
-	if _ptable == nil {
-		kf.data_topic = DEFAULT_KAFKA_DATA_TOPIC
-	} else {
-		kf.data_topic = _ptable.(string)
-	}
+	kf.index_topic = conf.String("index_topic", DEFAULT_KAFKA_INDEX_TOPIC)
+	kf.data_topic = conf.String("metric_topic", DEFAULT_KAFKA_DATA_TOPIC)
 
 	// batch count
-	_batch := conf["batch_count"]
-	if _batch == nil {
-		kf.batch_count = DEFAULT_KAFKA_BATCH_SIZE
-	} else {
-		kf.batch_count = _batch.(int64)
-	}
+	kf.batch_count = conf.Int64("batch_count", DEFAULT_KAFKA_BATCH_SIZE)
 
 	// file prefix
-	_retry := conf["max_retry"]
-	_rt := DEFAULT_KAFKA_RETRY
-	if _retry != nil {
-		_rt = int(_retry.(int64))
-	}
-
-	// file prefix
-	_ack := conf["ack_type"]
-	_ak := DEFAULT_KAFKA_ACK
-	if _ack != nil {
-		_ak = _ack.(string)
-	}
-
-	_flush := DEFAULT_KAFKA_FLUSH
-	_fl := conf["flush_time"]
-	if _fl != nil {
-		_flush = _fl.(string)
-	}
-
-	dur, err := time.ParseDuration(_flush)
-	if err != nil {
-		return fmt.Errorf("Invalid Kafka Flush time: %v", err)
-	}
-
-	_comp := DEFAULT_KAFKA_COMPRESSION
-	_cp := conf["compression"]
-	if _cp != nil {
-		_comp = _cp.(string)
-	}
+	_rt := conf.Int64("max_retry", DEFAULT_KAFKA_RETRY)
+	_ak := conf.String("ack_type", DEFAULT_KAFKA_ACK)
+	_flush := conf.Duration("flush_time", time.Second*time.Duration(1))
+	_comp := conf.String("compression", DEFAULT_KAFKA_COMPRESSION)
 
 	brokerList := strings.Split(dsn, ",")
 
 	config := sarama.NewConfig()
 
-	config.Producer.Retry.Max = _rt
+	config.Producer.Retry.Max = int(_rt)
 
 	switch _ak {
 	case "all":
@@ -161,7 +115,7 @@ func (kf *KafkaDB) Config(conf map[string]interface{}) error {
 		config.Producer.Compression = sarama.CompressionNone
 	}
 
-	config.Producer.Flush.Frequency = dur // Flush batches every 500ms
+	config.Producer.Flush.Frequency = _flush // Flush batches every 500ms
 
 	// On the broker side, you may want to change the following settings to get
 	// stronger consistency guarantees:

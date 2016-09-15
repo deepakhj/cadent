@@ -30,6 +30,7 @@ import (
 	"cadent/server/utils/shutdown"
 	"cadent/server/writers/dbs"
 	"cadent/server/writers/indexer"
+	"cadent/server/writers/schemas"
 	"errors"
 	"fmt"
 	"github.com/Shopify/sarama"
@@ -51,7 +52,7 @@ type KafkaFlatMetrics struct {
 	shutitdown bool
 	startstop  utils.StartStop
 
-	enctype KafkaEncodingType
+	enctype schemas.KafkaEncodingType
 	batches int // number of stats to "batch" per message (default 0)
 	log     *logging.Logger
 }
@@ -77,7 +78,7 @@ func (kf *KafkaFlatMetrics) Config(conf map[string]interface{}) error {
 
 	enct, ok := conf["encoding"]
 	if ok {
-		kf.enctype = KafkaEncodingFromString(enct.(string))
+		kf.enctype = schemas.KafkaEncodingFromString(enct.(string))
 	}
 
 	kf.db = db.(*dbs.KafkaDB)
@@ -135,7 +136,7 @@ func (kf *KafkaFlatMetrics) Write(stat repr.StatRepr) error {
 
 	stat.Name.MergeMetric2Tags(kf.static_tags)
 	kf.indexer.Write(stat.Name) // to the indexer
-	item := &KafkaMetricObj{
+	item := &schemas.KafkaSingleMetric{
 		Type:       "metric",
 		Metric:     stat.Name.Key,
 		Time:       time.Now().UnixNano(),
@@ -150,8 +151,8 @@ func (kf *KafkaFlatMetrics) Write(stat repr.StatRepr) error {
 		Uid:        stat.Name.UniqueIdString(),
 		Tags:       stat.Name.SortedTags(),
 		MetaTags:   stat.Name.SortedMetaTags(),
-		encodetype: kf.enctype,
 	}
+	item.SetEncoding(kf.enctype)
 
 	stats.StatsdClientSlow.Incr("writer.kafkaflat.metrics.writes", 1)
 

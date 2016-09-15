@@ -33,7 +33,7 @@ import (
 	"cadent/server/utils/shutdown"
 	"cadent/server/writers/dbs"
 	"cadent/server/writers/indexer"
-	"errors"
+	"cadent/server/writers/schemas"
 	"fmt"
 	"github.com/Shopify/sarama"
 	logging "gopkg.in/op/go-logging.v1"
@@ -42,8 +42,6 @@ import (
 	"sync"
 	"time"
 )
-
-var errKafkaMetricIsNil = errors.New("The kafka metric is nil")
 
 /****************** Interfaces *********************/
 type KafkaMetrics struct {
@@ -62,7 +60,7 @@ type KafkaMetrics struct {
 
 	resolution uint32
 
-	enctype KafkaEncodingType
+	enctype schemas.KafkaEncodingType
 
 	cacherPrefix  string
 	cacher        *Cacher
@@ -109,7 +107,7 @@ func (kf *KafkaMetrics) Config(conf map[string]interface{}) error {
 
 	enct, ok := conf["encoding"]
 	if ok {
-		kf.enctype = KafkaEncodingFromString(enct.(string))
+		kf.enctype = schemas.KafkaEncodingFromString(enct.(string))
 	}
 
 	_cache := conf["cache"]
@@ -249,7 +247,7 @@ func (kf *KafkaMetrics) overFlowWrite() {
 			ts := statitem.(*TotalTimeSeries)
 			kf.PushSeries(ts.Name, ts.Series)
 		} else {
-			kf.log.Errorf("%s", errKafkaMetricIsNil)
+			kf.log.Errorf("%s", schemas.ErrMetricIsNil)
 		}
 	}
 }
@@ -311,7 +309,7 @@ func (kf *KafkaMetrics) PushSeries(name *repr.StatName, points series.TimeSeries
 		return err
 	}
 
-	obj := &KafkaMetric{
+	obj := &schemas.KafkaSeriesMetric{
 		Type:       "metricblob",
 		Metric:     name.Key,
 		Time:       time.Now().UnixNano(),
@@ -323,8 +321,8 @@ func (kf *KafkaMetrics) PushSeries(name *repr.StatName, points series.TimeSeries
 		Uid:        name.UniqueIdString(),
 		Tags:       name.SortedTags(),
 		MetaTags:   name.SortedMetaTags(),
-		encodetype: kf.enctype,
 	}
+	obj.SetEncoding(kf.enctype)
 
 	kf.conn.Input() <- &sarama.ProducerMessage{
 		Topic: kf.db.DataTopic(),

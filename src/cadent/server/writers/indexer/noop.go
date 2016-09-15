@@ -22,6 +22,7 @@ package indexer
 
 import (
 	"cadent/server/repr"
+	"cadent/server/utils/options"
 )
 
 type NoopIndexer struct{}
@@ -30,7 +31,7 @@ func NewNoopIndexer() *NoopIndexer {
 	return new(NoopIndexer)
 }
 
-func (my *NoopIndexer) Config(conf map[string]interface{}) error {
+func (my *NoopIndexer) Config(conf options.Options) error {
 	return nil
 }
 func (my *NoopIndexer) Name() string                     { return "noop-indexer" }

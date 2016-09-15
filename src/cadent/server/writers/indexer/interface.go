@@ -28,13 +28,16 @@ limitations under the License.
 
 package indexer
 
-import "cadent/server/repr"
+import (
+	"cadent/server/repr"
+	"cadent/server/utils/options"
+)
 
 const MAX_PER_PAGE = 2048
 
 /****************** Data writers *********************/
 type Indexer interface {
-	Config(map[string]interface{}) error
+	Config(options.Options) error
 
 	// some identifier mostly used for logs
 	Name() string

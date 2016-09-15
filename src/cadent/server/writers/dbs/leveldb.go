@@ -38,6 +38,7 @@ import (
 	leveldb_filter "github.com/syndtr/goleveldb/leveldb/filter"
 	leveldb_opt "github.com/syndtr/goleveldb/leveldb/opt"
 
+	"cadent/server/utils/options"
 	"fmt"
 	leveldb_storage "github.com/syndtr/goleveldb/leveldb/storage"
 	logging "gopkg.in/op/go-logging.v1"
@@ -72,12 +73,11 @@ func NewLevelDB() *LevelDB {
 	return lb
 }
 
-func (lb *LevelDB) Config(conf map[string]interface{}) (err error) {
-	gots := conf["dsn"]
-	if gots == nil {
+func (lb *LevelDB) Config(conf options.Options) (err error) {
+	dsn, err := conf.StringRequired("dsn")
+	if err != nil {
 		return fmt.Errorf("`dsn` (/path/to/db/folder) is needed for leveldb config")
 	}
-	dsn := gots.(string)
 
 	lb.segment_file = DEFAULT_LEVELDB_SEGMENT_FILE
 	lb.tag_file = DEFAULT_LEVELDB_TAG_FILE
@@ -85,17 +85,9 @@ func (lb *LevelDB) Config(conf map[string]interface{}) (err error) {
 	lb.table_path = dsn
 	lb.level_opts = new(leveldb_opt.Options)
 	lb.level_opts.Filter = leveldb_filter.NewBloomFilter(10)
-	lb.level_opts.BlockCacheCapacity = DEFAULT_LEVELDB_READ_CACHE_SIZE
-	lb.level_opts.CompactionTableSize = DEFAULT_LEVELDB_FILE_SIZE
 
-	_c_size := conf["read_cache_size"]
-	if _c_size != nil {
-		lb.level_opts.BlockCacheCapacity = _c_size.(int)
-	}
-	_w_size := conf["file_compact_size"]
-	if _w_size != nil {
-		lb.level_opts.CompactionTableSize = _w_size.(int)
-	}
+	lb.level_opts.BlockCacheCapacity = int(conf.Int64("read_cache_size", DEFAULT_LEVELDB_READ_CACHE_SIZE))
+	lb.level_opts.CompactionTableSize = int(conf.Int64("file_compact_size", DEFAULT_LEVELDB_FILE_SIZE))
 
 	lb.tag_conn, err = leveldb.OpenFile(lb.TagTableName(), lb.level_opts)
 	if err != nil {

@@ -90,6 +90,7 @@ CREATE TABLE `{table}{prefix}` (
 package dbs
 
 import (
+	"cadent/server/utils/options"
 	"database/sql"
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
@@ -116,59 +117,22 @@ func NewMySQLDB() *MySQLDB {
 	return my
 }
 
-func (my *MySQLDB) Config(conf map[string]interface{}) error {
-	gots := conf["dsn"]
-	if gots == nil {
+func (my *MySQLDB) Config(conf options.Options) error {
+	dsn, err := conf.StringRequired("dsn")
+	if err != nil {
 		return fmt.Errorf("`dsn` (user:pass@tcp(host:port)/db) is needed for mysql config")
 	}
-	dsn := gots.(string)
-	var err error
+
 	my.conn, err = sql.Open("mysql", dsn)
 	if err != nil {
 		return err
 	}
-	_table := conf["table"]
-	if _table == nil {
-		my.table = "metrics"
-	} else {
-		my.table = _table.(string)
-	}
-
-	_ptable := conf["path_table"]
-	if _ptable == nil {
-		my.path_table = "metric_path"
-	} else {
-		my.path_table = _ptable.(string)
-	}
-
-	_stable := conf["segment_table"]
-	if _stable == nil {
-		my.segment_table = "metric_segment"
-	} else {
-		my.segment_table = _stable.(string)
-	}
-
-	_tagtable := conf["tag_table"]
-	if _tagtable == nil {
-		my.tag_table = "metric_tag"
-	} else {
-		my.tag_table = _tagtable.(string)
-	}
-
-	_tagtablex := conf["tag_table_xref"]
-	if _tagtablex == nil {
-		my.tag_table_xref = my.tag_table + "_xref"
-	} else {
-		my.tag_table_xref = _tagtablex.(string)
-	}
-
-	// file prefix
-	_pref := conf["prefix"]
-	if _pref == nil {
-		my.table_prefix = ""
-	} else {
-		my.table_prefix = _pref.(string)
-	}
+	my.table = conf.String("table", "metrics")
+	my.path_table = conf.String("path_table", "metric_path")
+	my.segment_table = conf.String("segment_table", "metric_segment")
+	my.tag_table = conf.String("tag_table", "metric_tag")
+	my.tag_table_xref = conf.String("tag_table_xref", my.tag_table+"_xref")
+	my.table_prefix = conf.String("prefix", "")
 
 	// some reasonable defaults
 	my.conn.SetMaxOpenConns(50)

@@ -20,12 +20,14 @@ limitations under the License.
 
 package dbs
 
+import "cadent/server/utils/options"
+
 // just a dummy interface .. casting will be required for real life usage
 type DBConn interface{}
 
 /****************** Data writers *********************/
 type DB interface {
-	Config(map[string]interface{}) error
+	Config(options.Options) error
 	Connection() DBConn
 }
 
@@ -34,7 +36,7 @@ type DBRegistry map[string]DB
 // singleton
 var DB_REGISTRY DBRegistry
 
-func NewDB(dbtype string, dbkey string, config map[string]interface{}) (DB, error) {
+func NewDB(dbtype string, dbkey string, config options.Options) (DB, error) {
 
 	hook_key := dbtype + dbkey
 	gots := DB_REGISTRY[hook_key]

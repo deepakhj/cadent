@@ -27,6 +27,7 @@ import (
 	"cadent/server/repr"
 	"cadent/server/stats"
 	"cadent/server/utils"
+	"cadent/server/utils/options"
 	"cadent/server/utils/shutdown"
 	"cadent/server/writers/dbs"
 	"encoding/json"
@@ -89,22 +90,18 @@ func NewKafkaIndexer() *KafkaIndexer {
 	return kf
 }
 
-func (kf *KafkaIndexer) Config(conf map[string]interface{}) error {
-	gots := conf["dsn"]
-	if gots == nil {
+func (kf *KafkaIndexer) Config(conf options.Options) (err error) {
+	dsn, err := conf.StringRequired("dsn")
+	if err != nil {
 		return fmt.Errorf("`dsn` (kafkahost1,kafkahost2) is needed for kafka config")
 	}
-	dsn := gots.(string)
+
 	db, err := dbs.NewDB("kafka", dsn, conf)
 	if err != nil {
 		return err
 	}
 
-	_wr := conf["write_index"]
-	if _wr != nil {
-		kf.write_index = _wr.(bool)
-	}
-
+	kf.write_index = conf.Bool("write_index", true)
 	kf.db = db.(*dbs.KafkaDB)
 	kf.conn = db.Connection().(sarama.AsyncProducer)
 

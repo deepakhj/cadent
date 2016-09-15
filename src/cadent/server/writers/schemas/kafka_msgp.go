@@ -1,4 +1,4 @@
-package metrics
+package schemas
 
 // NOTE: THIS FILE WAS PRODUCED BY THE
 // MSGP CODE GENERATION TOOL (github.com/tinylib/msgp)
@@ -56,7 +56,7 @@ func (z KafkaEncodingType) Msgsize() (s int) {
 }
 
 // DecodeMsg implements msgp.Decodable
-func (z *KafkaMetric) DecodeMsg(dc *msgp.Reader) (err error) {
+func (z *KafkaSeriesMetric) DecodeMsg(dc *msgp.Reader) (err error) {
 	var field []byte
 	_ = field
 	var zhct uint32
@@ -185,7 +185,7 @@ func (z *KafkaMetric) DecodeMsg(dc *msgp.Reader) (err error) {
 }
 
 // EncodeMsg implements msgp.Encodable
-func (z *KafkaMetric) EncodeMsg(en *msgp.Writer) (err error) {
+func (z *KafkaSeriesMetric) EncodeMsg(en *msgp.Writer) (err error) {
 	// map header, size 11
 	// write "type"
 	err = en.Append(0x8b, 0xa4, 0x74, 0x79, 0x70, 0x65)
@@ -314,7 +314,7 @@ func (z *KafkaMetric) EncodeMsg(en *msgp.Writer) (err error) {
 }
 
 // MarshalMsg implements msgp.Marshaler
-func (z *KafkaMetric) MarshalMsg(b []byte) (o []byte, err error) {
+func (z *KafkaSeriesMetric) MarshalMsg(b []byte) (o []byte, err error) {
 	o = msgp.Require(b, z.Msgsize())
 	// map header, size 11
 	// string "type"
@@ -366,7 +366,7 @@ func (z *KafkaMetric) MarshalMsg(b []byte) (o []byte, err error) {
 }
 
 // UnmarshalMsg implements msgp.Unmarshaler
-func (z *KafkaMetric) UnmarshalMsg(bts []byte) (o []byte, err error) {
+func (z *KafkaSeriesMetric) UnmarshalMsg(bts []byte) (o []byte, err error) {
 	var field []byte
 	_ = field
 	var zpks uint32
@@ -496,7 +496,7 @@ func (z *KafkaMetric) UnmarshalMsg(bts []byte) (o []byte, err error) {
 }
 
 // Msgsize returns an upper bound estimate of the number of bytes occupied by the serialized message
-func (z *KafkaMetric) Msgsize() (s int) {
+func (z *KafkaSeriesMetric) Msgsize() (s int) {
 	s = 1 + 5 + msgp.StringPrefixSize + len(z.Type) + 3 + msgp.Uint64Size + 4 + msgp.StringPrefixSize + len(z.Uid) + 5 + msgp.Int64Size + 7 + msgp.StringPrefixSize + len(z.Metric) + 9 + msgp.StringPrefixSize + len(z.Encoding) + 5 + msgp.BytesPrefixSize + len(z.Data) + 11 + msgp.Uint32Size + 4 + msgp.Uint32Size + 5 + msgp.ArrayHeaderSize
 	for zbai := range z.Tags {
 		s += msgp.ArrayHeaderSize
@@ -515,7 +515,7 @@ func (z *KafkaMetric) Msgsize() (s int) {
 }
 
 // DecodeMsg implements msgp.Decodable
-func (z *KafkaMetricObj) DecodeMsg(dc *msgp.Reader) (err error) {
+func (z *KafkaSingleMetric) DecodeMsg(dc *msgp.Reader) (err error) {
 	var field []byte
 	_ = field
 	var zkgt uint32
@@ -659,7 +659,7 @@ func (z *KafkaMetricObj) DecodeMsg(dc *msgp.Reader) (err error) {
 }
 
 // EncodeMsg implements msgp.Encodable
-func (z *KafkaMetricObj) EncodeMsg(en *msgp.Writer) (err error) {
+func (z *KafkaSingleMetric) EncodeMsg(en *msgp.Writer) (err error) {
 	// map header, size 14
 	// write "type"
 	err = en.Append(0x8e, 0xa4, 0x74, 0x79, 0x70, 0x65)
@@ -815,7 +815,7 @@ func (z *KafkaMetricObj) EncodeMsg(en *msgp.Writer) (err error) {
 }
 
 // MarshalMsg implements msgp.Marshaler
-func (z *KafkaMetricObj) MarshalMsg(b []byte) (o []byte, err error) {
+func (z *KafkaSingleMetric) MarshalMsg(b []byte) (o []byte, err error) {
 	o = msgp.Require(b, z.Msgsize())
 	// map header, size 14
 	// string "type"
@@ -876,7 +876,7 @@ func (z *KafkaMetricObj) MarshalMsg(b []byte) (o []byte, err error) {
 }
 
 // UnmarshalMsg implements msgp.Unmarshaler
-func (z *KafkaMetricObj) UnmarshalMsg(bts []byte) (o []byte, err error) {
+func (z *KafkaSingleMetric) UnmarshalMsg(bts []byte) (o []byte, err error) {
 	var field []byte
 	_ = field
 	var zyzr uint32
@@ -1021,7 +1021,7 @@ func (z *KafkaMetricObj) UnmarshalMsg(bts []byte) (o []byte, err error) {
 }
 
 // Msgsize returns an upper bound estimate of the number of bytes occupied by the serialized message
-func (z *KafkaMetricObj) Msgsize() (s int) {
+func (z *KafkaSingleMetric) Msgsize() (s int) {
 	s = 1 + 5 + msgp.StringPrefixSize + len(z.Type) + 3 + msgp.Uint64Size + 4 + msgp.StringPrefixSize + len(z.Uid) + 5 + msgp.Int64Size + 7 + msgp.StringPrefixSize + len(z.Metric) + 4 + msgp.Float64Size + 4 + msgp.Float64Size + 5 + msgp.Float64Size + 4 + msgp.Float64Size + 6 + msgp.Int64Size + 11 + msgp.Uint32Size + 4 + msgp.Uint32Size + 5 + msgp.ArrayHeaderSize
 	for zxpk := range z.Tags {
 		s += msgp.ArrayHeaderSize
