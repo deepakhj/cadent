@@ -455,8 +455,10 @@ func (my *MySQLMetrics) RunPeriodicExpire() {
 
 	ticker := time.NewTicker(my.expireTick)
 	base_Q := "DELETE FROM %s_%ds WHERE etime < ?"
+	RM_factor := 5
 	for {
 		<-ticker.C
+		// we remove 5*ttl as we may need to do rollups based on the deleted data
 		for _, res := range my.resolutions {
 			// ttls are in seconds
 			ttl := res[1]
@@ -467,7 +469,7 @@ func (my *MySQLMetrics) RunPeriodicExpire() {
 			t_name := my.db.RootMetricsTableName()
 			Q := fmt.Sprintf(base_Q, t_name, res[0])
 
-			exp_time := (time.Now().Unix() - int64(ttl)) * int64(time.Second)
+			exp_time := (time.Now().Unix() - int64(RM_factor*ttl)) * int64(time.Second)
 
 			my.log.Info("Running expire for all metrics older then %d in the %ds resolution", exp_time, res[0])
 			result, err := my.conn.Exec(Q, exp_time)

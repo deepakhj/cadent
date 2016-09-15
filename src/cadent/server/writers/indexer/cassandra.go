@@ -80,7 +80,6 @@ package indexer
 
 import (
 	"cadent/server/dispatch"
-	"cadent/server/lrucache"
 	"cadent/server/repr"
 	stats "cadent/server/stats"
 	"cadent/server/writers/dbs"
@@ -97,8 +96,6 @@ import (
 )
 
 const (
-	CASSANDRA_RESULT_CACHE_SIZE = 1024 * 1024 * 100
-	CASSANDRA_RESULT_CACHE_TTL  = 10 * time.Second
 	CASSANDRA_INDEXER_QUEUE_LEN = 1024 * 1024
 	CASSANDRA_INDEXER_WORKERS   = 128
 	CASSANDRA_WRITES_PER_SECOND = 1000
@@ -159,14 +156,16 @@ type CassandraIndexer struct {
 
 	log *logging.Logger
 
-	findcache *lrucache.TTLLRUCache
+	tagCache   *TagCache
+	indexCache *IndexReadCache
 }
 
 func NewCassandraIndexer() *CassandraIndexer {
 	cass := new(CassandraIndexer)
 	cass.log = logging.MustGetLogger("indexer.cassandra")
+	cass.indexCache = NewIndexCache(10000)
+	cass.tagCache = NewTagCache()
 	atomic.SwapUint32(&cass.shutitdown, 0)
-	cass.findcache = lrucache.NewTTLLRUCache(CASSANDRA_RESULT_CACHE_SIZE, CASSANDRA_RESULT_CACHE_TTL)
 	return cass
 }
 
@@ -571,9 +570,16 @@ func (cass *CassandraIndexer) List(has_data bool, page int) (MetricFindItems, er
 }
 
 // basic find for non-regex items
-func (cass *CassandraIndexer) FindNonRegex(metric string) (MetricFindItems, error) {
+func (cass *CassandraIndexer) FindNonRegex(metric string, tags repr.SortingTags) (MetricFindItems, error) {
 
 	defer stats.StatsdSlowNanoTimeFunc("indexer.cassandra.findnoregex.get-time-ns", time.Now())
+
+	// check cache
+	items := cass.indexCache.Get(metric, tags)
+	if items != nil {
+		stats.StatsdClientSlow.Incr("indexer.cassandra.findnoregex.cached", 1)
+		return *items, nil
+	}
 
 	// since there are and regex like things in the strings, we
 	// need to get the all "items" from where the regex starts then hone down
@@ -627,6 +633,9 @@ func (cass *CassandraIndexer) FindNonRegex(metric string) (MetricFindItems, erro
 	if err := iter.Close(); err != nil {
 		return mt, err
 	}
+
+	// set it
+	cass.indexCache.Add(metric, tags, &mt)
 
 	return mt, nil
 }
@@ -697,7 +706,7 @@ func (cass *CassandraIndexer) Find(metric string, tags repr.SortingTags) (Metric
 
 	//cass.log.Debug("HasReg: %v Metric: %s", needs_regex, metric)
 	if !needs_regex {
-		return cass.FindNonRegex(metric)
+		return cass.FindNonRegex(metric, tags)
 	}
 
 	// convert the "graphite regex" into something golang understands (just the "."s really)
@@ -726,7 +735,7 @@ func (cass *CassandraIndexer) Find(metric string, tags repr.SortingTags) (Metric
 		if !the_reg.MatchString(seg) {
 			continue
 		}
-		items, err := cass.FindNonRegex(seg)
+		items, err := cass.FindNonRegex(seg, tags)
 		if err != nil {
 			cass.log.Warning("could not get segments for `%s` :: %v", seg, err)
 			continue

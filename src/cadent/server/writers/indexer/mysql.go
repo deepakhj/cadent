@@ -107,8 +107,8 @@ type MySQLIndexer struct {
 	startstop  utils.StartStop
 
 	// tag ID cache so we don't do a bunch of unessesary inserts
-	tagMu      sync.RWMutex
-	tagIdCache map[string]int64
+	tagIdCache *TagCache
+	indexCache *IndexReadCache
 
 	log *logging.Logger
 }
@@ -116,7 +116,8 @@ type MySQLIndexer struct {
 func NewMySQLIndexer() *MySQLIndexer {
 	my := new(MySQLIndexer)
 	my.log = logging.MustGetLogger("indexer.mysql")
-	my.tagIdCache = make(map[string]int64, 0)
+	my.indexCache = NewIndexCache(10000)
+	my.tagIdCache = NewTagCache()
 	return my
 }
 
@@ -297,7 +298,7 @@ func (my *MySQLIndexer) WriteTags(inname *repr.StatName, do_main bool, do_meta b
 					continue
 				}
 				tag_ids = append(tag_ids, id)
-				my.setTagCache(id, tag[0], tag[1], false)
+				my.tagIdCache.Add(tag[0], tag[1], false, id)
 			}
 		}
 	}
@@ -326,7 +327,7 @@ func (my *MySQLIndexer) WriteTags(inname *repr.StatName, do_main bool, do_meta b
 					continue
 				}
 				tag_ids = append(tag_ids, id)
-				my.setTagCache(id, tag[0], tag[1], true)
+				my.tagIdCache.Add(tag[0], tag[1], true, id)
 
 			}
 		}
@@ -633,29 +634,18 @@ func (my *MySQLIndexer) Expand(metric string) (MetricExpandItem, error) {
 
 /******************* TAG METHODS **********************************/
 func (my *MySQLIndexer) inTagCache(name string, value string) (tag_id int64, ismeta bool) {
-	tag_key := fmt.Sprintf("%s:%s:%v", name, value, true)
-	tag_mkey := fmt.Sprintf("%s:%s:%v", name, value, false)
 
-	my.tagMu.RLock()
-	defer my.tagMu.RUnlock()
+	got := my.tagIdCache.Get(name, value, false)
 
-	have_cache := false
-	tag_id, have_cache = my.tagIdCache[tag_key]
-	if have_cache {
-		return tag_id, true
+	if got != nil {
+		return got.(int64), false
+	}
+	got = my.tagIdCache.Get(name, value, true)
+	if got != nil {
+		return got.(int64), true
 	}
 
-	tag_id, have_cache = my.tagIdCache[tag_mkey]
-	if have_cache {
-		return tag_id, false
-	}
 	return 0, false
-}
-func (my *MySQLIndexer) setTagCache(id int64, name string, value string, ismeta bool) {
-	tag_key := fmt.Sprintf("%s:%s:%v", name, value, ismeta)
-	my.tagMu.Lock()
-	defer my.tagMu.Unlock()
-	my.tagIdCache[tag_key] = id
 }
 
 func (my *MySQLIndexer) FindTagId(name string, value string, ismeta bool) (int64, error) {
@@ -684,7 +674,7 @@ func (my *MySQLIndexer) FindTagId(name string, value string, ismeta bool) (int64
 			my.log.Error("Error Getting Tags Iterator: %s : %v", sel_tagQ, err)
 			return 0, err
 		}
-		my.setTagCache(id, name, value, ismeta)
+		my.tagIdCache.Add(name, value, ismeta, id)
 
 		return id, nil
 	}
@@ -757,7 +747,7 @@ func (my *MySQLIndexer) GetTagsByName(name string, page int) (tags MetricTagItem
 			return
 		}
 		tags = append(tags, MetricTagItem{Name: tname, Value: value, Id: id, IsMeta: is_meta})
-		my.setTagCache(id, tname, value, is_meta)
+		my.tagIdCache.Add(tname, value, is_meta, id)
 	}
 	return
 }
@@ -809,7 +799,7 @@ func (my *MySQLIndexer) GetTagsByNameValue(name string, value string, page int) 
 		tags = append(tags, MetricTagItem{Name: tname, Value: tvalue, Id: id, IsMeta: is_meta})
 
 		// add to caches
-		my.setTagCache(id, tname, tvalue, is_meta)
+		my.tagIdCache.Add(tname, tvalue, is_meta, id)
 
 	}
 	return
@@ -950,6 +940,13 @@ func (my *MySQLIndexer) FindNonRegex(metric string, tags repr.SortingTags) (Metr
 
 	defer stats.StatsdSlowNanoTimeFunc("indexer.mysql.findnoregex.get-time-ns", time.Now())
 
+	// check cache
+	items := my.indexCache.Get(metric, tags)
+	if items != nil {
+		stats.StatsdClientSlow.Incr("indexer.mysql.findnoregex.cached", 1)
+		return *items, nil
+	}
+
 	// since there are and regex like things in the strings, we
 	// need to get the all "items" from where the regex starts then hone down
 
@@ -969,8 +966,10 @@ func (my *MySQLIndexer) FindNonRegex(metric string, tags repr.SortingTags) (Metr
 
 	// if "tags" we need to find the tag Ids, and do the cross join
 	tag_ids := make([]int64, 0)
+	having_ct := 0
 	for _, tag := range tags {
 		t_ids, _ := my.GetTagsByNameValue(tag[0], tag[1], 0)
+		having_ct += 1 // need this as the value may be a regex
 		for _, tg := range t_ids {
 			tag_ids = append(tag_ids, tg.Id.(int64))
 		}
@@ -979,20 +978,20 @@ func (my *MySQLIndexer) FindNonRegex(metric string, tags repr.SortingTags) (Metr
 	if len(tag_ids) > 0 {
 		limitQ := ""
 		qend := ""
-		// support non-target tag only things
+		// support non-target tag only things, tags only are "data only"
 		// but we need to have a fancier query
 		if len(metric) == 0 {
 
 			pathQ = fmt.Sprintf(
 				"SELECT uid,path,length,has_data FROM %s "+
 					" WHERE has_data=1 AND segment = path AND "+
-					" uid IN (SELECT uid FROM %s WHERE %s.tag_id IN ",
+					" uid IN (SELECT DISTINCT uid FROM %s WHERE %s.tag_id IN ",
 				my.db.PathTable(), my.db.TagTableXref(), my.db.TagTableXref(),
 			)
 			args = []interface{}{}
 			qend = fmt.Sprintf(
-				" GROUP BY UID %s.tag_id HAVING COUNT(%s.tag_id) = %d ",
-				my.db.TagTableXref(), my.db.TagTableXref(), len(tag_ids),
+				" GROUP BY %s.uid HAVING COUNT(%s.tag_id) = %d ",
+				my.db.TagTableXref(), my.db.TagTableXref(), having_ct,
 			)
 			limitQ = " LIMIT ?,?"
 		} else {
@@ -1003,6 +1002,12 @@ func (my *MySQLIndexer) FindNonRegex(metric string, tags repr.SortingTags) (Metr
 					" uid IN (SELECT DISTINCT uid FROM %s WHERE %s.tag_id IN ",
 				my.db.PathTable(), my.db.TagTableXref(), my.db.TagTableXref(),
 			)
+			qend = fmt.Sprintf(
+				" GROUP BY %s.uid HAVING COUNT(%s.tag_id) = %d ",
+				my.db.TagTableXref(), my.db.TagTableXref(), having_ct,
+			)
+			limitQ = " LIMIT ?,?"
+
 		}
 		pathQ += "("
 		for idx, tgid := range tag_ids {
@@ -1012,7 +1017,7 @@ func (my *MySQLIndexer) FindNonRegex(metric string, tags repr.SortingTags) (Metr
 			}
 			args = append(args, tgid)
 		}
-		pathQ += qend + "))"
+		pathQ += ")" + qend + ")"
 		if len(limitQ) > 0 {
 			pathQ += limitQ
 			args = append(args, 0)
@@ -1057,16 +1062,6 @@ func (my *MySQLIndexer) FindNonRegex(metric string, tags repr.SortingTags) (Metr
 			// grab ze tags
 			ms.Tags, ms.MetaTags, err = my.GetTagsByUid(id)
 
-			// the above query "prefilters" tags, but it's an "OR" statement, we really want an
-			// "And" but that join is not an "easy" one to really do, so we do the "and" here
-			if len(tag_ids) > 0 && err == nil {
-				m_tags := ms.Tags
-				m_tags = m_tags.Merge(ms.MetaTags)
-				if !m_tags.HasAllTags(tags) {
-					continue
-				}
-			}
-
 		} else {
 			ms.Expandable = 1
 			ms.Leaf = 0
@@ -1075,6 +1070,9 @@ func (my *MySQLIndexer) FindNonRegex(metric string, tags repr.SortingTags) (Metr
 
 		mt = append(mt, ms)
 	}
+
+	// set it
+	my.indexCache.Add(metric, tags, &mt)
 
 	return mt, nil
 }
@@ -1134,6 +1132,13 @@ func (my *MySQLIndexer) Find(metric string, tags repr.SortingTags) (MetricFindIt
 
 	if metric == "*" {
 		return my.FindRoot()
+	}
+
+	// check cache
+	items := my.indexCache.Get(metric, tags)
+	if items != nil {
+		stats.StatsdClientSlow.Incr("indexer.mysql.find.cached", 1)
+		return *items, nil
 	}
 
 	paths := strings.Split(metric, ".")
@@ -1202,6 +1207,9 @@ func (my *MySQLIndexer) Find(metric string, tags repr.SortingTags) (MetricFindIt
 	if err := rows.Close(); err != nil {
 		return mt, err
 	}
+
+	// set it
+	my.indexCache.Add(metric, tags, &mt)
 
 	return mt, nil
 }
