@@ -766,6 +766,7 @@ func (my *MySQLMetrics) RawDataRenderOne(metric *indexer.MetricFindItem, start i
 			if inflight.Step != resolution {
 				inflight.Resample(resolution)
 			}
+			stats.StatsdClientSlow.Incr("reader.mysql.renderraw.inflight.total", 1)
 			return inflight, err
 		}
 	}

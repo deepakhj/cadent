@@ -775,7 +775,7 @@ func (cass *CassandraMetric) GetFromWriteCache(metric *indexer.MetricFindItem, s
 }
 
 func (cass *CassandraMetric) RawDataRenderOne(metric *indexer.MetricFindItem, start int64, end int64) (*RawRenderItem, error) {
-	defer stats.StatsdSlowNanoTimeFunc("reader.cassandra.renderraw.get-time-ns", time.Now())
+	defer stats.StatsdSlowNanoTimeFunc("reader.cassandra.rawrenderone.get-time-ns", time.Now())
 	rawd := new(RawRenderItem)
 
 	//figure out the best res

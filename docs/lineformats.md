@@ -121,6 +121,8 @@ As a result there is a http handler for these json formats
 
 This will have a route `http://host:2004/moo/json` which you can post JSON of the form
 
+* NOTE THE EXTRA `/json` on the URL *
+
 Single Metric
 
     {
