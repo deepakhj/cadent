@@ -814,7 +814,7 @@ func (cass *CassandraMetric) RawDataRenderOne(metric *indexer.MetricFindItem, st
 	if inflight != nil && err == nil && len(inflight.Data) > 1 {
 		// all the data we need is in the inflight
 		// if all the data is in this list we don't need to go any further
-		if inflight.DataInRange(u_start, u_end) {
+		if inflight.RealStart <= u_start {
 			// move the times to the "requested" ones and quantize the list
 			if inflight.Step != resolution {
 				inflight.Resample(resolution)

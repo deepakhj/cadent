@@ -617,7 +617,7 @@ func (my *MySQLMetrics) GetFromDatabase(metric *indexer.MetricFindItem, resoluti
 	}
 
 	rows, err := my.conn.Query(Q, vals...)
-	//my.log.Debug("Q: %s, %v", Q, vals)
+	//my.log.Critical("Q: %s, %v", Q, vals)
 
 	if err != nil {
 		my.log.Error("Mysql Driver: Metric select failed, %v", err)
@@ -762,7 +762,7 @@ func (my *MySQLMetrics) RawDataRenderOne(metric *indexer.MetricFindItem, start i
 	// need at LEAST 2 points to get the proper step size
 	if inflight != nil && err == nil && len(inflight.Data) > 1 {
 		// if all the data is in this list we don't need to go any further
-		if inflight.DataInRange(u_start, u_end) {
+		if inflight.RealStart <= u_start {
 			if inflight.Step != resolution {
 				inflight.Resample(resolution)
 			}
@@ -853,6 +853,7 @@ func (my *MySQLMetrics) RawRender(path string, from int64, to int64, tags repr.S
 		for {
 			select {
 			case <-time.After(my.renderTimeout):
+				stats.StatsdClientSlow.Incr("reader.mysql.rawrender.timeouts", 1)
 				my.log.Errorf("Render Timeout for %s (%d->%d)", path, from, to)
 				return
 			case <-done:
