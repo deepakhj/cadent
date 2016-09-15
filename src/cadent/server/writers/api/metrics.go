@@ -137,12 +137,16 @@ func (re *MetricsAPI) GraphiteRender(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resample := args.Step
-	if resample > 0 {
-		for idx := range data {
-			// graphite needs the "nils" and expects a "full list" to match the step + start/end
-			data[idx].Start = uint32(args.Start)
-			data[idx].End = uint32(args.End)
+	for idx := range data {
+		// graphite needs the "nils" and expects a "full list" to match the step + start/end
+		data[idx].Start = uint32(args.Start)
+		data[idx].End = uint32(args.End)
+		if resample > 0 {
+
 			data[idx].ResampleAndQuantize(resample)
+		} else {
+			data[idx].Quantize()
+
 		}
 	}
 	render_data := re.ToGraphiteApiRender(data)
@@ -173,12 +177,16 @@ func (re *MetricsAPI) Render(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resample := args.Step
-	if resample > 0 {
-		for idx := range data {
-			// graphite needs the "nils" and expects a "full list" to match the step + start/end
-			data[idx].Start = uint32(args.Start)
-			data[idx].End = uint32(args.End)
+	for idx := range data {
+		// graphite needs the "nils" and expects a "full list" to match the step + start/end
+		data[idx].Start = uint32(args.Start)
+		data[idx].End = uint32(args.End)
+		if resample > 0 {
+
 			data[idx].ResampleAndQuantize(resample)
+		} else {
+			data[idx].Quantize()
+
 		}
 	}
 	render_data := re.ToGraphiteRender(data)
