@@ -86,7 +86,7 @@ path varchar(255) NOT NULL DEFAULT '',
 length int NOT NULL,
 has_data bool NOT NULL DEFAULT 0,
 PRIMARY KEY (id),
-KEY seg_pos (segment, pos),
+UNIQUE KEY segment_path (segment,pos,path,has_data),
 KEY uid (uid),
 KEY length (length)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 ROW_FORMAT=COMPRESSED;`,

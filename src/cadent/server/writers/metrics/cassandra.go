@@ -871,6 +871,7 @@ func (cass *CassandraMetric) RawRender(path string, start int64, end int64, tags
 
 	for _, pth := range paths {
 		mets, err := cass.indexer.Find(pth, tags)
+
 		if err != nil {
 			continue
 		}
@@ -880,32 +881,38 @@ func (cass *CassandraMetric) RawRender(path string, start int64, end int64, tags
 	rawd := make([]*RawRenderItem, len(metrics), len(metrics))
 
 	// ye old fan out technique
-	render_one := func(metric *indexer.MetricFindItem, idx int) {
+	render_one := func(onmetric indexer.MetricFindItem, idx int) {
 		defer render_wg.Done()
 		timeout := time.NewTimer(cass.renderTimeout)
+		done := make(chan bool, 1)
+
+		go func() {
+			_ri, err := cass.RawRenderOne(&onmetric, start, end)
+
+			if err != nil {
+				cass.writer.log.Error("Read Error for %s (%s->%s) : %v", path, start, end, err)
+				return
+			}
+			rawd[idx] = _ri
+			done <- true
+		}()
+
 		for {
 			select {
 			case <-timeout.C:
 				cass.writer.log.Error("Render Timeout for %s (%s->%s)", path, start, end)
 				timeout.Stop()
 				return
-			default:
-				_ri, err := cass.RawRenderOne(metric, start, end)
-
-				if err != nil {
-					cass.writer.log.Error("Read Error for %s (%s->%s) : %v", path, start, end, err)
-					return
-				}
-				rawd[idx] = _ri
+			case <-done:
 				return
 			}
 		}
 
 	}
 
-	for idx, metric := range metrics {
+	for idx, onm := range metrics {
 		render_wg.Add(1)
-		go render_one(&metric, idx)
+		go render_one(onm, idx)
 	}
 	render_wg.Wait()
 	return rawd, nil

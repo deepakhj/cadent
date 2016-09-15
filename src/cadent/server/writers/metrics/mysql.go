@@ -837,19 +837,25 @@ func (my *MySQLMetrics) RawRender(path string, from int64, to int64, tags repr.S
 	// ye old fan out technique
 	render_one := func(metric indexer.MetricFindItem, idx int) {
 		defer render_wg.Done()
+		done := make(chan bool, 1)
+
+		go func() {
+			_ri, err := my.RawRenderOne(metric, from, to)
+
+			if err != nil {
+				my.log.Error("Read Error for %s (%s->%s) : %v", path, from, to, err)
+				return
+			}
+			rawd[idx] = _ri
+			done <- true
+		}()
+
 		for {
 			select {
 			case <-time.After(my.renderTimeout):
 				my.log.Errorf("Render Timeout for %s (%d->%d)", path, from, to)
 				return
-			default:
-				_ri, err := my.RawRenderOne(metric, from, to)
-
-				if err != nil {
-					my.log.Errorf("Read Error for %s (%d->%d) : %v", path, from, to, err)
-					return
-				}
-				rawd[idx] = _ri
+			case <-done:
 				return
 			}
 		}

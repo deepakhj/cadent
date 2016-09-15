@@ -343,29 +343,9 @@ func (cass *CassandraIndexer) WriteOne(inname repr.StatName) error {
 
 		as data-less nodes
 
-		*/
-		if skey != seg.Segment && idx < len(paths)-2 {
-			Q = fmt.Sprintf(
-				"INSERT INTO %s (segment, path, id, length, has_data) VALUES  ({pos: ?, segment: ?}, ?, ?, ?, ?)",
-				cass.db.PathTable(),
-			)
-			err = cass.conn.Query(Q,
-				seg.Pos, seg.Segment, seg.Segment+"."+s_parts[idx+1], unique_ID, seg.Pos+1, false,
-			).Exec()
-			//cass.log.Critical("NODATA:: Seg INS: %s PATH: %s Len: %d", seg.Segment, seg.Segment+"."+s_parts[idx+1], seg.Pos)
-		}
+		consthash.zipperwork.local.writer.cassandra.write.metric-time-ns -> consthash.zipperwork.local.writer.cassandra.write.metric-time-ns
 
-		// for each "segment" add in the path to do a segment to path(s) lookup
-		/*
-			for key consthash.zipperwork.local.writer.cassandra.write.metric-time-ns.upper_99
-			insert
-			consthash -> consthash.zipperwork.local.writer.cassandra.write.metric-time-ns.upper_99
-			consthash.zipperwork -> consthash.zipperwork.local.writer.cassandra.write.metric-time-ns.upper_99
-			consthash.zipperwork.local -> consthash.zipperwork.local.writer.cassandra.write.metric-time-ns.upper_99
-			consthash.zipperwork.local.writer -> consthash.zipperwork.local.writer.cassandra.write.metric-time-ns.upper_99
-			consthash.zipperwork.local.writer.cassandra -> consthash.zipperwork.local.writer.cassandra.write.metric-time-ns.upper_99
-			consthash.zipperwork.local.writer.cassandra.write -> consthash.zipperwork.local.writer.cassandra.write.metric-time-ns.upper_99
-			consthash.zipperwork.local.writer.cassandra.write.metric-time-ns -> consthash.zipperwork.local.writer.cassandra.write.metric-time-ns.upper_99
+		as "data'ed" nodes
 
 		*/
 		Q = fmt.Sprintf(
@@ -373,14 +353,17 @@ func (cass *CassandraIndexer) WriteOne(inname repr.StatName) error {
 			cass.db.PathTable(),
 		)
 
-		/*
-			segment frozen<segment_pos>,
-			path text,
-			length int
-		*/
-		err = cass.conn.Query(Q,
-			seg.Pos, seg.Segment, skey, unique_ID, p_len-1, true,
-		).Exec()
+		if skey != seg.Segment && idx < len(paths)-1 {
+			err = cass.conn.Query(Q,
+				seg.Pos, seg.Segment, seg.Segment+"."+s_parts[idx+1], "", seg.Pos+1, false,
+			).Exec()
+		} else {
+			//the "raw data" path
+			err = cass.conn.Query(Q,
+				seg.Pos, seg.Segment, skey, unique_ID, p_len-1, true,
+			).Exec()
+		}
+
 		//cass.log.Critical("DATA:: Seg INS: %s PATH: %s Len: %d", seg.Segment, skey, p_len-1)
 
 		if err != nil {
@@ -570,7 +553,7 @@ func (cass *CassandraIndexer) List(has_data bool, page int) (MetricFindItems, er
 }
 
 // basic find for non-regex items
-func (cass *CassandraIndexer) FindNonRegex(metric string, tags repr.SortingTags) (MetricFindItems, error) {
+func (cass *CassandraIndexer) FindNonRegex(metric string, tags repr.SortingTags, exact bool) (MetricFindItems, error) {
 
 	defer stats.StatsdSlowNanoTimeFunc("indexer.cassandra.findnoregex.get-time-ns", time.Now())
 
@@ -593,9 +576,12 @@ func (cass *CassandraIndexer) FindNonRegex(metric string, tags repr.SortingTags)
 		"SELECT id,path,length,has_data FROM %s WHERE segment={pos: ?, segment: ?} ",
 		cass.db.PathTable(),
 	)
-	iter := cass.conn.Query(cass_Q,
-		m_len-1, metric,
-	).Iter()
+
+	if exact {
+		cass_Q += " LIMIT 1"
+	}
+
+	iter := cass.conn.Query(cass_Q, m_len-1, metric).Iter()
 
 	var mt MetricFindItems
 	var ms MetricFindItem
@@ -604,11 +590,36 @@ func (cass *CassandraIndexer) FindNonRegex(metric string, tags repr.SortingTags)
 	var id string
 	var has_data bool
 
-	// just grab the "n+1" length ones
 	for iter.Scan(&id, &on_pth, &pth_len, &has_data) {
 		if pth_len > m_len {
 			continue
 		}
+
+		// we are looking to see if this is a "data" node or "expandable"
+		if exact {
+			ms.Text = paths[len(paths)-1]
+			ms.Id = metric
+			ms.Path = metric
+			if on_pth == metric && has_data {
+				ms.Expandable = 0
+				ms.Leaf = 1
+				ms.AllowChildren = 0
+				ms.UniqueId = id
+
+				// grab ze tags
+				ms.Tags, ms.MetaTags, _ = cass.GetTagsByUid(id)
+				mt = append(mt, ms)
+			} else {
+				ms.Expandable = 1
+				ms.Leaf = 0
+				ms.AllowChildren = 1
+				mt = append(mt, ms)
+			}
+			iter.Close()
+			cass.indexCache.Add(metric, tags, &mt)
+			return mt, nil
+		}
+
 		//cass.log.Critical("NON REG:::::PATH %s LEN %d m_len: %d", on_pth, pth_len, m_len)
 		spl := strings.Split(on_pth, ".")
 
@@ -685,29 +696,26 @@ func (cass *CassandraIndexer) Find(metric string, tags repr.SortingTags) (Metric
 	defer stats.StatsdSlowNanoTimeFunc("indexer.cassandra.find.get-time-ns", time.Now())
 
 	// special case for "root" == "*"
+	// check cache
+	/*items := cass.indexCache.Get(metric, tags)
+	if items != nil {
+		stats.StatsdClientSlow.Incr("indexer.cassandra.find.cached", 1)
+		return *items, nil
+	}*/
 
 	if metric == "*" {
 		return cass.FindRoot()
-	}
-
-	paths := strings.Split(metric, ".")
-	m_len := len(paths)
-
-	//if the last fragment is "*" then we really mean just then next level, not another "." level
-	// this is the graphite /find?query=consthash.zipperwork.local which will mean the same as
-	// /find?query=consthash.zipperwork.local.* for us
-	if paths[len(paths)-1] == "*" {
-		metric = strings.Join(paths[:len(paths)-1], ".")
-		paths = strings.Split(metric, ".")
-		m_len = len(paths)
 	}
 
 	needs_regex := needRegex(metric)
 
 	//cass.log.Debug("HasReg: %v Metric: %s", needs_regex, metric)
 	if !needs_regex {
-		return cass.FindNonRegex(metric, tags)
+		return cass.FindNonRegex(metric, tags, true)
 	}
+
+	paths := strings.Split(metric, ".")
+	m_len := len(paths)
 
 	// convert the "graphite regex" into something golang understands (just the "."s really)
 	// need to replace things like "moo*" -> "moo.*" but careful not to do "..*"
@@ -735,18 +743,16 @@ func (cass *CassandraIndexer) Find(metric string, tags repr.SortingTags) (Metric
 		if !the_reg.MatchString(seg) {
 			continue
 		}
-		items, err := cass.FindNonRegex(seg, tags)
+		items, err := cass.FindNonRegex(seg, tags, true)
 		if err != nil {
 			cass.log.Warning("could not get segments for `%s` :: %v", seg, err)
 			continue
 		}
 		if items != nil && len(items) > 0 {
-			for _, ms := range items {
-				mt = append(mt, ms)
-			}
-			items = nil
+			mt = append(mt, items...)
 		}
 	}
+	cass.indexCache.Add(metric, tags, &mt)
 
 	if err := iter.Close(); err != nil {
 		return mt, err

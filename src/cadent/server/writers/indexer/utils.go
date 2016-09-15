@@ -52,6 +52,19 @@ func regifyMysqlKeyString(name string) string {
 	return regable
 }
 
+// in a path like moo.goo.* .. we find the initial "segment" that does not have a regex
+func findFirstNonRegexSegment(name string) string {
+	spl := strings.Split(name, ".")
+	out_str := []string{}
+	for _, s := range spl {
+		if needRegex(s) {
+			return strings.Join(out_str, ".")
+		}
+		out_str = append(out_str, s)
+	}
+	return strings.Join(out_str, ".")
+}
+
 // convert the "graphite regex" into something golang understands (just the "."s really)
 // need to replace things like "moo*" -> "moo.*" but careful not to do "..*"
 // the "graphite" globs of {moo,goo} we can do with (moo|goo) so convert { -> (, , -> |, } -> )

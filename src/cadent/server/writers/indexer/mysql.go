@@ -451,44 +451,21 @@ func (my *MySQLIndexer) WriteOne(inname *repr.StatName) error {
 		as data-less nodes
 
 		*/
-		if skey != seg.Segment && idx < len(paths)-2 {
-			Q = fmt.Sprintf(
-				"INSERT INTO %s (segment, pos, path, uid, length, has_data) VALUES  (?, ?, ?, ?, ?, ?)",
-				my.db.PathTable(),
-			)
-			_, err = tx.Exec(Q,
-				seg.Segment, seg.Pos, seg.Segment+"."+s_parts[idx+1], unique_ID, seg.Pos+1, false,
-			)
-			//cass.log.Critical("NODATA:: Seg INS: %s PATH: %s Len: %d", seg.Segment, seg.Segment+"."+s_parts[idx+1], seg.Pos)
-		}
-
-		// for each "segment" add in the path to do a segment to path(s) lookup
-		/*
-			for key consthash.zipperwork.local.writer.cassandra.write.metric-time-ns.upper_99
-			insert
-			consthash -> consthash.zipperwork.local.writer.cassandra.write.metric-time-ns.upper_99
-			consthash.zipperwork -> consthash.zipperwork.local.writer.cassandra.write.metric-time-ns.upper_99
-			consthash.zipperwork.local -> consthash.zipperwork.local.writer.cassandra.write.metric-time-ns.upper_99
-			consthash.zipperwork.local.writer -> consthash.zipperwork.local.writer.cassandra.write.metric-time-ns.upper_99
-			consthash.zipperwork.local.writer.cassandra -> consthash.zipperwork.local.writer.cassandra.write.metric-time-ns.upper_99
-			consthash.zipperwork.local.writer.cassandra.write -> consthash.zipperwork.local.writer.cassandra.write.metric-time-ns.upper_99
-			consthash.zipperwork.local.writer.cassandra.write.metric-time-ns -> consthash.zipperwork.local.writer.cassandra.write.metric-time-ns.upper_99
-
-		*/
 		Q = fmt.Sprintf(
-			"INSERT INTO %s (segment, pos, path, uid, length, has_data) VALUES  (?, ?, ?, ?, ?, ?)",
+			"INSERT IGNORE INTO %s (segment, pos, path, uid, length, has_data) VALUES  (?, ?, ?, ?, ?, ?)",
 			my.db.PathTable(),
 		)
 
-		/*
-			segment frozen<segment_pos>,
-			path text,
-			length int
-		*/
-		_, err = tx.Exec(Q,
-			seg.Segment, seg.Pos, skey, unique_ID, p_len-1, true,
-		)
-		//cass.log.Critical("DATA:: Seg INS: %s PATH: %s Len: %d", seg.Segment, skey, p_len-1)
+		if skey != seg.Segment && idx < len(paths)-1 {
+			_, err = tx.Exec(Q,
+				seg.Segment, seg.Pos, seg.Segment+"."+s_parts[idx+1], "", seg.Pos+1, false,
+			)
+		} else {
+			// now add the has data path as well
+			_, err = tx.Exec(Q,
+				seg.Segment, seg.Pos, skey, unique_ID, p_len-1, true,
+			)
+		}
 
 		if err != nil {
 			my.log.Error("Could not insert path %v (%v) :: %v", last_path, unique_ID, err)
@@ -936,7 +913,7 @@ func (my *MySQLIndexer) List(has_data bool, page int) (MetricFindItems, error) {
 }
 
 // basic find for non-regex items
-func (my *MySQLIndexer) FindNonRegex(metric string, tags repr.SortingTags) (MetricFindItems, error) {
+func (my *MySQLIndexer) FindNonRegex(metric string, tags repr.SortingTags, exact bool) (MetricFindItems, error) {
 
 	defer stats.StatsdSlowNanoTimeFunc("indexer.mysql.findnoregex.get-time-ns", time.Now())
 
@@ -1032,11 +1009,16 @@ func (my *MySQLIndexer) FindNonRegex(metric string, tags repr.SortingTags) (Metr
 	var id string
 	var has_data bool
 
+	if exact {
+		pathQ += " LIMIT 1"
+	}
+
 	rows, err := my.conn.Query(pathQ, args...)
 	if err != nil {
 		return mt, err
 	}
 	defer rows.Close()
+
 	for rows.Next() {
 		err = rows.Scan(&id, &on_pth, &pth_len, &has_data)
 		if err != nil {
@@ -1046,12 +1028,39 @@ func (my *MySQLIndexer) FindNonRegex(metric string, tags repr.SortingTags) (Metr
 		if m_len != 1 && pth_len > m_len {
 			continue
 		}
-		//cass.log.Critical("NON REG:::::PATH %s LEN %d m_len: %d", on_pth, pth_len, m_len)
+
+		// we are looking to see if this is a "data" node or "expandable"
+		if exact {
+			ms.Text = paths[len(paths)-1]
+			ms.Id = metric
+			ms.Path = metric
+			if on_pth == metric && has_data {
+				ms.Expandable = 0
+				ms.Leaf = 1
+				ms.AllowChildren = 0
+				ms.UniqueId = id
+
+				// grab ze tags
+				ms.Tags, ms.MetaTags, err = my.GetTagsByUid(id)
+				mt = append(mt, ms)
+			} else {
+				ms.Expandable = 1
+				ms.Leaf = 0
+				ms.AllowChildren = 1
+				mt = append(mt, ms)
+			}
+			my.indexCache.Add(metric, tags, &mt)
+			return mt, nil
+
+		}
+
 		spl := strings.Split(on_pth, ".")
 
 		ms.Text = spl[len(spl)-1]
 		ms.Id = on_pth
 		ms.Path = on_pth
+
+		//if the incoming "metric" matches the segment
 
 		if has_data {
 			ms.Expandable = 0
@@ -1130,10 +1139,6 @@ func (my *MySQLIndexer) Find(metric string, tags repr.SortingTags) (MetricFindIt
 
 	// special case for "root" == "*"
 
-	if metric == "*" {
-		return my.FindRoot()
-	}
-
 	// check cache
 	items := my.indexCache.Get(metric, tags)
 	if items != nil {
@@ -1141,29 +1146,25 @@ func (my *MySQLIndexer) Find(metric string, tags repr.SortingTags) (MetricFindIt
 		return *items, nil
 	}
 
-	paths := strings.Split(metric, ".")
-	m_len := len(paths)
-
-	//if the last fragment is "*" then we really mean just then next level, not another "." level
-	// this is the graphite /find?query=consthash.zipperwork.local which will mean the same as
-	// /find?query=consthash.zipperwork.local.* for us
-	if paths[len(paths)-1] == "*" {
-		metric = strings.Join(paths[:len(paths)-1], ".")
-		paths = strings.Split(metric, ".")
-		m_len = len(paths)
+	if metric == "*" {
+		return my.FindRoot()
 	}
 
+	// if we are not a regex, then we're look for "expandable" or "a data node"
+	// and so we simply need to find out if the thing is a "segment + data" or not
 	needs_regex := needRegex(metric)
 
-	//cass.log.Debug("HasReg: %v Metric: %s", needs_regex, metric)
 	if !needs_regex {
-		return my.FindNonRegex(metric, tags)
+		return my.FindNonRegex(metric, tags, true)
 	}
 
 	// convert the "graphite regex" into something golang understands (just the "."s really)
 	// need to replace things like "moo*" -> "moo.*" but careful not to do "..*"
 	// the "graphite" globs of {moo,goo} we can do with (moo|goo) so convert { -> (, , -> |, } -> )
 	the_reg, err := regifyKey(metric)
+
+	paths := strings.Split(metric, ".")
+	m_len := len(paths)
 
 	if err != nil {
 		return nil, err
@@ -1190,7 +1191,7 @@ func (my *MySQLIndexer) Find(metric string, tags repr.SortingTags) (MetricFindIt
 		if !the_reg.MatchString(seg) {
 			continue
 		}
-		items, err := my.FindNonRegex(seg, tags)
+		items, err := my.FindNonRegex(seg, tags, true)
 		if err != nil {
 			my.log.Warning("could not get segments for `%s` :: %v", seg, err)
 			continue
