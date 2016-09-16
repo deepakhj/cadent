@@ -3,41 +3,64 @@
 
 Readers are an attempt to imitate the Graphite API bits and include 3 main endpoints with a few more endpoints
 
-TimeSeries
+### TimeSeries
 
-    /{root}/metrics -- get metrics in the format graphite needs ( ?target=path.*.to.my.*.metric&from=time&to=time )
-    /{root}/rawrender -- get the actual metrics in the internal format ( ?target=path.*.to.my.*.metric&from=time&to=time )
-    /{root}/cached/series -- get the BINARY blob of data only ONE metric allowed here ( ?to=now&from=-10m&target=graphitetest.there.now.there )
-    /{root}/cache -- get the actual metrics stored in writeback cache ( ?target=path.*.to.my.*.metric&from=time&to=time )
+    /{root}/metrics -- get metrics in the format graphite needs
+                        ?target=path.*.to.my.*.metric&from=time&to=time
+    /{root}/rawrender -- get the actual metrics in the internal format
+                        ?target=path.*.to.my.*.metric&from=time&to=time
+    /{root}/cached/series -- get the BINARY blob of data only ONE metric allowed here
+                        ?to=now&from=-10m&target=graphitetest.there.now.there
+    /{root}/cache -- get the actual metrics stored in writeback cache
+                        ?target=path.*.to.my.*.metric&from=time&to=time
 
-Path Indexer
+### Path Indexer
 
-    /{root}/find  -- find paths ( ?query=path.*.to.my.*.metric )
-    /{root}/expand -- expand a tree ( ?query=path.*.to.my.*.metric )
-    /{root}/list -- list all metric names ( ?page=? ) limited to 2048 at a time
-
-
-Tag Indexer (in the works)
-
-    /{root}/tag/find/byname -- find tags values by name (?name=host) this can be a typeahead form (?name=ho.*)
-    /{root}/tag/find/bynamevalue -- find tags values by name and value (?name=host&value=moo.*) `value` can be of typeahead form
-                                   NOT name here
-    /{root}/tag/uid/bytags -- get uniqueIdStrings (?query=metric_key{name=val,name=val})
-                             no regexes allowed here.  You can omit the `metric_key` as well.
-
-Graphite Mimics
-
-    /{root}/render  -- gives back what graphite would give back in json format ( ?target=path.*.to.my.*.metric&from=time&to=time )
-    /{root}/metrics/find  -- the basic find format graphite expects  ( ?query=path.*.to.my.*.metric )
-
-Prometheus Mimics
-
-    /prometheus/api/v1/query_range  -- get data in an expect Prometheus format (query=metric{tag="val", tag="val"}&start=XXX&end=XXX&step=X
-	/prometheus/api/v1/label/__name__/values -- list all metric keys only 2048 at a time (?page=N)
-	/prometheus/api/v1/label/{name}/values -- tag value getter only 2048 at a time (?page=N)
+    /{root}/find  -- find paths
+                    ?query=path.*.to.my.*.metric
+    /{root}/expand -- expand a tree
+                    ?query=path.*.to.my.*.metric
+    /{root}/list -- list all metric names limited to 2048 at a time
+                    ?page=N
 
 
-*NOTE* both the Graphite and Prometheus lack the "function" (DLS) aspects so don't expect things like max(path.to.metric) to work
+### Tag Indexer (in the works (regexes for some backends may not be supported)
+
+    /{root}/tag/find/byname -- find tags values by name (?name=host) this can be a typeahead form
+                            ?name=ho.*
+    /{root}/tag/find/bynamevalue -- find tags values by name and value `value`
+                                    `value` can be of typeahead/regex form NOT the name
+                                    ?name=host&value=moo.*
+    /{root}/tag/uid/bytags -- get uniqueIdStrings no regexes allowed here.
+                               You can omit the `metric_key` as well.
+                             ?query=metric_key{name=val,name=val}
+
+### Graphite Mimics
+
+    /{root}/render  -- gives back what graphite would give back in json format
+                        ?target=path.*.to.my.*.metric&from=time&to=time
+    /{root}/metrics/find  -- the basic find format graphite expects
+                        ?query=path.*.to.my.*.metric
+
+### Prometheus Mimics
+
+    /prometheus/api/v1/query_range  -- get data in an expect Prometheus format
+                        ?query=metric{tag="val", tag="val"}&start=XXX&end=XXX&step=X
+	/prometheus/api/v1/label/__name__/values -- list all metric keys only 2048 at a time
+	                    ?page=N
+	/prometheus/api/v1/label/{name}/values -- tag value getter only 2048 at a time
+	                    ?page=N
+
+
+### WebSockets (Reeeaaalllyy experimental)
+
+    /ws/metric  -- Attach to a websocket, as stats get flushed, pop you get a new one
+                    The metric you query must be "exact" (no search/regexes/finder things here)
+                    ?query=path.to.metric
+
+
+
+*NOTE both the Graphite and Prometheus lack the "function" (DSL) aspects so don't expect things like max(path.to.metric) to work*
 
 
 For now, all return types are JSON, except the `/{root}/cached/series` which is binary/base64.
@@ -70,7 +93,7 @@ Not everything can implement the APIs due to their nature. Below is a table of w
 |---|---|---|---|
 | cassandra | Yes | Yes | No |
 | cassandra-flat | Yes  | n/a| No |
-| mysql | Yes  | Yes  |  Yes |
+| mysql | Yes  | Yes  |  Yes (alpha) |
 | mysql-flat | Yes  | n/a | No |
 | kafka | n/a  | Yes | n/a |
 | kafka-flat | n/a  | n/a | n/a |
@@ -84,7 +107,7 @@ Not everything can implement the APIs due to their nature. Below is a table of w
 | Driver   |  /expand | /find  | TagSupport |
 |---|---|---|---|---|---|
 | cassandra | Yes | Yes | No |
-| mysql | Yes  | Yes  |  Yes |
+| mysql | Yes  | Yes  |  Yes (alpha) |
 | kafka | n/a  | n/a | n/a |
 | levelDB | Yes  | Yes | No |
 | whisper | yes | yes | n/a |
@@ -104,7 +127,7 @@ the default of `mean`.
 
 | MetricName  |  AggMethod |
 |---|---|
-| ends with: count |  sum |
+| ends with: count(s?) |  sum |
 | ends with: error(s?) |  sum |
 | ends with: delete(s\|d?) |  sum |
 | ends with: insert(s\|ed?) |  sum |
