@@ -130,7 +130,7 @@ func GetCacherSingleton(nm string) (*Cacher, error) {
 
 	cacher := NewCacher()
 	_CACHER_SINGLETON[nm] = cacher
-	cacher.Name = nm
+	cacher.SetName(nm)
 	return cacher, nil
 }
 
@@ -208,6 +208,7 @@ type Cacher struct {
 	Queue          CacheQueue
 	Cache          map[repr.StatId]*CacheItem
 	Name           string // just a human name for things
+	statsdPrefix     string
 	Prefix         string // caches names are "Prefix:{resolution}" or should be
 
 	// for the overflow cached items::
@@ -245,6 +246,7 @@ func NewCacher() *Cacher {
 
 	wc.curSize = 0
 	wc.log = logging.MustGetLogger("cacher.metrics")
+	wc.statsdPrefix  = "cacher.metrics."
 	wc.Cache = make(map[repr.StatId]*CacheItem)
 	wc.shutdown = broadcast.New(0)
 	wc._accept = true
@@ -256,6 +258,10 @@ func NewCacher() *Cacher {
 	return wc
 }
 
+func (wc *Cacher) SetName(nm string) {
+	wc.Name = nm
+	wc.statsdPrefix = fmt.Sprintf("cacher.%s.metrics.", nm)
+}
 func (wc *Cacher) SetMaxKeys(m int) {
 	wc.maxKeys = m
 }
@@ -359,7 +365,7 @@ func (wc *Cacher) startCacheExpiredTick() {
 				wc.curSize -= int64(item.Series.Len()) // shrink the bytes
 				delete(wc.Cache, unique_id)
 
-				stats.StatsdClientSlow.Incr("cacher.metrics.write.expired", 1)
+				stats.StatsdClientSlow.Incr(wc.statsdPrefix + "write.expired", 1)
 				did++
 				if did > max_per_run {
 					return
@@ -424,9 +430,9 @@ func (wc *Cacher) updateQueue() {
 	//wc.log.Critical("DATA %v", wc.Cache)
 	wc.log.Debug("Cacher: %s Sort : Metrics: %v :: Points: %v :: Bytes:: %d", wc.Name, m_len, f_len, wc.curSize)
 
-	stats.StatsdClientSlow.Gauge("cacher.metrics", int64(m_len))
-	stats.StatsdClientSlow.Gauge("cacher.points", int64(f_len))
-	stats.StatsdClientSlow.Gauge("cacher.bytes", wc.curSize)
+	stats.StatsdClientSlow.Gauge(wc.statsdPrefix + "metrics", int64(m_len))
+	stats.StatsdClientSlow.Gauge(wc.statsdPrefix + "points", int64(f_len))
+	stats.StatsdClientSlow.Gauge(wc.statsdPrefix + "bytes", wc.curSize)
 
 	// now for a bit of randomness, where we "reverse" the order on occasion to get the
 	// not-updated often and thus hardly written to try to persist some slow stats
@@ -465,7 +471,7 @@ func (wc *Cacher) Add(name *repr.StatName, stat *repr.StatRepr) error {
 
 	if len(wc.Cache) > wc.maxKeys {
 		wc.log.Error("Key Cache is too large .. over %d metrics keys, have to drop this one", wc.maxKeys)
-		stats.StatsdClientSlow.Incr("cacher.metrics.overflow", 1)
+		stats.StatsdClientSlow.Incr(wc.statsdPrefix + "overflow", 1)
 		return errWriteCacheTooManyMetrics
 	}
 
@@ -489,7 +495,7 @@ func (wc *Cacher) Add(name *repr.StatName, stat *repr.StatRepr) error {
 				delete(wc.Cache, unique_id)
 				if !wc.overFlowBroadcast.IsClosed() {
 					wc.overFlowBroadcast.Send(&TotalTimeSeries{gots.Name, gots.Series})
-					stats.StatsdClientSlow.Incr("cacher.metrics.write.overflow", 1)
+					stats.StatsdClientSlow.Incr(wc.statsdPrefix + "write.overflow", 1)
 				}
 				//must recompute the ordering XXX LOCKING ISSUE
 				//wc.updateQueue()
@@ -499,7 +505,7 @@ func (wc *Cacher) Add(name *repr.StatName, stat *repr.StatRepr) error {
 			}
 
 			wc.log.Error("Too Many Bytes for %v (max bytes: %d current metrics: %v)... have to drop this one", unique_id, wc.maxBytes, gots.Series.Count())
-			stats.StatsdClientSlow.Incr("cacher.metics.points.overflow", 1)
+			stats.StatsdClientSlow.Incr(wc.statsdPrefix + "points.overflow", 1)
 			return errWriteCacheTooManyPoints
 		}
 		err := wc.Cache[unique_id].Series.AddStat(stat)
@@ -510,7 +516,7 @@ func (wc *Cacher) Add(name *repr.StatName, stat *repr.StatRepr) error {
 
 		now_len := wc.Cache[unique_id].Series.Len()
 		wc.curSize += int64(now_len - cur_size)
-		stats.StatsdClient.GaugeAvg("cacher.add.ave-points-per-metric", int64(gots.Series.Count()))
+		stats.StatsdClient.GaugeAvg(wc.statsdPrefix + "add.ave-points-per-metric", int64(gots.Series.Count()))
 		return nil
 	}
 
@@ -538,7 +544,7 @@ func (wc *Cacher) getStatsStream(name *repr.StatName, ts series.TimeSeries) (rep
 	it, err := ts.Iter()
 	if err != nil {
 		wc.log.Error("Failed to get series itterator: %v", err)
-		stats.StatsdClientSlow.Incr("cacher.read.cache-gets.error", 1)
+		stats.StatsdClientSlow.Incr(wc.statsdPrefix + "read.cache-gets.error", 1)
 		return nil, err
 	}
 	stats := make(repr.StatReprSlice, 0)
@@ -561,16 +567,16 @@ func (wc *Cacher) getStatsStream(name *repr.StatName, ts series.TimeSeries) (rep
 }
 
 func (wc *Cacher) Get(name *repr.StatName) (repr.StatReprSlice, error) {
-	stats.StatsdClientSlow.Incr("cacher.read.cache-gets", 1)
+	stats.StatsdClientSlow.Incr(wc.statsdPrefix + "read.cache-gets", 1)
 
 	wc.mu.RLock()
 	defer wc.mu.RUnlock()
 
 	if gots, ok := wc.Cache[name.UniqueId()]; ok {
-		stats.StatsdClientSlow.Incr("cacher.read.cache-gets.values", 1)
+		stats.StatsdClientSlow.Incr(wc.statsdPrefix + "read.cache-gets.values", 1)
 		return wc.getStatsStream(name, gots.Series)
 	}
-	stats.StatsdClientSlow.Incr("cacher.read.cache-gets.empty", 1)
+	stats.StatsdClientSlow.Incr(wc.statsdPrefix + "read.cache-gets.empty", 1)
 	return nil, nil
 }
 
@@ -623,39 +629,39 @@ func (wc *Cacher) GetById(metric_id repr.StatId) (*repr.StatName, repr.StatReprS
 	defer wc.mu.RUnlock()
 
 	if gots, ok := wc.Cache[metric_id]; ok {
-		stats.StatsdClientSlow.Incr("cacher.read.cache-gets.values", 1)
+		stats.StatsdClientSlow.Incr(wc.statsdPrefix + "read.cache-gets.values", 1)
 		tseries, err := wc.getStatsStream(gots.Name, gots.Series)
 		return gots.Name, tseries, err
 	}
-	stats.StatsdClientSlow.Incr("cacher.read.cache-gets.empty", 1)
+	stats.StatsdClientSlow.Incr(wc.statsdPrefix + "read.cache-gets.empty", 1)
 	return nil, nil, nil
 }
 
 func (wc *Cacher) GetSeries(name *repr.StatName) (*repr.StatName, series.TimeSeries, error) {
-	stats.StatsdClientSlow.Incr("cacher.read.cache-series-gets", 1)
+	stats.StatsdClientSlow.Incr(wc.statsdPrefix +"read.cache-series-gets", 1)
 
 	wc.mu.RLock()
 	defer wc.mu.RUnlock()
 
 	if gots, ok := wc.Cache[name.UniqueId()]; ok {
-		stats.StatsdClientSlow.Incr("cacher.read.cache-series-gets.values", 1)
+		stats.StatsdClientSlow.Incr(wc.statsdPrefix +"read.cache-series-gets.values", 1)
 		return gots.Name, gots.Series, nil
 	}
-	stats.StatsdClientSlow.Incr("cacher.read.cache-series-gets.empty", 1)
+	stats.StatsdClientSlow.Incr(wc.statsdPrefix +"read.cache-series-gets.empty", 1)
 	return nil, nil, nil
 }
 
 func (wc *Cacher) GetSeriesById(metric_id repr.StatId) (*repr.StatName, series.TimeSeries, error) {
-	stats.StatsdClientSlow.Incr("cacher.read.cache-series-by-idgets", 1)
+	stats.StatsdClientSlow.Incr(wc.statsdPrefix +"read.cache-series-by-idgets", 1)
 
 	wc.mu.RLock()
 	defer wc.mu.RUnlock()
 
 	if gots, ok := wc.Cache[metric_id]; ok {
-		stats.StatsdClientSlow.Incr("cacher.read.cache-series-by-idgets.values", 1)
+		stats.StatsdClientSlow.Incr(wc.statsdPrefix +"read.cache-series-by-idgets.values", 1)
 		return gots.Name, gots.Series, nil
 	}
-	stats.StatsdClientSlow.Incr("cacher.read.cache-series-by-idgets.empty", 1)
+	stats.StatsdClientSlow.Incr(wc.statsdPrefix +"read.cache-series-by-idgets.empty", 1)
 	return nil, nil, nil
 }
 
