@@ -61,6 +61,7 @@ func (c *CacheAPI) AddHandlers(mux *mux.Router) {
 func (re *CacheAPI) GetFromCache(w http.ResponseWriter, r *http.Request) {
 
 	defer stats.StatsdNanoTimeFunc("reader.http.cache-render.get-time-ns", time.Now())
+	stats.StatsdClientSlow.Incr("reader.http.cache.hits", 1)
 
 	args, err := ParseMetricQuery(r)
 	if err != nil {
@@ -69,15 +70,18 @@ func (re *CacheAPI) GetFromCache(w http.ResponseWriter, r *http.Request) {
 
 	data, err := re.Metrics.CacheRender(args.Target, args.Start, args.End, args.Tags)
 	if err != nil {
+		stats.StatsdClientSlow.Incr("reader.http.cache.errors", 1)
 		re.a.OutError(w, fmt.Sprintf("%v", err), http.StatusServiceUnavailable)
 		return
 	}
 
 	if data == nil {
+		stats.StatsdClientSlow.Incr("reader.http.cache.nodata", 1)
 		re.a.OutError(w, "No data found", http.StatusNoContent)
 		return
 	}
 
+	stats.StatsdClientSlow.Incr("reader.http.cache.ok", 1)
 	re.a.OutJson(w, data)
 	return
 }
@@ -88,6 +92,7 @@ func (re *CacheAPI) GetFromCache(w http.ResponseWriter, r *http.Request) {
 func (re *CacheAPI) GetSeriesFromCache(w http.ResponseWriter, r *http.Request) {
 
 	defer stats.StatsdNanoTimeFunc("reader.http.cache-render.get-time-ns", time.Now())
+	stats.StatsdClientSlow.Incr("reader.http.cache-series.hits", 1)
 
 	args, err := ParseMetricQuery(r)
 	if err != nil {
@@ -96,20 +101,19 @@ func (re *CacheAPI) GetSeriesFromCache(w http.ResponseWriter, r *http.Request) {
 
 	data, err := re.Metrics.CachedSeries(args.Target, args.Start, args.End, args.Tags)
 	if err != nil {
+		stats.StatsdClientSlow.Incr("reader.http.cache-series.errors", 1)
 		re.a.OutError(w, fmt.Sprintf("%v", err), http.StatusServiceUnavailable)
 		return
 	}
 
 	if data == nil {
+		stats.StatsdClientSlow.Incr("reader.http.cache-series.nodata", 1)
 		re.a.OutError(w, "No data found", http.StatusNoContent)
 		return
 	}
 
 	// see if we want to base64 the beast
 	to_base_64 := r.Form.Get("base64")
-
-	// cache theses things for 60 secs
-	defer stats.StatsdClient.Incr("reader.http.ok", 1)
 
 	w.Header().Set("Cache-Control", "public, max-age=60, cache")
 	w.Header().Set("Content-Type", "application/cadent")
@@ -140,6 +144,7 @@ func (re *CacheAPI) GetSeriesFromCache(w http.ResponseWriter, r *http.Request) {
 		w.Write(data.Series.Bytes())
 
 	}
+	stats.StatsdClientSlow.Incr("reader.http.cache-series.ok", 1)
 
 	return
 }

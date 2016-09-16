@@ -55,10 +55,9 @@ func TestAggsRepr(t *testing.T) {
 	test_list["moo.goo.set"] = SUM
 	test_list["moo.goo.sets"] = SUM
 
-
 	Convey("Aggregate Key Parsing", t, func() {
 
-		for str, ff := range test_list{
+		for str, ff := range test_list {
 			match := GuessReprValueFromKey(str)
 			t.Logf("string: %s -> %v (want: %v)", str, match, ff)
 			So(match, ShouldEqual, ff)
@@ -95,10 +94,9 @@ func TestAggsRepr(t *testing.T) {
 	tag_list["set"] = SUM
 	tag_list["sets"] = SUM
 
-
 	Convey("Aggregate Tag Parsing", t, func() {
 
-		for str, ff := range tag_list{
+		for str, ff := range tag_list {
 			match := AggTypeFromTag(str)
 			t.Logf("string: %s -> %v (want: %v)", str, match, ff)
 			So(match, ShouldEqual, ff)
