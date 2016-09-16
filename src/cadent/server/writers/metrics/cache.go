@@ -535,7 +535,7 @@ NEWSTAT:
 	wc.Cache[unique_id] = &CacheItem{Series: tp, Name: name, Started: t_now}
 
 	wc.curSize += int64(tp.Len())
-	stats.StatsdClient.GaugeAvg("cacher.add.ave-points-per-metric", 1)
+	stats.StatsdClient.GaugeAvg(wc.statsdPrefix+"add.ave-points-per-metric", 1)
 
 	return nil
 }
