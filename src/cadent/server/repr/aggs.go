@@ -35,6 +35,7 @@ var _lowerMinReg *regexp.Regexp
 var _medianReg *regexp.Regexp
 var _countReg *regexp.Regexp
 var _stdReg *regexp.Regexp
+var aggMap map[string]AggType
 
 func init() {
 	_upperReg = regexp.MustCompile(".*upper_[0-9]+$")
@@ -44,6 +45,52 @@ func init() {
 	_medianReg = regexp.MustCompile(".*median_[0-9]+$")
 	_countReg = regexp.MustCompile(".*count_[0-9]+$")
 	_stdReg = regexp.MustCompile(".*std_[0-9]+$")
+
+	aggMap = make(map[string]AggType, 0)
+
+	aggMap["min"] = MIN
+	aggMap["lower"] = MIN
+
+	aggMap["max"] = MAX
+	aggMap["upper"] = MAX
+
+	aggMap["hit"] = SUM
+	aggMap["hits"] = SUM
+	aggMap["sum"] = SUM
+	aggMap["count"] = SUM
+	aggMap["counts"] = SUM
+	aggMap["request"] = SUM
+	aggMap["requests"] = SUM
+	aggMap["ok"] = SUM
+	aggMap["error"] = SUM
+	aggMap["errors"] = SUM
+	aggMap["select"] = SUM
+	aggMap["selects"] = SUM
+	aggMap["selected"] = SUM
+	aggMap["insert"] = SUM
+	aggMap["inserts"] = SUM
+	aggMap["inserted"] = SUM
+	aggMap["update"] = SUM
+	aggMap["updates"] = SUM
+	aggMap["updated"] = SUM
+	aggMap["delete"] = SUM
+	aggMap["deletes"] = SUM
+	aggMap["deleted"] = SUM
+	aggMap["consume"] = SUM
+	aggMap["consumed"] = SUM
+	aggMap["set"] = SUM
+	aggMap["sets"] = SUM
+
+	aggMap["gauge"] = LAST
+	aggMap["last"] = LAST
+	aggMap["abs"] = LAST
+	aggMap["absolute"] = LAST
+
+	aggMap["median"] = MEDIAN
+	aggMap["middle"] = MEDIAN
+
+	aggMap["std"] = STD
+
 }
 
 type AggType uint8
@@ -62,24 +109,22 @@ const (
 // if there is a tag that has the agg func in it
 func AggTypeFromTag(stat string) AggType {
 	stat = strings.ToLower(stat)
+
+	got, ok := aggMap[stat]
+	if ok {
+		return got
+	}
+
 	switch {
-	case stat == "min" || stat == "lower" || _lowerMinReg.MatchString(stat) || _lowerReg.MatchString(stat):
+	case _lowerMinReg.MatchString(stat) || _lowerReg.MatchString(stat):
 		return MIN
-	case stat == "max" || stat == "upper" || _upperReg.MatchString(stat) || _upperMaxReg.MatchString(stat):
+	case _upperReg.MatchString(stat) || _upperMaxReg.MatchString(stat):
 		return MAX
-	case stat == "sum" || stat == "count" || stat == "add" || stat == "counter" || stat == "requests" || _countReg.MatchString(stat):
+	case _countReg.MatchString(stat):
 		return SUM
-	case stat == "hit" || stat == "hits" || stat == "ok" || stat == "error" || stat == "errors":
-		return SUM
-	case stat == "select" || stat == "selects" || stat == "selected" || stat == "updated" || stat == "update" || stat == "inserts" || stat == "insert" || stat == "delete" || stat == "deletes" || stat == "deleted":
-		return SUM
-	case stat == "consume" || stat == "consumed":
-		return SUM
-	case stat == "gauge" || stat == "last" || stat == "abs" || stat == "absolute":
-		return LAST
-	case stat == "std" || _stdReg.MatchString(stat):
+	case _stdReg.MatchString(stat):
 		return STD
-	case stat == "median" || stat == "middle" || _medianReg.MatchString(stat):
+	case _medianReg.MatchString(stat):
 		return MEDIAN
 	default:
 		return MEAN
@@ -92,29 +137,27 @@ func AggFuncFromTag(stat string) AGG_FUNC {
 
 // guess the agg func from the my.metric.is.good string
 // (there is certainly a better way to do this)
+
 func GuessReprValueFromKey(metric string) AggType {
 	spl := strings.Split(metric, ".")
 	last_path := strings.ToLower(spl[len(spl)-1])
 
 	// statsd like things are "mean_XX", "upper_XX", "lower_XX", "count_XX"
+	got, ok := aggMap[last_path]
+	if ok {
+		return got
+	}
+
 	switch {
-	case last_path == "count" || strings.HasPrefix(metric, "stats.count") || strings.HasPrefix(metric, "stats.set") || _countReg.MatchString(metric):
+	case strings.HasPrefix(metric, "stats.count") || strings.HasPrefix(metric, "stats.set") || strings.HasPrefix(metric, "stats.sets") || _countReg.MatchString(metric):
 		return SUM
-	case last_path == "last" || last_path == "gauge" || strings.HasPrefix(metric, "stats.gauge"):
+	case strings.HasPrefix(metric, "stats.gauge"):
 		return LAST
-	case last_path == "requests" || last_path == "sum" || last_path == "errors" || last_path == "error" || last_path == "hit" || last_path == "hits" || last_path == "ok":
-		return SUM
-	case last_path == "select" || last_path == "selects" || last_path == "selected" || last_path == "updates" || last_path == "update" || last_path == "updated" || last_path == "inserts" || last_path == "insert" || last_path == "delete" || last_path == "deleted" || last_path == "deletes":
-		return SUM
-	case last_path == "adds" || last_path == "add" || last_path == "added" || last_path == "remove" || last_path == "removes" || last_path == "removed":
-		return SUM
-	case last_path == "consume" || last_path == "consumed":
-		return SUM
-	case last_path == "max" || _upperMaxReg.MatchString(last_path) || _upperReg.MatchString(last_path):
+	case _upperMaxReg.MatchString(last_path) || _upperReg.MatchString(last_path):
 		return MAX
-	case last_path == "min" || _lowerMinReg.MatchString(last_path) || _lowerReg.MatchString(last_path):
+	case _lowerMinReg.MatchString(last_path) || _lowerReg.MatchString(last_path):
 		return MIN
-	case last_path == "median" || strings.HasPrefix(metric, "stats.median") || _medianReg.MatchString(last_path):
+	case strings.HasPrefix(metric, "stats.median") || _medianReg.MatchString(last_path):
 		return MEDIAN
 	default:
 		return MEAN
