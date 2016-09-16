@@ -69,6 +69,8 @@ func AggTypeFromTag(stat string) AggType {
 		return MAX
 	case stat == "sum" || stat == "count" || stat == "add" || stat == "counter" || stat == "requests" || _countReg.MatchString(stat):
 		return SUM
+	case stat == "hit" || stat == "hits" || stat == "ok" || stat == "error" || stat == "errors":
+		return SUM
 	case stat == "select" || stat == "selects" || stat == "selected" || stat == "updated" || stat == "update" || stat == "inserts" || stat == "insert" || stat == "delete" || stat == "deletes" || stat == "deleted":
 		return SUM
 	case stat == "consume" || stat == "consumed":
@@ -89,6 +91,7 @@ func AggFuncFromTag(stat string) AGG_FUNC {
 }
 
 // guess the agg func from the my.metric.is.good string
+// (there is certainly a better way to do this)
 func GuessReprValueFromKey(metric string) AggType {
 	spl := strings.Split(metric, ".")
 	last_path := strings.ToLower(spl[len(spl)-1])
@@ -99,7 +102,7 @@ func GuessReprValueFromKey(metric string) AggType {
 		return SUM
 	case last_path == "last" || last_path == "gauge" || strings.HasPrefix(metric, "stats.gauge"):
 		return LAST
-	case last_path == "requests" || last_path == "sum" || last_path == "errors" || last_path == "error":
+	case last_path == "requests" || last_path == "sum" || last_path == "errors" || last_path == "error" || last_path == "hit" || last_path == "hits" || last_path == "ok":
 		return SUM
 	case last_path == "select" || last_path == "selects" || last_path == "selected" || last_path == "updates" || last_path == "update" || last_path == "updated" || last_path == "inserts" || last_path == "insert" || last_path == "delete" || last_path == "deleted" || last_path == "deletes":
 		return SUM

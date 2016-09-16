@@ -123,11 +123,13 @@ Not everything can implement the APIs due to their nature. Below is a table of w
 
 Since graphite does not have the ability to tell the api what sort of aggregation we want/need from a given metric.  Cadent
 attempts to infer what aggregation to use. Below is the mappings we use to infer, anything that does not match will get
-the default of `mean`.
+the default of `mean`.  By "ends with" we mean the last verb in the metric name "moo.goo.endswith"
 
 | MetricName  |  AggMethod |
 |---|---|
 | ends with: count(s?) |  sum |
+| ends with: hit(s?) |  sum |
+| ends with: ok |  sum |
 | ends with: error(s?) |  sum |
 | ends with: delete(s\|d?) |  sum |
 | ends with: insert(s\|ed?) |  sum |
