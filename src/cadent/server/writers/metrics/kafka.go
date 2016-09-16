@@ -60,7 +60,7 @@ type KafkaMetrics struct {
 
 	resolution uint32
 
-	enctype schemas.KafkaEncodingType
+	enctype schemas.SendEncoding
 
 	cacherPrefix  string
 	cacher        *Cacher
@@ -107,7 +107,7 @@ func (kf *KafkaMetrics) Config(conf map[string]interface{}) error {
 
 	enct, ok := conf["encoding"]
 	if ok {
-		kf.enctype = schemas.KafkaEncodingFromString(enct.(string))
+		kf.enctype = schemas.SendEncodingFromString(enct.(string))
 	}
 
 	_cache := conf["cache"]
@@ -309,7 +309,7 @@ func (kf *KafkaMetrics) PushSeries(name *repr.StatName, points series.TimeSeries
 		return err
 	}
 
-	obj := &schemas.KafkaSeriesMetric{
+	obj := &schemas.SeriesMetric{
 		Type:       "metricblob",
 		Metric:     name.Key,
 		Time:       time.Now().UnixNano(),
@@ -322,7 +322,7 @@ func (kf *KafkaMetrics) PushSeries(name *repr.StatName, points series.TimeSeries
 		Tags:       name.SortedTags(),
 		MetaTags:   name.SortedMetaTags(),
 	}
-	obj.SetEncoding(kf.enctype)
+	obj.SetSendEncoding(kf.enctype)
 
 	kf.conn.Input() <- &sarama.ProducerMessage{
 		Topic: kf.db.DataTopic(),

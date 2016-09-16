@@ -11,8 +11,8 @@ import (
 	"github.com/tinylib/msgp/msgp"
 )
 
-func TestMarshalUnmarshalKafkaSeriesMetric(t *testing.T) {
-	v := KafkaSeriesMetric{}
+func TestMarshalUnmarshalSeriesMetric(t *testing.T) {
+	v := SeriesMetric{}
 	bts, err := v.MarshalMsg(nil)
 	if err != nil {
 		t.Fatal(err)
@@ -34,8 +34,8 @@ func TestMarshalUnmarshalKafkaSeriesMetric(t *testing.T) {
 	}
 }
 
-func BenchmarkMarshalMsgKafkaSeriesMetric(b *testing.B) {
-	v := KafkaSeriesMetric{}
+func BenchmarkMarshalMsgSeriesMetric(b *testing.B) {
+	v := SeriesMetric{}
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -43,8 +43,8 @@ func BenchmarkMarshalMsgKafkaSeriesMetric(b *testing.B) {
 	}
 }
 
-func BenchmarkAppendMsgKafkaSeriesMetric(b *testing.B) {
-	v := KafkaSeriesMetric{}
+func BenchmarkAppendMsgSeriesMetric(b *testing.B) {
+	v := SeriesMetric{}
 	bts := make([]byte, 0, v.Msgsize())
 	bts, _ = v.MarshalMsg(bts[0:0])
 	b.SetBytes(int64(len(bts)))
@@ -55,8 +55,8 @@ func BenchmarkAppendMsgKafkaSeriesMetric(b *testing.B) {
 	}
 }
 
-func BenchmarkUnmarshalKafkaSeriesMetric(b *testing.B) {
-	v := KafkaSeriesMetric{}
+func BenchmarkUnmarshalSeriesMetric(b *testing.B) {
+	v := SeriesMetric{}
 	bts, _ := v.MarshalMsg(nil)
 	b.ReportAllocs()
 	b.SetBytes(int64(len(bts)))
@@ -69,8 +69,8 @@ func BenchmarkUnmarshalKafkaSeriesMetric(b *testing.B) {
 	}
 }
 
-func TestEncodeDecodeKafkaSeriesMetric(t *testing.T) {
-	v := KafkaSeriesMetric{}
+func TestEncodeDecodeSeriesMetric(t *testing.T) {
+	v := SeriesMetric{}
 	var buf bytes.Buffer
 	msgp.Encode(&buf, &v)
 
@@ -79,7 +79,7 @@ func TestEncodeDecodeKafkaSeriesMetric(t *testing.T) {
 		t.Logf("WARNING: Msgsize() for %v is inaccurate", v)
 	}
 
-	vn := KafkaSeriesMetric{}
+	vn := SeriesMetric{}
 	err := msgp.Decode(&buf, &vn)
 	if err != nil {
 		t.Error(err)
@@ -93,8 +93,8 @@ func TestEncodeDecodeKafkaSeriesMetric(t *testing.T) {
 	}
 }
 
-func BenchmarkEncodeKafkaSeriesMetric(b *testing.B) {
-	v := KafkaSeriesMetric{}
+func BenchmarkEncodeSeriesMetric(b *testing.B) {
+	v := SeriesMetric{}
 	var buf bytes.Buffer
 	msgp.Encode(&buf, &v)
 	b.SetBytes(int64(buf.Len()))
@@ -107,8 +107,8 @@ func BenchmarkEncodeKafkaSeriesMetric(b *testing.B) {
 	en.Flush()
 }
 
-func BenchmarkDecodeKafkaSeriesMetric(b *testing.B) {
-	v := KafkaSeriesMetric{}
+func BenchmarkDecodeSeriesMetric(b *testing.B) {
+	v := SeriesMetric{}
 	var buf bytes.Buffer
 	msgp.Encode(&buf, &v)
 	b.SetBytes(int64(buf.Len()))
@@ -124,8 +124,8 @@ func BenchmarkDecodeKafkaSeriesMetric(b *testing.B) {
 	}
 }
 
-func TestMarshalUnmarshalKafkaSingleMetric(t *testing.T) {
-	v := KafkaSingleMetric{}
+func TestMarshalUnmarshalSingleMetric(t *testing.T) {
+	v := SingleMetric{}
 	bts, err := v.MarshalMsg(nil)
 	if err != nil {
 		t.Fatal(err)
@@ -147,8 +147,8 @@ func TestMarshalUnmarshalKafkaSingleMetric(t *testing.T) {
 	}
 }
 
-func BenchmarkMarshalMsgKafkaSingleMetric(b *testing.B) {
-	v := KafkaSingleMetric{}
+func BenchmarkMarshalMsgSingleMetric(b *testing.B) {
+	v := SingleMetric{}
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -156,8 +156,8 @@ func BenchmarkMarshalMsgKafkaSingleMetric(b *testing.B) {
 	}
 }
 
-func BenchmarkAppendMsgKafkaSingleMetric(b *testing.B) {
-	v := KafkaSingleMetric{}
+func BenchmarkAppendMsgSingleMetric(b *testing.B) {
+	v := SingleMetric{}
 	bts := make([]byte, 0, v.Msgsize())
 	bts, _ = v.MarshalMsg(bts[0:0])
 	b.SetBytes(int64(len(bts)))
@@ -168,8 +168,8 @@ func BenchmarkAppendMsgKafkaSingleMetric(b *testing.B) {
 	}
 }
 
-func BenchmarkUnmarshalKafkaSingleMetric(b *testing.B) {
-	v := KafkaSingleMetric{}
+func BenchmarkUnmarshalSingleMetric(b *testing.B) {
+	v := SingleMetric{}
 	bts, _ := v.MarshalMsg(nil)
 	b.ReportAllocs()
 	b.SetBytes(int64(len(bts)))
@@ -182,8 +182,8 @@ func BenchmarkUnmarshalKafkaSingleMetric(b *testing.B) {
 	}
 }
 
-func TestEncodeDecodeKafkaSingleMetric(t *testing.T) {
-	v := KafkaSingleMetric{}
+func TestEncodeDecodeSingleMetric(t *testing.T) {
+	v := SingleMetric{}
 	var buf bytes.Buffer
 	msgp.Encode(&buf, &v)
 
@@ -192,7 +192,7 @@ func TestEncodeDecodeKafkaSingleMetric(t *testing.T) {
 		t.Logf("WARNING: Msgsize() for %v is inaccurate", v)
 	}
 
-	vn := KafkaSingleMetric{}
+	vn := SingleMetric{}
 	err := msgp.Decode(&buf, &vn)
 	if err != nil {
 		t.Error(err)
@@ -206,8 +206,8 @@ func TestEncodeDecodeKafkaSingleMetric(t *testing.T) {
 	}
 }
 
-func BenchmarkEncodeKafkaSingleMetric(b *testing.B) {
-	v := KafkaSingleMetric{}
+func BenchmarkEncodeSingleMetric(b *testing.B) {
+	v := SingleMetric{}
 	var buf bytes.Buffer
 	msgp.Encode(&buf, &v)
 	b.SetBytes(int64(buf.Len()))
@@ -220,8 +220,121 @@ func BenchmarkEncodeKafkaSingleMetric(b *testing.B) {
 	en.Flush()
 }
 
-func BenchmarkDecodeKafkaSingleMetric(b *testing.B) {
-	v := KafkaSingleMetric{}
+func BenchmarkDecodeSingleMetric(b *testing.B) {
+	v := SingleMetric{}
+	var buf bytes.Buffer
+	msgp.Encode(&buf, &v)
+	b.SetBytes(int64(buf.Len()))
+	rd := msgp.NewEndlessReader(buf.Bytes(), b)
+	dc := msgp.NewReader(rd)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		err := v.DecodeMsg(dc)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func TestMarshalUnmarshalUnProcessedMetric(t *testing.T) {
+	v := UnProcessedMetric{}
+	bts, err := v.MarshalMsg(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	left, err := v.UnmarshalMsg(bts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(left) > 0 {
+		t.Errorf("%d bytes left over after UnmarshalMsg(): %q", len(left), left)
+	}
+
+	left, err = msgp.Skip(bts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(left) > 0 {
+		t.Errorf("%d bytes left over after Skip(): %q", len(left), left)
+	}
+}
+
+func BenchmarkMarshalMsgUnProcessedMetric(b *testing.B) {
+	v := UnProcessedMetric{}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		v.MarshalMsg(nil)
+	}
+}
+
+func BenchmarkAppendMsgUnProcessedMetric(b *testing.B) {
+	v := UnProcessedMetric{}
+	bts := make([]byte, 0, v.Msgsize())
+	bts, _ = v.MarshalMsg(bts[0:0])
+	b.SetBytes(int64(len(bts)))
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		bts, _ = v.MarshalMsg(bts[0:0])
+	}
+}
+
+func BenchmarkUnmarshalUnProcessedMetric(b *testing.B) {
+	v := UnProcessedMetric{}
+	bts, _ := v.MarshalMsg(nil)
+	b.ReportAllocs()
+	b.SetBytes(int64(len(bts)))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err := v.UnmarshalMsg(bts)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func TestEncodeDecodeUnProcessedMetric(t *testing.T) {
+	v := UnProcessedMetric{}
+	var buf bytes.Buffer
+	msgp.Encode(&buf, &v)
+
+	m := v.Msgsize()
+	if buf.Len() > m {
+		t.Logf("WARNING: Msgsize() for %v is inaccurate", v)
+	}
+
+	vn := UnProcessedMetric{}
+	err := msgp.Decode(&buf, &vn)
+	if err != nil {
+		t.Error(err)
+	}
+
+	buf.Reset()
+	msgp.Encode(&buf, &v)
+	err = msgp.NewReader(&buf).Skip()
+	if err != nil {
+		t.Error(err)
+	}
+}
+
+func BenchmarkEncodeUnProcessedMetric(b *testing.B) {
+	v := UnProcessedMetric{}
+	var buf bytes.Buffer
+	msgp.Encode(&buf, &v)
+	b.SetBytes(int64(buf.Len()))
+	en := msgp.NewWriter(msgp.Nowhere)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		v.EncodeMsg(en)
+	}
+	en.Flush()
+}
+
+func BenchmarkDecodeUnProcessedMetric(b *testing.B) {
+	v := UnProcessedMetric{}
 	var buf bytes.Buffer
 	msgp.Encode(&buf, &v)
 	b.SetBytes(int64(buf.Len()))

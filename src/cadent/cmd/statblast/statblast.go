@@ -84,6 +84,14 @@ func GraphiteStr(ct int) string {
 	)
 }
 
+func randFloat(max int, div int) float64 {
+	return float64(rand.Intn(max)) / float64(div)
+}
+
+func randInt(max int) int64 {
+	return rand.Int63n(int64(max))
+}
+
 func sprinter(ct int) string {
 	r_ws := []string{RandItem(randWords)}
 
@@ -91,6 +99,15 @@ func sprinter(ct int) string {
 		r_ws = append(r_ws, RandItem(randWords))
 	}
 	return strings.Join(r_ws, ".")
+}
+
+func sprinterTagList(ct int) [][]string {
+	r_ws := [][]string{}
+
+	for i := 0; i < ct-4; i++ {
+		r_ws = append(r_ws, []string{RandItem(randTagName), RandItem(randWords)})
+	}
+	return r_ws
 }
 
 func sprinterTag(ct int) string {
@@ -247,6 +264,11 @@ func Runner(server string, intype string, rate string, buffer int) {
 		}
 	}
 
+	// the URL is kafka:// w do something very different
+	if i_url.Scheme == "kafka" {
+		KafkaBlast(i_url.Host, strings.Replace(i_url.Path, "/", "", -1), rate, buffer)
+	}
+
 	var msg string = ""
 	sleeper, err := time.ParseDuration(rate)
 	if err != nil {
@@ -306,7 +328,13 @@ func main() {
 	setUlimits()
 	rand.Seed(time.Now().UnixNano())
 	startTime = time.Now().UnixNano()
-	serverList := flag.String("servers", "tcp://127.0.0.1:8125", "list of servers to open (stdout,tcp://127.0.0.1:6002,tcp://127.0.0.1:6003), you can choose tcp://, udp://, http://, unix://")
+	serverList := flag.String("servers", "tcp://127.0.0.1:8125", `list of servers to open
+		(stdout,tcp://127.0.0.1:6002,tcp://127.0.0.1:6003), you can choose
+		tcp://, udp://, http://, unix://, kafka://
+
+		kafka type should be a list of brokers (kafka://192.168.0.2:9092/topic)
+		`,
+	)
 	intype := flag.String("type", "statsd", "statsd or graphite or carbon2 or json")
 	rate := flag.String("rate", "0.1s", "fire rate for stat lines")
 	buffer := flag.Int("buffer", 512, "send buffer")

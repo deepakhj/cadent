@@ -19,7 +19,7 @@ limitations under the License.
 
 
 */
-//go:generate msgp -o kafka_msgp.go --file kafka.msgp.go
+//go:generate msgp -o series_msgp.go --file series.msgp.go
 
 package schemas
 
@@ -28,24 +28,19 @@ import (
 	"fmt"
 )
 
-type KafkaEncodingType uint8
-
-const (
-	KAFKA_ENCODE_JSON KafkaEncodingType = iota
-	KAFKA_ENCODE_MSGP
-)
-
-func KafkaEncodingFromString(enc string) KafkaEncodingType {
-	switch enc {
-	case "json":
-		return KAFKA_ENCODE_JSON
+func MetricObjectFromType(ty MessageType) MessageBase {
+	switch ty {
+	case MSG_SERIES:
+		return new(SeriesMetric)
+	case MSG_UNPROCESSED:
+		return new(UnProcessedMetric)
 	default:
-		return KAFKA_ENCODE_MSGP
+		return new(SingleMetric)
 	}
 }
 
-/** kafka put object **/
-type KafkaSeriesMetric struct {
+/**************** series **********************/
+type SeriesMetric struct {
 	Type       string     `json:"type" codec:"type" msg:"type"`
 	Id         uint64     `json:"id" codec:"id" msg:"id"`
 	Uid        string     `json:"uid" codec:"uid" msg:"uid"`
@@ -58,16 +53,16 @@ type KafkaSeriesMetric struct {
 	Tags       [][]string `json:"tags,omitempty" codec:"tags,omitempty" msg:"tags,omitempty"` // key1=value1,key2=value2...
 	MetaTags   [][]string `json:"metatags,omitempty" codec:"tags,omitempty" msg:"metatags,omitempty"`
 
-	encodetype KafkaEncodingType
+	encodetype SendEncoding
 	encoded    []byte
 	err        error
 }
 
-func (kp *KafkaSeriesMetric) SetEncoding(enc KafkaEncodingType) {
+func (kp *SeriesMetric) SetSendEncoding(enc SendEncoding) {
 	kp.encodetype = enc
 }
 
-func (kp *KafkaSeriesMetric) ensureEncoded() {
+func (kp *SeriesMetric) ensureEncoded() {
 	defer func() {
 		if r := recover(); r != nil {
 			kp.err = fmt.Errorf("%v", r)
@@ -77,7 +72,7 @@ func (kp *KafkaSeriesMetric) ensureEncoded() {
 
 	if kp != nil && kp.encoded == nil && kp.err == nil {
 		switch kp.encodetype {
-		case KAFKA_ENCODE_MSGP:
+		case ENCODE_MSGP:
 			kp.encoded, kp.err = kp.MarshalMsg(kp.encoded)
 		default:
 			kp.encoded, kp.err = json.Marshal(kp)
@@ -86,7 +81,7 @@ func (kp *KafkaSeriesMetric) ensureEncoded() {
 	}
 }
 
-func (kp *KafkaSeriesMetric) Length() int {
+func (kp *SeriesMetric) Length() int {
 	if kp == nil {
 		return 0
 	}
@@ -94,7 +89,7 @@ func (kp *KafkaSeriesMetric) Length() int {
 	return len(kp.encoded)
 }
 
-func (kp *KafkaSeriesMetric) Encode() ([]byte, error) {
+func (kp *SeriesMetric) Encode() ([]byte, error) {
 	if kp == nil {
 		return nil, ErrMetricIsNil
 	}
@@ -102,10 +97,19 @@ func (kp *KafkaSeriesMetric) Encode() ([]byte, error) {
 	return kp.encoded, kp.err
 }
 
-/**** Flat metrics ****/
+func (kp *SeriesMetric) Decode(b []byte) (err error) {
+	switch kp.encodetype {
+	case ENCODE_MSGP:
+		_, err = kp.UnmarshalMsg(b)
+	default:
+		err = json.Unmarshal(b, kp)
+	}
+	return err
+}
 
-/** kafka put object **/
-type KafkaSingleMetric struct {
+/**************** Single **********************/
+
+type SingleMetric struct {
 	Type       string     `json:"type" msg:"type"`
 	Id         uint64     `json:"id" msg:"id"`
 	Uid        string     `json:"uid" msg:"uid"`
@@ -121,12 +125,12 @@ type KafkaSingleMetric struct {
 	Tags       [][]string `json:"tags,omitempty" codec:"tags,omitempty" msg:"tags,omitempty"` // key1=value1,key2=value2...
 	MetaTags   [][]string `json:"metatags,omitempty" codec:"tags,omitempty" msg:"metatags,omitempty"`
 
-	encodetype KafkaEncodingType
+	encodetype SendEncoding
 	encoded    []byte
 	err        error
 }
 
-func (kp *KafkaSingleMetric) ensureEncoded() {
+func (kp *SingleMetric) ensureEncoded() {
 	defer func() {
 		if r := recover(); r != nil {
 			kp.err = fmt.Errorf("%v", r)
@@ -135,7 +139,7 @@ func (kp *KafkaSingleMetric) ensureEncoded() {
 	}()
 	if kp.encoded == nil && kp.err == nil {
 		switch kp.encodetype {
-		case KAFKA_ENCODE_MSGP:
+		case ENCODE_MSGP:
 			kp.encoded, kp.err = kp.MarshalMsg(kp.encoded)
 		default:
 			kp.encoded, kp.err = json.Marshal(kp)
@@ -144,16 +148,84 @@ func (kp *KafkaSingleMetric) ensureEncoded() {
 	}
 }
 
-func (kp *KafkaSingleMetric) SetEncoding(enc KafkaEncodingType) {
+func (kp *SingleMetric) SetSendEncoding(enc SendEncoding) {
 	kp.encodetype = enc
 }
 
-func (kp *KafkaSingleMetric) Length() int {
+func (kp *SingleMetric) Length() int {
 	kp.ensureEncoded()
 	return len(kp.encoded)
 }
 
-func (kp *KafkaSingleMetric) Encode() ([]byte, error) {
+func (kp *SingleMetric) Encode() ([]byte, error) {
 	kp.ensureEncoded()
 	return kp.encoded, kp.err
+}
+
+func (kp *SingleMetric) Decode(b []byte) error {
+	switch kp.encodetype {
+	case ENCODE_MSGP:
+		_, err := kp.UnmarshalMsg(b)
+		return err
+	default:
+		return json.Unmarshal(b, kp)
+	}
+}
+
+type UnProcessedMetric struct {
+	Time     int64      `json:"time" msg:"time"`
+	Metric   string     `json:"metric" msg:"metric"`
+	Min      float64    `json:"min" msg:"min"`
+	Max      float64    `json:"max" msg:"max"`
+	Last     float64    `json:"last" msg:"last"`
+	Sum      float64    `json:"sum" msg:"sum"`
+	Count    int64      `json:"count" msg:"count"`
+	Tags     [][]string `json:"tags,omitempty" codec:"tags,omitempty" msg:"tags,omitempty"` // key1=value1,key2=value2...
+	MetaTags [][]string `json:"metatags,omitempty" codec:"tags,omitempty" msg:"metatags,omitempty"`
+
+	encodetype SendEncoding
+	encoded    []byte
+	err        error
+}
+
+func (kp *UnProcessedMetric) ensureEncoded() {
+	defer func() {
+		if r := recover(); r != nil {
+			kp.err = fmt.Errorf("%v", r)
+			kp.encoded = nil
+		}
+	}()
+	if kp.encoded == nil && kp.err == nil {
+		switch kp.encodetype {
+		case ENCODE_MSGP:
+			kp.encoded, kp.err = kp.MarshalMsg(kp.encoded)
+		default:
+			kp.encoded, kp.err = json.Marshal(kp)
+
+		}
+	}
+}
+
+func (kp *UnProcessedMetric) SetSendEncoding(enc SendEncoding) {
+	kp.encodetype = enc
+}
+
+func (kp *UnProcessedMetric) Length() int {
+	kp.ensureEncoded()
+	return len(kp.encoded)
+}
+
+func (kp *UnProcessedMetric) Encode() ([]byte, error) {
+	kp.ensureEncoded()
+	return kp.encoded, kp.err
+}
+
+func (kp *UnProcessedMetric) Decode(b []byte) error {
+	switch kp.encodetype {
+	case ENCODE_MSGP:
+		_, err := kp.UnmarshalMsg(b)
+		return err
+	default:
+		return json.Unmarshal(b, kp)
+	}
 }

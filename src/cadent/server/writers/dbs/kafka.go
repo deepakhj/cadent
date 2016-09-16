@@ -116,6 +116,7 @@ func (kf *KafkaDB) Config(conf options.Options) error {
 	}
 
 	config.Producer.Flush.Frequency = _flush // Flush batches every 500ms
+	config.Producer.Flush.Messages = int(kf.batch_count)
 
 	// On the broker side, you may want to change the following settings to get
 	// stronger consistency guarantees:

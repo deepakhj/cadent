@@ -28,12 +28,13 @@ package injectors
 
 import (
 	"cadent/server/repr"
+	"cadent/server/utils/options"
 	"cadent/server/writers"
 )
 
 /****************** Data writers *********************/
 type Injector interface {
-	Config(map[string]interface{}) error
+	Config(options.Options) error
 	Start() error
 	Stop() error
 	SetWriter(writer writers.Writer) error

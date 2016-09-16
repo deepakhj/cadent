@@ -52,7 +52,7 @@ type KafkaFlatMetrics struct {
 	shutitdown bool
 	startstop  utils.StartStop
 
-	enctype schemas.KafkaEncodingType
+	enctype schemas.SendEncoding
 	batches int // number of stats to "batch" per message (default 0)
 	log     *logging.Logger
 }
@@ -78,7 +78,7 @@ func (kf *KafkaFlatMetrics) Config(conf map[string]interface{}) error {
 
 	enct, ok := conf["encoding"]
 	if ok {
-		kf.enctype = schemas.KafkaEncodingFromString(enct.(string))
+		kf.enctype = schemas.SendEncodingFromString(enct.(string))
 	}
 
 	kf.db = db.(*dbs.KafkaDB)
@@ -136,7 +136,7 @@ func (kf *KafkaFlatMetrics) Write(stat repr.StatRepr) error {
 
 	stat.Name.MergeMetric2Tags(kf.static_tags)
 	kf.indexer.Write(stat.Name) // to the indexer
-	item := &schemas.KafkaSingleMetric{
+	item := &schemas.SingleMetric{
 		Type:       "metric",
 		Metric:     stat.Name.Key,
 		Time:       time.Now().UnixNano(),
@@ -152,7 +152,7 @@ func (kf *KafkaFlatMetrics) Write(stat repr.StatRepr) error {
 		Tags:       stat.Name.SortedTags(),
 		MetaTags:   stat.Name.SortedMetaTags(),
 	}
-	item.SetEncoding(kf.enctype)
+	item.SetSendEncoding(kf.enctype)
 
 	stats.StatsdClientSlow.Incr("writer.kafkaflat.metrics.writes", 1)
 
