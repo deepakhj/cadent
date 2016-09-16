@@ -202,7 +202,7 @@ type promNamesResponse struct {
 }
 
 func (p *PrometheusAPI) MetricNames(w http.ResponseWriter, r *http.Request) {
-	defer stats.StatsdNanoTimeFunc("reader.http.promlist.get-time-ns", time.Now())
+	defer stats.StatsdSlowNanoTimeFunc("reader.http.promlist.get-time-ns", time.Now())
 	stats.StatsdClientSlow("reader.http.promlist.hits", 1)
 
 	args, err := ParseFindQuery(r)
@@ -237,7 +237,7 @@ func (p *PrometheusAPI) MetricNames(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *PrometheusAPI) TagValues(w http.ResponseWriter, r *http.Request) {
-	defer stats.StatsdNanoTimeFunc("reader.http.promnames.get-time-ns", time.Now())
+	defer stats.StatsdSlowNanoTimeFunc("reader.http.promnames.get-time-ns", time.Now())
 	stats.StatsdClientSlow("reader.http.promnames.ok", 1)
 
 	args, err := ParseFindQuery(r)

@@ -55,7 +55,7 @@ func (t *TagAPI) AddHandlers(mux *mux.Router) {
 }
 
 func (re *TagAPI) FindTagsByName(w http.ResponseWriter, r *http.Request) {
-	defer stats.StatsdNanoTimeFunc("reader.http.find.tag.name.get-time-ns", time.Now())
+	defer stats.StatsdSlowNanoTimeFunc("reader.http.find.tag.name.get-time-ns", time.Now())
 	stats.StatsdClientSlow("reader.http.tagbyname.hits", 1)
 	r.ParseForm()
 
@@ -81,7 +81,7 @@ func (re *TagAPI) FindTagsByName(w http.ResponseWriter, r *http.Request) {
 }
 
 func (re *TagAPI) FindTagsByNameAndValue(w http.ResponseWriter, r *http.Request) {
-	defer stats.StatsdNanoTimeFunc("reader.http.find.tag.namevalue.get-time-ns", time.Now())
+	defer stats.StatsdSlowNanoTimeFunc("reader.http.find.tag.namevalue.get-time-ns", time.Now())
 	stats.StatsdClientSlow("reader.http.tagbynameval.hits", 1)
 	r.ParseForm()
 	args, err := ParseFindQuery(r)
@@ -112,7 +112,7 @@ func (re *TagAPI) FindTagsByNameAndValue(w http.ResponseWriter, r *http.Request)
 // finduidsbytag?q={name=val, name=val, ...}
 
 func (re *TagAPI) FindUidsByTags(w http.ResponseWriter, r *http.Request) {
-	defer stats.StatsdNanoTimeFunc("reader.http.find.tag.uids.get-time-ns", time.Now())
+	defer stats.StatsdSlowNanoTimeFunc("reader.http.find.tag.uids.get-time-ns", time.Now())
 	stats.StatsdClientSlow("reader.http.uidbytag.hits", 1)
 	r.ParseForm()
 	args, err := ParseFindQuery(r)

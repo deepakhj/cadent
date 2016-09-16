@@ -119,7 +119,7 @@ func (re *MetricsAPI) ToGraphiteApiRender(raw_data []*metrics.RawRenderItem) Gra
 // if using another system (aka grafan, that expects the graphite-api delivered format)
 func (re *MetricsAPI) GraphiteRender(w http.ResponseWriter, r *http.Request) {
 
-	defer stats.StatsdNanoTimeFunc("reader.http.graphite-render.get-time-ns", time.Now())
+	defer stats.StatsdSlowNanoTimeFunc("reader.http.graphite-render.get-time-ns", time.Now())
 	stats.StatsdClientSlow("reader.http.graphite-render.hits", 1)
 
 	args, err := ParseMetricQuery(r)
@@ -163,7 +163,7 @@ func (re *MetricsAPI) GraphiteRender(w http.ResponseWriter, r *http.Request) {
 
 func (re *MetricsAPI) Render(w http.ResponseWriter, r *http.Request) {
 
-	defer stats.StatsdNanoTimeFunc("reader.http.render.get-time-ns", time.Now())
+	defer stats.StatsdSlowNanoTimeFunc("reader.http.render.get-time-ns", time.Now())
 	stats.StatsdClientSlow("reader.http.render.hits", 1)
 
 	args, err := ParseMetricQuery(r)
@@ -207,7 +207,7 @@ func (re *MetricsAPI) Render(w http.ResponseWriter, r *http.Request) {
 
 func (re *MetricsAPI) RawRender(w http.ResponseWriter, r *http.Request) {
 
-	defer stats.StatsdNanoTimeFunc("reader.http.rawrender.get-time-ns", time.Now())
+	defer stats.StatsdSlowNanoTimeFunc("reader.http.rawrender.get-time-ns", time.Now())
 	stats.StatsdClientSlow("reader.http.rawrender.hits", 1)
 
 	args, err := ParseMetricQuery(r)

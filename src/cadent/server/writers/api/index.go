@@ -59,7 +59,7 @@ func (f *FindAPI) AddHandlers(mux *mux.Router) {
 }
 
 func (re *FindAPI) Find(w http.ResponseWriter, r *http.Request) {
-	defer stats.StatsdNanoTimeFunc("reader.http.find.get-time-ns", time.Now())
+	defer stats.StatsdSlowNanoTimeFunc("reader.http.find.get-time-ns", time.Now())
 	stats.StatsdClientSlow("reader.http.find.hits", 1)
 	r.ParseForm()
 
@@ -85,7 +85,7 @@ func (re *FindAPI) Find(w http.ResponseWriter, r *http.Request) {
 }
 
 func (re *FindAPI) Expand(w http.ResponseWriter, r *http.Request) {
-	defer stats.StatsdNanoTimeFunc("reader.http.expand.get-time-ns", time.Now())
+	defer stats.StatsdSlowNanoTimeFunc("reader.http.expand.get-time-ns", time.Now())
 	stats.StatsdClientSlow("reader.http.expand.hits", 1)
 	r.ParseForm()
 	var query string
