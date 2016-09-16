@@ -120,6 +120,7 @@ func (re *MetricsAPI) ToGraphiteApiRender(raw_data []*metrics.RawRenderItem) Gra
 func (re *MetricsAPI) GraphiteRender(w http.ResponseWriter, r *http.Request) {
 
 	defer stats.StatsdNanoTimeFunc("reader.http.graphite-render.get-time-ns", time.Now())
+	stats.StatsdClientSlow("reader.http.graphite-render.hits", 1)
 
 	args, err := ParseMetricQuery(r)
 	if err != nil {
@@ -128,10 +129,12 @@ func (re *MetricsAPI) GraphiteRender(w http.ResponseWriter, r *http.Request) {
 
 	data, err := re.Metrics.RawRender(args.Target, args.Start, args.End, args.Tags)
 	if err != nil {
+		stats.StatsdClientSlow("reader.http.graphite-render.errors", 1)
 		re.a.OutError(w, fmt.Sprintf("%v", err), http.StatusServiceUnavailable)
 		return
 	}
 	if data == nil {
+		stats.StatsdClientSlow("reader.http.graphite-render.nodata", 1)
 		re.a.OutError(w, "No data found", http.StatusNoContent)
 		return
 	}
@@ -152,6 +155,7 @@ func (re *MetricsAPI) GraphiteRender(w http.ResponseWriter, r *http.Request) {
 	render_data := re.ToGraphiteApiRender(data)
 
 	re.a.AddToCache(data)
+	stats.StatsdClientSlow("reader.http.graphite-render.ok", 1)
 
 	re.a.OutJson(w, render_data)
 	return
@@ -160,6 +164,7 @@ func (re *MetricsAPI) GraphiteRender(w http.ResponseWriter, r *http.Request) {
 func (re *MetricsAPI) Render(w http.ResponseWriter, r *http.Request) {
 
 	defer stats.StatsdNanoTimeFunc("reader.http.render.get-time-ns", time.Now())
+	stats.StatsdClientSlow("reader.http.render.hits", 1)
 
 	args, err := ParseMetricQuery(r)
 	if err != nil {
@@ -168,10 +173,12 @@ func (re *MetricsAPI) Render(w http.ResponseWriter, r *http.Request) {
 
 	data, err := re.Metrics.RawRender(args.Target, args.Start, args.End, args.Tags)
 	if err != nil {
+		stats.StatsdClientSlow("reader.http.render.errors", 1)
 		re.a.OutError(w, fmt.Sprintf("%v", err), http.StatusServiceUnavailable)
 		return
 	}
 	if data == nil {
+		stats.StatsdClientSlow("reader.http.render.nodata", 1)
 		re.a.OutError(w, "No data found", http.StatusNoContent)
 		return
 	}
@@ -193,6 +200,7 @@ func (re *MetricsAPI) Render(w http.ResponseWriter, r *http.Request) {
 
 	re.a.AddToCache(data)
 
+	stats.StatsdClientSlow("reader.http.render.ok", 1)
 	re.a.OutJson(w, render_data)
 	return
 }
@@ -200,6 +208,7 @@ func (re *MetricsAPI) Render(w http.ResponseWriter, r *http.Request) {
 func (re *MetricsAPI) RawRender(w http.ResponseWriter, r *http.Request) {
 
 	defer stats.StatsdNanoTimeFunc("reader.http.rawrender.get-time-ns", time.Now())
+	stats.StatsdClientSlow("reader.http.rawrender.hits", 1)
 
 	args, err := ParseMetricQuery(r)
 	if err != nil {
@@ -208,11 +217,13 @@ func (re *MetricsAPI) RawRender(w http.ResponseWriter, r *http.Request) {
 
 	data, err := re.Metrics.RawRender(args.Target, args.Start, args.End, args.Tags)
 	if err != nil {
+		stats.StatsdClientSlow("reader.http.rawrender.error", 1)
 		re.a.OutError(w, fmt.Sprintf("%v", err), http.StatusServiceUnavailable)
 		return
 	}
 
 	if data == nil {
+		stats.StatsdClientSlow("reader.http.rawrender.nodata", 1)
 		re.a.OutError(w, "No data found", http.StatusNoContent)
 		return
 	}
@@ -225,6 +236,7 @@ func (re *MetricsAPI) RawRender(w http.ResponseWriter, r *http.Request) {
 	}
 
 	re.a.AddToCache(data)
+	stats.StatsdClientSlow("reader.http.rawrender.ok", 1)
 
 	re.a.OutJson(w, data)
 	return

@@ -60,6 +60,7 @@ func (f *FindAPI) AddHandlers(mux *mux.Router) {
 
 func (re *FindAPI) Find(w http.ResponseWriter, r *http.Request) {
 	defer stats.StatsdNanoTimeFunc("reader.http.find.get-time-ns", time.Now())
+	stats.StatsdClientSlow("reader.http.find.hits", 1)
 	r.ParseForm()
 
 	args, err := ParseFindQuery(r)
@@ -74,15 +75,18 @@ func (re *FindAPI) Find(w http.ResponseWriter, r *http.Request) {
 
 	data, err := re.indexer.Find(args.Query, args.Tags)
 	if err != nil {
+		stats.StatsdClientSlow("reader.http.find.errors", 1)
 		re.a.OutError(w, fmt.Sprintf("%v", err), http.StatusServiceUnavailable)
 		return
 	}
+	stats.StatsdClientSlow("reader.http.find.ok", 1)
 	re.a.OutJson(w, data)
 	return
 }
 
 func (re *FindAPI) Expand(w http.ResponseWriter, r *http.Request) {
 	defer stats.StatsdNanoTimeFunc("reader.http.expand.get-time-ns", time.Now())
+	stats.StatsdClientSlow("reader.http.expand.hits", 1)
 	r.ParseForm()
 	var query string
 
@@ -99,8 +103,10 @@ func (re *FindAPI) Expand(w http.ResponseWriter, r *http.Request) {
 
 	data, err := re.indexer.Expand(query)
 	if err != nil {
+		stats.StatsdClientSlow("reader.http.expand.errors", 1)
 		re.a.OutError(w, fmt.Sprintf("%v", err), http.StatusServiceUnavailable)
 		return
 	}
+	stats.StatsdClientSlow("reader.http.expand.ok", 1)
 	re.a.OutJson(w, data)
 }

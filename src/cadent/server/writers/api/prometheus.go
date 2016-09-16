@@ -120,6 +120,7 @@ type promMetricResponse struct {
 
 func (p *PrometheusAPI) QueryRange(w http.ResponseWriter, r *http.Request) {
 	defer stats.StatsdNanoTimeFunc("reader.http.promrender.get-time-ns", time.Now())
+	stats.StatsdClientSlow("reader.http.promrender.hits", 1)
 
 	args, err := ParseMetricQuery(r)
 	if err != nil {
@@ -127,10 +128,12 @@ func (p *PrometheusAPI) QueryRange(w http.ResponseWriter, r *http.Request) {
 	}
 	datas, err := p.Metrics.RawRender(args.Target, args.Start, args.End, args.Tags)
 	if err != nil {
+		stats.StatsdClientSlow("reader.http.promrender.errors", 1)
 		p.OutError(w, fmt.Sprintf("%v", err), http.StatusServiceUnavailable)
 		return
 	}
 	if datas == nil {
+		stats.StatsdClientSlow("reader.http.promrender.nodata", 1)
 		p.OutError(w, "No data found", http.StatusNoContent)
 		return
 	}
@@ -185,6 +188,7 @@ func (p *PrometheusAPI) QueryRange(w http.ResponseWriter, r *http.Request) {
 
 	// send to activator
 	p.a.AddToCache(datas)
+	stats.StatsdClientSlow("reader.http.promrender.ok", 1)
 
 	p.a.OutJson(w, res)
 }
@@ -198,7 +202,8 @@ type promNamesResponse struct {
 }
 
 func (p *PrometheusAPI) MetricNames(w http.ResponseWriter, r *http.Request) {
-	defer stats.StatsdNanoTimeFunc("reader.http.promnames.get-time-ns", time.Now())
+	defer stats.StatsdNanoTimeFunc("reader.http.promlist.get-time-ns", time.Now())
+	stats.StatsdClientSlow("reader.http.promlist.hits", 1)
 
 	args, err := ParseFindQuery(r)
 
@@ -209,6 +214,7 @@ func (p *PrometheusAPI) MetricNames(w http.ResponseWriter, r *http.Request) {
 
 	datas, err := p.Indexer.List(args.HasData, args.Page)
 	if err != nil {
+		stats.StatsdClientSlow("reader.http.promlist.errors", 1)
 		p.OutError(w, fmt.Sprintf("%v", err), http.StatusServiceUnavailable)
 		return
 	}
@@ -225,12 +231,14 @@ func (p *PrometheusAPI) MetricNames(w http.ResponseWriter, r *http.Request) {
 
 		res.Data = append(res.Data, data.Path)
 	}
+	stats.StatsdClientSlow("reader.http.promlist.ok", 1)
 
 	p.a.OutJson(w, res)
 }
 
 func (p *PrometheusAPI) TagValues(w http.ResponseWriter, r *http.Request) {
 	defer stats.StatsdNanoTimeFunc("reader.http.promnames.get-time-ns", time.Now())
+	stats.StatsdClientSlow("reader.http.promnames.ok", 1)
 
 	args, err := ParseFindQuery(r)
 
@@ -241,13 +249,11 @@ func (p *PrometheusAPI) TagValues(w http.ResponseWriter, r *http.Request) {
 
 	datas, err := p.Indexer.GetTagsByName(args.Query, args.Page)
 	if err != nil {
+		stats.StatsdClientSlow("reader.http.promnames.errors", 1)
 		p.OutError(w, fmt.Sprintf("%v", err), http.StatusServiceUnavailable)
 		return
 	}
-	if err != nil {
-		p.OutError(w, fmt.Sprintf("%v", err), http.StatusServiceUnavailable)
-		return
-	}
+
 	if datas == nil {
 		p.OutError(w, "No data found", http.StatusNoContent)
 		return
@@ -259,6 +265,6 @@ func (p *PrometheusAPI) TagValues(w http.ResponseWriter, r *http.Request) {
 
 		res.Data = append(res.Data, data.Value)
 	}
-
+	stats.StatsdClientSlow("reader.http.promnames.ok", 1)
 	p.a.OutJson(w, res)
 }
