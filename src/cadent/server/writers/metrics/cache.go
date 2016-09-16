@@ -260,7 +260,7 @@ func NewCacher() *Cacher {
 
 func (wc *Cacher) SetName(nm string) {
 	wc.Name = nm
-	wc.statsdPrefix = fmt.Sprintf("cacher.%s.metrics.", nm)
+	wc.statsdPrefix = fmt.Sprintf("cacher.%s.metrics.", stats.SanitizeName(nm))
 }
 func (wc *Cacher) SetMaxKeys(m int) {
 	wc.maxKeys = m

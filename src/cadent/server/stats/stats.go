@@ -19,6 +19,7 @@ package stats
 
 import (
 	"statsd"
+	"strings"
 	"time"
 )
 
@@ -27,6 +28,12 @@ var StatsdClient statsd.Statsd = nil
 
 // statsd client singleton for "raw" (no sampling rates) for slow items
 var StatsdClientSlow statsd.Statsd = nil
+
+var NAME_SANITIZER *strings.Replacer
+
+func SanitizeName(name string) string {
+	return NAME_SANITIZER.Replace(name)
+}
 
 //a handy "defer" function for timers, in Nano seconds
 func StatsdNanoTimeFunc(statname string, start time.Time) {
@@ -50,4 +57,35 @@ func init() {
 		StatsdClient = new(statsd.StatsdNoop)
 		StatsdClientSlow = new(statsd.StatsdNoop)
 	}
+	NAME_SANITIZER = strings.NewReplacer(
+		"..", ".",
+		",", "_",
+		"=", "_",
+		"*", "_",
+		"(", "_",
+		")", "_",
+		"{", "_",
+		"}", "_",
+		"^", "_",
+		":", "_",
+		"$", "_",
+		" ", "_",
+		"!", "_",
+		"@", "_",
+		"#", "_",
+		"&", "_",
+		"%", "_",
+		"~", "_",
+		"`", "_",
+		"'", "_",
+		">", "_",
+		"<", "_",
+		"?", "_",
+		"/", "_",
+		"]", "_",
+		"[", "_",
+		"|", "_",
+		"\\", "_",
+		";", "_",
+	)
 }
