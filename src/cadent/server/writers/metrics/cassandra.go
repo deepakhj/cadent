@@ -1069,7 +1069,7 @@ func (cass *CassandraMetric) GetRangeFromDB(name *repr.StatName, start uint32, e
 // as the "Uniqueid" uid, res, etime, stime
 func (cass *CassandraMetric) UpdateDBSeries(dbs *DBSeries, ts series.TimeSeries) error {
 
-	batch := cass.writer.conn.NewBatch(gocql.LoggedBatch)
+	batch := cass.writer.conn.NewBatch(gocql.UnloggedBatch)
 
 	// sadly cassandra does not allow one to update the Primary Key bits
 	// so we need to "delete" then "insert" a new row
