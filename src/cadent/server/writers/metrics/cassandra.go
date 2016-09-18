@@ -1070,7 +1070,6 @@ func (cass *CassandraMetric) GetRangeFromDB(name *repr.StatName, start uint32, e
 func (cass *CassandraMetric) UpdateDBSeries(dbs *DBSeries, ts series.TimeSeries) error {
 
 	// the extra "ptype=?" is to match the full primary key needed for compact storage
-	// so hopefully the ptype does not change
 	Q := fmt.Sprintf(
 		"UPDATE %s SET stime=?, etime=?, ptype=?, points=? WHERE mid={id: ?, res:?} AND stime=? AND etime=? and ptype=?",
 		cass.writer.db.MetricTable(),

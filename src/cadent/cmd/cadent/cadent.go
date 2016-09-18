@@ -196,7 +196,7 @@ func startStatsServer(defaults *cadent.Config, servers []*cadent.Server) {
 
 	// stats stuff + profiler live on the same mux
 	if len(defaults.HealthServerBind) > 0 && defaults.ProfileBind != defaults.HealthServerBind {
-		log.Notice("Starting Stats server on %s")
+		log.Notice("Starting internal Stats server on %s", defaults.HealthServerBind)
 		err := http.ListenAndServe(defaults.HealthServerBind, nil)
 		if err != nil {
 			log.Critical("Could not start http server %s", defaults.HealthServerBind)
