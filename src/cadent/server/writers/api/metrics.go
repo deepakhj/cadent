@@ -141,6 +141,9 @@ func (re *MetricsAPI) GraphiteRender(w http.ResponseWriter, r *http.Request) {
 
 	resample := args.Step
 	for idx := range data {
+		if data == nil {
+			continue
+		}
 		// graphite needs the "nils" and expects a "full list" to match the step + start/end
 		data[idx].Start = uint32(args.Start)
 		data[idx].End = uint32(args.End)

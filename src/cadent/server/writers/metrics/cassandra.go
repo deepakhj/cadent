@@ -876,7 +876,7 @@ func (cass *CassandraMetric) RawRender(path string, start int64, end int64, tags
 		for {
 			select {
 			case <-timeout.C:
-				cass.writer.log.Error("Render Timeout for %s (%s->%s)", path, start, end)
+				cass.writer.log.Error("Render Timeout for %s (%d->%d)", path, start, end)
 				timeout.Stop()
 				return
 			case <-done:
