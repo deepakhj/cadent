@@ -1069,30 +1069,47 @@ func (cass *CassandraMetric) GetRangeFromDB(name *repr.StatName, start uint32, e
 // as the "Uniqueid" uid, res, etime, stime
 func (cass *CassandraMetric) UpdateDBSeries(dbs *DBSeries, ts series.TimeSeries) error {
 
-	// the extra "ptype=?" is to match the full primary key needed for compact storage
-	Q := fmt.Sprintf(
-		"UPDATE %s SET stime=?, etime=?, ptype=?, points=? WHERE mid={id: ?, res:?} AND stime=? AND etime=? and ptype=?",
+	batch := cass.writer.conn.NewBatch(gocql.LoggedBatch)
+
+	// sadly cassandra does not allow one to update the Primary Key bits
+	// so we need to "delete" then "insert" a new row
+	// this may not be the "best" way to deal w/ rollups as there will be many-a-tombstone
+	delQ := fmt.Sprintf(
+		"DELETE FROM %s WHERE mid={id: ?, res:?} AND stime=? AND etime=?",
 		cass.writer.db.MetricTable(),
 	)
-
-	ptype := series.IdFromName(ts.Name())
-
-	blob, err := ts.MarshalBinary()
+	points, err := ts.MarshalBinary()
 	if err != nil {
 		return err
 	}
-	err = cass.writer.conn.Query(
-		Q,
-		ts.StartTime(),
-		ts.LastTime(),
-		ptype,
-		blob,
+
+	ptype := series.IdFromName(ts.Name())
+	batch.Query(
+		delQ,
 		dbs.Uid,
 		dbs.Resolution,
 		dbs.Start,
 		dbs.End,
+	)
+
+	InsQ := fmt.Sprintf(
+		"INSERT INTO %s (mid, stime, etime, ptype, points) VALUES ({id: ?, res:?}, ?, ?, ?, ?)",
+		cass.writer.db.MetricTable(),
+	)
+	if dbs.TTL > 0 {
+		InsQ += fmt.Sprintf(" USING TTL %d", dbs.TTL)
+	}
+
+	batch.Query(
+		InsQ,
+		dbs.Uid,
+		dbs.Resolution,
+		ts.StartTime(),
+		ts.LastTime(),
 		ptype,
-	).Exec()
+		points,
+	)
+	err = cass.writer.conn.ExecuteBatch(batch)
 
 	return err
 }

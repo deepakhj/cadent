@@ -32,7 +32,7 @@ import (
 	"time"
 )
 
-const MAX_QUANTIZE_POINTS = 10000
+const MAX_QUANTIZE_POINTS = 100000
 
 /** errors **/
 var errMergeStepSizeError = errors.New("To merge 2 RawRenderItems, the step size needs to be the same")
@@ -56,6 +56,7 @@ type DBSeries struct {
 	Ptype      uint8
 	Pbytes     []byte
 	Resolution uint32
+	TTL        uint32
 }
 
 func (d *DBSeries) Iter() (series.TimeSeriesIter, error) {

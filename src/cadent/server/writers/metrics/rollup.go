@@ -276,7 +276,11 @@ func (rl *RollupMetric) DoRollup(tseries *TotalTimeSeries) error {
 					len(rawd.Data),
 					ts.Count(),
 				)
-				rl.writer.UpdateDBSeries(old_data[idx], ts)
+				old_data[idx].TTL = new_name.TTL // needed for some DBs
+				err = rl.writer.UpdateDBSeries(old_data[idx], ts)
+				if err != nil {
+					rl.log.Errorf("rollup update err: %v", err)
+				}
 			} else {
 				rl.log.Debug(
 					"Insert New Series Resolution %d: %s (%s) %d->%d (%d points)",
@@ -316,7 +320,7 @@ func (rl *RollupMetric) DoRollup(tseries *TotalTimeSeries) error {
 			continue
 		}
 
-		r_stats, err := rl.writer.GetRangeFromDB(tseries.Name, t_start-uint32(step), t_end, uint32(step))
+		r_stats, err := rl.writer.GetRangeFromDB(tseries.Name, t_start-uint32(step), t_end+uint32(step), uint32(step))
 
 		if len(r_stats) == 0 {
 			r_stats, err = rl.writer.GetLatestFromDB(tseries.Name, uint32(step))
