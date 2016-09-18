@@ -38,7 +38,7 @@ import (
 type PrometheusAPI struct {
 	a       *ApiLoop
 	Indexer indexer.Indexer
-	Metrics metrics.MetricsReader
+	Metrics metrics.Metrics
 }
 
 func NewPrometheusAPI(a *ApiLoop) *PrometheusAPI {

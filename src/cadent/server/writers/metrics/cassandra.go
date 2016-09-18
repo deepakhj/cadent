@@ -280,22 +280,12 @@ func (j CassandraBlobMetricJob) DoWork() error {
 
 /****************** Metrics Writer *********************/
 type CassandraMetric struct {
-	driver            string
-	resolutions       [][]int
-	currentResolution int
-	static_tags       repr.SortingTags
-	indexer           indexer.Indexer
-	writer            *CassandraWriter
+	WriterBase
 
-	// this is for Render where we may have several caches, but only "one"
-	// cacher get picked for the default render (things share the cache from writers
-	// and the api render, but not all the caches, so we need to be able to get the
-	// the cache singleton keys
-	// `cache:series:seriesMaxMetrics:seriesEncoding:seriesMaxBytes:maxTimeInCache`
-	cacherPrefix  string
-	cacher        *Cacher
+	driver string
+	writer *CassandraWriter
+
 	cacheOverFlow *broadcast.Listener // on byte overflow of cacher force a write
-	is_primary    bool                // is this the primary writer to the cache?
 
 	// if the rolluptype == cached, then we this just uses the internal RAM caches
 	// otherwise if "trigger" we only have the lowest res cache, and trigger rollups on write
@@ -313,9 +303,7 @@ type CassandraMetric struct {
 	dispatch_retries int
 	dispatcher       *dispatch.DispatchQueue
 
-	shutitdown bool
-	shutdown   chan bool
-	startstop  utils.StartStop
+	shutdown chan bool
 }
 
 func NewCassandraMetrics() *CassandraMetric {
@@ -526,18 +514,6 @@ func (cass *CassandraMetric) Stop() {
 func (cass *CassandraMetric) SetIndexer(idx indexer.Indexer) error {
 	cass.indexer = idx
 	return nil
-}
-
-// Resolutions should be of the form
-// [BinTime, TTL]
-// we select the BinTime based on the TTL
-func (cass *CassandraMetric) SetResolutions(res [][]int) int {
-	cass.resolutions = res
-	return len(res) // need as many writers as bins
-}
-
-func (cass *CassandraMetric) SetCurrentResolution(res int) {
-	cass.currentResolution = res
 }
 
 func (cass *CassandraMetric) doInsert(ts *TotalTimeSeries) error {
@@ -1093,8 +1069,10 @@ func (cass *CassandraMetric) GetRangeFromDB(name *repr.StatName, start uint32, e
 // as the "Uniqueid" uid, res, etime, stime
 func (cass *CassandraMetric) UpdateDBSeries(dbs *DBSeries, ts series.TimeSeries) error {
 
+	// the extra "ptype=?" is to match the full primary key needed for compact storage
+	// so hopefully the ptype does not change
 	Q := fmt.Sprintf(
-		"UPDATE %s SET stime=?, etime=?, ptype=?, points=? WHERE mid={id: ?, res:?} AND stime=? AND etime=?",
+		"UPDATE %s SET stime=?, etime=?, ptype=?, points=? WHERE mid={id: ?, res:?} AND stime=? AND etime=? and ptype=?",
 		cass.writer.db.MetricTable(),
 	)
 
@@ -1114,6 +1092,7 @@ func (cass *CassandraMetric) UpdateDBSeries(dbs *DBSeries, ts series.TimeSeries)
 		dbs.Resolution,
 		dbs.Start,
 		dbs.End,
+		ptype,
 	).Exec()
 
 	return err

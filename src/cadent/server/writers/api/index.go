@@ -36,7 +36,7 @@ import (
 type FindAPI struct {
 	a       *ApiLoop
 	indexer indexer.Indexer
-	metrics metrics.MetricsReader
+	metrics metrics.Metrics
 }
 
 func NewFindAPI(a *ApiLoop) *FindAPI {

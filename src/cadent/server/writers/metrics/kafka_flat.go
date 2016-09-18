@@ -26,7 +26,6 @@ package metrics
 import (
 	"cadent/server/repr"
 	"cadent/server/stats"
-	"cadent/server/utils"
 	"cadent/server/utils/shutdown"
 	"cadent/server/writers/dbs"
 	"cadent/server/writers/indexer"
@@ -42,15 +41,10 @@ var errKafkaReaderNotImplimented = errors.New("KAFKA READER NOT IMPLMENTED")
 
 /****************** Interfaces *********************/
 type KafkaFlatMetrics struct {
-	db                *dbs.KafkaDB
-	conn              sarama.AsyncProducer
-	indexer           indexer.Indexer
-	resolutions       [][]int
-	currentResolution int
-	static_tags       repr.SortingTags
+	WriterBase
 
-	shutitdown bool
-	startstop  utils.StartStop
+	db   *dbs.KafkaDB
+	conn sarama.AsyncProducer
 
 	enctype schemas.SendEncoding
 	batches int // number of stats to "batch" per message (default 0)
@@ -124,6 +118,10 @@ func (kf *KafkaFlatMetrics) SetResolutions(res [][]int) int {
 	return len(res) // need as many writers as bins
 }
 
+func (cass *KafkaMetrics) GetResolutions() [][]int {
+	return cass.resolutions
+}
+
 func (kf *KafkaFlatMetrics) SetCurrentResolution(res int) {
 	kf.currentResolution = res
 }
@@ -170,7 +168,7 @@ func (kf *KafkaFlatMetrics) Write(stat repr.StatRepr) error {
 func (kf *KafkaFlatMetrics) Render(path string, from int64, to int64) (WhisperRenderItem, error) {
 	return WhisperRenderItem{}, errKafkaReaderNotImplimented
 }
-func (kf *KafkaFlatMetrics) RawRender(path string, from int64, to int64) ([]*RawRenderItem, error) {
+func (kf *KafkaFlatMetrics) RawRender(string, int64, int64, repr.SortingTags) ([]*RawRenderItem, error) {
 	return []*RawRenderItem{}, errKafkaReaderNotImplimented
 }
 func (kf *KafkaFlatMetrics) CacheRender(path string, from int64, to int64, tags repr.SortingTags) ([]*RawRenderItem, error) {

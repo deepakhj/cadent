@@ -2,6 +2,8 @@
 ## it acts like both Graphite and Statsd and flushes to graphite and writes to Cassandra
 ##  the statsd out put is basically a loopback (see the prereg.toml)
 
+
+
 [default]
 
 
@@ -36,14 +38,36 @@ failed_heartbeat_count=3
 ## `ignore` -- stop checking the node
 server_down_policy="ignore"
 
+#############################
+## Profiling
+#############################
+
 ## Turn on CPU/Mem profiling
-##  there will be a http server set up to yank pprof data on :6060
+##  there will be a http server set up to yank pprof data on :6061
+cpu_profile_listen="0.0.0.0:6061"
 cpu_profile=true
 cpu_profile_rate=100000
 block_profile=false # this is very expensive
 
+
+## there will be an internal health http server set up as well
+## and will respond to '/ops/status' -> "GET OK"
+## '/stats' --> blob of json data (adding ?jsonp=xxx will return jsonp data)
+## '/' --> a little file that charts (poorly) the above stats
+internal_health_server_listen="0.0.0.0:6061"
+
+## stats are "rendered" every 5 seconds, so this will keep last
+## `internal_health_server_points` in RAM (careful with how many you store)
+## (use the statsd emitter to store longer term stuff)
+internal_health_server_points=500
+
+
+#############################
+## Emit To Statsd
+#############################
+
 ## fire out some internal to statsd if desired
-statsd_server="127.0.0.1:8125"
+statsd_server="" # 127.0.0.1:8125"
 statsd_prefix="cadent"
 statsd_interval=1  # send to statd every second (buffered)
 
@@ -57,6 +81,10 @@ statsd_interval=1  # send to statd every second (buffered)
 statsd_timer_sample_rate=0.01
 statsd_sample_rate=0.1
 
+
+#############################
+## Incoming server defaults
+#############################
 
 ## outgoing connections are pooled per outgoign server
 ## this sets the number of pool connections
@@ -80,55 +108,30 @@ workers=10
 ## number of dispatcher workers to process output to backends
 out_workers=32
 
-## there will be an internal health http server set up as well
-## and will respond to '/ops/status' -> "GET OK"
-## '/stats' --> blob of json data (adding ?jsonp=xxx will return jsonp data)
-## '/' --> a little file that charts (poorly) the above stats
-internal_health_server_listen="0.0.0.0:6061"
 
-## stats are "rendered" every 5 seconds, so this will keep last
-## `internal_health_server_points` in RAM (careful with how many you store)
-## (use the statsd emitter to store longer term stuff)
-internal_health_server_points=500
+#############################
+## SERVERS
+#############################
 
-
+################
+## Statsd -> Backend Writer
+################
 [statsd-proxy]
 # internal statsd listener that pushes things into the below graphite section
 
-## what port/scheme we are listening on for incoming data
 listen="udp://0.0.0.0:8125"
-
 msg_type="statsd"
-
-# only one server one node use the fastest one (however not used anyw
-hasher_algo="mmh3"
-hasher_elter="statsd"
-hasher_vnodes=1
-workers=20
-
 out_dev_null=true
 
-
+################
+## Graphite -> Backend Writer
+################
 [graphite-proxy]
-
-### Server sections .. note all the above is overridable in each section
-### (except the `statsd_*` and `internal_health_server_listen`)
-### NOTE: `hasher_replicas` will NOT use the defaults, be explict there
 
 ## what port/scheme we are listening on for incoming data
 listen="tcp://0.0.0.0:2003"
 workers=5
-
 msg_type="graphite"
-
-# graphite style
-hasher_algo="md5"
-hasher_elter="graphite"
-hasher_vnodes=1
-
-## need higher timeouts for graphite
-write_timeout=5000
-runner_timeout=5000
 pool_buffersize=16384
 
 # TCP buffers should be smaller then UDP as there can be Many TCP connnections
@@ -138,13 +141,3 @@ max_buffer_size=819200
 # this implies NO backends, which is good if only writers are around or if each line gets re-routed to another backend
 # otherwise, you'd basically be doing nothing
 out_dev_null=true
-
-[statsd-proxy]
-listen="udp://0.0.0.0:8125"
-workers=5
-
-msg_type="statsd"
-
-out_dev_null=true
-
-

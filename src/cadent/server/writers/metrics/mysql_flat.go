@@ -46,7 +46,6 @@ package metrics
 
 import (
 	"cadent/server/repr"
-	"cadent/server/utils"
 	"cadent/server/utils/shutdown"
 	"cadent/server/writers/dbs"
 	"cadent/server/writers/indexer"
@@ -60,12 +59,10 @@ import (
 
 /****************** Interfaces *********************/
 type MySQLFlatMetrics struct {
-	db                *dbs.MySQLDB
-	conn              *sql.DB
-	indexer           indexer.Indexer
-	resolutions       [][]int
-	currentResolution int
-	static_tags       repr.SortingTags
+	WriterBase
+
+	db   *dbs.MySQLDB
+	conn *sql.DB
 
 	write_list     []repr.StatRepr // buffer the writes so as to do "multi" inserts per query
 	max_write_size int             // size of that buffer before a flush
@@ -74,9 +71,7 @@ type MySQLFlatMetrics struct {
 
 	log *logging.Logger
 
-	shutitdown bool
-	shutdown   chan bool
-	startstop  utils.StartStop
+	shutdown chan bool
 }
 
 func NewMySQLFlatMetrics() *MySQLFlatMetrics {

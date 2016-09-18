@@ -42,7 +42,7 @@ var errWsTooManyMetrics = []byte(fmt.Sprintf("%dOnly one metric can be watched",
 type MetricsSocket struct {
 	a       *ApiLoop
 	Indexer indexer.Indexer
-	Metrics metrics.MetricsReader
+	Metrics metrics.Metrics
 
 	upgrader websocket.Upgrader
 }

@@ -33,7 +33,7 @@ import (
 type TagAPI struct {
 	a       *ApiLoop
 	Indexer indexer.Indexer
-	Metrics metrics.MetricsReader
+	Metrics metrics.Metrics
 }
 
 func NewTagAPI(a *ApiLoop) *TagAPI {

@@ -46,6 +46,7 @@ const (
 	MSG_SERIES MessageType = iota
 	MSG_SINGLE
 	MSG_UNPROCESSED
+	MSG_RAW
 )
 
 func MetricTypeFromString(enc string) MessageType {
@@ -54,6 +55,8 @@ func MetricTypeFromString(enc string) MessageType {
 		return MSG_SERIES
 	case "unprocessed":
 		return MSG_UNPROCESSED
+	case "raw":
+		return MSG_RAW
 	default:
 		return MSG_SINGLE
 	}

@@ -50,13 +50,13 @@ type ApiMetricConfig struct {
 	Driver   string          `toml:"driver"`
 	DSN      string          `toml:"dsn"`
 	UseCache string          `toml:"cache"`
-	Options  options.Options `toml:"options"` // option=[ [key, value], [key, value] ...]
+	Options  options.Options `toml:"options"`
 }
 
 type ApiIndexerConfig struct {
-	Driver  string                 `toml:"driver"`
-	DSN     string                 `toml:"dsn"`
-	Options map[string]interface{} `toml:"options"` // option=[ [key, value], [key, value] ...]
+	Driver  string          `toml:"driver"`
+	DSN     string          `toml:"dsn"`
+	Options options.Options `toml:"options"`
 }
 
 type ApiConfig struct {
@@ -69,13 +69,13 @@ type ApiConfig struct {
 	MaxReadCacheBytesPerMetric int              `toml:"read_cache_max_bytes_per_metric"`
 }
 
-func (re *ApiConfig) GetMetrics(resolution float64) (metrics.MetricsReader, error) {
-	reader, err := metrics.NewReaderMetrics(re.ApiMetricOptions.Driver)
+func (re *ApiConfig) GetMetrics(resolution float64) (metrics.Metrics, error) {
+	reader, err := metrics.NewWriterMetrics(re.ApiMetricOptions.Driver)
 	if err != nil {
 		return nil, err
 	}
 	if re.ApiMetricOptions.Options == nil {
-		re.ApiMetricOptions.Options = make(map[string]interface{})
+		re.ApiMetricOptions.Options = options.New()
 	}
 	re.ApiMetricOptions.Options["dsn"] = re.ApiMetricOptions.DSN
 	re.ApiMetricOptions.Options["resolution"] = resolution

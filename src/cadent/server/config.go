@@ -53,29 +53,55 @@ type ConfigServerList struct {
 	HashKeys     []string `toml:"hashkeys"`
 }
 
+type GossipConfig struct {
+	Enabled bool   `toml:"enabled"`
+	Port    int    `toml:"port"` //
+	Mode    string `toml:"mode"` // local, lan, wan
+	Name    string `toml:"name"` // name of this node, otherwise it will pick on (must be unique)
+	Seed    string `toml:"seed"` // a seed node
+}
+
 type Config struct {
-	Name                    string
-	StatsTick               bool          `toml:"stats_tick"`
-	PIDfile                 string        `toml:"pid_file"`
-	NumProc                 int           `toml:"num_procs"`
-	MaxPoolConnections      int           `toml:"max_pool_connections"`
-	MaxWritePoolBufferSize  int           `toml:"pool_buffersize"`
-	SendingConnectionMethod string        `toml:"sending_method"`
-	MsgType                 string        `toml:"msg_type"`
-	MsgFormatRegEx          string        `toml:"msg_regex"`
-	ListenStr               string        `toml:"listen"`
-	ServerHeartBeat         time.Duration `toml:"heartbeat_time_delay"`
-	ServerHeartBeatTimeout  time.Duration `toml:"heartbeat_time_timeout"`
-	MaxServerHeartBeatFail  uint64        `toml:"failed_heartbeat_count"`
-	ServerDownPolicy        string        `toml:"server_down_policy"`
-	CacheItems              uint64        `toml:"cache_items"`
-	Profile                 bool          `toml:"cpu_profile"`
-	ProfileRate             int           `toml:"cpu_profile_rate"`
-	BlockProfile            bool          `toml:"block_profile"`
-	Replicas                int           `toml:"num_dupe_replicas"`
-	HashAlgo                string        `toml:"hasher_algo"`
-	HashElter               string        `toml:"hasher_elter"`
-	HashVNodes              int           `toml:"hasher_vnodes"`
+	Name string
+
+	// for "DEFAULT" section only
+	Gossip  GossipConfig `toml:"gossip"`
+	PIDfile string       `toml:"pid_file"`
+	NumProc int          `toml:"num_procs"`
+
+	// send some stats to the land
+	StatsdServer          string  `toml:"statsd_server"`
+	StatsdPrefix          string  `toml:"statsd_prefix"`
+	StatsdInterval        uint    `toml:"statsd_interval"`
+	StatsdSampleRate      float32 `toml:"statsd_sample_rate"`
+	StatsdTimerSampleRate float32 `toml:"statsd_timer_sample_rate"`
+
+	StatsTick bool `toml:"stats_tick"`
+
+	// can be set in both defaults or overrides from the children
+
+	MaxPoolConnections      int    `toml:"max_pool_connections"`
+	MaxWritePoolBufferSize  int    `toml:"pool_buffersize"`
+	SendingConnectionMethod string `toml:"sending_method"`
+
+	MsgType                string        `toml:"msg_type"`
+	MsgFormatRegEx         string        `toml:"msg_regex"`
+	ListenStr              string        `toml:"listen"`
+	ServerHeartBeat        time.Duration `toml:"heartbeat_time_delay"`
+	ServerHeartBeatTimeout time.Duration `toml:"heartbeat_time_timeout"`
+	MaxServerHeartBeatFail uint64        `toml:"failed_heartbeat_count"`
+	ServerDownPolicy       string        `toml:"server_down_policy"`
+	CacheItems             uint64        `toml:"cache_items"`
+	Replicas               int           `toml:"num_dupe_replicas"`
+	HashAlgo               string        `toml:"hasher_algo"`
+	HashElter              string        `toml:"hasher_elter"`
+	HashVNodes             int           `toml:"hasher_vnodes"`
+
+	// profiler
+	ProfileBind  string `toml:"cpu_profile_listen"`
+	Profile      bool   `toml:"cpu_profile"`
+	ProfileRate  int    `toml:"cpu_profile_rate"`
+	BlockProfile bool   `toml:"block_profile"`
 
 	ClientReadBufferSize int64 `toml:"read_buffer_size"`
 	MaxReadBufferSize    int64 `toml:"max_read_buffer_size"`
@@ -86,13 +112,6 @@ type Config struct {
 
 	//the array of potential servers to send stuff to (yes we can dupe data out)
 	ConfServerList []ConfigServerList `toml:"servers"`
-
-	// send some stats to the land
-	StatsdServer          string  `toml:"statsd_server"`
-	StatsdPrefix          string  `toml:"statsd_prefix"`
-	StatsdInterval        uint    `toml:"statsd_interval"`
-	StatsdSampleRate      float32 `toml:"statsd_sample_rate"`
-	StatsdTimerSampleRate float32 `toml:"statsd_timer_sample_rate"`
 
 	// number of workers to handle message sending queue
 	Workers    int64 `toml:"workers"`
@@ -128,6 +147,7 @@ type Config struct {
 
 const (
 	DEFAULT_CONFIG_SECTION       = "default"
+	DEFAULT_GOSSIP_SECTION       = "gossip"
 	DEFAULT_BACKEND_ONLY         = "backend_only"
 	DEFAULT_LISTEN               = "tcp://127.0.0.1:6000"
 	DEFAULT_HEARTBEAT_COUNT      = uint64(3)
@@ -272,14 +292,13 @@ func (self ConfigServers) ParseConfig(defaults *Config) (out ConfigServers, err 
 
 	have_listener := false
 	for chunk, cfg := range self {
+		cfg.Name = chunk
 
 		if chunk == DEFAULT_CONFIG_SECTION {
 			cfg.OkToUse = false
 			self[chunk] = cfg
 			continue
 		}
-
-		cfg.Name = chunk
 
 		//stats on or off
 		cfg.StatsTick = defaults.StatsTick

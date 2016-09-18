@@ -219,7 +219,7 @@ type Cacher struct {
 	// The Writer needs to know it's "not" the primary writer and thus will not "add" points to the
 	// cache .. so the cache basically gets "one" primary writer pointed (first come first serve)
 	// the `Write` function in the writer object should check it's the primary
-	PrimaryWriter MetricsWriter
+	PrimaryWriter Metrics
 
 	//overflow pieces
 	overFlowMethod string
@@ -284,7 +284,7 @@ func (wc *Cacher) SetLowFruitRate(m float64) {
 	wc.lowFruitRate = m
 }
 
-func (wc *Cacher) SetPrimaryWriter(mw MetricsWriter) bool {
+func (wc *Cacher) SetPrimaryWriter(mw Metrics) bool {
 	if wc.PrimaryWriter == nil {
 		wc.PrimaryWriter = mw
 		return true
@@ -292,8 +292,14 @@ func (wc *Cacher) SetPrimaryWriter(mw MetricsWriter) bool {
 	return false
 }
 
-func (wc *Cacher) IsPrimaryWriter(mw MetricsWriter) bool {
+func (wc *Cacher) IsPrimaryWriter(mw Metrics) bool {
 	return wc.PrimaryWriter == mw
+}
+
+func (wc *Cacher) Len() int {
+	wc.mu.RLock()
+	defer wc.mu.RUnlock()
+	return len(wc.Cache)
 }
 
 func (wc *Cacher) Start() {

@@ -85,6 +85,7 @@ type Indexer interface {
 	// remove an item from the index
 	Delete(name *repr.StatName) error
 
+	/** Tags **/
 	// get tags for a Uid String
 	GetTagsByUid(unique_id string) (tags repr.SortingTags, metatags repr.SortingTags, err error)
 

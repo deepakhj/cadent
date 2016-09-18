@@ -35,6 +35,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 )
 
@@ -193,10 +194,14 @@ func startStatsServer(defaults *cadent.Config, servers []*cadent.Server) {
 	http.HandleFunc("/hashcheck", hashcheck)
 	http.HandleFunc("/servers", listservers)
 
-	err := http.ListenAndServe(defaults.HealthServerBind, nil)
-	if err != nil {
-		log.Critical("Could not start http server %s", defaults.HealthServerBind)
-		os.Exit(1)
+	// stats stuff + profiler live on the same mux
+	if len(defaults.HealthServerBind) > 0 && defaults.ProfileBind != defaults.HealthServerBind {
+		log.Notice("Starting Stats server on %s")
+		err := http.ListenAndServe(defaults.HealthServerBind, nil)
+		if err != nil {
+			log.Critical("Could not start http server %s", defaults.HealthServerBind)
+			os.Exit(1)
+		}
 	}
 
 }
@@ -253,6 +258,44 @@ func main() {
 		os.Exit(1)
 	}
 
+	if def.Profile {
+		log.Notice("Starting Profiler on %s", def.HealthServerBind)
+		if def.ProfileRate > 0 {
+			runtime.SetCPUProfileRate(def.ProfileRate)
+			runtime.MemProfileRate = def.ProfileRate
+		}
+		if len(def.ProfileBind) > 0 {
+			go http.ListenAndServe(def.ProfileBind, nil)
+		} else if len(def.HealthServerBind) > 0 {
+			go http.ListenAndServe(def.HealthServerBind, nil)
+
+		}
+	} else {
+		// disable
+		runtime.SetBlockProfileRate(0)
+		runtime.SetCPUProfileRate(0)
+		runtime.MemProfileRate = 0
+	}
+
+	// this can be "very expensive" so turnon lightly
+	if def.BlockProfile {
+		runtime.SetBlockProfileRate(1)
+	}
+
+	// see if we can join up to the Gossip land
+	/*if def.Gossip.Enabled {
+		if def.Gossip.Seed == "" {
+			log.Noticef("Starting Gossip (master node) on port:%d seed: %s", def.Gossip.Port)
+		} else {
+			log.Noticef("Joining gossip on port:%d seed: %s", def.Gossip.Port, def.Gossip.Seed)
+		}
+		err := gossip.Start(def.Gossip.Mode, def.Gossip.Port, def.Gossip.Name)
+		if err != nil {
+			panic("Failed to join gossip: " + err.Error())
+		}
+
+	}*/
+
 	// deal with the pre-reg file
 	if len(*regConfigFile) != 0 {
 		pr, err := prereg.ParseConfigFile(*regConfigFile)
@@ -308,28 +351,9 @@ func main() {
 		log.Info("Wrote pid to pidfile '%s'", pidFile)
 		defer func() {
 			if err = os.Remove(pidFile); err != nil {
-				log.Notice("Unable to remove pidfile '%s': %s", pidFile, err)
+				log.Errorf("Unable to remove pidfile '%s': %s", pidFile, err)
 			}
 		}()
-	}
-
-	if def.Profile {
-		log.Notice("Starting Profiler on localhost:6060")
-		if def.ProfileRate > 0 {
-			runtime.SetCPUProfileRate(def.ProfileRate)
-			runtime.MemProfileRate = def.ProfileRate
-		}
-		go http.ListenAndServe(":6060", nil)
-	} else {
-		// disable
-		runtime.SetBlockProfileRate(0)
-		runtime.SetCPUProfileRate(0)
-		runtime.MemProfileRate = 0
-	}
-
-	// this can be "very expensive" so turnon lightly
-	if def.BlockProfile {
-		runtime.SetBlockProfileRate(1)
 	}
 
 	//initiallize the statsd singleton
@@ -394,24 +418,26 @@ func main() {
 			}
 
 			signal.Stop(sc)
-			close(sc)
+			//close(sc)
+			// re-raise it
+			//process, _ := os.FindProcess(os.Getpid())
+			//process.Signal(s)
 
 			shutdown.WaitOnShutdown()
-			// re-raise it
-			process, _ := os.FindProcess(os.Getpid())
-			process.Signal(s)
+			os.Exit(0)
+
 			return
 		}()
 	}
 	go TrapExit()
 
+	wg := sync.WaitGroup{}
+	wg.Add(1)
 	//fire up the http stats if given
-	if len(def.HealthServerBind) != 0 {
+	if len(def.HealthServerBind) > 0 {
 		startStatsServer(def, servers) // will stick as the main event loop
-	} else {
-		//now we just need to loop forever!
-		for {
-		}
 	}
+
+	wg.Wait()
 
 }

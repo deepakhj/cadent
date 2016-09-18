@@ -102,6 +102,8 @@ func _get_whisp_signelton(conf map[string]interface{}) (*WhisperWriter, error) {
 }
 
 type WhisperWriter struct {
+	WriterBase
+
 	base_path    string
 	xFilesFactor float32
 	resolutions  [][]int
@@ -109,12 +111,9 @@ type WhisperWriter struct {
 	retentions whisper.Retention
 	indexer    indexer.Indexer
 
-	cacher        *Cacher
 	cacheOverFlow *broadcast.Listener // on byte overflow of cacher force a write
 
-	shutdown   chan bool // when triggered, we skip the rate limiter and go full out till the queue is done
-	shutitdown bool      // just a flag
-	startstop  utils.StartStop
+	shutdown chan bool // when triggered, we skip the rate limiter and go full out till the queue is done
 
 	write_queue       chan dispatch.IJob
 	dispatch_queue    chan chan dispatch.IJob
@@ -532,12 +531,9 @@ func (ws *WhisperWriter) DeleteByName(name string) (err error) {
 
 /****************** Main Writer Interfaces *********************/
 type WhisperMetrics struct {
-	writer            *WhisperWriter
-	resolutions       [][]int
-	currentResolution int
-	indexer           indexer.Indexer
+	WriterBase
 
-	shutonce sync.Once // just shutdown "once and only once ever"
+	writer *WhisperWriter
 
 	log *logging.Logger
 }

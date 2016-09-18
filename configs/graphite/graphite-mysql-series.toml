@@ -33,7 +33,7 @@ default_backend="graphite-proxy"  # failing a match go here
 
     # aggregate bin counts
     accumulate_flush = "5s"
-    times = ["5s:1h", "1m:168h"]
+    times = ["1s:1h", "5s:5h", "1m:10h"]
 
     # cache objects to be shared (or not) across the writer backends
     [[graphite-proxy-map.accumulator.writer.caches]]
@@ -54,12 +54,13 @@ default_backend="graphite-proxy"  # failing a match go here
     # cassandra api, metrics writer and path indexer
     [graphite-proxy-map.accumulator.writer.metrics]
         driver = "mysql-triggered"
-        dsn = "root:@tcp(localhost:3306)/cadent"
+        dsn = "$ENV{MYSQL_USER:admin}:$ENV{MYSQL_PASS:}@tcp(localhost:3306)/cadent"
         cache = "gorilla"
 
     [graphite-proxy-map.accumulator.writer.indexer]
         driver = "mysql"
-        dsn = "root:@tcp(localhost:3306)/cadent"
+        dsn = "$ENV{MYSQL_USER:admin}:$ENV{MYSQL_PASS:}@tcp(localhost:3306)/cadent"
+
         [graphite-proxy-map.accumulator.writer.indexer.options]
         writes_per_second=200
 
@@ -69,12 +70,12 @@ default_backend="graphite-proxy"  # failing a match go here
 
             [graphite-proxy-map.accumulator.api.metrics]
                 driver = "mysql"
-                dsn = "root:@tcp(localhost:3306)/cadent"
+                dsn = "$ENV{MYSQL_USER:admin}:$ENV{MYSQL_PASS:}@tcp(localhost:3306)/cadent"
                 cache = "gorilla"
 
             [graphite-proxy-map.accumulator.api.indexer]
                 driver = "mysql"
-                dsn = "root:@tcp(localhost:3306)/cadent"
+                dsn = "$ENV{MYSQL_USER:admin}:$ENV{MYSQL_PASS:}@tcp(localhost:3306)/cadent"
 
     # Sub string type match
     [[graphite-proxy-map.map]]

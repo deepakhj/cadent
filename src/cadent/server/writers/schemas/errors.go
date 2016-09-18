@@ -19,7 +19,6 @@ limitations under the License.
 
 
 */
-//go:generate msgp -o kafka_msgp.go --file kafka.msgp.go
 
 package schemas
 

@@ -24,6 +24,7 @@ limitations under the License.
 package schemas
 
 import (
+	"cadent/server/repr"
 	"encoding/json"
 	"fmt"
 )
@@ -34,6 +35,8 @@ func MetricObjectFromType(ty MessageType) MessageBase {
 		return new(SeriesMetric)
 	case MSG_UNPROCESSED:
 		return new(UnProcessedMetric)
+	case MSG_RAW:
+		return new(RawMetric)
 	default:
 		return new(SingleMetric)
 	}
@@ -57,6 +60,27 @@ type SeriesMetric struct {
 	encoded    []byte
 	err        error
 }
+
+/*
+func (kp *SingleMetric) Reprs() *repr.StatReprSlice {
+
+	// need to convert the mighty
+
+	return &repr.StatRepr{
+		Name: repr.StatName{
+			Key:        kp.Metric,
+			Tags:       kp.Tags,
+			MetaTags:   kp.MetaTags,
+			Resolution: kp.Resolution,
+			TTL:        kp.TTL,
+		},
+		Min:   repr.JsonFloat64(kp.Min),
+		Max:   repr.JsonFloat64(kp.Max),
+		Last:  repr.JsonFloat64(kp.Last),
+		Sum:   repr.JsonFloat64(kp.Sum),
+		Count: kp.Count,
+	}
+}*/
 
 func (kp *SeriesMetric) SetSendEncoding(enc SendEncoding) {
 	kp.encodetype = enc
@@ -130,6 +154,23 @@ type SingleMetric struct {
 	err        error
 }
 
+func (kp *SingleMetric) Repr() *repr.StatRepr {
+	return &repr.StatRepr{
+		Name: repr.StatName{
+			Key:        kp.Metric,
+			Tags:       kp.Tags,
+			MetaTags:   kp.MetaTags,
+			Resolution: kp.Resolution,
+			TTL:        kp.TTL,
+		},
+		Min:   repr.JsonFloat64(kp.Min),
+		Max:   repr.JsonFloat64(kp.Max),
+		Last:  repr.JsonFloat64(kp.Last),
+		Sum:   repr.JsonFloat64(kp.Sum),
+		Count: kp.Count,
+	}
+}
+
 func (kp *SingleMetric) ensureEncoded() {
 	defer func() {
 		if r := recover(); r != nil {
@@ -188,6 +229,17 @@ type UnProcessedMetric struct {
 	err        error
 }
 
+func (kp *UnProcessedMetric) Repr() *repr.StatRepr {
+	return &repr.StatRepr{
+		Name:  repr.StatName{Key: kp.Metric, Tags: kp.Tags, MetaTags: kp.MetaTags},
+		Min:   repr.JsonFloat64(kp.Min),
+		Max:   repr.JsonFloat64(kp.Max),
+		Last:  repr.JsonFloat64(kp.Last),
+		Sum:   repr.JsonFloat64(kp.Sum),
+		Count: kp.Count,
+	}
+}
+
 func (kp *UnProcessedMetric) ensureEncoded() {
 	defer func() {
 		if r := recover(); r != nil {
@@ -221,6 +273,60 @@ func (kp *UnProcessedMetric) Encode() ([]byte, error) {
 }
 
 func (kp *UnProcessedMetric) Decode(b []byte) error {
+	switch kp.encodetype {
+	case ENCODE_MSGP:
+		_, err := kp.UnmarshalMsg(b)
+		return err
+	default:
+		return json.Unmarshal(b, kp)
+	}
+}
+
+type RawMetric struct {
+	Time     int64      `json:"time" msg:"time"`
+	Metric   string     `json:"metric" msg:"metric"`
+	Value    float64    `json:"min" msg:"min"`
+	Tags     [][]string `json:"tags,omitempty" codec:"tags,omitempty" msg:"tags,omitempty"` // key1=value1,key2=value2...
+	MetaTags [][]string `json:"metatags,omitempty" codec:"tags,omitempty" msg:"metatags,omitempty"`
+
+	encodetype SendEncoding
+	encoded    []byte
+	err        error
+}
+
+func (kp *RawMetric) ensureEncoded() {
+	defer func() {
+		if r := recover(); r != nil {
+			kp.err = fmt.Errorf("%v", r)
+			kp.encoded = nil
+		}
+	}()
+	if kp.encoded == nil && kp.err == nil {
+		switch kp.encodetype {
+		case ENCODE_MSGP:
+			kp.encoded, kp.err = kp.MarshalMsg(kp.encoded)
+		default:
+			kp.encoded, kp.err = json.Marshal(kp)
+
+		}
+	}
+}
+
+func (kp *RawMetric) SetSendEncoding(enc SendEncoding) {
+	kp.encodetype = enc
+}
+
+func (kp *RawMetric) Length() int {
+	kp.ensureEncoded()
+	return len(kp.encoded)
+}
+
+func (kp *RawMetric) Encode() ([]byte, error) {
+	kp.ensureEncoded()
+	return kp.encoded, kp.err
+}
+
+func (kp *RawMetric) Decode(b []byte) error {
 	switch kp.encodetype {
 	case ENCODE_MSGP:
 		_, err := kp.UnmarshalMsg(b)

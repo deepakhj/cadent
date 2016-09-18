@@ -37,24 +37,7 @@ var errNameIsNil = errors.New("Name object cannot be nil")
 // somehow a nil series
 var errSeriesIsNil = errors.New("Name object cannot be nil")
 
-func NewReaderMetrics(name string) (MetricsReader, error) {
-	switch {
-	case name == "mysql" || name == "mysql-triggered":
-		return NewMySQLMetrics(), nil
-	case name == "mysql-flat":
-		return NewMySQLFlatMetrics(), nil
-	case name == "cassandra" || name == "cassandra-triggered":
-		return NewCassandraMetrics(), nil
-	case name == "cassandra-flat":
-		return NewCassandraFlatMetrics(), nil
-	case name == "whisper" || name == "carbon" || name == "graphite":
-		return NewWhisperMetrics(), nil
-	default:
-		return nil, fmt.Errorf("Invalid metrics `%s`", name)
-	}
-}
-
-func NewWriterMetrics(name string) (MetricsWriter, error) {
+func NewWriterMetrics(name string) (Metrics, error) {
 	switch {
 	case name == "mysql":
 		return NewMySQLMetrics(), nil

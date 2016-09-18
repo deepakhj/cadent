@@ -124,29 +124,20 @@ func (j MysqlBlobMetricJob) DoWork() error {
 
 /****************** Interfaces *********************/
 type MySQLMetrics struct {
-	driver            string
-	db                *dbs.MySQLDB
-	conn              *sql.DB
-	indexer           indexer.Indexer
-	renderTimeout     time.Duration
-	resolutions       [][]int
-	currentResolution int
-	static_tags       repr.SortingTags
+	WriterBase
+
+	driver string
+	db     *dbs.MySQLDB
+	conn   *sql.DB
+
+	renderTimeout time.Duration
 
 	// run an periodic "expire" (aka delete) metrics from the tables
 	// based on the TTLs given and the "endtime" in the DB
 	runExpire  bool
 	expireTick time.Duration
 
-	// this is for Render where we may have several caches, but only "one"
-	// cacher get picked for the default render (things share the cache from writers
-	// and the api render, but not all the caches, so we need to be able to get the
-	// the cache singleton keys
-	// `cache:series:seriesMaxMetrics:seriesEncoding:seriesMaxBytes:maxTimeInCache`
-	cacherPrefix  string
-	cacher        *Cacher
 	cacheOverFlow *broadcast.Listener // on byte overflow of cacher force a write
-	is_primary    bool                // is this the primary writer to the cache?
 
 	// if the rolluptype == cached, then we this just uses the internal RAM caches
 	// otherwise if "trigger" we only have the lowest res cache, and trigger rollups on write
@@ -159,9 +150,6 @@ type MySQLMetrics struct {
 	queue_len        int
 	dispatch_retries int
 	dispatcher       *dispatch.DispatchQueue
-
-	shutitdown bool // just a flag
-	startstop  utils.StartStop
 
 	log *logging.Logger
 }
@@ -432,23 +420,6 @@ func (my *MySQLMetrics) overFlowWrite() {
 			},
 		)
 	}
-}
-
-func (my *MySQLMetrics) SetIndexer(idx indexer.Indexer) error {
-	my.indexer = idx
-	return nil
-}
-
-// Resoltuions should be of the form
-// [BinTime, TTL]
-// we select the BinTime based on the TTL
-func (my *MySQLMetrics) SetResolutions(res [][]int) int {
-	my.resolutions = res
-	return len(res) // need as many writers as bins
-}
-
-func (my *MySQLMetrics) SetCurrentResolution(res int) {
-	my.currentResolution = res
 }
 
 func (my *MySQLMetrics) RunPeriodicExpire() {

@@ -33,9 +33,7 @@ package metrics
 import (
 	"cadent/server/broadcast"
 	"cadent/server/repr"
-	"cadent/server/utils"
 	"cadent/server/utils/shutdown"
-	"cadent/server/writers/indexer"
 	"errors"
 	"fmt"
 	logging "gopkg.in/op/go-logging.v1"
@@ -49,18 +47,16 @@ var errFileReaderNotImplemented = errors.New("FILE READER NOT IMPLMENTED")
 
 /****************** Interfaces *********************/
 type CSVFileMetrics struct {
-	fp                *os.File
-	filename          string
-	prefix            string
-	indexer           indexer.Indexer
-	resolutions       [][]int
-	currentResolution int
+	WriterBase
+
+	fp       *os.File
+	filename string
+	prefix   string
 
 	max_file_size int64 // file rotation
 	write_lock    sync.Mutex
 	rotate_check  time.Duration
 	shutdown      *broadcast.Broadcaster
-	startstop     utils.StartStop
 
 	log *logging.Logger
 }
@@ -89,23 +85,6 @@ func (fi *CSVFileMetrics) Start() {
 	fi.startstop.Start(func() {
 		go fi.PeriodicRotate()
 	})
-}
-
-func (fi *CSVFileMetrics) SetIndexer(idx indexer.Indexer) error {
-	fi.indexer = idx
-	return nil
-}
-
-// Resoltuions should be of the form
-// [BinTime, TTL]
-// we select the BinTime based on the TTL
-func (fi *CSVFileMetrics) SetResolutions(res [][]int) int {
-	fi.resolutions = res
-	return len(res) // need as many writers as bins
-}
-
-func (fi *CSVFileMetrics) SetCurrentResolution(res int) {
-	fi.currentResolution = res
 }
 
 func (fi *CSVFileMetrics) Config(conf map[string]interface{}) error {

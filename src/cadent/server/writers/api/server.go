@@ -57,7 +57,7 @@ import (
 
 type ApiLoop struct {
 	Conf    ApiConfig
-	Metrics metrics.MetricsReader
+	Metrics metrics.Metrics
 	Indexer indexer.Indexer
 
 	shutdown chan bool
@@ -258,6 +258,7 @@ func (re *ApiLoop) Start() error {
 	NewMetricsAPI(re).AddHandlers(base)
 	NewTagAPI(re).AddHandlers(base)
 	NewPrometheusAPI(re).AddHandlers(base)
+	NewInfoAPI(re).AddHandlers(base)
 
 	// websocket routes (need a brand new one lest the middleware get mixed)
 	ws := base.PathPrefix("/ws").Subrouter()

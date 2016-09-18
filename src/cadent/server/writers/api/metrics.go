@@ -33,7 +33,7 @@ import (
 type MetricsAPI struct {
 	a       *ApiLoop
 	Indexer indexer.Indexer
-	Metrics metrics.MetricsReader
+	Metrics metrics.Metrics
 }
 
 func NewMetricsAPI(a *ApiLoop) *MetricsAPI {

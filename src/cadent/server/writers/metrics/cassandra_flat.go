@@ -654,11 +654,9 @@ func (cass *CassandraFlatWriter) Write(stat repr.StatRepr) error {
 
 /****************** Metrics Writer *********************/
 type CassandraFlatMetric struct {
-	resolutions       [][]int
-	currentResolution int
-	static_tags       repr.SortingTags
-	indexer           indexer.Indexer
-	writer            *CassandraFlatWriter
+	WriterBase
+
+	writer *CassandraFlatWriter
 
 	render_timeout time.Duration
 }
@@ -677,23 +675,6 @@ func (cass *CassandraFlatMetric) Start() {
 
 func (cass *CassandraFlatMetric) Stop() {
 	cass.writer.Stop()
-}
-
-func (cass *CassandraFlatMetric) SetIndexer(idx indexer.Indexer) error {
-	cass.indexer = idx
-	return nil
-}
-
-// Resolutions should be of the form
-// [BinTime, TTL]
-// we select the BinTime based on the TTL
-func (cass *CassandraFlatMetric) SetResolutions(res [][]int) int {
-	cass.resolutions = res
-	return len(res) // need as many writers as bins
-}
-
-func (cass *CassandraFlatMetric) SetCurrentResolution(res int) {
-	cass.currentResolution = res
 }
 
 func (cass *CassandraFlatMetric) Config(conf map[string]interface{}) (err error) {

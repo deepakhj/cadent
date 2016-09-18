@@ -18,8 +18,8 @@ default_backend="graphite-proxy"  # failing a match go here
     random_ticker_start = false
 
     # aggregate bin counts
-    accumulate_flush = "5s"
-    times = ["5s:1h", "1m:168h"]
+    accumulate_flush = "1s"
+    times = ["1s:1h", "5s:5h", "1m:10h"]
 
     # cache objects to be shared (or not) across the writer backends
     [[graphite-proxy-map.accumulator.writer.caches]]
@@ -38,7 +38,7 @@ default_backend="graphite-proxy"  # failing a match go here
     # AND write things to the cassandra DB
     # cassandra api, metrics writer and path indexer
     [graphite-proxy-map.accumulator.writer.metrics]
-        driver = "cassandra"
+        driver = "cassandra-triggered"
         dsn = "127.0.0.1"
         cache="gorilla"
         [graphite-proxy-map.accumulator.writer.metrics.options]

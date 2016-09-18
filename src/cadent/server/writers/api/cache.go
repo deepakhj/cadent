@@ -35,7 +35,7 @@ import (
 type CacheAPI struct {
 	a       *ApiLoop
 	Indexer indexer.Indexer
-	Metrics metrics.MetricsReader
+	Metrics metrics.Metrics
 }
 
 func NewCacheAPI(a *ApiLoop) *CacheAPI {

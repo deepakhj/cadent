@@ -32,7 +32,6 @@ import (
 	"cadent/server/utils"
 	"cadent/server/utils/shutdown"
 	"cadent/server/writers/dbs"
-	"cadent/server/writers/indexer"
 	"cadent/server/writers/schemas"
 	"fmt"
 	"github.com/Shopify/sarama"
@@ -45,27 +44,19 @@ import (
 
 /****************** Interfaces *********************/
 type KafkaMetrics struct {
-	db                *dbs.KafkaDB
-	conn              sarama.AsyncProducer
-	indexer           indexer.Indexer
-	resolutions       [][]int
-	currentResolution int
-	static_tags       repr.SortingTags
+	WriterBase
+
+	db   *dbs.KafkaDB
+	conn sarama.AsyncProducer
 
 	batches int // number of stats to "batch" per message (default 0)
 	log     *logging.Logger
-
-	shutitdown bool
-	startstop  utils.StartStop
 
 	resolution uint32
 
 	enctype schemas.SendEncoding
 
-	cacherPrefix  string
-	cacher        *Cacher
 	cacheOverFlow *broadcast.Listener // on byte overflow of cacher force a write
-	is_primary    bool                // is this the primary writer to the cache?
 
 }
 
@@ -266,22 +257,6 @@ func (kf *KafkaMetrics) getResolution(from int64, to int64) uint32 {
 		}
 	}
 	return uint32(kf.resolutions[len(kf.resolutions)-1][0])
-}
-
-func (kf *KafkaMetrics) SetIndexer(idx indexer.Indexer) error {
-	kf.indexer = idx
-	return nil
-}
-
-// Resolutions should be of the form
-// [BinTime, TTL]
-func (kf *KafkaMetrics) SetResolutions(res [][]int) int {
-	kf.resolutions = res
-	return len(res) // need as many writers as bins
-}
-
-func (kf *KafkaMetrics) SetCurrentResolution(res int) {
-	kf.currentResolution = res
 }
 
 func (kf *KafkaMetrics) Write(stat repr.StatRepr) error {

@@ -74,6 +74,7 @@ import (
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
 	logging "gopkg.in/op/go-logging.v1"
+	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -140,7 +141,11 @@ func (my *MySQLIndexer) Config(conf options.Options) (err error) {
 	my.num_workers = int(conf.Int64("write_workers", MYSQL_INDEXER_WORKERS))
 	my.queue_len = int(conf.Int64("write_queue_length", MYSQL_INDEXER_QUEUE_LEN))
 
-	my.indexerId = "indexer:mysql:" + dsn
+	// url parse so that the password is not in the name
+	parsed, _ := url.Parse("mysql://" + dsn)
+	host := parsed.Host + parsed.Path
+
+	my.indexerId = "indexer:mysql:" + host
 	my.cache, err = getCacherSingleton(my.indexerId)
 	if err != nil {
 		return err

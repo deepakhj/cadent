@@ -110,7 +110,7 @@ func (wc WriterMetricConfig) ResolutionsNeeded() (metrics.WritersNeeded, error) 
 	return metrics.ResolutionsNeeded(wc.Driver)
 }
 
-func (wc WriterMetricConfig) NewMetrics(duration time.Duration, cache_config []WriterCacheConfig) (metrics.MetricsWriter, error) {
+func (wc WriterMetricConfig) NewMetrics(duration time.Duration, cache_config []WriterCacheConfig) (metrics.Metrics, error) {
 
 	mets, err := metrics.NewWriterMetrics(wc.Driver)
 	if err != nil {
@@ -206,7 +206,7 @@ type WriterConfig struct {
 type WriterLoop struct {
 	name         string
 	cache        *metrics.Cacher
-	metrics      metrics.MetricsWriter
+	metrics      metrics.Metrics
 	indexer      indexer.Indexer
 	write_chan   chan *repr.StatRepr
 	indexer_chan chan *repr.StatName
@@ -256,12 +256,12 @@ func (loop *WriterLoop) statTick() {
 	}
 }
 
-func (loop *WriterLoop) SetMetrics(mets metrics.MetricsWriter) error {
+func (loop *WriterLoop) SetMetrics(mets metrics.Metrics) error {
 	loop.metrics = mets
 	return nil
 }
 
-func (loop *WriterLoop) Metrics() metrics.MetricsWriter {
+func (loop *WriterLoop) Metrics() metrics.Metrics {
 	return loop.metrics
 }
 
