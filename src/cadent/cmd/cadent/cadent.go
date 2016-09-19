@@ -22,6 +22,7 @@ import (
 	prereg "cadent/server/prereg"
 	"cadent/server/stats"
 	"cadent/server/utils/shutdown"
+	"crypto/tls"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -197,10 +198,25 @@ func startStatsServer(defaults *cadent.Config, servers []*cadent.Server) {
 	// stats stuff + profiler live on the same mux
 	if len(defaults.HealthServerBind) > 0 && (len(defaults.ProfileBind) > 0 && defaults.ProfileBind != defaults.HealthServerBind) {
 		log.Notice("Starting internal Stats server on %s", defaults.HealthServerBind)
-		err := http.ListenAndServe(defaults.HealthServerBind, nil)
-		if err != nil {
-			log.Critical("Could not start http server %s", defaults.HealthServerBind)
-			os.Exit(1)
+
+		if len(defaults.HealthServerKey) > 0 && len(defaults.HealthServerCert) > 0 {
+			cer, err := tls.LoadX509KeyPair(defaults.HealthServerCert, defaults.HealthServerKey)
+			if err != nil {
+				log.Panicf("Could not start https server: %v", err)
+			}
+			config := &tls.Config{Certificates: []tls.Certificate{cer}}
+			conn, err := tls.Listen("tcp", defaults.HealthServerBind, config)
+			if err != nil {
+				log.Panicf("Could not make tls http socket: %s", err)
+			}
+			go http.Serve(conn, nil)
+
+		} else {
+
+			err := http.ListenAndServe(defaults.HealthServerBind, nil)
+			if err != nil {
+				log.Panicf("Could not start http server %s", defaults.HealthServerBind)
+			}
 		}
 	}
 

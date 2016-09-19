@@ -78,6 +78,12 @@ type Config struct {
 
 	StatsTick bool `toml:"stats_tick"`
 
+	// profiler
+	ProfileBind  string `toml:"cpu_profile_listen"`
+	Profile      bool   `toml:"cpu_profile"`
+	ProfileRate  int    `toml:"cpu_profile_rate"`
+	BlockProfile bool   `toml:"block_profile"`
+
 	// can be set in both defaults or overrides from the children
 
 	MaxPoolConnections      int    `toml:"max_pool_connections"`
@@ -97,11 +103,9 @@ type Config struct {
 	HashElter              string        `toml:"hasher_elter"`
 	HashVNodes             int           `toml:"hasher_vnodes"`
 
-	// profiler
-	ProfileBind  string `toml:"cpu_profile_listen"`
-	Profile      bool   `toml:"cpu_profile"`
-	ProfileRate  int    `toml:"cpu_profile_rate"`
-	BlockProfile bool   `toml:"block_profile"`
+	// TLS (if possible tcp/http)
+	TLSkey  string `toml:"tls_key"`
+	TLScert string `toml:"tls_cert"`
 
 	ClientReadBufferSize int64 `toml:"read_buffer_size"`
 	MaxReadBufferSize    int64 `toml:"max_read_buffer_size"`
@@ -121,6 +125,8 @@ type Config struct {
 	HealthServerBind   string `toml:"internal_health_server_listen"`
 	HealthServerPoints uint   `toml:"internal_health_server_points"`
 	HealthServerPath   string `toml:"internal_health_server_path"`
+	HealthServerKey    string `toml:"internal_health_tls_key"`
+	HealthServerCert   string `toml:"internal_health_tls_cert"`
 
 	ListenURL  *url.URL
 	DevNullOut bool `toml:"out_dev_null"` // if set will NOT go to any outputs
