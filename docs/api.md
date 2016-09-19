@@ -212,6 +212,9 @@ For the metrics 2.0 world, the `metric_key` is redendent and can be omitted and 
         [statsd-regex-map.accumulator.api]
             base_path = "/graphite/"
             listen = "0.0.0.0:8083"
+            # include these if you want a https endpoint
+            # key="/path/to/server.key"
+            # cert="/path/to/server.crt"
 
             [statsd-regex-map.accumulator.api.metrics]
                 driver = "cassandra"

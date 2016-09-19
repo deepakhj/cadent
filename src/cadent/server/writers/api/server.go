@@ -43,6 +43,7 @@ import (
 	"cadent/server/utils/shutdown"
 	"cadent/server/writers/indexer"
 	"cadent/server/writers/metrics"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"github.com/BurntSushi/toml"
@@ -234,16 +235,31 @@ func (re *ApiLoop) Start() error {
 		}
 	}
 
-	tcpAddr, err := net.ResolveTCPAddr("tcp", re.Conf.Listen)
-	if err != nil {
-		return fmt.Errorf("Error resolving: %s", err)
-	}
+	var conn net.Listener
 
-	conn, err := net.ListenTCP("tcp", tcpAddr)
-	if err != nil {
-		return fmt.Errorf("Could not make http socket: %s", err)
-	}
+	// certs if needed
+	if len(re.Conf.TLSKeyPath) > 0 && len(re.Conf.TLSCertPath) > 0 {
+		cer, err := tls.LoadX509KeyPair(re.Conf.TLSCertPath, re.Conf.TLSKeyPath)
+		if err != nil {
+			golog.Panicf("Could not start https server: %v", err)
+			return err
+		}
+		config := &tls.Config{Certificates: []tls.Certificate{cer}}
+		conn, err = tls.Listen("tcp", re.Conf.Listen, config)
+		if err != nil {
+			return fmt.Errorf("Could not make http socket: %s", err)
+		}
 
+	} else {
+		tcpAddr, err := net.ResolveTCPAddr("tcp", re.Conf.Listen)
+		if err != nil {
+			return fmt.Errorf("Error resolving: %s", err)
+		}
+		conn, err = net.ListenTCP("tcp", tcpAddr)
+		if err != nil {
+			return fmt.Errorf("Could not make http socket: %s", err)
+		}
+	}
 	re.activate_cache_chan = make(chan *metrics.RawRenderItem, 256)
 
 	// start up the activateCacheLoop

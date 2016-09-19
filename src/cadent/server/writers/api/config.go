@@ -63,6 +63,8 @@ type ApiConfig struct {
 	Listen                     string           `toml:"listen"`
 	Logfile                    string           `toml:"log_file"`
 	BasePath                   string           `toml:"base_path"`
+	TLSKeyPath                 string           `toml:"key"`
+	TLSCertPath                string           `toml:"cert"`
 	ApiMetricOptions           ApiMetricConfig  `toml:"metrics"`
 	ApiIndexerOptions          ApiIndexerConfig `toml:"indexer"`
 	MaxReadCacheBytes          int              `toml:"read_cache_total_bytes"`
