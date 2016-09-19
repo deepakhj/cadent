@@ -31,6 +31,7 @@ limitations under the License.
 package api
 
 import (
+	"cadent/server/gossip"
 	"cadent/server/stats"
 	"cadent/server/writers/indexer"
 	"cadent/server/writers/metrics"
@@ -80,6 +81,7 @@ func (c *InfoAPI) GetInfo(w http.ResponseWriter, r *http.Request) {
 	data["hostname"] = name
 	data["ip"] = addrs
 	data["cached_metrics"] = c.Metrics.Cache().Len()
+	data["members"] = gossip.Get()
 
 	stats.StatsdClientSlow.Incr("reader.http.info.ok", 1)
 	c.a.OutJson(w, data)

@@ -18,6 +18,7 @@ package main
 
 import (
 	cadent "cadent/server"
+	"cadent/server/gossip"
 	pages "cadent/server/pages"
 	prereg "cadent/server/prereg"
 	"cadent/server/stats"
@@ -299,18 +300,22 @@ func main() {
 	}
 
 	// see if we can join up to the Gossip land
-	/*if def.Gossip.Enabled {
+	if def.Gossip.Enabled {
+		_, err := gossip.Start(def.Gossip.Mode, def.Gossip.Port, def.Gossip.Name, def.Gossip.Bind)
+
 		if def.Gossip.Seed == "" {
-			log.Noticef("Starting Gossip (master node) on port:%d seed: %s", def.Gossip.Port)
+			log.Noticef("Starting Gossip (master node) on port:%d seed: master", def.Gossip.Port)
 		} else {
 			log.Noticef("Joining gossip on port:%d seed: %s", def.Gossip.Port, def.Gossip.Seed)
+			err = gossip.CadentMembers.Join(def.Gossip.Seed)
+
 		}
-		err := gossip.Start(def.Gossip.Mode, def.Gossip.Port, def.Gossip.Name)
+
 		if err != nil {
 			panic("Failed to join gossip: " + err.Error())
 		}
 
-	}*/
+	}
 
 	// deal with the pre-reg file
 	if len(*regConfigFile) != 0 {
