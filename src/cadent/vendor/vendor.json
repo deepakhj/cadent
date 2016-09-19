@@ -30,6 +30,12 @@
 			"revisionTime": "2016-09-07T20:18:35Z"
 		},
 		{
+			"checksumSHA1": "d6798KSc0jDg2MHNxKdgyNfMK7A=",
+			"path": "github.com/armon/go-metrics",
+			"revision": "3df31a1ada83e310c2e24b267c8e8b68836547b4",
+			"revisionTime": "2016-07-17T04:34:58Z"
+		},
+		{
 			"checksumSHA1": "+tmOxLkLwkVVakYY1XRLjbfawX0=",
 			"path": "github.com/bsm/sarama-cluster",
 			"revision": "6d37f561b2a131e011c0cecf8a4d3c96b1e0a940",
@@ -306,6 +312,30 @@
 			"revisionTime": "2016-01-25T11:53:50Z"
 		},
 		{
+			"checksumSHA1": "cdOCt0Yb+hdErz8NAQqayxPmRsY=",
+			"path": "github.com/hashicorp/errwrap",
+			"revision": "7554cd9344cec97297fa6649b055a8c98c2a1e55",
+			"revisionTime": "2014-10-28T05:47:10Z"
+		},
+		{
+			"checksumSHA1": "TNlVzNR1OaajcNi3CbQ3bGbaLGU=",
+			"path": "github.com/hashicorp/go-msgpack/codec",
+			"revision": "fa3f63826f7c23912c15263591e65d54d080b458",
+			"revisionTime": "2015-05-18T23:42:57Z"
+		},
+		{
+			"checksumSHA1": "KS9lmJV8Z7KHdtSIhbafQLU1hC4=",
+			"path": "github.com/hashicorp/go-multierror",
+			"revision": "8c5f0ad9360406a3807ce7de6bc73269a91a6e51",
+			"revisionTime": "2016-08-11T01:57:21Z"
+		},
+		{
+			"checksumSHA1": "Ozk/S4U1x/OllNP2SsMYJjCl/gs=",
+			"path": "github.com/hashicorp/memberlist",
+			"revision": "7ad712f5f34ec40aebe6ca47756d07898486a8d2",
+			"revisionTime": "2016-09-15T13:02:55Z"
+		},
+		{
 			"checksumSHA1": "HQiUYElRIwr3dH9RsNK01/gpaFg=",
 			"path": "github.com/jbenet/go-reuseport",
 			"revision": "71193aa1a9b006b1071652f02f2f9d8db699a8b3",
@@ -334,6 +364,12 @@
 			"path": "github.com/klauspost/crc32",
 			"revision": "19b0b332c9e4516a6370a0456e6182c3b5036720",
 			"revisionTime": "2016-02-19T14:26:09Z"
+		},
+		{
+			"checksumSHA1": "OUZ1FFXyKs+Cfg9M9rmXqqweQck=",
+			"path": "github.com/miekg/dns",
+			"revision": "db96a2b759cdef4f11a34506a42eb8d1290c598e",
+			"revisionTime": "2016-07-26T03:20:27Z"
 		},
 		{
 			"checksumSHA1": "UwhLtKi/lHjArxgsqRe6iqSEu3I=",

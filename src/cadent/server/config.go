@@ -58,6 +58,7 @@ type GossipConfig struct {
 	Port    int    `toml:"port"` //
 	Mode    string `toml:"mode"` // local, lan, wan
 	Name    string `toml:"name"` // name of this node, otherwise it will pick on (must be unique)
+	Bind    string `toml:"bind"` // bind ip
 	Seed    string `toml:"seed"` // a seed node
 }
 
