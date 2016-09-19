@@ -58,9 +58,14 @@ default_backend="graphite-proxy"  # failing a match go here
     [graphite-proxy-map.accumulator.api]
         base_path = "/graphite/"
         listen = "0.0.0.0:8083"
+
         # this is the read cache that will keep the latest goods in ram
         read_cache_total_bytes=16384000
         read_cache_max_bytes_per_metric=16384
+
+        #  TLS the server if desired
+        # key="/path/to/server.key"
+        # cert="/path/to/server.crt"
 
             [graphite-proxy-map.accumulator.api.metrics]
             driver = "whisper"

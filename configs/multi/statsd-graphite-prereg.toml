@@ -115,6 +115,11 @@ default_backend="graphite-proxy"
     [graphite-cassandra.accumulator.api]
     base_path = "/graphite/"
     listen = "0.0.0.0:8085"
+
+     #  TLS the server if desired
+     # key="/path/to/server.key"
+     # cert="/path/to/server.crt"
+
         [graphite-cassandra.accumulator.api.metrics]
         driver = "cassandra"
         dsn = "127.0.0.1"
