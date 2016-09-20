@@ -33,17 +33,19 @@ import (
 
 var errTargetRequired = errors.New("Target is required")
 var errInvalidStep = errors.New("Invalid `step` size")
+var errInvalidMaxPts = errors.New("Invalid `max_points` size")
 var errInvalidStartTime = errors.New("Invalid `start` time")
 var errInvalidEndTime = errors.New("Invalid `end` time")
 var errInvalidPage = errors.New("Invalid `page`")
 
 type MetricQuery struct {
-	Target string
-	Tags   repr.SortingTags
-	Start  int64
-	End    int64
-	Step   uint32
-	Agg    repr.AggType //sum, count, min, max, last, mean
+	Target    string
+	Tags      repr.SortingTags
+	Start     int64
+	End       int64
+	Step      uint32
+	MaxPoints uint32
+	Agg       repr.AggType //sum, count, min, max, last, mean
 }
 
 type MetricQueryParsed struct {
@@ -198,6 +200,10 @@ func ParseMetricQuery(r *http.Request) (mq MetricQuery, err error) {
 	// grab a step if desired (resolution resampling)
 	_step := strings.TrimSpace(r.Form.Get("step"))
 
+	if len(_step) == 0 {
+		_step = strings.TrimSpace(r.Form.Get("sample"))
+	}
+
 	step := uint64(0)
 	if len(_step) > 0 {
 		step, err = (strconv.ParseUint(_step, 10, 32))
@@ -206,13 +212,31 @@ func ParseMetricQuery(r *http.Request) (mq MetricQuery, err error) {
 		}
 	}
 
+	// grab a maxPoints if desired (resolution resampling)
+	_maxpts := strings.TrimSpace(r.Form.Get("maxDataPoints"))
+	if len(_maxpts) == 0 {
+		_maxpts = strings.TrimSpace(r.Form.Get("max_points"))
+	}
+	if len(_maxpts) == 0 {
+		_maxpts = strings.TrimSpace(r.Form.Get("maxpts"))
+	}
+
+	maxpts := uint64(0)
+	if len(_maxpts) > 0 {
+		maxpts, err = (strconv.ParseUint(_maxpts, 10, 32))
+		if err != nil {
+			return mq, errInvalidMaxPts
+		}
+	}
+
 	return MetricQuery{
-		Target: target,
-		Start:  start,
-		End:    end,
-		Step:   uint32(step),
-		Tags:   tags,
-		Agg:    agg,
+		Target:    target,
+		Start:     start,
+		End:       end,
+		Step:      uint32(step),
+		MaxPoints: uint32(maxpts),
+		Tags:      tags,
+		Agg:       agg,
 	}, nil
 }
 

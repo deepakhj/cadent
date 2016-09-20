@@ -301,6 +301,7 @@ func (a *GraphiteAccumulate) ProcessLine(linebytes []byte) (err error) {
 			InType:     "graphite",
 			Time:       a.ResolutionTime(t),
 			InKey:      nm,
+			Count:      0,
 			Min:        GRAPHITE_ACC_MIN_FLAG,
 			Max:        GRAPHITE_ACC_MIN_FLAG,
 			Last:       GRAPHITE_ACC_MIN_FLAG,
@@ -310,7 +311,6 @@ func (a *GraphiteAccumulate) ProcessLine(linebytes []byte) (err error) {
 
 	// needs to lock internally if needed
 	gots.Accumulate(f_val, 1.0, t)
-	// log.Critical("key: %s Dr: %s, InTime: %s (%s), ResTime: %s", stat_key, a.Resolution.String(), t.String(), _intime, a.ResolutionTime(t).String())
 
 	// add it if not there
 	if !ok {

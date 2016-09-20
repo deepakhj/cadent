@@ -140,6 +140,15 @@ func (re *MetricsAPI) GraphiteRender(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resample := args.Step
+
+	// if maxPoints, need to resample to fit things if data
+	if args.MaxPoints > 0 {
+		resample = uint32(args.End-args.Start) / args.MaxPoints
+		// obey step if bigger
+		if resample < args.Step && args.Step > 0 {
+			resample = args.Step
+		}
+	}
 	for idx := range data {
 		if data == nil {
 			continue
@@ -148,7 +157,6 @@ func (re *MetricsAPI) GraphiteRender(w http.ResponseWriter, r *http.Request) {
 		data[idx].Start = uint32(args.Start)
 		data[idx].End = uint32(args.End)
 		if resample > 0 {
-
 			data[idx].ResampleAndQuantize(resample)
 		} else {
 			data[idx].Quantize()
@@ -187,12 +195,21 @@ func (re *MetricsAPI) Render(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resample := args.Step
+
+	// if maxPoints, need to resample to fit things if data
+	if args.MaxPoints > 0 {
+		resample = uint32(args.End-args.Start) / args.MaxPoints
+		// obey step if bigger
+		if resample < args.Step && args.Step > 0 {
+			resample = args.Step
+		}
+	}
+
 	for idx := range data {
 		// graphite needs the "nils" and expects a "full list" to match the step + start/end
 		data[idx].Start = uint32(args.Start)
 		data[idx].End = uint32(args.End)
 		if resample > 0 {
-
 			data[idx].ResampleAndQuantize(resample)
 		} else {
 			data[idx].Quantize()

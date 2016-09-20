@@ -207,7 +207,7 @@ func NullRawDataPoint(time uint32) RawDataPoint {
 }
 
 func (r *RawDataPoint) IsNull() bool {
-	return r.Count == 0 && math.IsNaN(r.Sum) && math.IsNaN(r.Last) && math.IsNaN(r.Min) && math.IsNaN(r.Max)
+	return math.IsNaN(r.Sum) && math.IsNaN(r.Last) && math.IsNaN(r.Min) && math.IsNaN(r.Max)
 }
 
 func (r *RawDataPoint) String() string {
@@ -354,7 +354,7 @@ func (r *RawRenderItem) String() string {
 func (r *RawRenderItem) PrintPoints() {
 	fmt.Printf("RawRenderItem: %s (%s) Start: %d End: %d, Points: %d\n", r.Metric, r.Id, r.Start, r.End, r.Len())
 	for idx, d := range r.Data {
-		fmt.Printf("%d: %d %f\n", idx, d.Time, d.Sum)
+		fmt.Printf("%d: %d %f %f %f %f %d\n", idx, d.Time, d.Min, d.Max, d.Last, d.Sum, d.Count)
 	}
 }
 
@@ -854,6 +854,7 @@ func (r *RawRenderItem) MergeWithResample(d *RawRenderItem, step uint32) error {
 		dp := NullRawDataPoint(t)
 		// loop through the orig data until we hit a time > then the current one
 		for ; i < i_len; i++ {
+
 			if r.Data[i].Time > t {
 				break
 			}
@@ -862,6 +863,7 @@ func (r *RawRenderItem) MergeWithResample(d *RawRenderItem, step uint32) error {
 
 		// loop through the incoming data until we hit a time > then the current one
 		for ; o < o_len; o++ {
+
 			if d.Data[o].Time > t {
 				break
 			}

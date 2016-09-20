@@ -709,7 +709,10 @@ func (ws *WhisperMetrics) RawDataRenderOne(metric indexer.MetricFindItem, start 
 	for idx, point := range points {
 		rawd.Data[idx] = RawDataPoint{
 			Count: 1,
-			Sum:   point.Value, //just a stub for the only value we know
+			Sum:   point.Value,
+			Last:  point.Value,
+			Min:   point.Value,
+			Max:   point.Value,
 			Time:  uint32(point.Time),
 		}
 		if f_t <= 0 {
