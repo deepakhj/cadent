@@ -228,6 +228,7 @@ func main() {
 	version := flag.Bool("version", false, "Print version and exit")
 	configFile := flag.String("config", "config.toml", "Consitent Hash configuration file")
 	regConfigFile := flag.String("prereg", "", "File that contains the Regex/Filtering by key to various backends")
+	//apiOnly := flag.String("api", "", "for instances of Cadent that only do the API parts")
 	loglevel := flag.String("loglevel", "DEBUG", "Log Level (debug, info, warning, error, critical)")
 	logfile := flag.String("logfile", "stdout", "Log File (stdout, stderr, path/to/file)")
 

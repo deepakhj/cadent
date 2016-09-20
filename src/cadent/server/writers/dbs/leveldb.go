@@ -46,7 +46,10 @@ const (
 	DEFAULT_LEVELDB_READ_CACHE_SIZE = 8 * leveldb_opt.MiB
 	DEFAULT_LEVELDB_FILE_SIZE       = 20 * leveldb_opt.MiB
 	DEFAULT_LEVELDB_SEGMENT_FILE    = "segments"
+	DEFAULT_LEVELDB_PATH_FILE       = "paths"
+	DEFAULT_LEVELDB_UID_FILE        = "uids"
 	DEFAULT_LEVELDB_TAG_FILE        = "tags"
+	DEFAULT_LEVELDB_TAGXREF_FILE    = "tags_xref"
 )
 
 /****************** Interfaces *********************/
@@ -54,10 +57,14 @@ type LevelDB struct {
 	segment_conn *leveldb.DB
 	path_conn    *leveldb.DB
 	tag_conn     *leveldb.DB
+	tagxref_conn *leveldb.DB
+	uid_conn     *leveldb.DB
 	table_path   string
 	segment_file string
 	tag_file     string
 	path_file    string
+	uid_file     string
+	tagxref_file string
 
 	level_opts *leveldb_opt.Options
 
@@ -78,6 +85,9 @@ func (lb *LevelDB) Config(conf options.Options) (err error) {
 
 	lb.segment_file = DEFAULT_LEVELDB_SEGMENT_FILE
 	lb.tag_file = DEFAULT_LEVELDB_TAG_FILE
+	lb.path_file = DEFAULT_LEVELDB_PATH_FILE
+	lb.uid_file = DEFAULT_LEVELDB_UID_FILE
+	lb.tagxref_file = DEFAULT_LEVELDB_TAGXREF_FILE
 
 	lb.table_path = dsn
 	lb.level_opts = new(leveldb_opt.Options)
@@ -112,6 +122,44 @@ func (lb *LevelDB) Config(conf options.Options) (err error) {
 		}
 	}
 
+	lb.path_conn, err = leveldb.OpenFile(lb.PathTableName(), lb.level_opts)
+	if err != nil {
+		if _, ok := err.(*leveldb_storage.ErrCorrupted); ok {
+			lb.log.Notice("Path DB is corrupt. Recovering.")
+			lb.segment_conn, err = leveldb.RecoverFile(lb.PathTableName(), lb.level_opts)
+			if err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
+	}
+
+	lb.uid_conn, err = leveldb.OpenFile(lb.UidTableName(), lb.level_opts)
+	if err != nil {
+		if _, ok := err.(*leveldb_storage.ErrCorrupted); ok {
+			lb.log.Notice("UID DB is corrupt. Recovering.")
+			lb.uid_conn, err = leveldb.RecoverFile(lb.UidTableName(), lb.level_opts)
+			if err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
+	}
+	lb.tagxref_conn, err = leveldb.OpenFile(lb.TagXrefTableName(), lb.level_opts)
+	if err != nil {
+		if _, ok := err.(*leveldb_storage.ErrCorrupted); ok {
+			lb.log.Notice("TagXref DB is corrupt. Recovering.")
+			lb.uid_conn, err = leveldb.RecoverFile(lb.TagXrefTableName(), lb.level_opts)
+			if err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -119,12 +167,34 @@ func (lb *LevelDB) TagTableName() string {
 	return filepath.Join(lb.table_path, lb.tag_file)
 }
 
+func (lb *LevelDB) TagXrefTableName() string {
+	return filepath.Join(lb.table_path, lb.tagxref_file)
+}
+
 func (lb *LevelDB) SegmentTableName() string {
 	return filepath.Join(lb.table_path, lb.segment_file)
 }
+
+func (lb *LevelDB) PathTableName() string {
+	return filepath.Join(lb.table_path, lb.path_file)
+}
+
+func (lb *LevelDB) UidTableName() string {
+	return filepath.Join(lb.table_path, lb.uid_file)
+}
+
 func (lb *LevelDB) SegmentConn() *leveldb.DB {
 	return lb.segment_conn
 }
+
+func (lb *LevelDB) PathConn() *leveldb.DB {
+	return lb.path_conn
+}
+
+func (lb *LevelDB) UidConn() *leveldb.DB {
+	return lb.uid_conn
+}
+
 func (lb *LevelDB) TagConn() *leveldb.DB {
 	return lb.tag_conn
 }
@@ -141,6 +211,15 @@ func (lb *LevelDB) Close() (err error) {
 	}
 	if lb.segment_conn != nil {
 		err = lb.segment_conn.Close()
+	}
+	if lb.uid_conn != nil {
+		err = lb.uid_conn.Close()
+	}
+	if lb.path_conn != nil {
+		err = lb.path_conn.Close()
+	}
+	if lb.tagxref_conn != nil {
+		err = lb.tagxref_conn.Close()
 	}
 	return err
 }

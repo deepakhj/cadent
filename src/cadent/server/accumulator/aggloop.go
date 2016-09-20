@@ -338,7 +338,7 @@ func (agg *AggregateLoop) startWriteLooper(mws *multiWriter) {
 				dd.Unix(),
 			)
 			if i_len == 0 {
-				agg.log.Warning(
+				agg.log.Debug(
 					"No stats to send to writer in bin %s at: %d",
 					_dur.String(),
 					dd.Unix(),

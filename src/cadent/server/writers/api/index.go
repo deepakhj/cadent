@@ -56,6 +56,8 @@ func (f *FindAPI) AddHandlers(mux *mux.Router) {
 	mux.HandleFunc("/find", f.Find)
 	mux.HandleFunc("/paths", f.Find)
 	mux.HandleFunc("/expand", f.Expand)
+
+	mux.HandleFunc("/list", f.List)
 }
 
 func (re *FindAPI) Find(w http.ResponseWriter, r *http.Request) {
@@ -84,7 +86,7 @@ func (re *FindAPI) Find(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-func (re *FindAPI) Expand(w http.ResponseWriter, r *http.Request) {
+func (f *FindAPI) Expand(w http.ResponseWriter, r *http.Request) {
 	defer stats.StatsdSlowNanoTimeFunc("reader.http.expand.get-time-ns", time.Now())
 	stats.StatsdClientSlow.Incr("reader.http.expand.hits", 1)
 	r.ParseForm()
@@ -97,16 +99,47 @@ func (re *FindAPI) Expand(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(query) == 0 {
-		re.a.OutError(w, "Query is required", http.StatusBadRequest)
+		f.a.OutError(w, "Query is required", http.StatusBadRequest)
 		return
 	}
 
-	data, err := re.indexer.Expand(query)
+	data, err := f.indexer.Expand(query)
 	if err != nil {
 		stats.StatsdClientSlow.Incr("reader.http.expand.errors", 1)
-		re.a.OutError(w, fmt.Sprintf("%v", err), http.StatusServiceUnavailable)
+		f.a.OutError(w, fmt.Sprintf("%v", err), http.StatusServiceUnavailable)
 		return
 	}
 	stats.StatsdClientSlow.Incr("reader.http.expand.ok", 1)
-	re.a.OutJson(w, data)
+	f.a.OutJson(w, data)
+}
+
+func (f *FindAPI) List(w http.ResponseWriter, r *http.Request) {
+	defer stats.StatsdSlowNanoTimeFunc("reader.http.list.get-time-ns", time.Now())
+	stats.StatsdClientSlow.Incr("reader.http.list.hits", 1)
+
+	args, err := ParseFindQuery(r)
+
+	if err != nil {
+		f.a.OutError(w, fmt.Sprintf("%v", err), http.StatusBadRequest)
+		return
+	}
+
+	datas, err := f.indexer.List(args.HasData, args.Page)
+	if err != nil {
+		stats.StatsdClientSlow.Incr("reader.http.list.errors", 1)
+		f.a.OutError(w, fmt.Sprintf("%v", err), http.StatusServiceUnavailable)
+		return
+	}
+	if datas == nil {
+		f.a.OutError(w, "No data found", http.StatusNoContent)
+		return
+	}
+	res := []string{}
+	for _, data := range datas {
+
+		res = append(res, data.Path)
+	}
+	stats.StatsdClientSlow.Incr("reader.http.list.ok", 1)
+
+	f.a.OutJson(w, res)
 }

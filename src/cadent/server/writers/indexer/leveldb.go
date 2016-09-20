@@ -178,7 +178,7 @@ func (ls *LevelDBSegment) SegmentData() ([]byte, []byte) {
 }
 
 func (ls *LevelDBSegment) IdKey(id string) []byte {
-	return []byte(fmt.Sprintf("ID:%s", id))
+	return []byte(id)
 }
 
 func (ls *LevelDBSegment) IdData() ([]byte, []byte) {
@@ -186,8 +186,13 @@ func (ls *LevelDBSegment) IdData() ([]byte, []byte) {
 }
 
 func (ls *LevelDBSegment) PathKey(path string) []byte {
-	return []byte(fmt.Sprintf("PATH:%s", path))
+	return []byte(path)
 }
+
+func (ls *LevelDBSegment) PathData() ([]byte, []byte) {
+	return ls.PathKey(ls.Path), []byte(ls.Id)
+}
+
 func (ls *LevelDBSegment) ReverseSegmentData() ([]byte, []byte) {
 	return []byte(ls.PathKey(ls.Path)), []byte(fmt.Sprintf("%d:%s", ls.Pos, ls.Segment))
 }
@@ -223,18 +228,27 @@ func (ls *LevelDBSegment) InsertAllIntoBatch(batch *leveldb.Batch) {
 		batch.Put(k, v)
 		k1, v1 := ls.ReverseSegmentData()
 		batch.Put(k1, v1)
-		k2, v2 := ls.IdData()
-		batch.Put(k2, v2)
 	}
 	k, v := ls.PosSegmentData()
 	batch.Put(k, v)
 }
 
-func (ls *LevelDBSegment) InsertAll(segdb *leveldb.DB) (err error) {
+func (ls *LevelDBSegment) InsertAll(segdb *leveldb.DB, pathdb *leveldb.DB, uiddb *leveldb.DB) (err error) {
 
 	batch := new(leveldb.Batch)
 	ls.InsertAllIntoBatch(batch)
 	err = segdb.Write(batch, nil)
+
+	idbatch := new(leveldb.Batch)
+	k1, v1 := ls.IdData()
+	idbatch.Put(k1, v1)
+	err = uiddb.Write(idbatch, nil)
+
+	pathbatch := new(leveldb.Batch)
+	k2, v2 := ls.PathData()
+	pathbatch.Put(k2, v2)
+	err = pathdb.Write(pathbatch, nil)
+
 	return
 }
 
@@ -484,7 +498,7 @@ func (lb *LevelDBIndexer) WriteOne(name repr.StatName) error {
 	segments := ParsePath(skey, name.UniqueIdString())
 
 	for _, seg := range segments {
-		err := seg.InsertAll(lb.db.SegmentConn())
+		err := seg.InsertAll(lb.db.SegmentConn(), lb.db.PathConn(), lb.db.UidConn())
 
 		if err != nil {
 			lb.log.Error("Could not insert segment %v", seg)
@@ -665,23 +679,29 @@ func (lp *LevelDBIndexer) Delete(name *repr.StatName) error {
 	return nil
 }
 
-/*************** TAG STUBS ************************/
 func (lp *LevelDBIndexer) List(has_data bool, page int) (MetricFindItems, error) {
 
 	defer stats.StatsdSlowNanoTimeFunc("indexer.leveldb.find.get-time-ns", time.Now())
 
 	// we simply troll the POS:{len}:{prefix} world
-	prefix := "PATH:"
 	// log.Printf("USE KEY: %s", prefix)
-	iter := lp.db.SegmentConn().NewIterator(leveldb_util.BytesPrefix([]byte(prefix)), nil)
+	iter := lp.db.PathConn().NewIterator(leveldb_util.BytesPrefix([]byte("")), nil)
 	defer iter.Release()
 
 	var mt MetricFindItems
 
+	cur_ct := 0
+	want_start := page * MAX_PER_PAGE
+	stop_count := (page + 1) * MAX_PER_PAGE
 	for iter.Next() {
-		value := iter.Key() // should be PATH:{path}
-		value_arr := strings.Split(string(value), ":")
-		on_path := value_arr[1]
+		cur_ct++
+		if cur_ct < want_start {
+			continue
+		}
+		if cur_ct > stop_count {
+			break
+		}
+		on_path := string(iter.Key())
 
 		var ms MetricFindItem
 		ms.Text = on_path
@@ -696,6 +716,8 @@ func (lp *LevelDBIndexer) List(has_data bool, page int) (MetricFindItems, error)
 	}
 	return mt, nil
 }
+
+/*************** TAG STUBS ************************/
 
 func (my *LevelDBIndexer) GetTagsByUid(unique_id string) (tags repr.SortingTags, metatags repr.SortingTags, err error) {
 	return tags, metatags, errNotYetImplimented
