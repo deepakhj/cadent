@@ -33,6 +33,7 @@ package api
 import (
 	"cadent/server/gossip"
 	"cadent/server/stats"
+	"cadent/server/utils/shared"
 	"cadent/server/writers/indexer"
 	"cadent/server/writers/metrics"
 	"fmt"
@@ -40,6 +41,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -81,7 +83,25 @@ func (c *InfoAPI) GetInfo(w http.ResponseWriter, r *http.Request) {
 	data["hostname"] = name
 	data["ip"] = addrs
 	data["cached_metrics"] = c.Metrics.Cache().Len()
-	data["members"] = gossip.Get()
+	if gossip.Get() != nil {
+		data["members"] = gossip.Get().Members()
+	} else {
+		data["members"] = nil
+	}
+
+	api_server := make(map[string]string, 0)
+
+	api_server["host"] = name
+	api_server["path"] = c.a.Conf.BasePath
+	api_server["scheme"] = "http"
+	if len(c.a.Conf.TLSCertPath) > 0 && len(c.a.Conf.TLSKeyPath) > 0 {
+		api_server["scheme"] = "https"
+	}
+	spl := strings.Split(c.a.Conf.Listen, ":")
+	api_server["port"] = spl[len(spl)-1]
+	data["api_server"] = api_server
+
+	data["shared"] = shared.GetAll()
 
 	stats.StatsdClientSlow.Incr("reader.http.info.ok", 1)
 	c.a.OutJson(w, data)

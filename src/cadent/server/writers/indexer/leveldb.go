@@ -344,12 +344,10 @@ type LevelDBIndexer struct {
 	dispatch_queue   chan chan dispatch.IJob
 	write_dispatcher *dispatch.Dispatch
 
-	shutonce    sync.Once
 	num_workers int
 	queue_len   int
 	_accept     bool //shtdown notice
-	start       utils.Once
-	stop        utils.Once
+	startstop   utils.StartStop
 
 	log *logging.Logger
 }
@@ -401,7 +399,7 @@ func (lp *LevelDBIndexer) Name() string {
 }
 
 func (lp *LevelDBIndexer) Stop() {
-	lp.stop.Do(func() {
+	lp.startstop.Stop(func() {
 		shutdown.AddToShutdown()
 		defer shutdown.ReleaseFromShutdown()
 		if !lp._accept {
@@ -409,17 +407,16 @@ func (lp *LevelDBIndexer) Stop() {
 		}
 		lp.log.Notice("Shutting down LevelDB indexer: %s", lp.Name())
 		lp._accept = false
-		lp.shutonce.Do(lp.cache.Stop)
+		lp.cache.Stop()
 		if lp.write_queue != nil {
 			lp.write_dispatcher.Shutdown()
 		}
 		lp.db.Close()
-		lp.start.Reset()
 	})
 }
 
 func (lp *LevelDBIndexer) Start() {
-	lp.start.Do(func() {
+	lp.startstop.Start(func() {
 		lp.log.Notice("Starting LevelDB indexer: %s", lp.Name())
 		workers := lp.num_workers
 		lp.write_queue = make(chan dispatch.IJob, lp.queue_len)
@@ -428,7 +425,6 @@ func (lp *LevelDBIndexer) Start() {
 		lp.write_dispatcher.SetRetries(2)
 		lp.write_dispatcher.Run()
 		lp.cache.Start()
-		lp.stop.Reset()
 		go lp.sendToWriters() // the dispatcher
 	})
 }
@@ -671,7 +667,34 @@ func (lp *LevelDBIndexer) Delete(name *repr.StatName) error {
 
 /*************** TAG STUBS ************************/
 func (lp *LevelDBIndexer) List(has_data bool, page int) (MetricFindItems, error) {
-	return MetricFindItems{}, errNotYetImplimented
+
+	defer stats.StatsdSlowNanoTimeFunc("indexer.leveldb.find.get-time-ns", time.Now())
+
+	// we simply troll the POS:{len}:{prefix} world
+	prefix := "PATH:"
+	// log.Printf("USE KEY: %s", prefix)
+	iter := lp.db.SegmentConn().NewIterator(leveldb_util.BytesPrefix([]byte(prefix)), nil)
+	defer iter.Release()
+
+	var mt MetricFindItems
+
+	for iter.Next() {
+		value := iter.Key() // should be PATH:{path}
+		value_arr := strings.Split(string(value), ":")
+		on_path := value_arr[1]
+
+		var ms MetricFindItem
+		ms.Text = on_path
+		ms.Id = on_path
+		ms.Path = on_path
+
+		ms.Expandable = 0
+		ms.Leaf = 1
+		ms.AllowChildren = 0
+
+		mt = append(mt, ms)
+	}
+	return mt, nil
 }
 
 func (my *LevelDBIndexer) GetTagsByUid(unique_id string) (tags repr.SortingTags, metatags repr.SortingTags, err error) {

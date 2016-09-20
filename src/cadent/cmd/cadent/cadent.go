@@ -22,6 +22,7 @@ import (
 	pages "cadent/server/pages"
 	prereg "cadent/server/prereg"
 	"cadent/server/stats"
+	"cadent/server/utils/shared"
 	"cadent/server/utils/shutdown"
 	"crypto/tls"
 	"encoding/json"
@@ -315,6 +316,16 @@ func main() {
 			panic("Failed to join gossip: " + err.Error())
 		}
 
+	}
+
+	// set goodies in the shared data
+	shared.Set("hashers", config)
+	shared.Set("is_writer", false) // these will get overridden later if there are these
+	shared.Set("is_reader", false)
+	shared.Set("is_hasher", false)
+
+	if len(config) > 1 {
+		shared.Set("is_hasher", true)
 	}
 
 	// deal with the pre-reg file

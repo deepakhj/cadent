@@ -48,14 +48,14 @@ var errCacheNotFound = errors.New("Count not find cache with the provided name")
 
 // toml config for Internal Caches
 type WriterCacheConfig struct {
-	Name            string  `toml:"name"`
-	SeriesEncoding  string  `toml:"series_encoding"`
-	BytesPerMetric  int     `toml:"bytes_per_metric"`
-	MaxMetricKeys   int     `toml:"max_metrics"`
-	MaxTimeInCache  string  `toml:"max_time_in_cache"`
-	CacheOverFlow   string  `toml:"overflow_method"`
-	BroadCastLength int     `toml:"broadcast_length"`
-	LowFruitRate    float64 `toml:"low_fruit_rate"`
+	Name            string  `toml:"name" json:"name"`
+	SeriesEncoding  string  `toml:"series_encoding" json:"series_encoding"`
+	BytesPerMetric  int     `toml:"bytes_per_metric" json:"bytes_per_metric"`
+	MaxMetricKeys   int     `toml:"max_metrics" json:"max_metrics"`
+	MaxTimeInCache  string  `toml:"max_time_in_cache" json:"max_time_in_cache"`
+	CacheOverFlow   string  `toml:"overflow_method" json:"overflow_method"`
+	BroadCastLength int     `toml:"broadcast_length" json:"broadcast_length"`
+	LowFruitRate    float64 `toml:"low_fruit_rate" json:"low_fruit_rate"`
 }
 
 func (wc *WriterCacheConfig) New(resolution uint32) (*metrics.Cacher, error) {
@@ -98,12 +98,12 @@ func (wc *WriterCacheConfig) New(resolution uint32) (*metrics.Cacher, error) {
 
 // toml config for Metrics
 type WriterMetricConfig struct {
-	Driver   string `toml:"driver"`
-	DSN      string `toml:"dsn"`
-	UseCache string `toml:"cache"`
+	Driver   string `toml:"driver" json:"driver"`
+	DSN      string `toml:"dsn" json:"dsn"`
+	UseCache string `toml:"cache" json:"cache"`
 
-	QueueLength int                    `toml:"input_queue_length"` // metric write queue length
-	Options     map[string]interface{} `toml:"options"`            // option=[ [key, value], [key, value] ...]
+	QueueLength int                    `toml:"input_queue_length" json:"input_queue_length"` // metric write queue length
+	Options     map[string]interface{} `toml:"options" json:"options"`                       // option=[ [key, value], [key, value] ...]
 }
 
 func (wc WriterMetricConfig) ResolutionsNeeded() (metrics.WritersNeeded, error) {
@@ -166,9 +166,9 @@ func (wc WriterMetricConfig) NewMetrics(duration time.Duration, cache_config []W
 
 // toml config for Indexer
 type WriterIndexerConfig struct {
-	Driver  string                 `toml:"driver"`
-	DSN     string                 `toml:"dsn"`
-	Options map[string]interface{} `toml:"options"` // option=[ [key, value], [key, value] ...]
+	Driver  string                 `toml:"driver" json:"driver"`
+	DSN     string                 `toml:"dsn" json:"dsn"`
+	Options map[string]interface{} `toml:"options" json:"options"` // option=[ [key, value], [key, value] ...]
 }
 
 func (wc WriterIndexerConfig) NewIndexer() (indexer.Indexer, error) {
@@ -190,17 +190,17 @@ func (wc WriterIndexerConfig) NewIndexer() (indexer.Indexer, error) {
 }
 
 type WriterConfig struct {
-	Caches []WriterCacheConfig `toml:"caches"`
+	Caches []WriterCacheConfig `toml:"caches" json:"caches"`
 
-	Metrics WriterMetricConfig  `toml:"metrics"`
-	Indexer WriterIndexerConfig `toml:"indexer"`
+	Metrics WriterMetricConfig  `toml:"metrics" json:"metrics"`
+	Indexer WriterIndexerConfig `toml:"indexer" json:"indexer"`
 
 	// secondary writers i.e. write to multiple spots
-	SubMetrics WriterMetricConfig  `toml:"submetrics"`
-	SubIndexer WriterIndexerConfig `toml:"subindexer"`
+	SubMetrics WriterMetricConfig  `toml:"submetrics" json:"submetrics"`
+	SubIndexer WriterIndexerConfig `toml:"subindexer" json:"subindexer"`
 
-	MetricQueueLength  int `toml:"metric_queue_length"`  // metric write queue length
-	IndexerQueueLength int `toml:"indexer_queue_length"` // indexer write queue length
+	MetricQueueLength  int `toml:"metric_queue_length" json:"metric_queue_length"`   // metric write queue length
+	IndexerQueueLength int `toml:"indexer_queue_length" json:"indexer_queue_length"` // indexer write queue length
 }
 
 type WriterLoop struct {

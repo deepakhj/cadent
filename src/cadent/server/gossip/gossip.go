@@ -101,6 +101,6 @@ func (m *Members) Join(seed string) error {
 	return err
 }
 
-func (m *Members) Members(seed string) []*memberlist.Node {
+func (m *Members) Members() []*memberlist.Node {
 	return m.List.Members()
 }

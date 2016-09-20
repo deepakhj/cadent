@@ -19,13 +19,10 @@ limitations under the License.
 LevelDB key/value store for local saving for indexes on the stat key space
 and how it maps to files on disk.
 
-This is much like how Prometheus does things, stores a index in levelDB
-and single "custom" files for each series.
-
 We have "2" dbs, one for a
-{key} -> {file} mapping
+{segment} -> {path|uid} mapping
 and
-{tag} -> {key} mapping.
+{tag} -> {uid} mapping.
 
 If no tags are used (i.e. graphite like) then this will be basically empty
 
@@ -105,7 +102,7 @@ func (lb *LevelDB) Config(conf options.Options) (err error) {
 	lb.segment_conn, err = leveldb.OpenFile(lb.SegmentTableName(), lb.level_opts)
 	if err != nil {
 		if _, ok := err.(*leveldb_storage.ErrCorrupted); ok {
-			lb.log.Notice("segment DB is corrupt. Recovering.")
+			lb.log.Notice("Segment DB is corrupt. Recovering.")
 			lb.segment_conn, err = leveldb.RecoverFile(lb.SegmentTableName(), lb.level_opts)
 			if err != nil {
 				return err

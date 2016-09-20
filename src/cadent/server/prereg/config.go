@@ -92,6 +92,7 @@ import (
 	logging "gopkg.in/op/go-logging.v1"
 
 	accumulator "cadent/server/accumulator"
+	"cadent/server/utils/shared"
 	"cadent/server/utils/tomlenv"
 	"fmt"
 )
@@ -101,20 +102,20 @@ const DEFALT_SECTION_NAME = "prereg"
 var log = logging.MustGetLogger("prereg")
 
 type ConfigFilter struct {
-	NoOp      string `toml:"noop"`
-	Prefix    string `toml:"prefix"`
-	SubString string `toml:"substring"`
-	RegEx     string `toml:"regex"`
-	IsReject  bool   `toml:"reject"`
-	Backend   string `toml:"backend"`
+	NoOp      string `toml:"noop" json:"noop,omitempty"`
+	Prefix    string `toml:"prefix" json:"prefix,omitempty"`
+	SubString string `toml:"substring" json:"substring,omitempty"`
+	RegEx     string `toml:"regex" json:"regex,omitempty"`
+	IsReject  bool   `toml:"reject" json:"reject,omitempty"`
+	Backend   string `toml:"backend" json:"backend,omitempty"`
 }
 
 type ConfigMap struct {
-	DefaultBackEnd    string                        `toml:"default_backend"`
-	ListenServer      string                        `toml:"listen_server"`
-	ConfigAccumulator accumulator.ConfigAccumulator `toml:"accumulator"` // the accumulator for a given incoming group
+	DefaultBackEnd    string                        `toml:"default_backend" json:"default_backend"`
+	ListenServer      string                        `toml:"listen_server" json:"listen_server"`
+	ConfigAccumulator accumulator.ConfigAccumulator `toml:"accumulator" json:"accumulator"` // the accumulator for a given incoming group
 
-	FilterList []ConfigFilter `toml:"map"`
+	FilterList []ConfigFilter `toml:"map" json:"map,omitempty"`
 }
 
 // list of filters
@@ -141,11 +142,11 @@ func (l ListofConfigMaps) ParseConfig() (PreRegMap, error) {
 			return nil, fmt.Errorf(msg)
 		}
 
-		if len(cfg.FilterList) == 0 {
+		/*if len(cfg.FilterList) == 0 {
 			msg := fmt.Sprintf("Need a Some filters for `%s`", pr.Name)
 			log.Critical(msg)
 			return nil, fmt.Errorf(msg)
-		}
+		}*/
 
 		if len(cfg.ConfigAccumulator.InputFormat) > 0 {
 			cfg.ConfigAccumulator.Name = chunk
@@ -221,6 +222,9 @@ func (l ListofConfigMaps) ParseConfig() (PreRegMap, error) {
 		}
 		prs[pr.Name] = pr
 	}
+
+	shared.Set("prereg", l)
+
 	return prs, nil
 }
 

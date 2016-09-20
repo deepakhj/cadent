@@ -56,6 +56,7 @@ times = ["5s", "1m", "1h"]
 
 import (
 	"cadent/server/repr"
+	"cadent/server/utils/shared"
 	"cadent/server/utils/tomlenv"
 	writers "cadent/server/writers"
 	"cadent/server/writers/api"
@@ -77,22 +78,22 @@ var log = logging.MustGetLogger("accumulator")
 
 type ConfigAccumulator struct {
 	Name              string
-	ToBackend         string               `toml:"backend"` // once "parsed and flushed" re-inject into another pre-reg group for delegation
-	InputFormat       string               `toml:"input_format"`
-	OutputFormat      string               `toml:"output_format"`
-	KeepKeys          bool                 `toml:"keep_keys"` // keeps the keys on flush  "0's" them rather then removal
-	Option            [][]string           `toml:"options"`   // option=[ [key, value], [key, value] ...]
-	Tags              repr.SortingTags     `toml:"tags"`
-	Writer            writers.WriterConfig `toml:"writer"`
-	Reader            api.ApiConfig        `toml:"api"`                 // http server for reading
-	Times             []string             `toml:"times"`               // Aggregate Timers (or the first will be used for Accumulator flushes)
-	AccTimer          string               `toml:"accumulate_flush"`    // if specified will be the "main Accumulator" flusher otherwise it will choose the first in the Timers
-	RandomTickerStart bool                 `toml:"random_ticker_start"` // if true will set the flusher to basically started at "now" time otherwise it will use time % duration
-	TagMode           string               `toml:"tag_mode"`            // "all" "metrics2" -- default to metrics2 -- Will set how tags identify a unique metric
+	ToBackend         string               `toml:"backend" json:"backend"` // once "parsed and flushed" re-inject into another pre-reg group for delegation
+	InputFormat       string               `toml:"input_format"  json:"input_format"`
+	OutputFormat      string               `toml:"output_format"  json:"output_format"`
+	KeepKeys          bool                 `toml:"keep_keys"  json:"keep_keys"` // keeps the keys on flush  "0's" them rather then removal
+	Option            [][]string           `toml:"options"  json:"options"`     // option=[ [key, value], [key, value] ...]
+	Tags              repr.SortingTags     `toml:"tags"  json:"tags"`
+	Writer            writers.WriterConfig `toml:"writer"  json:"writer"`
+	Reader            api.ApiConfig        `toml:"api"  json:"api"`                                 // http server for reading
+	Times             []string             `toml:"times"  json:"times"`                             // Aggregate Timers (or the first will be used for Accumulator flushes)
+	AccTimer          string               `toml:"accumulate_flush"  json:"accumulate_flush"`       // if specified will be the "main Accumulator" flusher otherwise it will choose the first in the Timers
+	RandomTickerStart bool                 `toml:"random_ticker_start"  json:"random_ticker_start"` // if true will set the flusher to basically started at "now" time otherwise it will use time % duration
+	TagMode           string               `toml:"tag_mode"  json:"tag_mode"`                       // "all" "metrics2" -- default to metrics2 -- Will set how tags identify a unique metric
 
-	accumulate_time time.Duration
-	durations       []time.Duration
-	ttls            []time.Duration
+	accumulate_time time.Duration   `toml:"-"  json:"-"`
+	durations       []time.Duration `toml:"-"  json:"-"`
+	ttls            []time.Duration `toml:"-"  json:"-"`
 }
 
 func (cf *ConfigAccumulator) ParseDurations() error {
@@ -199,7 +200,7 @@ func (cf *ConfigAccumulator) GetAccumulator() (*Accumulator, error) {
 		return nil, err
 	}
 
-	// set up the writer it needs to be done AFTER the Keeper times are verified
+	// set up the writer it needs to be done AFTER the Resolution times are verified
 	if cf.Writer.Metrics.Driver != "" {
 
 		if cf.Writer.Indexer.Driver == "" {
@@ -209,7 +210,7 @@ func (cf *ConfigAccumulator) GetAccumulator() (*Accumulator, error) {
 		if err != nil {
 			return nil, err
 		}
-
+		shared.Set("is_writer", true)
 	}
 
 	// set up sub writers after Main Writers are added
@@ -222,10 +223,11 @@ func (cf *ConfigAccumulator) GetAccumulator() (*Accumulator, error) {
 		if err != nil {
 			return nil, err
 		}
+		// some data for the shared land
+		shared.Set("is_writer", true)
 
 	}
 
-	// set up the reader it needs to be done AFTER the Keeper times are verified
 	if cf.Reader.Listen != "" && ac.Aggregators != nil {
 
 		err = ac.Aggregators.SetReader(cf.Reader)
@@ -233,6 +235,8 @@ func (cf *ConfigAccumulator) GetAccumulator() (*Accumulator, error) {
 			return nil, err
 		}
 
+		// some data for the shared land
+		shared.Set("is_reader", true)
 	}
 	return ac, nil
 }

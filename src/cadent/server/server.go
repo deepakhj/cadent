@@ -1539,6 +1539,7 @@ func CreateServer(cfg *Config, hashers []*ConstHasher) (*Server, error) {
 
 	// fire up the listeners
 	err = server.StartListen(cfg.ListenURL)
+
 	if err != nil {
 		panic(err)
 	}

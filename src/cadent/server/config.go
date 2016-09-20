@@ -48,108 +48,108 @@ type ParsedServerConfig struct {
 }
 
 type ConfigServerList struct {
-	CheckServers []string `toml:"check_servers"`
-	Servers      []string `toml:"servers"`
-	HashKeys     []string `toml:"hashkeys"`
+	CheckServers []string `toml:"check_servers" json:"check_servers,omitempty"`
+	Servers      []string `toml:"servers" json:"servers,omitempty"`
+	HashKeys     []string `toml:"hashkeys" json:"hashkeys,omitempty"`
 }
 
 type GossipConfig struct {
-	Enabled bool   `toml:"enabled"`
-	Port    int    `toml:"port"` //
-	Mode    string `toml:"mode"` // local, lan, wan
-	Name    string `toml:"name"` // name of this node, otherwise it will pick on (must be unique)
-	Bind    string `toml:"bind"` // bind ip
-	Seed    string `toml:"seed"` // a seed node
+	Enabled bool   `toml:"enabled" json:"enabled,omitempty"`
+	Port    int    `toml:"port" json:"port,omitempty"` //
+	Mode    string `toml:"mode" json:"mode,omitempty"` // local, lan, wan
+	Name    string `toml:"name" json:"name,omitempty"` // name of this node, otherwise it will pick on (must be unique)
+	Bind    string `toml:"bind" json:"bind,omitempty"` // bind ip
+	Seed    string `toml:"seed" json:"seed,omitempty"` // a seed node
 }
 
 type Config struct {
 	Name string
 
 	// for "DEFAULT" section only
-	Gossip  GossipConfig `toml:"gossip"`
-	PIDfile string       `toml:"pid_file"`
-	NumProc int          `toml:"num_procs"`
+	Gossip  GossipConfig `toml:"gossip" json:"gossip,omitempty"`
+	PIDfile string       `toml:"pid_file" json:"pid_file,omitempty"`
+	NumProc int          `toml:"num_procs" json:"num_procs,omitempty"`
 
 	// send some stats to the land
-	StatsdServer          string  `toml:"statsd_server"`
-	StatsdPrefix          string  `toml:"statsd_prefix"`
-	StatsdInterval        uint    `toml:"statsd_interval"`
-	StatsdSampleRate      float32 `toml:"statsd_sample_rate"`
-	StatsdTimerSampleRate float32 `toml:"statsd_timer_sample_rate"`
+	StatsdServer          string  `toml:"statsd_server" json:"statsd_server,omitempty"`
+	StatsdPrefix          string  `toml:"statsd_prefix" json:"statsd_prefix,omitempty"`
+	StatsdInterval        uint    `toml:"statsd_interval" json:"statsd_interval,omitempty"`
+	StatsdSampleRate      float32 `toml:"statsd_sample_rate" json:"statsd_sample_rate,omitempty"`
+	StatsdTimerSampleRate float32 `toml:"statsd_timer_sample_rate" json:"statsd_timer_sample_rate,omitempty"`
 
-	StatsTick bool `toml:"stats_tick"`
+	StatsTick bool `toml:"stats_tick" json:"stats_tick,omitempty"`
 
 	// profiler
-	ProfileBind  string `toml:"cpu_profile_listen"`
-	Profile      bool   `toml:"cpu_profile"`
-	ProfileRate  int    `toml:"cpu_profile_rate"`
-	BlockProfile bool   `toml:"block_profile"`
+	ProfileBind  string `toml:"cpu_profile_listen" json:"cpu_profile,omitempty"`
+	Profile      bool   `toml:"cpu_profile" json:"cpu_profile,omitempty"`
+	ProfileRate  int    `toml:"cpu_profile_rate" json:"cpu_profile_rate,omitempty"`
+	BlockProfile bool   `toml:"block_profile" json:"block_profile,omitempty"`
+
+	// start a little http server for external health checks and stats probes
+	HealthServerBind   string `toml:"internal_health_server_listen" json:"internal_health_server_listen,omitempty"`
+	HealthServerPoints uint   `toml:"internal_health_server_points" json:"internal_health_server_points,omitempty"`
+	HealthServerPath   string `toml:"internal_health_server_path" json:"internal_health_server_path,omitempty"`
+	HealthServerKey    string `toml:"internal_health_tls_key" json:"internal_health_tls_key,omitempty"`
+	HealthServerCert   string `toml:"internal_health_tls_cert" json:"internal_health_tls_cert,omitempty"`
 
 	// can be set in both defaults or overrides from the children
 
-	MaxPoolConnections      int    `toml:"max_pool_connections"`
-	MaxWritePoolBufferSize  int    `toml:"pool_buffersize"`
-	SendingConnectionMethod string `toml:"sending_method"`
+	MaxPoolConnections      int    `toml:"max_pool_connections" json:"max_pool_connections,omitempty"`
+	MaxWritePoolBufferSize  int    `toml:"pool_buffersize" json:"pool_buffersize,omitempty"`
+	SendingConnectionMethod string `toml:"sending_method" json:"sending_method,omitempty"`
 
-	MsgType                string        `toml:"msg_type"`
-	MsgFormatRegEx         string        `toml:"msg_regex"`
-	ListenStr              string        `toml:"listen"`
-	ServerHeartBeat        time.Duration `toml:"heartbeat_time_delay"`
-	ServerHeartBeatTimeout time.Duration `toml:"heartbeat_time_timeout"`
-	MaxServerHeartBeatFail uint64        `toml:"failed_heartbeat_count"`
-	ServerDownPolicy       string        `toml:"server_down_policy"`
-	CacheItems             uint64        `toml:"cache_items"`
-	Replicas               int           `toml:"num_dupe_replicas"`
-	HashAlgo               string        `toml:"hasher_algo"`
-	HashElter              string        `toml:"hasher_elter"`
-	HashVNodes             int           `toml:"hasher_vnodes"`
+	MsgType                string        `toml:"msg_type" json:"msg_type,omitempty"`
+	MsgFormatRegEx         string        `toml:"msg_regex" json:"msg_regex,omitempty"`
+	ListenStr              string        `toml:"listen" json:"listen,omitempty"`
+	ServerHeartBeat        time.Duration `toml:"heartbeat_time_delay" json:"heartbeat_time_delay,omitempty"`
+	ServerHeartBeatTimeout time.Duration `toml:"heartbeat_time_timeout" json:"heartbeat_time_timeout,omitempty"`
+	MaxServerHeartBeatFail uint64        `toml:"failed_heartbeat_count" json:"failed_heartbeat_count,omitempty"`
+	ServerDownPolicy       string        `toml:"server_down_policy" json:"server_down_policy,omitempty"`
+	CacheItems             uint64        `toml:"cache_items" json:"cache_items,omitempty"`
+	Replicas               int           `toml:"num_dupe_replicas" json:"num_dupe_replicas,omitempty"`
+	HashAlgo               string        `toml:"hasher_algo" json:"hasher_algo,omitempty"`
+	HashElter              string        `toml:"hasher_elter" json:"hasher_elter,omitempty"`
+	HashVNodes             int           `toml:"hasher_vnodes" json:"hasher_vnodes,omitempty"`
 
 	// TLS (if possible tcp/http)
-	TLSkey  string `toml:"tls_key"`
-	TLScert string `toml:"tls_cert"`
+	TLSkey  string `toml:"tls_key" json:"tls_key,omitempty"`
+	TLScert string `toml:"tls_cert" json:"tls_cert,omitempty"`
 
-	ClientReadBufferSize int64 `toml:"read_buffer_size"`
-	MaxReadBufferSize    int64 `toml:"max_read_buffer_size"`
+	ClientReadBufferSize int64 `toml:"read_buffer_size" json:"read_buffer_size,omitempty"`
+	MaxReadBufferSize    int64 `toml:"max_read_buffer_size" json:"max_read_buffer_size,omitempty"`
 
 	//Timeouts
-	WriteTimeout    time.Duration `toml:"write_timeout"`
-	SplitterTimeout time.Duration `toml:"runner_timeout"`
+	WriteTimeout    time.Duration `toml:"write_timeout" json:"write_timeout,omitempty"`
+	SplitterTimeout time.Duration `toml:"runner_timeout" json:"runner_timeout,omitempty"`
 
 	//the array of potential servers to send stuff to (yes we can dupe data out)
-	ConfServerList []ConfigServerList `toml:"servers"`
+	ConfServerList []ConfigServerList `toml:"servers" json:"servers,omitempty"`
 
 	// number of workers to handle message sending queue
-	Workers    int64 `toml:"workers"`
-	OutWorkers int64 `toml:"out_workers"`
+	Workers    int64 `toml:"workers" json:"workers,omitempty"`
+	OutWorkers int64 `toml:"out_workers" json:"out_workers,omitempty"`
 
-	// start a little http server for external health checks and stats probes
-	HealthServerBind   string `toml:"internal_health_server_listen"`
-	HealthServerPoints uint   `toml:"internal_health_server_points"`
-	HealthServerPath   string `toml:"internal_health_server_path"`
-	HealthServerKey    string `toml:"internal_health_tls_key"`
-	HealthServerCert   string `toml:"internal_health_tls_cert"`
+	ListenURL  *url.URL `toml:"-" json:"-"`
+	DevNullOut bool     `toml:"out_dev_null" json:"out_dev_null,omitempty"` // if set will NOT go to any outputs
 
-	ListenURL  *url.URL
-	DevNullOut bool `toml:"out_dev_null"` // if set will NOT go to any outputs
-
-	ServerLists []*ParsedServerConfig //parsing up the ConfServerList after read
+	ServerLists []*ParsedServerConfig `toml:"-" json:"-"` //parsing up the ConfServerList after read
 
 	// the pre-reg object this is used only in the Default section
-	PreRegFilters prereg.PreRegMap
+	PreRegFilters prereg.PreRegMap `toml:"-" json:"-"`
 
 	//Listener Specific pinned PreReg set
-	PreRegFilter *prereg.PreReg
+	PreRegFilter *prereg.PreReg `toml:"-" json:"-"`
 
 	//compiled Regex
-	ComRegEx      *regexp.Regexp
-	ComRegExNames []string
+	ComRegEx      *regexp.Regexp `toml:"-" json:"-"`
+	ComRegExNames []string       `toml:"-" json:"-"`
 
 	// some runners in the hasher need extra config bits to
 	// operate this construct that from the config args
-	MsgConfig map[string]interface{}
+	MsgConfig map[string]interface{} `toml:"-" json:"-"`
 
 	//this config can be used as a server list
-	OkToUse bool
+	OkToUse bool `toml:"-" json:"-"`
 }
 
 const (

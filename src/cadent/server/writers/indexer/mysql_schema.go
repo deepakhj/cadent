@@ -108,7 +108,7 @@ tag_id BIGINT unsigned NOT NULL,
 uid varchar(50) NOT NULL,
 PRIMARY KEY (tag_id, uid),
 KEY uid (uid)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8 ROW_FORMAT=COMPRESSED;`,
+) ENGINE=InnoDB DEFAULT CHARSET=ascii ROW_FORMAT=COMPRESSED;`,
 }
 
 type MySQLIndexSchema struct {

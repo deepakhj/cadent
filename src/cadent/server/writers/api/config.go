@@ -47,28 +47,28 @@ import (
 )
 
 type ApiMetricConfig struct {
-	Driver   string          `toml:"driver"`
-	DSN      string          `toml:"dsn"`
-	UseCache string          `toml:"cache"`
-	Options  options.Options `toml:"options"`
+	Driver   string          `toml:"driver" json:"driver"`
+	DSN      string          `toml:"dsn"  json:"dsn"`
+	UseCache string          `toml:"cache"  json:"cache"`
+	Options  options.Options `toml:"options"  json:"options"`
 }
 
 type ApiIndexerConfig struct {
-	Driver  string          `toml:"driver"`
-	DSN     string          `toml:"dsn"`
-	Options options.Options `toml:"options"`
+	Driver  string          `toml:"driver"  json:"driver"`
+	DSN     string          `toml:"dsn"  json:"dsn"`
+	Options options.Options `toml:"options"  json:"options"`
 }
 
 type ApiConfig struct {
-	Listen                     string           `toml:"listen"`
-	Logfile                    string           `toml:"log_file"`
-	BasePath                   string           `toml:"base_path"`
-	TLSKeyPath                 string           `toml:"key"`
-	TLSCertPath                string           `toml:"cert"`
-	ApiMetricOptions           ApiMetricConfig  `toml:"metrics"`
-	ApiIndexerOptions          ApiIndexerConfig `toml:"indexer"`
-	MaxReadCacheBytes          int              `toml:"read_cache_total_bytes"`
-	MaxReadCacheBytesPerMetric int              `toml:"read_cache_max_bytes_per_metric"`
+	Listen                     string           `toml:"listen"  json:"listen"`
+	Logfile                    string           `toml:"log_file"  json:"log_file"`
+	BasePath                   string           `toml:"base_path"  json:"base_path"`
+	TLSKeyPath                 string           `toml:"key"  json:"key"`
+	TLSCertPath                string           `toml:"cert"  json:"cert"`
+	ApiMetricOptions           ApiMetricConfig  `toml:"metrics"  json:"metrics"`
+	ApiIndexerOptions          ApiIndexerConfig `toml:"indexer"  json:"indexer"`
+	MaxReadCacheBytes          int              `toml:"read_cache_total_bytes"  json:"read_cache_total_bytes"`
+	MaxReadCacheBytesPerMetric int              `toml:"read_cache_max_bytes_per_metric"  json:"read_cache_max_bytes_per_metric"`
 }
 
 func (re *ApiConfig) GetMetrics(resolution float64) (metrics.Metrics, error) {
