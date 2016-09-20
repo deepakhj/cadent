@@ -522,7 +522,7 @@ func (lp *LevelDBIndexer) findingIter(metric string) (iter leveldb_iter.Iterator
 	use_key_len := p_len - 1
 	if needs_regex {
 		for _, pth := range segs {
-			if strings.IndexAny(pth, "*?[{") >= 0 {
+			if needRegex(pth) {
 				use_key = long_chunk
 				break
 			}

@@ -43,8 +43,6 @@ import (
 	"cadent/server/stats"
 	"cadent/server/writers/indexer"
 	"fmt"
-	"os/signal"
-	"syscall"
 
 	"cadent/server/broadcast"
 	"cadent/server/utils"
@@ -179,8 +177,7 @@ func NewWhisperWriter(conf map[string]interface{}) (*WhisperWriter, error) {
 	}
 	ws.shutdown = make(chan bool, 5)
 	ws.shutitdown = false
-	//go ws.TrapExit()
-	//go ws.Start()
+
 	return ws, nil
 }
 
@@ -266,30 +263,6 @@ func (ws *WhisperWriter) getFile(metric string) (*whisper.Whisper, error) {
 	}()
 
 	return whisper.Open(path)
-}
-
-func (ws *WhisperWriter) TrapExit() {
-	//trap kills to flush queues and close connections
-	sc := make(chan os.Signal, 1)
-	signal.Notify(sc,
-		syscall.SIGINT,
-		syscall.SIGTERM,
-		syscall.SIGQUIT)
-
-	go func(ins *WhisperWriter) {
-		s := <-sc
-		ins.log.Warning("Caught %s: Flushing remaining points out before quit ", s)
-
-		ins.Stop()
-		signal.Stop(sc)
-		close(sc)
-
-		// re-raise it
-		process, _ := os.FindProcess(os.Getpid())
-		process.Signal(s)
-		return
-	}(ws)
-	return
 }
 
 // shutdown the writer, purging all cache to files as fast as we can
@@ -668,7 +641,7 @@ func (ws *WhisperMetrics) RawDataRenderOne(metric indexer.MetricFindItem, start 
 	// we assume the "cache" is hot data (by design) so if the num points is "lacking"
 	// we know we need to get to the data store (or at least the inflight) for the rest
 	// add the "step" here as typically we have the "forward" step of data
-	if got_cache && cached.StartInRange(uint32(start)+cached.Step) {
+	if got_cache && cached.Start <= uint32(start) {
 		stats.StatsdClient.Incr("reader.whisper.render.read.cache.hit", 1)
 		ws.log.Debug("Read Cache Hit: %s [%d, %d)", metric.Id, start, end)
 		// need to set the start end to the ones requested before quantization to create the proper
@@ -678,27 +651,32 @@ func (ws *WhisperMetrics) RawDataRenderOne(metric indexer.MetricFindItem, start 
 		cached.AggFunc = rawd.AggFunc
 		return cached, nil
 	}
-	path := ws.writer.getFilePath(stat_name.Key)
-	whis, err := whisper.Open(path)
 
-	if err != nil {
-		// try the write inflight cache as nothing is written yet
-		inflight_renderitem, err := ws.writer.cacher.GetAsRawRenderItem(stat_name)
-		// need at LEAST 2 points to get the proper step size
-		if inflight_renderitem != nil && err == nil && len(inflight_renderitem.Data) > 1 {
-			// move the times to the "requested" ones and quantize the list
+	// try the write inflight cache as nothing is written yet
+	inflight_renderitem, err := ws.writer.cacher.GetAsRawRenderItem(stat_name)
+
+	// need at LEAST 2 points to get the proper step size
+	if inflight_renderitem != nil && err == nil {
+		// move the times to the "requested" ones and quantize the list
+		inflight_renderitem.Metric = metric.Id
+		inflight_renderitem.Tags = metric.Tags
+		inflight_renderitem.MetaTags = metric.MetaTags
+		inflight_renderitem.Id = metric.UniqueId
+		inflight_renderitem.AggFunc = rawd.AggFunc
+		if inflight_renderitem.Start < uint32(start) {
 			inflight_renderitem.RealEnd = uint32(end)
 			inflight_renderitem.RealStart = uint32(start)
 			inflight_renderitem.Start = inflight_renderitem.RealStart
 			inflight_renderitem.End = inflight_renderitem.RealEnd
-			inflight_renderitem.Metric = metric.Id
-			inflight_renderitem.Id = metric.UniqueId
-			inflight_renderitem.AggFunc = rawd.AggFunc
 			return inflight_renderitem, err
-		} else {
-			ws.writer.log.Error("Could not open file %s", path)
-			return rawd, err
 		}
+	}
+
+	path := ws.writer.getFilePath(stat_name.Key)
+	whis, err := whisper.Open(path)
+	if err != nil {
+		ws.writer.log.Error("Could not open file %s", path)
+		return inflight_renderitem, err
 	}
 	defer whis.Close()
 
@@ -744,17 +722,14 @@ func (ws *WhisperMetrics) RawDataRenderOne(metric indexer.MetricFindItem, start 
 
 	rawd.RealEnd = uint32(end)
 	rawd.RealStart = uint32(start)
-	rawd.Start = rawd.RealStart
-	rawd.End = rawd.RealEnd
 	rawd.Step = step_t
 
 	// grab the "current inflight" from the cache and merge into the main array
-	inflight_data, err := ws.writer.cacher.GetAsRawRenderItem(stat_name)
-	if err == nil && inflight_data != nil && len(inflight_data.Data) > 1 {
-		inflight_data.Step = step_t // need to force this step size
+	if inflight_renderitem != nil && len(inflight_renderitem.Data) > 1 {
+		inflight_renderitem.Step = step_t // need to force this step size
 		//merge with any inflight bits (inflight has higher precedence over the file)
-		inflight_data.MergeWithResample(rawd, step_t)
-		return inflight_data, nil
+		inflight_renderitem.MergeWithResample(rawd, step_t)
+		return inflight_renderitem, nil
 	}
 
 	return rawd, nil
