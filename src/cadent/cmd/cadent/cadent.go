@@ -36,10 +36,12 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 )
 
 // compile passing -ldflags "-X main.ConstHashBuild <build sha1>"
@@ -104,6 +106,18 @@ func setSystemStuff(num_procs int) {
 		log.Warning("[System] Error Getting Rlimit: %s ", err)
 	}
 	log.Notice("[System] Final Rlimit Final: Max %d, Cur %d", rLimit.Max, rLimit.Cur)
+}
+
+// due to the API render sometimes needing "LOTS" of ram to do it's stuff
+// we need to force this issue
+func freeOsMem() {
+	t := time.NewTicker(time.Minute)
+	for {
+		select {
+		case <-t.C:
+			debug.FreeOSMemory()
+		}
+	}
 }
 
 // Fire up the http server for stats and healthchecks
@@ -462,6 +476,7 @@ func main() {
 			return
 		}()
 	}
+	go freeOsMem()
 	go TrapExit()
 
 	wg := sync.WaitGroup{}
