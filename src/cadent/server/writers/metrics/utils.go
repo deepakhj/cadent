@@ -23,7 +23,7 @@ limitations under the License.
    NOTE: this is not a full graphite DSL, just paths and metrics, we leave the fancy functions inside
    graphite-api/web to work their magic .. one day we'll impliment the full DSL, but until then ..
 
-   Currently just implimenting /find /expand and /render (json only) for graphite-api
+   Currently just implementing /find /expand and /render (json only) for graphite-api
 */
 
 package metrics

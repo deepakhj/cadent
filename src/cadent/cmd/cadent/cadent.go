@@ -111,7 +111,7 @@ func setSystemStuff(num_procs int) {
 // due to the API render sometimes needing "LOTS" of ram to do it's stuff
 // we need to force this issue
 func freeOsMem() {
-	t := time.NewTicker(time.Minute)
+	t := time.NewTicker(5 * time.Minute)
 	for {
 		select {
 		case <-t.C:

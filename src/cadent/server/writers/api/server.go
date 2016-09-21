@@ -56,6 +56,9 @@ import (
 	"strings"
 )
 
+const MAX_METRIC_POINTS uint32 = 20480
+const DEFAULT_MIN_RESOLUTION uint32 = 1
+
 type ApiLoop struct {
 	Conf    ApiConfig
 	Metrics metrics.Metrics
@@ -215,6 +218,29 @@ func (re *ApiLoop) NoOp(w http.ResponseWriter, r *http.Request) {
 		http.StatusNotFound,
 	)
 	return
+}
+
+// based on the min resolution, figure out the real min "resample" to match the max points allowed
+func (re *ApiLoop) minResolution(start int64, end int64, cur_step uint32) uint32 {
+
+	use_min := cur_step
+	if DEFAULT_MIN_RESOLUTION > use_min {
+		use_min = DEFAULT_MIN_RESOLUTION
+	}
+
+	if re.Metrics == nil {
+		return use_min
+	}
+	res := re.Metrics.GetResolutions()
+	m_res := uint32(res[0][0])
+
+	if m_res > 0 {
+		on_pts := uint32(end-start) / m_res
+		if on_pts > MAX_METRIC_POINTS {
+			return uint32(end-start) / MAX_METRIC_POINTS
+		}
+	}
+	return use_min
 }
 
 func (re *ApiLoop) Start() error {

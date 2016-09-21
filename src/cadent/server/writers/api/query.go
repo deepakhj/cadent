@@ -31,8 +31,6 @@ import (
 	"strings"
 )
 
-const MAX_METRIC_POINTS uint64 = 20480
-
 var errTargetRequired = errors.New("Target is required")
 var errInvalidStep = errors.New("Invalid `step` size")
 var errInvalidMaxPts = errors.New("Invalid `max_points` size")
@@ -206,12 +204,13 @@ func ParseMetricQuery(r *http.Request) (mq MetricQuery, err error) {
 		_step = strings.TrimSpace(r.Form.Get("sample"))
 	}
 
-	step := uint64(0)
+	step := uint32(0)
 	if len(_step) > 0 {
-		step, err = (strconv.ParseUint(_step, 10, 32))
+		tstep, err := (strconv.ParseUint(_step, 10, 32))
 		if err != nil {
 			return mq, errInvalidStep
 		}
+		step = uint32(tstep)
 	}
 
 	// grab a maxPoints if desired (resolution resampling)
@@ -230,18 +229,19 @@ func ParseMetricQuery(r *http.Request) (mq MetricQuery, err error) {
 			return mq, errInvalidMaxPts
 		}
 		// if maxPoints, need to resample to fit things if data
-		t_step := uint64(end-start) / maxpts
+		t_step := uint32(end-start) / uint32(maxpts)
 		if t_step > step {
 			step = t_step
 		}
-
 	}
-	
+
+	// based on the min res provided, pick that as the "default" step
+
 	// finally limit the number of points that can be returned
 	if step > 0 {
-		on_pts := uint64(end-start) / step
+		on_pts := uint32(end-start) / step
 		if on_pts > MAX_METRIC_POINTS {
-			step = uint64(end-start) / MAX_METRIC_POINTS
+			step = uint32(end-start) / MAX_METRIC_POINTS
 		}
 	}
 
@@ -249,7 +249,7 @@ func ParseMetricQuery(r *http.Request) (mq MetricQuery, err error) {
 		Target:    target,
 		Start:     start,
 		End:       end,
-		Step:      uint32(step),
+		Step:      step,
 		MaxPoints: uint32(maxpts),
 		Tags:      tags,
 		Agg:       agg,
