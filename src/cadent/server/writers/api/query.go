@@ -236,11 +236,13 @@ func ParseMetricQuery(r *http.Request) (mq MetricQuery, err error) {
 		}
 
 	}
-
+	
 	// finally limit the number of points that can be returned
-	on_pts := uint64(end-start) / step
-	if on_pts > MAX_METRIC_POINTS {
-		step = uint64(end-start) / MAX_METRIC_POINTS
+	if step > 0 {
+		on_pts := uint64(end-start) / step
+		if on_pts > MAX_METRIC_POINTS {
+			step = uint64(end-start) / MAX_METRIC_POINTS
+		}
 	}
 
 	return MetricQuery{
