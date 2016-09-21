@@ -21,9 +21,9 @@ package metrics
 import (
 	//. "github.com/smartystreets/goconvey/convey"
 	"bytes"
+	"cadent/server/repr"
 	"encoding/json"
 	"testing"
-	"cadent/server/repr"
 )
 
 func TestCassandraReader(t *testing.T) {

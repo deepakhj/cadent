@@ -898,37 +898,31 @@ func (cass *CassandraMetric) RawRender(path string, start int64, end int64, tags
 		metrics = append(metrics, mets...)
 	}
 
-	rawd := make([]*RawRenderItem, len(metrics), len(metrics))
+	rawd := make([]*RawRenderItem, 0)
 
 	procs := CASSANDRA_DEFAULT_METRIC_RENDER_WORKERS
-	type FinderObj struct {
-		item *indexer.MetricFindItem
-		idx  int
-	}
-	type ResultObj struct {
-		item *RawRenderItem
-		idx  int
-	}
-	jobs := make(chan *FinderObj, procs)
-	results := make(chan *ResultObj, procs)
+
+	jobs := make(chan indexer.MetricFindItem, procs)
+	results := make(chan *RawRenderItem, procs)
 
 	// ye old fan out technique but not "too many" as to kill the server
 	render_one := func(jober int) {
 		for {
 			select {
-			case dooer, more := <-jobs:
+			case mets, more := <-jobs:
 				if !more {
 					return
 				}
 				go func() {
-					_ri, err := cass.RawRenderOne(dooer.item, start, end, resample)
+					_ri, err := cass.RawRenderOne(&mets, start, end, resample)
 
 					if err != nil {
+						stats.StatsdClientSlow.Incr("reader.cassandra.rawrender.errors", 1)
 						cass.writer.log.Errorf("Read Error for %s (%d->%d) : %v", path, start, end, err)
 						results <- nil
 						return
 					}
-					results <- &ResultObj{item: _ri, idx: dooer.idx}
+					results <- _ri
 					return
 				}()
 			}
@@ -948,12 +942,12 @@ func (cass *CassandraMetric) RawRender(path string, start int64, end int64, tags
 					return
 				}
 				if res != nil {
-					rawd[res.idx] = res.item
+					rawd = append(rawd, res)
 				}
 				render_wg.Done()
 
 			case <-time.After(cass.renderTimeout):
-				stats.StatsdClientSlow.Incr("reader.mysql.rawrender.timeouts", 1)
+				stats.StatsdClientSlow.Incr("reader.cassandra.rawrender.timeouts", 1)
 				cass.writer.log.Errorf("Render Timeout for %s (%d->%d)", path, start, end)
 				render_wg.Done()
 
@@ -962,9 +956,9 @@ func (cass *CassandraMetric) RawRender(path string, start int64, end int64, tags
 		}
 	}()
 
-	for idx, metric := range metrics {
+	for _, metric := range metrics {
 		render_wg.Add(1)
-		jobs <- &FinderObj{item: &metric, idx: idx}
+		jobs <- metric
 	}
 	render_wg.Wait()
 	close(jobs)

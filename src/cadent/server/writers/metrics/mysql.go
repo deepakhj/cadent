@@ -97,8 +97,8 @@ const (
 )
 
 // common errors to avoid GC pressure
-var errNotADataNode = errors.New("Mysql: Render: Not a data node")
-var errTimeTooSmall = errors.New("Mysql: Render: time too narrow")
+var errNotADataNode = errors.New("Render: Not a data node")
+var errTimeTooSmall = errors.New("Render: time too narrow")
 
 /************************************************************************/
 /**********  Standard Worker Dispatcher JOB   ***************************/
@@ -843,40 +843,36 @@ func (my *MySQLMetrics) RawRender(path string, from int64, to int64, tags repr.S
 		if err != nil {
 			continue
 		}
+		my.log.Critical("FIND: %s : %d", pth, len(mets))
 		metrics = append(metrics, mets...)
 	}
 
-	rawd := make([]*RawRenderItem, len(metrics), len(metrics))
+	rawd := make([]*RawRenderItem, 0)
 
 	procs := MYSQL_DEFAULT_METRIC_RENDER_WORKERS
-	type FinderObj struct {
-		item *indexer.MetricFindItem
-		idx  int
-	}
-	type ResultObj struct {
-		item *RawRenderItem
-		idx  int
-	}
-	jobs := make(chan *FinderObj, procs)
-	results := make(chan *ResultObj, procs)
+
+	jobs := make(chan indexer.MetricFindItem, procs)
+	results := make(chan *RawRenderItem, procs)
 
 	// ye old fan out technique but not "too many" as to kill the server
 	render_one := func(jober int) {
 		for {
 			select {
-			case dooer, more := <-jobs:
+			case met, more := <-jobs:
 				if !more {
 					return
 				}
 				go func() {
-					_ri, err := my.RawRenderOne(*dooer.item, from, to, resample)
+
+					_ri, err := my.RawRenderOne(met, from, to, resample)
 
 					if err != nil {
+						stats.StatsdClientSlow.Incr("reader.mysql.rawrender.errors", 1)
 						my.log.Error("Read Error for %s (%d->%d) : %v", path, from, to, err)
 						results <- nil
 						return
 					}
-					results <- &ResultObj{item: _ri, idx: dooer.idx}
+					results <- _ri
 				}()
 			}
 		}
@@ -895,7 +891,7 @@ func (my *MySQLMetrics) RawRender(path string, from int64, to int64, tags repr.S
 					return
 				}
 				if res != nil {
-					rawd[res.idx] = res.item
+					rawd = append(rawd, res)
 				}
 				render_wg.Done()
 
@@ -909,9 +905,9 @@ func (my *MySQLMetrics) RawRender(path string, from int64, to int64, tags repr.S
 		}
 	}()
 
-	for idx, metric := range metrics {
+	for _, metric := range metrics {
 		render_wg.Add(1)
-		jobs <- &FinderObj{item: &metric, idx: idx}
+		jobs <- metric
 	}
 	render_wg.Wait()
 	close(jobs)
