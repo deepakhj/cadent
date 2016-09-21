@@ -565,7 +565,7 @@ func (my *MySQLMetrics) GetFromReadCache(metric string, start int64, end int64) 
 }
 
 // grab the time series from the DBs
-func (my *MySQLMetrics) GetFromDatabase(metric *indexer.MetricFindItem, resolution uint32, start int64, end int64) (rawd *RawRenderItem, err error) {
+func (my *MySQLMetrics) GetFromDatabase(metric *indexer.MetricFindItem, resolution uint32, start int64, end int64, resample uint32) (rawd *RawRenderItem, err error) {
 	// i.e metrics_5s
 	t_name := my.db.RootMetricsTableName()
 	rawd = new(RawRenderItem)
@@ -618,24 +618,56 @@ func (my *MySQLMetrics) GetFromDatabase(metric *indexer.MetricFindItem, resoluti
 			return rawd, err
 		}
 
+		t_start := uint32(0)
+		var cur_pt RawDataPoint
+		// on resamples (if >0 ) we simply merge points until we hit the steps
+		do_resample := resample > 0 && resample > resolution
 		for s_iter.Next() {
 			to, mi, mx, ls, su, ct := s_iter.Values()
 
 			t := uint32(time.Unix(0, to).Unix())
-
 			// skip if not in range
 			if t > u_end || t < u_start {
 				continue
 			}
 
-			rawd.Data = append(rawd.Data, RawDataPoint{
-				Count: ct,
-				Sum:   su,
-				Max:   mx,
-				Min:   mi,
-				Last:  ls,
-				Time:  t,
-			})
+			if t_start == 0 {
+				t_start = uint32(t)
+				cur_pt = NullRawDataPoint(t)
+			}
+
+			if do_resample {
+				if t >= t_start+resample {
+					t_start += resample
+					rawd.Data = append(rawd.Data, cur_pt)
+					cur_pt = RawDataPoint{
+						Count: ct,
+						Sum:   su,
+						Max:   mx,
+						Min:   mi,
+						Last:  ls,
+						Time:  t,
+					}
+				} else {
+					cur_pt.Merge(&RawDataPoint{
+						Count: ct,
+						Sum:   su,
+						Max:   mx,
+						Min:   mi,
+						Last:  ls,
+						Time:  t,
+					})
+				}
+			} else {
+				rawd.Data = append(rawd.Data, RawDataPoint{
+					Count: ct,
+					Sum:   su,
+					Max:   mx,
+					Min:   mi,
+					Last:  ls,
+					Time:  t,
+				})
+			}
 
 			if rawd.RealEnd < t {
 				rawd.RealEnd = t
@@ -644,6 +676,10 @@ func (my *MySQLMetrics) GetFromDatabase(metric *indexer.MetricFindItem, resoluti
 				rawd.RealStart = t
 			}
 		}
+		if !cur_pt.IsNull() {
+			rawd.Data = append(rawd.Data, cur_pt)
+		}
+
 		if s_iter.Error() != nil {
 			return rawd, s_iter.Error()
 		}
@@ -694,11 +730,16 @@ func (my *MySQLMetrics) GetFromWriteCache(metric *indexer.MetricFindItem, start 
 	return inflight, nil
 }
 
-func (my *MySQLMetrics) RawDataRenderOne(metric *indexer.MetricFindItem, start int64, end int64) (*RawRenderItem, error) {
+func (my *MySQLMetrics) RawDataRenderOne(metric *indexer.MetricFindItem, start int64, end int64, resample uint32) (*RawRenderItem, error) {
 	defer stats.StatsdSlowNanoTimeFunc("reader.mysql.renderraw.get-time-ns", time.Now())
 	rawd := new(RawRenderItem)
 
 	resolution := my.getResolution(start, end)
+	out_resolution := resolution
+	//obey the bigger
+	if resample > resolution {
+		out_resolution = resample
+	}
 
 	start = TruncateTimeTo(start, int(resolution))
 	end = TruncateTimeTo(end, int(resolution))
@@ -734,8 +775,8 @@ func (my *MySQLMetrics) RawDataRenderOne(metric *indexer.MetricFindItem, start i
 	if inflight != nil && err == nil && len(inflight.Data) > 1 {
 		// if all the data is in this list we don't need to go any further
 		if inflight.RealStart <= u_start {
-			if inflight.Step != resolution {
-				inflight.Resample(resolution)
+			if inflight.Step != out_resolution {
+				inflight.Resample(out_resolution)
 			}
 			stats.StatsdClientSlow.Incr("reader.mysql.renderraw.inflight.total", 1)
 			return inflight, err
@@ -746,13 +787,13 @@ func (my *MySQLMetrics) RawDataRenderOne(metric *indexer.MetricFindItem, start i
 	}
 
 	// and now for the mysql Query otherwise
-	mysql_data, err := my.GetFromDatabase(metric, resolution, start, end)
+	mysql_data, err := my.GetFromDatabase(metric, resolution, start, end, resample)
 	if err != nil {
 		my.log.Errorf("Mysql: Error getting from DB: %v", err)
 		return rawd, err
 	}
 
-	mysql_data.Step = resolution
+	mysql_data.Step = out_resolution
 	mysql_data.Start = u_start
 	mysql_data.End = u_end
 	mysql_data.Tags = metric.Tags
@@ -766,7 +807,7 @@ func (my *MySQLMetrics) RawDataRenderOne(metric *indexer.MetricFindItem, start i
 	if len(mysql_data.Data) > 0 && len(inflight.Data) > 0 {
 		//inflight.Quantize()
 		//mysql_data.Quantize()
-		inflight.MergeWithResample(mysql_data, resolution)
+		inflight.MergeWithResample(mysql_data, out_resolution)
 
 		/*oo_data := inflight.Data[0:]
 		for idx, d := range oo_data {
@@ -775,19 +816,19 @@ func (my *MySQLMetrics) RawDataRenderOne(metric *indexer.MetricFindItem, start i
 		*/
 		return inflight, nil
 	}
-	if inflight.Step != resolution {
-		inflight.Resample(resolution)
+	if inflight.Step != out_resolution {
+		inflight.Resample(out_resolution)
 	}
 	return inflight, nil
 }
 
 // after the "raw" render we need to yank just the "point" we need from the data which
 // will make the read-cache much smaller (will compress just the Mean value as the count is 1)
-func (my *MySQLMetrics) RawRenderOne(metric indexer.MetricFindItem, from int64, to int64) (*RawRenderItem, error) {
-	return my.RawDataRenderOne(&metric, from, to)
+func (my *MySQLMetrics) RawRenderOne(metric indexer.MetricFindItem, from int64, to int64, resample uint32) (*RawRenderItem, error) {
+	return my.RawDataRenderOne(&metric, from, to, resample)
 }
 
-func (my *MySQLMetrics) RawRender(path string, from int64, to int64, tags repr.SortingTags) ([]*RawRenderItem, error) {
+func (my *MySQLMetrics) RawRender(path string, from int64, to int64, tags repr.SortingTags, resample uint32) ([]*RawRenderItem, error) {
 	defer stats.StatsdSlowNanoTimeFunc("reader.mysql.rawrender.get-time-ns", time.Now())
 
 	paths := strings.Split(path, ",")
@@ -812,7 +853,7 @@ func (my *MySQLMetrics) RawRender(path string, from int64, to int64, tags repr.S
 		done := make(chan bool, 1)
 
 		go func() {
-			_ri, err := my.RawRenderOne(metric, from, to)
+			_ri, err := my.RawRenderOne(metric, from, to, resample)
 
 			if err != nil {
 				my.log.Error("Read Error for %s (%s->%s) : %v", path, from, to, err)

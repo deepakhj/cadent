@@ -747,8 +747,8 @@ func (r *RawRenderItem) Merge(m *RawRenderItem) error {
 		}
 	}
 
-	r.Tags.Merge(m.Tags)
-	r.MetaTags.Merge(m.MetaTags)
+	r.Tags = r.Tags.Merge(m.Tags)
+	r.MetaTags = r.MetaTags.Merge(m.MetaTags)
 	return nil
 }
 
@@ -801,6 +801,9 @@ func (r *RawRenderItem) MergeAndAggregate(m *RawRenderItem) error {
 			r.Data[i].Merge(&m.Data[i])
 		}
 	}
+	r.Tags = r.Tags.Merge(m.Tags)
+	r.MetaTags = r.MetaTags.Merge(m.MetaTags)
+
 	return nil
 }
 
@@ -881,6 +884,9 @@ func (r *RawRenderItem) MergeWithResample(d *RawRenderItem, step uint32) error {
 	r.End = endTime
 	r.RealEnd = endTime
 	r.Data = data
+	r.Tags = r.Tags.Merge(d.Tags)
+	r.MetaTags = r.MetaTags.Merge(d.MetaTags)
+
 	return nil
 
 }

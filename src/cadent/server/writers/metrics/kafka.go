@@ -341,7 +341,7 @@ func (kf *KafkaMetrics) GetFromWriteCache(metric *repr.StatName, start uint32, e
 
 // needed to match interface, but we obviously cannot do this
 
-func (kf *KafkaMetrics) RawRender(path string, from int64, to int64, tags repr.SortingTags) ([]*RawRenderItem, error) {
+func (kf *KafkaMetrics) RawRender(path string, from int64, to int64, tags repr.SortingTags, resample uint32) ([]*RawRenderItem, error) {
 	return []*RawRenderItem{}, errKafkaReaderNotImplimented
 }
 

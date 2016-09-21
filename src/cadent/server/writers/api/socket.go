@@ -86,7 +86,7 @@ func (re *MetricsSocket) MetricSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data, err := re.Metrics.RawRender(args.Target, args.Start, args.End, args.Tags)
+	data, err := re.Metrics.RawRender(args.Target, args.Start, args.End, args.Tags, args.Step)
 	if err != nil {
 		c.WriteMessage(websocket.CloseMessage, []byte(fmt.Sprintf("%d%v", http.StatusServiceUnavailable, err)))
 		re.a.OutError(w, fmt.Sprintf("%v", err), http.StatusServiceUnavailable)

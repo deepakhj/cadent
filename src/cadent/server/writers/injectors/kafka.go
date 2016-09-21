@@ -49,8 +49,8 @@ type Kafka struct {
 	ConsumerGroup string
 	Brokers       string
 	StartOffset   string
-	EncodingType  schemas.KafkaEncodingType
-	MessageType   schemas.KafkaMessageType
+	EncodingType  schemas.SendEncoding
+	MessageType   schemas.MessageType
 
 	Cluster  *cluster.Consumer
 	Config   *cluster.Config
@@ -79,8 +79,8 @@ func NewKafka(name string) *Kafka {
 func (kf *Kafka) Config(conf options.Options) (err error) {
 	kf.Topic = conf.String("topic", "cadent")
 	kf.ConsumerGroup = conf.String("group", "cadent-"+kf.Name)
-	kf.EncodingType = schemas.KafkaEncodingFromString(conf.String("encoding", "msgpack"))
-	kf.MessageType = schemas.KafkaMessageFromString(conf.String("message_type", "series"))
+	kf.EncodingType = schemas.SendEncodingFromString(conf.String("encoding", "msgpack"))
+	kf.MessageType = schemas.MetricTypeFromString(conf.String("message_type", "series"))
 	kf.StartOffset = conf.String("starting_offset", "newest")
 	kf.Brokers, err = conf.StringRequired("dsn")
 
@@ -198,7 +198,7 @@ func (kf *Kafka) onConsume() {
 				return
 			}
 			kf.log.Debug("Got message from %s: partition: %d, offset: %d", msg.Topic, msg.Partition, msg.Offset)
-			new_obj := schemas.MetricTypeFromString(kf.MessageType)
+			new_obj := schemas.MetricObjectFromType(kf.MessageType)
 			err := new_obj.Decode(msg.Value)
 			if err != nil {
 				kf.log.Errorf("Counld not process incoming message: %v", err)

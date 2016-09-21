@@ -637,7 +637,7 @@ func (cass *CassandraMetric) GetFromReadCache(metric string, start int64, end in
 }
 
 // grab the time series from the DBs
-func (cass *CassandraMetric) GetFromDatabase(metric *indexer.MetricFindItem, resolution uint32, start int64, end int64) (rawd *RawRenderItem, err error) {
+func (cass *CassandraMetric) GetFromDatabase(metric *indexer.MetricFindItem, resolution uint32, start int64, end int64, resample uint32) (rawd *RawRenderItem, err error) {
 	defer stats.StatsdSlowNanoTimeFunc("reader.cassandra.database.get-time-ns", time.Now())
 	rawd = new(RawRenderItem)
 
@@ -671,6 +671,11 @@ func (cass *CassandraMetric) GetFromDatabase(metric *indexer.MetricFindItem, res
 	var p_type uint8
 	var p_bytes []byte
 
+	t_start := uint32(0)
+	var cur_pt RawDataPoint
+	// on resamples (if >0 ) we simply merge points until we hit the steps
+	do_resample := resample > 0 && resample > resolution
+
 	for iter.Scan(&p_type, &p_bytes) {
 		s_name := series.NameFromId(p_type)
 		s_iter, err := series.NewIter(s_name, p_bytes)
@@ -688,14 +693,43 @@ func (cass *CassandraMetric) GetFromDatabase(metric *indexer.MetricFindItem, res
 				continue
 			}
 
-			rawd.Data = append(rawd.Data, RawDataPoint{
-				Count: ct,
-				Sum:   su,
-				Max:   mx,
-				Min:   mi,
-				Last:  ls,
-				Time:  t,
-			})
+			if t_start == 0 {
+				t_start = uint32(t)
+				cur_pt = NullRawDataPoint(t)
+			}
+
+			if do_resample {
+				if t >= t_start+resample {
+					t_start += resample
+					rawd.Data = append(rawd.Data, cur_pt)
+					cur_pt = RawDataPoint{
+						Count: ct,
+						Sum:   su,
+						Max:   mx,
+						Min:   mi,
+						Last:  ls,
+						Time:  t,
+					}
+				} else {
+					cur_pt.Merge(&RawDataPoint{
+						Count: ct,
+						Sum:   su,
+						Max:   mx,
+						Min:   mi,
+						Last:  ls,
+						Time:  t,
+					})
+				}
+			} else {
+				rawd.Data = append(rawd.Data, RawDataPoint{
+					Count: ct,
+					Sum:   su,
+					Max:   mx,
+					Min:   mi,
+					Last:  ls,
+					Time:  t,
+				})
+			}
 
 			if rawd.RealEnd < t {
 				rawd.RealEnd = t
@@ -703,6 +737,9 @@ func (cass *CassandraMetric) GetFromDatabase(metric *indexer.MetricFindItem, res
 			if rawd.RealStart > t || rawd.RealStart == 0 {
 				rawd.RealStart = t
 			}
+		}
+		if !cur_pt.IsNull() {
+			rawd.Data = append(rawd.Data, cur_pt)
 		}
 		if s_iter.Error() != nil {
 			return rawd, s_iter.Error()
@@ -750,12 +787,18 @@ func (cass *CassandraMetric) GetFromWriteCache(metric *indexer.MetricFindItem, s
 	return inflight, nil
 }
 
-func (cass *CassandraMetric) RawDataRenderOne(metric *indexer.MetricFindItem, start int64, end int64) (*RawRenderItem, error) {
+func (cass *CassandraMetric) RawDataRenderOne(metric *indexer.MetricFindItem, start int64, end int64, resample uint32) (*RawRenderItem, error) {
 	defer stats.StatsdSlowNanoTimeFunc("reader.cassandra.rawrenderone.get-time-ns", time.Now())
 	rawd := new(RawRenderItem)
 
 	//figure out the best res
 	resolution := cass.getResolution(start, end)
+	out_resolution := resolution
+
+	//obey the bigger
+	if resample > resolution {
+		out_resolution = resample
+	}
 
 	start = TruncateTimeTo(start, int(resolution))
 	end = TruncateTimeTo(end, int(resolution))
@@ -763,7 +806,7 @@ func (cass *CassandraMetric) RawDataRenderOne(metric *indexer.MetricFindItem, st
 	u_start := uint32(start)
 	u_end := uint32(end)
 
-	rawd.Step = resolution
+	rawd.Step = out_resolution
 	rawd.Metric = metric.Path
 	rawd.Id = metric.UniqueId
 	rawd.RealEnd = u_end
@@ -792,8 +835,8 @@ func (cass *CassandraMetric) RawDataRenderOne(metric *indexer.MetricFindItem, st
 		// if all the data is in this list we don't need to go any further
 		if inflight.RealStart <= u_start {
 			// move the times to the "requested" ones and quantize the list
-			if inflight.Step != resolution {
-				inflight.Resample(resolution)
+			if inflight.Step != out_resolution {
+				inflight.Resample(out_resolution)
 			}
 			return inflight, err
 		}
@@ -803,13 +846,13 @@ func (cass *CassandraMetric) RawDataRenderOne(metric *indexer.MetricFindItem, st
 	}
 
 	// and now for the mysql Query otherwise
-	cass_data, err := cass.GetFromDatabase(metric, resolution, start, end)
+	cass_data, err := cass.GetFromDatabase(metric, resolution, start, end, resample)
 	if err != nil {
 		cass.writer.log.Error("Cassandra: Error getting from DB: %v", err)
 		return rawd, err
 	}
 
-	cass_data.Step = resolution
+	cass_data.Step = out_resolution
 	cass_data.Start = u_start
 	cass_data.End = u_end
 	cass_data.Tags = metric.Tags
@@ -820,22 +863,22 @@ func (cass *CassandraMetric) RawDataRenderOne(metric *indexer.MetricFindItem, st
 	}
 
 	if len(cass_data.Data) > 0 && len(inflight.Data) > 0 {
-		inflight.MergeWithResample(cass_data, resolution)
+		inflight.MergeWithResample(cass_data, out_resolution)
 		return inflight, nil
 	}
-	if inflight.Step != resolution {
-		inflight.Resample(resolution)
+	if inflight.Step != out_resolution {
+		inflight.Resample(out_resolution)
 	}
 	return inflight, nil
 }
 
 // after the "raw" render we need to yank just the "point" we need from the data which
 // will make the read-cache much smaller (will compress just the Mean value as the count is 1)
-func (cass *CassandraMetric) RawRenderOne(metric *indexer.MetricFindItem, from int64, to int64) (*RawRenderItem, error) {
-	return cass.RawDataRenderOne(metric, from, to)
+func (cass *CassandraMetric) RawRenderOne(metric *indexer.MetricFindItem, from int64, to int64, resample uint32) (*RawRenderItem, error) {
+	return cass.RawDataRenderOne(metric, from, to, resample)
 }
 
-func (cass *CassandraMetric) RawRender(path string, start int64, end int64, tags repr.SortingTags) ([]*RawRenderItem, error) {
+func (cass *CassandraMetric) RawRender(path string, start int64, end int64, tags repr.SortingTags, resample uint32) ([]*RawRenderItem, error) {
 
 	defer stats.StatsdSlowNanoTimeFunc("reader.cassandra.rawrender.get-time-ns", time.Now())
 
@@ -863,10 +906,10 @@ func (cass *CassandraMetric) RawRender(path string, start int64, end int64, tags
 		done := make(chan bool, 1)
 
 		go func() {
-			_ri, err := cass.RawRenderOne(&onmetric, start, end)
+			_ri, err := cass.RawRenderOne(&onmetric, start, end, resample)
 
 			if err != nil {
-				cass.writer.log.Error("Read Error for %s (%s->%s) : %v", path, start, end, err)
+				cass.writer.log.Error("Read Error for %s (%d->%d) : %v", path, start, end, err)
 				return
 			}
 			rawd[idx] = _ri

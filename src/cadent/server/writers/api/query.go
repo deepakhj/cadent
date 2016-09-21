@@ -31,6 +31,8 @@ import (
 	"strings"
 )
 
+const MAX_METRIC_POINTS uint64 = 20480
+
 var errTargetRequired = errors.New("Target is required")
 var errInvalidStep = errors.New("Invalid `step` size")
 var errInvalidMaxPts = errors.New("Invalid `max_points` size")
@@ -227,6 +229,18 @@ func ParseMetricQuery(r *http.Request) (mq MetricQuery, err error) {
 		if err != nil {
 			return mq, errInvalidMaxPts
 		}
+		// if maxPoints, need to resample to fit things if data
+		t_step := uint64(end-start) / maxpts
+		if t_step > step {
+			step = t_step
+		}
+
+	}
+
+	// finally limit the number of points that can be returned
+	on_pts := uint64(end-start) / step
+	if on_pts > MAX_METRIC_POINTS {
+		step = uint64(end-start) / MAX_METRIC_POINTS
 	}
 
 	return MetricQuery{

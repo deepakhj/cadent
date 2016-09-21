@@ -127,7 +127,7 @@ func (re *MetricsAPI) GraphiteRender(w http.ResponseWriter, r *http.Request) {
 		re.a.OutError(w, fmt.Sprintf("%v", err), http.StatusBadRequest)
 	}
 
-	data, err := re.Metrics.RawRender(args.Target, args.Start, args.End, args.Tags)
+	data, err := re.Metrics.RawRender(args.Target, args.Start, args.End, args.Tags, args.Step)
 	if err != nil {
 		stats.StatsdClientSlow.Incr("reader.http.graphite-render.errors", 1)
 		re.a.OutError(w, fmt.Sprintf("%v", err), http.StatusServiceUnavailable)
@@ -139,16 +139,6 @@ func (re *MetricsAPI) GraphiteRender(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resample := args.Step
-
-	// if maxPoints, need to resample to fit things if data
-	if args.MaxPoints > 0 {
-		resample = uint32(args.End-args.Start) / args.MaxPoints
-		// obey step if bigger
-		if resample < args.Step && args.Step > 0 {
-			resample = args.Step
-		}
-	}
 	for idx := range data {
 		if data == nil {
 			continue
@@ -156,12 +146,8 @@ func (re *MetricsAPI) GraphiteRender(w http.ResponseWriter, r *http.Request) {
 		// graphite needs the "nils" and expects a "full list" to match the step + start/end
 		data[idx].Start = uint32(args.Start)
 		data[idx].End = uint32(args.End)
-		if resample > 0 {
-			data[idx].ResampleAndQuantize(resample)
-		} else {
-			data[idx].Quantize()
+		data[idx].Quantize()
 
-		}
 	}
 	render_data := re.ToGraphiteApiRender(data)
 
@@ -182,7 +168,7 @@ func (re *MetricsAPI) Render(w http.ResponseWriter, r *http.Request) {
 		re.a.OutError(w, fmt.Sprintf("%v", err), http.StatusBadRequest)
 	}
 
-	data, err := re.Metrics.RawRender(args.Target, args.Start, args.End, args.Tags)
+	data, err := re.Metrics.RawRender(args.Target, args.Start, args.End, args.Tags, args.Step)
 	if err != nil {
 		stats.StatsdClientSlow.Incr("reader.http.render.errors", 1)
 		re.a.OutError(w, fmt.Sprintf("%v", err), http.StatusServiceUnavailable)
@@ -194,27 +180,11 @@ func (re *MetricsAPI) Render(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resample := args.Step
-
-	// if maxPoints, need to resample to fit things if data
-	if args.MaxPoints > 0 {
-		resample = uint32(args.End-args.Start) / args.MaxPoints
-		// obey step if bigger
-		if resample < args.Step && args.Step > 0 {
-			resample = args.Step
-		}
-	}
-
 	for idx := range data {
 		// graphite needs the "nils" and expects a "full list" to match the step + start/end
 		data[idx].Start = uint32(args.Start)
 		data[idx].End = uint32(args.End)
-		if resample > 0 {
-			data[idx].ResampleAndQuantize(resample)
-		} else {
-			data[idx].Quantize()
-
-		}
+		data[idx].Quantize()
 	}
 	render_data := re.ToGraphiteRender(data)
 
@@ -235,7 +205,7 @@ func (re *MetricsAPI) RawRender(w http.ResponseWriter, r *http.Request) {
 		re.a.OutError(w, fmt.Sprintf("%v", err), http.StatusBadRequest)
 	}
 
-	data, err := re.Metrics.RawRender(args.Target, args.Start, args.End, args.Tags)
+	data, err := re.Metrics.RawRender(args.Target, args.Start, args.End, args.Tags, args.Step)
 	if err != nil {
 		stats.StatsdClientSlow.Incr("reader.http.rawrender.error", 1)
 		re.a.OutError(w, fmt.Sprintf("%v", err), http.StatusServiceUnavailable)

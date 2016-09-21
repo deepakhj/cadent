@@ -252,7 +252,7 @@ func (my *MySQLFlatMetrics) Write(stat repr.StatRepr) error {
 /**** READER ***/
 // XXX TODO
 
-func (my *MySQLFlatMetrics) RawRender(path string, from int64, to int64, tags repr.SortingTags) ([]*RawRenderItem, error) {
+func (my *MySQLFlatMetrics) RawRender(path string, from int64, to int64, tags repr.SortingTags, resample uint32) ([]*RawRenderItem, error) {
 	return []*RawRenderItem{}, fmt.Errorf("MYSQL READER NOT YET DONE")
 }
 func (my *MySQLFlatMetrics) CacheRender(path string, from int64, to int64, tags repr.SortingTags) ([]*RawRenderItem, error) {

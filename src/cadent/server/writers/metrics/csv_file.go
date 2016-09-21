@@ -216,7 +216,7 @@ func (fi *CSVFileMetrics) Write(stat repr.StatRepr) error {
 
 /**** READER ***/
 
-func (fi *CSVFileMetrics) RawRender(path string, from int64, to int64, tags repr.SortingTags) ([]*RawRenderItem, error) {
+func (fi *CSVFileMetrics) RawRender(path string, from int64, to int64, tags repr.SortingTags, resample uint32) ([]*RawRenderItem, error) {
 	return nil, errFileReaderNotImplemented
 }
 func (fi *CSVFileMetrics) CacheRender(path string, from int64, to int64, tags repr.SortingTags) ([]*RawRenderItem, error) {

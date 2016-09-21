@@ -297,6 +297,9 @@ func (wc *Cacher) IsPrimaryWriter(mw Metrics) bool {
 }
 
 func (wc *Cacher) Len() int {
+	if wc.mu == nil {
+		return 0 // means we've not "started"
+	}
 	wc.mu.RLock()
 	defer wc.mu.RUnlock()
 	return len(wc.Cache)

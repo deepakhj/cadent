@@ -74,7 +74,7 @@ type Metrics interface {
 	// Writer
 	Write(repr.StatRepr) error
 
-	RawRender(path string, from int64, to int64, tags repr.SortingTags) ([]*RawRenderItem, error)
+	RawRender(path string, from int64, to int64, tags repr.SortingTags, resample uint32) ([]*RawRenderItem, error)
 
 	// just get data in the write-back caches
 	CacheRender(path string, from int64, to int64, tags repr.SortingTags) ([]*RawRenderItem, error)
