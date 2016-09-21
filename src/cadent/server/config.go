@@ -23,6 +23,7 @@ import (
 	"cadent/server/prereg"
 	"cadent/server/stats"
 	"cadent/server/utils/tomlenv"
+	"encoding/json"
 	"fmt"
 	logging "gopkg.in/op/go-logging.v1"
 	"math"
@@ -150,6 +151,15 @@ type Config struct {
 
 	//this config can be used as a server list
 	OkToUse bool `toml:"-" json:"-"`
+}
+
+func (c *Config) ToJson() ([]byte, error) {
+	return json.Marshal(c)
+}
+
+func (c *Config) String() string {
+	j, _ := json.Marshal(c)
+	return string(j)
 }
 
 const (

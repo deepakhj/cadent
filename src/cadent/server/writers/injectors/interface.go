@@ -27,7 +27,6 @@ limitations under the License.
 package injectors
 
 import (
-	"cadent/server/repr"
 	"cadent/server/utils/options"
 	"cadent/server/writers"
 )

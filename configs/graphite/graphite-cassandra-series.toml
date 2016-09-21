@@ -25,7 +25,7 @@ default_backend="graphite-proxy"  # failing a match go here
     [[graphite-proxy-map.accumulator.writer.caches]]
         name="gorilla"
         series_encoding="gorilla"
-        bytes_per_metric=1024
+        bytes_per_metric=2048
         max_metrics=1024000  # for 1 million points @ 1024 b you'll need lots o ram
         # max_time_in_cache="2m" # force a cache flush for metrics in ram longer then this number
         # broadcast_length="128" # buffer channel for pushed overflow writes

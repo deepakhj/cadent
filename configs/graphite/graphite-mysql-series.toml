@@ -18,8 +18,6 @@ default_backend="graphite-proxy"  # failing a match go here
     output_format = "graphite"
     random_ticker_start = false
 
-    [[statsd-proxy-map.map]]
-        noop="true"
 
 [graphite-proxy-map]
 listen_server="graphite-proxy" # which listener to sit in front of  (must be in the main config)

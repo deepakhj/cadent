@@ -102,11 +102,12 @@ import (
 )
 
 const (
-	CASSANDRA_DEFAULT_RENDER_TIMEOUT   = "5s"
-	CASSANDRA_DEFAULT_ROLLUP_TYPE      = "cached"
-	CASSANDRA_DEFAULT_METRIC_WORKERS   = 16
-	CASSANDRA_DEFAULT_METRIC_QUEUE_LEN = 1024 * 100
-	CASSANDRA_DEFAULT_METRIC_RETRIES   = 2
+	CASSANDRA_DEFAULT_RENDER_TIMEOUT        = "5s"
+	CASSANDRA_DEFAULT_ROLLUP_TYPE           = "cached"
+	CASSANDRA_DEFAULT_METRIC_WORKERS        = 16
+	CASSANDRA_DEFAULT_METRIC_QUEUE_LEN      = 1024 * 100
+	CASSANDRA_DEFAULT_METRIC_RETRIES        = 2
+	CASSANDRA_DEFAULT_METRIC_RENDER_WORKERS = 4
 )
 
 /*** set up "one" real writer (per dsn) .. need just a single cassandra DB connection for all the time resoltuions
@@ -899,41 +900,75 @@ func (cass *CassandraMetric) RawRender(path string, start int64, end int64, tags
 
 	rawd := make([]*RawRenderItem, len(metrics), len(metrics))
 
-	// ye old fan out technique
-	render_one := func(onmetric indexer.MetricFindItem, idx int) {
-		defer render_wg.Done()
-		timeout := time.NewTimer(cass.renderTimeout)
-		done := make(chan bool, 1)
+	procs := CASSANDRA_DEFAULT_METRIC_RENDER_WORKERS
+	type FinderObj struct {
+		item *indexer.MetricFindItem
+		idx  int
+	}
+	type ResultObj struct {
+		item *RawRenderItem
+		idx  int
+	}
+	jobs := make(chan *FinderObj, procs)
+	results := make(chan *ResultObj, procs)
 
-		go func() {
-			_ri, err := cass.RawRenderOne(&onmetric, start, end, resample)
-
-			if err != nil {
-				cass.writer.log.Error("Read Error for %s (%d->%d) : %v", path, start, end, err)
-				return
-			}
-			rawd[idx] = _ri
-			done <- true
-		}()
-
+	// ye old fan out technique but not "too many" as to kill the server
+	render_one := func(jober int) {
 		for {
 			select {
-			case <-timeout.C:
-				cass.writer.log.Error("Render Timeout for %s (%d->%d)", path, start, end)
-				timeout.Stop()
-				return
-			case <-done:
+			case dooer, more := <-jobs:
+				if !more {
+					return
+				}
+				go func() {
+					_ri, err := cass.RawRenderOne(dooer.item, start, end, resample)
+
+					if err != nil {
+						cass.writer.log.Errorf("Read Error for %s (%d->%d) : %v", path, start, end, err)
+						results <- nil
+						return
+					}
+					results <- &ResultObj{item: _ri, idx: dooer.idx}
+					return
+				}()
+			}
+		}
+		return
+	}
+
+	for i := 0; i < procs; i++ {
+		go render_one(i)
+	}
+
+	go func() {
+		for {
+			select {
+			case res, more := <-results:
+				if !more {
+					return
+				}
+				if res != nil {
+					rawd[res.idx] = res.item
+				}
+				render_wg.Done()
+
+			case <-time.After(cass.renderTimeout):
+				stats.StatsdClientSlow.Incr("reader.mysql.rawrender.timeouts", 1)
+				cass.writer.log.Errorf("Render Timeout for %s (%d->%d)", path, start, end)
+				render_wg.Done()
+
 				return
 			}
 		}
+	}()
 
-	}
-
-	for idx, onm := range metrics {
+	for idx, metric := range metrics {
 		render_wg.Add(1)
-		go render_one(onm, idx)
+		jobs <- &FinderObj{item: &metric, idx: idx}
 	}
 	render_wg.Wait()
+	close(jobs)
+	close(results)
 	return rawd, nil
 }
 

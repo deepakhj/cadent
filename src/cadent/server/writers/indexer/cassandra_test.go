@@ -23,6 +23,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"testing"
+	"cadent/server/repr"
 )
 
 func TestCassandraReader(t *testing.T) {
@@ -41,18 +42,19 @@ func TestCassandraReader(t *testing.T) {
 
 	reader := NewCassandraIndexer()
 	reader.Config(t_config)
+	tags := repr.SortingTags{}
 
-	data, err := reader.Find("consthash.zipperwork.local")
+	data, err := reader.Find("consthash.zipperwork.local", tags)
 	js, _ := json.Marshal(data)
 	t.Logf("consthash.zipperwork.local: %v", prettyprint(js))
 	t.Logf("ERR: %v", err)
 
-	data, err = reader.Find("consthash.zipperwork.local.*")
+	data, err = reader.Find("consthash.zipperwork.local.*", tags)
 	js, _ = json.Marshal(data)
 	t.Logf("consthash.zipperwork.local.*: %v", prettyprint(js))
 	t.Logf("ERR: %v", err)
 
-	data, err = reader.Find("consthash.zipperwork.local.a[a-z]*")
+	data, err = reader.Find("consthash.zipperwork.local.a[a-z]*", tags)
 	js, _ = json.Marshal(data)
 	t.Logf("consthash.zipperwork.local.a[a-z]*: %v", prettyprint(js))
 	t.Logf("ERR: %v", err)

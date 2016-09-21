@@ -50,7 +50,8 @@ default_backend="graphite-proxy"  # failing a match go here
     # no need to index for whisper style, as it's just "on the file system" globs
     #  see api.indexer section
     [graphite-proxy-map.accumulator.writer.indexer]
-        driver = "noop"
+        driver = "leveldb"
+        dsn = "/tmp/graphite/idx"
 
 
     # Render http APIs

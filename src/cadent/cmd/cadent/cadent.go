@@ -292,14 +292,15 @@ func main() {
 	}
 
 	if def.Profile {
-		log.Notice("Starting Profiler on %s", def.HealthServerBind)
 		if def.ProfileRate > 0 {
 			runtime.SetCPUProfileRate(def.ProfileRate)
 			runtime.MemProfileRate = def.ProfileRate
 		}
 		if len(def.ProfileBind) > 0 {
+			log.Notice("Starting Profiler on %s", def.ProfileBind)
 			go http.ListenAndServe(def.ProfileBind, nil)
 		} else if len(def.HealthServerBind) > 0 {
+			log.Notice("Starting Profiler on %s", def.HealthServerBind)
 			go http.ListenAndServe(def.HealthServerBind, nil)
 
 		}

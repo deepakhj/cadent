@@ -87,12 +87,13 @@ import (
 )
 
 const (
-	MYSQL_RENDER_TIMEOUT           = "5s" // 5 second time out on any render
-	MYSQL_DEFAULT_ROLLUP_TYPE      = "cached"
-	MYSQL_DEFAULT_METRIC_WORKERS   = 16
-	MYSQL_DEFAULT_METRIC_QUEUE_LEN = 1024 * 100
-	MYSQL_DEFAULT_METRIC_RETRIES   = 2
-	MYSQL_DEFAULT_EXPIRE_TICK      = "3m"
+	MYSQL_RENDER_TIMEOUT                = "5s" // 5 second time out on any render
+	MYSQL_DEFAULT_ROLLUP_TYPE           = "cached"
+	MYSQL_DEFAULT_METRIC_WORKERS        = 16
+	MYSQL_DEFAULT_METRIC_QUEUE_LEN      = 1024 * 100
+	MYSQL_DEFAULT_METRIC_RETRIES        = 2
+	MYSQL_DEFAULT_METRIC_RENDER_WORKERS = 4
+	MYSQL_DEFAULT_EXPIRE_TICK           = "3m"
 )
 
 // common errors to avoid GC pressure
@@ -847,40 +848,74 @@ func (my *MySQLMetrics) RawRender(path string, from int64, to int64, tags repr.S
 
 	rawd := make([]*RawRenderItem, len(metrics), len(metrics))
 
-	// ye old fan out technique
-	render_one := func(metric indexer.MetricFindItem, idx int) {
-		defer render_wg.Done()
-		done := make(chan bool, 1)
+	procs := MYSQL_DEFAULT_METRIC_RENDER_WORKERS
+	type FinderObj struct {
+		item *indexer.MetricFindItem
+		idx  int
+	}
+	type ResultObj struct {
+		item *RawRenderItem
+		idx  int
+	}
+	jobs := make(chan *FinderObj, procs)
+	results := make(chan *ResultObj, procs)
 
-		go func() {
-			_ri, err := my.RawRenderOne(metric, from, to, resample)
-
-			if err != nil {
-				my.log.Error("Read Error for %s (%s->%s) : %v", path, from, to, err)
-				return
-			}
-			rawd[idx] = _ri
-			done <- true
-		}()
-
+	// ye old fan out technique but not "too many" as to kill the server
+	render_one := func(jober int) {
 		for {
 			select {
+			case dooer, more := <-jobs:
+				if !more {
+					return
+				}
+				go func() {
+					_ri, err := my.RawRenderOne(*dooer.item, from, to, resample)
+
+					if err != nil {
+						my.log.Error("Read Error for %s (%d->%d) : %v", path, from, to, err)
+						results <- nil
+						return
+					}
+					results <- &ResultObj{item: _ri, idx: dooer.idx}
+				}()
+			}
+		}
+		return
+	}
+
+	for i := 0; i < procs; i++ {
+		go render_one(i)
+	}
+
+	go func() {
+		for {
+			select {
+			case res, more := <-results:
+				if !more {
+					return
+				}
+				if res != nil {
+					rawd[res.idx] = res.item
+				}
+				render_wg.Done()
+
 			case <-time.After(my.renderTimeout):
 				stats.StatsdClientSlow.Incr("reader.mysql.rawrender.timeouts", 1)
 				my.log.Errorf("Render Timeout for %s (%d->%d)", path, from, to)
-				return
-			case <-done:
+				render_wg.Done()
+
 				return
 			}
 		}
-
-	}
+	}()
 
 	for idx, metric := range metrics {
 		render_wg.Add(1)
-		go render_one(metric, idx)
+		jobs <- &FinderObj{item: &metric, idx: idx}
 	}
 	render_wg.Wait()
+	close(jobs)
+	close(results)
 	return rawd, nil
 }
 

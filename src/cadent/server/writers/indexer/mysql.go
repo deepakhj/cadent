@@ -1186,9 +1186,7 @@ func (my *MySQLIndexer) Find(metric string, tags repr.SortingTags) (MetricFindIt
 			continue
 		}
 		if items != nil && len(items) > 0 {
-			for _, ms := range items {
-				mt = append(mt, ms)
-			}
+			mt = append(mt, items...)
 			items = nil
 		}
 

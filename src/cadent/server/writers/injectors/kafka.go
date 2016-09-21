@@ -29,7 +29,6 @@ import (
 	"cadent/server/writers"
 	"cadent/server/writers/schemas"
 	"errors"
-	"fmt"
 	"github.com/Shopify/sarama"
 	"github.com/bsm/sarama-cluster"
 	"github.com/onsi/ginkgo/config"
@@ -39,7 +38,7 @@ import (
 	"time"
 )
 
-const ErrorBadOffsetName = errors.New("starting_offset should be `oldest` or `newest`")
+var ErrorBadOffsetName = errors.New("starting_offset should be `oldest` or `newest`")
 
 /****************** Data readers *********************/
 type Kafka struct {
@@ -71,7 +70,7 @@ func NewKafka(name string) *Kafka {
 	kf.Name = name
 	kf.noticeStop = make(chan bool, 1)
 	kf.consumeStop = make(chan bool, 1)
-	kf.log = logging.MultiLogger("kafka.injestor")
+	kf.log = logging.MustGetLogger("kafka.injestor")
 
 	return kf
 }
