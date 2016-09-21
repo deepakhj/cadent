@@ -82,7 +82,9 @@ func (c *InfoAPI) GetInfo(w http.ResponseWriter, r *http.Request) {
 	data["index_driver"] = indexer
 	data["hostname"] = name
 	data["ip"] = addrs
-	data["cached_metrics"] = c.Metrics.Cache().Len()
+	if c.Metrics.Cache() != nil {
+		data["cached_metrics"] = c.Metrics.Cache().Len()
+	}
 	if gossip.Get() != nil {
 		data["members"] = gossip.Get().Members()
 	} else {
