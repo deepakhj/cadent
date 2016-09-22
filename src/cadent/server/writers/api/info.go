@@ -116,6 +116,8 @@ func (c *InfoAPI) GetInfo(w http.ResponseWriter, r *http.Request) {
 
 	if gossip.Get() != nil {
 		data.Members = gossip.Get().Members()
+	} else {
+		data.Members = nil
 	}
 
 	api_server := ApiInfoData{
