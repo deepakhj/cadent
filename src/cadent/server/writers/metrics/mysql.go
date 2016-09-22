@@ -843,74 +843,58 @@ func (my *MySQLMetrics) RawRender(path string, from int64, to int64, tags repr.S
 		if err != nil {
 			continue
 		}
-		my.log.Critical("FIND: %s : %d", pth, len(mets))
 		metrics = append(metrics, mets...)
 	}
 
-	rawd := make([]*RawRenderItem, 0)
+	rawd := make([]*RawRenderItem, 0, len(metrics))
 
 	procs := MYSQL_DEFAULT_METRIC_RENDER_WORKERS
 
-	jobs := make(chan indexer.MetricFindItem, procs)
-	results := make(chan *RawRenderItem, procs)
+	jobs := make(chan indexer.MetricFindItem, len(metrics))
+	results := make(chan *RawRenderItem, len(metrics))
+
+	render_one := func(met indexer.MetricFindItem) *RawRenderItem {
+		_ri, err := my.RawRenderOne(met, from, to, resample)
+
+		if err != nil {
+			stats.StatsdClientSlow.Incr("reader.mysql.rawrender.errors", 1)
+			my.log.Error("Read Error for %s (%d->%d) : %v", path, from, to, err)
+			return _ri
+		}
+		return _ri
+	}
 
 	// ye old fan out technique but not "too many" as to kill the server
-	render_one := func(jober int) {
-		for {
+	job_worker := func(jober int, taskqueue <-chan indexer.MetricFindItem, resultqueue chan<- *RawRenderItem) {
+		rec_chan := make(chan *RawRenderItem, 1)
+		for met := range taskqueue {
+			go func() { rec_chan <- render_one(met) }()
 			select {
-			case met, more := <-jobs:
-				if !more {
-					return
-				}
-				go func() {
-
-					_ri, err := my.RawRenderOne(met, from, to, resample)
-
-					if err != nil {
-						stats.StatsdClientSlow.Incr("reader.mysql.rawrender.errors", 1)
-						my.log.Error("Read Error for %s (%d->%d) : %v", path, from, to, err)
-						results <- nil
-						return
-					}
-					results <- _ri
-				}()
-			}
-		}
-		return
-	}
-
-	for i := 0; i < procs; i++ {
-		go render_one(i)
-	}
-
-	go func() {
-		for {
-			select {
-			case res, more := <-results:
-				if !more {
-					return
-				}
-				if res != nil {
-					rawd = append(rawd, res)
-				}
-				render_wg.Done()
-
 			case <-time.After(my.renderTimeout):
 				stats.StatsdClientSlow.Incr("reader.mysql.rawrender.timeouts", 1)
 				my.log.Errorf("Render Timeout for %s (%d->%d)", path, from, to)
-				render_wg.Done()
-
-				return
+				resultqueue <- nil
+			case res := <-rec_chan:
+				resultqueue <- res
 			}
 		}
-	}()
+	}
+
+	for i := 0; i < procs; i++ {
+		go job_worker(i, jobs, results)
+	}
 
 	for _, metric := range metrics {
-		render_wg.Add(1)
 		jobs <- metric
 	}
-	render_wg.Wait()
 	close(jobs)
+
+	for i := 0; i < len(metrics); i++ {
+		res := <-results
+		if res != nil {
+			rawd = append(rawd, res)
+		}
+	}
 	close(results)
 	return rawd, nil
 }

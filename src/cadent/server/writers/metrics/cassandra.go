@@ -788,6 +788,8 @@ func (cass *CassandraMetric) GetFromWriteCache(metric *indexer.MetricFindItem, s
 	return inflight, nil
 }
 
+// after the "raw" render we need to yank just the "point" we need from the data which
+// will make the read-cache much smaller (will compress just the Mean value as the count is 1)
 func (cass *CassandraMetric) RawDataRenderOne(metric *indexer.MetricFindItem, start int64, end int64, resample uint32) (*RawRenderItem, error) {
 	defer stats.StatsdSlowNanoTimeFunc("reader.cassandra.rawrenderone.get-time-ns", time.Now())
 	rawd := new(RawRenderItem)
@@ -873,12 +875,6 @@ func (cass *CassandraMetric) RawDataRenderOne(metric *indexer.MetricFindItem, st
 	return inflight, nil
 }
 
-// after the "raw" render we need to yank just the "point" we need from the data which
-// will make the read-cache much smaller (will compress just the Mean value as the count is 1)
-func (cass *CassandraMetric) RawRenderOne(metric *indexer.MetricFindItem, from int64, to int64, resample uint32) (*RawRenderItem, error) {
-	return cass.RawDataRenderOne(metric, from, to, resample)
-}
-
 func (cass *CassandraMetric) RawRender(path string, start int64, end int64, tags repr.SortingTags, resample uint32) ([]*RawRenderItem, error) {
 
 	defer stats.StatsdSlowNanoTimeFunc("reader.cassandra.rawrender.get-time-ns", time.Now())
@@ -902,67 +898,53 @@ func (cass *CassandraMetric) RawRender(path string, start int64, end int64, tags
 
 	procs := CASSANDRA_DEFAULT_METRIC_RENDER_WORKERS
 
-	jobs := make(chan indexer.MetricFindItem, procs)
-	results := make(chan *RawRenderItem, procs)
+	jobs := make(chan indexer.MetricFindItem, len(metrics))
+	results := make(chan *RawRenderItem, len(metrics))
+
+	render_one := func(met indexer.MetricFindItem) *RawRenderItem {
+		_ri, err := cass.RawDataRenderOne(&met, start, end, resample)
+
+		if err != nil {
+			stats.StatsdClientSlow.Incr("reader.cassandra.rawrender.errors", 1)
+			cass.writer.log.Errorf("Read Error for %s (%d->%d) : %v", path, start, end, err)
+			return _ri
+		}
+		return _ri
+	}
 
 	// ye old fan out technique but not "too many" as to kill the server
-	render_one := func(jober int) {
-		for {
+	job_worker := func(jober int, taskqueue <-chan indexer.MetricFindItem, resultqueue chan<- *RawRenderItem) {
+		rec_chan := make(chan *RawRenderItem, 1)
+		for met := range taskqueue {
+			go func() { rec_chan <- render_one(met) }()
 			select {
-			case mets, more := <-jobs:
-				if !more {
-					return
-				}
-				go func() {
-					_ri, err := cass.RawRenderOne(&mets, start, end, resample)
-
-					if err != nil {
-						stats.StatsdClientSlow.Incr("reader.cassandra.rawrender.errors", 1)
-						cass.writer.log.Errorf("Read Error for %s (%d->%d) : %v", path, start, end, err)
-						results <- nil
-						return
-					}
-					results <- _ri
-					return
-				}()
-			}
-		}
-		return
-	}
-
-	for i := 0; i < procs; i++ {
-		go render_one(i)
-	}
-
-	go func() {
-		for {
-			select {
-			case res, more := <-results:
-				if !more {
-					return
-				}
-				if res != nil {
-					rawd = append(rawd, res)
-				}
-				render_wg.Done()
-
 			case <-time.After(cass.renderTimeout):
 				stats.StatsdClientSlow.Incr("reader.cassandra.rawrender.timeouts", 1)
 				cass.writer.log.Errorf("Render Timeout for %s (%d->%d)", path, start, end)
-				render_wg.Done()
-
-				return
+				resultqueue <- nil
+			case res := <-rec_chan:
+				resultqueue <- res
 			}
 		}
-	}()
+	}
+
+	for i := 0; i < procs; i++ {
+		go job_worker(i, jobs, results)
+	}
 
 	for _, metric := range metrics {
-		render_wg.Add(1)
 		jobs <- metric
 	}
-	render_wg.Wait()
 	close(jobs)
+
+	for i := 0; i < len(metrics); i++ {
+		res := <-results
+		if res != nil {
+			rawd = append(rawd, res)
+		}
+	}
 	close(results)
+
 	return rawd, nil
 }
 
