@@ -70,6 +70,13 @@ func findFirstNonRegexSegment(name string) string {
 // the "graphite" globs of {moo,goo} we can do with (moo|goo) so convert { -> (, , -> |, } -> )
 func regifyKey(name string) (*regexp.Regexp, error) {
 	regable := regifyKeyString(name)
+	// we need to make sure we add the "^" + "$" to the end of things as well
+	if !strings.HasPrefix(regable, "^") {
+		regable = "^" + regable
+	}
+	if !strings.HasSuffix(regable, "$") {
+		regable = regable + "$"
+	}
 	return regexp.Compile(regable)
 }
 
