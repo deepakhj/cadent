@@ -54,6 +54,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"golang.org/x/tools/go/gcimporter15/testdata"
 )
 
 const MAX_METRIC_POINTS uint32 = 20480
@@ -194,6 +195,19 @@ func (re *ApiLoop) OutError(w http.ResponseWriter, msg string, code int) {
 }
 
 func (re *ApiLoop) OutJson(w http.ResponseWriter, data interface{}) {
+
+	// trap any encoding issues here
+
+	defer func() {
+		if r := recover(); r != nil {
+			msg := fmt.Sprintf("Json Out Render Err: %v", r)
+			re.log.Critical(msg)
+			re.OutError(w, msg, http.StatusInternalServerError)
+			return
+		}
+	}()
+
+
 	// cache theses things for 60 secs
 	defer stats.StatsdClient.Incr("reader.http.ok", 1)
 	w.Header().Set("Cache-Control", "public, max-age=60, cache")
