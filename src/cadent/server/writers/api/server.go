@@ -185,6 +185,18 @@ func (re *ApiLoop) SetResolutions(res [][]int) {
 	re.Metrics.SetResolutions(res)
 }
 
+func (re *ApiLoop) withRecover(fn func()) {
+	defer func() {
+		if err := recover(); err != nil {
+			msg := fmt.Sprintf("Panic/Recovered: Error: %s", err)
+			re.log.Critical(msg)
+			debug.PrintStack()
+		}
+	}()
+
+	fn()
+}
+
 func (re *ApiLoop) OutError(w http.ResponseWriter, msg string, code int) {
 
 	defer stats.StatsdClient.Incr("reader.http.errors", 1)
@@ -197,7 +209,6 @@ func (re *ApiLoop) OutError(w http.ResponseWriter, msg string, code int) {
 func (re *ApiLoop) OutJson(w http.ResponseWriter, data interface{}) {
 
 	// trap any encoding issues here
-
 	defer func() {
 		if r := recover(); r != nil {
 			msg := fmt.Sprintf("Json Out Render Err: %v", r)
@@ -241,18 +252,13 @@ func (re *ApiLoop) minResolution(start int64, end int64, cur_step uint32) uint32
 	if DEFAULT_MIN_RESOLUTION > use_min {
 		use_min = DEFAULT_MIN_RESOLUTION
 	}
+	cur_pts := uint32(end-start) / use_min
 
 	if re.Metrics == nil {
-		return use_min
-	}
-	res := re.Metrics.GetResolutions()
-	m_res := uint32(res[0][0])
-
-	if m_res > 0 {
-		on_pts := uint32(end-start) / m_res
-		if on_pts > MAX_METRIC_POINTS {
+		if cur_pts > MAX_METRIC_POINTS {
 			return uint32(end-start) / MAX_METRIC_POINTS
 		}
+		return use_min
 	}
 	return use_min
 }
