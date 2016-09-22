@@ -859,7 +859,6 @@ func (my *MySQLMetrics) RawRender(path string, from int64, to int64, tags repr.S
 		if err != nil {
 			stats.StatsdClientSlow.Incr("reader.mysql.rawrender.errors", 1)
 			my.log.Error("Read Error for %s (%d->%d) : %v", path, from, to, err)
-			return _ri
 		}
 		return _ri
 	}

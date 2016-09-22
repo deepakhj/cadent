@@ -200,7 +200,18 @@ func (rl *RollupMetric) Add(ts *TotalTimeSeries) {
 
 */
 
-func (rl *RollupMetric) DoRollup(tseries *TotalTimeSeries) error {
+func (rl *RollupMetric) DoRollup(tseries *TotalTimeSeries) (err error) {
+
+	// want to recover nicely, as we don't want this complex thing nuking the entire site
+	defer func() {
+		if r := recover(); r != nil {
+			if terr, ok := r.(error); ok {
+				err = terr
+				return
+			}
+		}
+	}()
+
 	defer stats.StatsdSlowNanoTimeFunc("writer.rollup.process-time-ns", time.Now())
 	stats.StatsdClientSlow.Incr("writer.rollup.queue.comsume", 1)
 

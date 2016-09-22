@@ -907,7 +907,6 @@ func (cass *CassandraMetric) RawRender(path string, start int64, end int64, tags
 		if err != nil {
 			stats.StatsdClientSlow.Incr("reader.cassandra.rawrender.errors", 1)
 			cass.writer.log.Errorf("Read Error for %s (%d->%d) : %v", path, start, end, err)
-			return _ri
 		}
 		return _ri
 	}
