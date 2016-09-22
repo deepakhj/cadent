@@ -224,12 +224,8 @@ func (re *ApiLoop) OutJson(w http.ResponseWriter, data interface{}) {
 	w.Header().Set("Cache-Control", "public, max-age=60, cache")
 	w.Header().Set("Content-Type", "application/json")
 
-	stats, err := json.Marshal(data)
-	if err != nil {
-		re.OutError(w, fmt.Sprintf("%v", err), http.StatusInternalServerError)
-		return
-	}
-	w.Write(stats)
+	json.NewEncoder(w).Encode(data)
+
 }
 
 func (re *ApiLoop) NoOp(w http.ResponseWriter, r *http.Request) {

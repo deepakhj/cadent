@@ -70,20 +70,20 @@ type Accumulator struct {
 	RandomTickerStart bool            `json:"random_ticker_start"`
 	TagMode           uint8           // see repr.TAG_MODE
 
-	Accumulate AccumulatorItem
-	Formatter  FormatterItem
+	Accumulate AccumulatorItem `json:"-"`
+	Formatter  FormatterItem   `json:"-"`
 
-	InSplitter  splitter.Splitter
-	OutSplitter splitter.Splitter
+	InSplitter  splitter.Splitter `json:"-"`
+	OutSplitter splitter.Splitter `json:"-"`
 
 	mu          sync.Mutex
 	timer       *time.Ticker
-	LineQueue   chan []byte
-	OutputQueue chan splitter.SplitItem
-	Shutdown    chan bool
+	LineQueue   chan []byte             `json:"-"`
+	OutputQueue chan splitter.SplitItem `json:"-"`
+	Shutdown    chan bool               `json:"-"`
 	shutitdown  bool
 
-	Aggregators *AggregateLoop // writers hook into the main agg flushing loops
+	Aggregators *AggregateLoop `json:"-"` // writers hook into the main agg flushing loops
 
 	log *logging.Logger
 }

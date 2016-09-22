@@ -205,11 +205,11 @@ type Cacher struct {
 	shutdown       *broadcast.Broadcaster // when recieved stop allowing adds and updates
 	_accept        bool                   // flag to stop
 	log            *logging.Logger
-	Queue          CacheQueue
-	Cache          map[repr.StatId]*CacheItem
-	Name           string // just a human name for things
+	Queue          CacheQueue                 `json:"-"`
+	Cache          map[repr.StatId]*CacheItem `json:"-"`
+	Name           string                     `json:"name"` // just a human name for things
 	statsdPrefix   string
-	Prefix         string // caches names are "Prefix:{resolution}" or should be
+	Prefix         string `json:"prefix"` // caches names are "Prefix:{resolution}" or should be
 
 	// for the overflow cached items::
 	// these caches can be shared for a given writer set, and the caches may provide the data for
@@ -219,7 +219,7 @@ type Cacher struct {
 	// The Writer needs to know it's "not" the primary writer and thus will not "add" points to the
 	// cache .. so the cache basically gets "one" primary writer pointed (first come first serve)
 	// the `Write` function in the writer object should check it's the primary
-	PrimaryWriter Metrics
+	PrimaryWriter Metrics `json:"-"`
 
 	//overflow pieces
 	overFlowMethod string

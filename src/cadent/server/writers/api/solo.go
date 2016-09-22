@@ -54,6 +54,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -65,7 +66,8 @@ type SoloApiLoop struct {
 	Metrics metrics.Metrics
 	Indexer indexer.Indexer
 
-	Members []string
+	Members    []string
+	MemberInfo []*InfoData
 
 	shutdown chan bool
 	log      *logging.Logger
@@ -94,16 +96,37 @@ func (re *SoloApiLoop) getUrl(u *url.URL, timeout time.Duration) (*http.Response
 }
 
 // from the member list, ask each member for it's API info
-func (re *SoloApiLoop) ComposeMembers(membs []*memberlist.Node) error {
-	/*for _, n := range membs {
-		n.Addr
-	}*/
+// we ASSUME that each member is setup the same old way the seed node is
+// if not, we bail on error, as well that should not be the case
+func (re *SoloApiLoop) ComposeMembers(seed *url.URL, membs []*memberlist.Node) error {
+
+	spl := strings.Split(seed.Host, ":")
+	port := ""
+	if len(spl) == 2 {
+		port = fmt.Sprintf(":%s", spl[1])
+	}
+	for _, n := range membs {
+		n_url, err := url.Parse(fmt.Sprintf("%s://%s%s/%s/info", seed.Scheme, n.Addr, port, seed.Path))
+		if err != nil {
+			return err
+		}
+		info_d, err := re.GetInfoData(n_url)
+		if err != nil {
+			return err
+		}
+		re.MemberInfo = append(re.MemberInfo, info_d)
+		if len(info_d.Api.Host) != 0 {
+			re.Members = append(
+				re.Members,
+				fmt.Sprintf("%s://%s:%s/%s", info_d.Api.Scheme, info_d.Api.Host, info_d.Api.Port, info_d.Api.BasePath),
+			)
+		}
+	}
 	return nil
 }
 
-func (re *SoloApiLoop) GetSeedData(seed *url.URL) (*InfoData, error) {
-
-	r, err := re.getUrl(seed, DEFAULT_HTTP_TIMEOUT)
+func (re *SoloApiLoop) GetInfoData(url *url.URL) (*InfoData, error) {
+	r, err := re.getUrl(url, DEFAULT_HTTP_TIMEOUT)
 	if err != nil {
 		return nil, err
 	}
@@ -114,8 +137,17 @@ func (re *SoloApiLoop) GetSeedData(seed *url.URL) (*InfoData, error) {
 	if err != nil {
 		return nil, err
 	}
+	return info, nil
+}
 
-	err = re.ComposeMembers(info.Members)
+func (re *SoloApiLoop) GetSeedData(seed *url.URL) (*InfoData, error) {
+
+	info, err := re.GetInfoData(seed)
+	if err != nil {
+		return nil, err
+	}
+
+	err = re.ComposeMembers(seed, info.Members)
 	return info, err
 
 }
