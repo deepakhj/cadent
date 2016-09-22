@@ -87,7 +87,7 @@ func (kf *Kafka) Config(conf options.Options) (err error) {
 
 	kf.Config.Group.Return.Notifications = true
 	kf.Config.ChannelBufferSize = int(conf.Int64("channel_buffer_size", 1000000))
-	kf.Config.Consumer.Fetch.Min = int(conf.Int64("consumer_fetch_min", 1024000))
+	kf.Config.Consumer.Fetch.Min = int(conf.Int64("consumer_fetch_min", 1))
 	kf.Config.Consumer.Fetch.Default = int(conf.Int64("consumer_fetch_default", 4096000))
 	kf.Config.Consumer.MaxWaitTime = conf.Duration("consumer_max_wait_time", time.Second*time.Duration(1))
 	kf.Config.Consumer.MaxProcessingTime = conf.Duration("consumer_max_processing_time", time.Second*time.Duration(1))

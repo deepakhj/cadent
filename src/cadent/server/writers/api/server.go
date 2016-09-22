@@ -53,6 +53,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"runtime/debug"
 	"strings"
 )
 
@@ -202,6 +203,7 @@ func (re *ApiLoop) OutJson(w http.ResponseWriter, data interface{}) {
 			msg := fmt.Sprintf("Json Out Render Err: %v", r)
 			re.log.Critical(msg)
 			re.OutError(w, msg, http.StatusInternalServerError)
+			debug.PrintStack()
 			return
 		}
 	}()
