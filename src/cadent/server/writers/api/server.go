@@ -54,7 +54,6 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"golang.org/x/tools/go/gcimporter15/testdata"
 )
 
 const MAX_METRIC_POINTS uint32 = 20480
@@ -206,7 +205,6 @@ func (re *ApiLoop) OutJson(w http.ResponseWriter, data interface{}) {
 			return
 		}
 	}()
-
 
 	// cache theses things for 60 secs
 	defer stats.StatsdClient.Incr("reader.http.ok", 1)
