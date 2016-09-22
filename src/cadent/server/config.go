@@ -23,6 +23,7 @@ import (
 	"cadent/server/prereg"
 	"cadent/server/stats"
 	"cadent/server/utils/tomlenv"
+	"cadent/server/writers/api"
 	"encoding/json"
 	"fmt"
 	logging "gopkg.in/op/go-logging.v1"
@@ -160,6 +161,30 @@ func (c *Config) ToJson() ([]byte, error) {
 func (c *Config) String() string {
 	j, _ := json.Marshal(c)
 	return string(j)
+}
+
+/*************** API ONLY bits *******************/
+type ProfileConfig struct {
+	// profiler
+	ProfileBind  string `toml:"listen" json:"listen,omitempty"`
+	Profile      bool   `toml:"enable" json:"enable,omitempty"`
+	ProfileRate  int    `toml:"rate" json:"rate,omitempty"`
+	BlockProfile bool   `toml:"enable_block" json:"enable-block,omitempty"`
+}
+
+type StatsdConfig struct {
+	// send some stats to the land
+	StatsdServer          string  `toml:"server" json:"server,omitempty"`
+	StatsdPrefix          string  `toml:"prefix" json:"prefix,omitempty"`
+	StatsdInterval        uint    `toml:"interval" json:"interval,omitempty"`
+	StatsdSampleRate      float32 `toml:"sample_rate" json:"sample_rate,omitempty"`
+	StatsdTimerSampleRate float32 `toml:"timer_sample_rate" json:"timer_sample_rate,omitempty"`
+}
+
+type ApiOnlyConfig struct {
+	Profile ProfileConfig     `toml:"profile" json:"profile,omitempty"`
+	Statsd  StatsdConfig      `toml:"statsd" json:"statsd,omitempty"`
+	Api     api.SoloApiConfig `toml:"api" json:"api,omitempty"`
 }
 
 const (

@@ -38,12 +38,35 @@ import (
 	"cadent/server/writers/metrics"
 	"fmt"
 	"github.com/gorilla/mux"
+	"github.com/hashicorp/memberlist"
 	"net"
 	"net/http"
 	"os"
 	"strings"
 	"time"
 )
+
+type ApiInfoData struct {
+	Host     string `json:"host"`
+	BasePath string `json:"path"`
+	Scheme   string `json:"scheme"`
+	Port     string `json:"port"`
+}
+
+type InfoData struct {
+	Time          int64              `json:"time"`
+	MetricDriver  string             `json:"metric-driver"`
+	IndexDriver   string             `json:"index-driver"`
+	Resolutions   [][]int            `json:"resolutions"`
+	Hostname      string             `json:"hostname"`
+	Ip            []string           `json:"ip"`
+	Members       []*memberlist.Node `json:"members"`
+	CachedMetrics int                `json:"cached-metrics"`
+
+	Api ApiInfoData `json:"api-server"`
+
+	SharedData interface{} `json:"shared"`
+}
 
 type InfoAPI struct {
 	a       *ApiLoop
@@ -74,36 +97,41 @@ func (c *InfoAPI) GetInfo(w http.ResponseWriter, r *http.Request) {
 	driver := c.Metrics.Driver()
 	indexer := c.Indexer.Name()
 
-	data := make(map[string]interface{})
-
-	data["time"] = time.Now().UnixNano()
-	data["metric_driver"] = driver
-	data["resolutions"] = c.Metrics.GetResolutions()
-	data["index_driver"] = indexer
-	data["hostname"] = name
-	data["ip"] = addrs
-	if c.Metrics.Cache() != nil {
-		data["cached_metrics"] = c.Metrics.Cache().Len()
+	var res [][]int
+	if c.Metrics != nil {
+		res = c.Metrics.GetResolutions()
 	}
+	data := InfoData{
+		Time:         time.Now().UnixNano(),
+		MetricDriver: driver,
+		IndexDriver:  indexer,
+		Resolutions:  res,
+		Hostname:     name,
+		Ip:           addrs,
+	}
+
+	if c.Metrics != nil && c.Metrics.Cache() != nil {
+		data.CachedMetrics = c.Metrics.Cache().Len()
+	}
+
 	if gossip.Get() != nil {
-		data["members"] = gossip.Get().Members()
-	} else {
-		data["members"] = nil
+		data.Members = gossip.Get().Members()
 	}
 
-	api_server := make(map[string]string, 0)
+	api_server := ApiInfoData{
+		Host:     name,
+		BasePath: c.a.Conf.BasePath,
+		Scheme:   "http",
+	}
 
-	api_server["host"] = name
-	api_server["path"] = c.a.Conf.BasePath
-	api_server["scheme"] = "http"
 	if len(c.a.Conf.TLSCertPath) > 0 && len(c.a.Conf.TLSKeyPath) > 0 {
-		api_server["scheme"] = "https"
+		api_server.Scheme = "https"
 	}
 	spl := strings.Split(c.a.Conf.Listen, ":")
-	api_server["port"] = spl[len(spl)-1]
-	data["api_server"] = api_server
+	api_server.Port = spl[len(spl)-1]
+	data.Api = api_server
 
-	data["shared"] = shared.GetAll()
+	data.SharedData = shared.GetAll()
 
 	stats.StatsdClientSlow.Incr("reader.http.info.ok", 1)
 	c.a.OutJson(w, data)

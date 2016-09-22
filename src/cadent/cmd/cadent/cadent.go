@@ -235,14 +235,17 @@ func startStatsServer(defaults *cadent.Config, servers []*cadent.Server) {
 			}
 		}
 	}
+}
 
+func RunApiOnly(file string) error {
+	return nil
 }
 
 func main() {
 	version := flag.Bool("version", false, "Print version and exit")
 	configFile := flag.String("config", "config.toml", "Consitent Hash configuration file")
 	regConfigFile := flag.String("prereg", "", "File that contains the Regex/Filtering by key to various backends")
-	//apiOnly := flag.String("api", "", "for instances of Cadent that only do the API parts")
+	apiOnly := flag.String("api", "", "for instances of Cadent that only do the API parts")
 	loglevel := flag.String("loglevel", "DEBUG", "Log Level (debug, info, warning, error, critical)")
 	logfile := flag.String("logfile", "stdout", "Log File (stdout, stderr, path/to/file)")
 
@@ -274,6 +277,21 @@ func main() {
 	case "CRITICAL":
 		logging.SetLevel(logging.CRITICAL, "")
 
+	}
+
+	if len(*apiOnly) > 0 && len(*configFile) > 0 {
+		log.Critical("Cannot have both a Config and an API only config")
+		os.Exit(1)
+	}
+	if len(*apiOnly) > 0 && len(*regConfigFile) > 0 {
+		log.Critical("Cannot have both a PreRege and an API only config, API should be configured w/ the prereg config")
+		os.Exit(1)
+	}
+
+	// we halt here and just run the API
+	if len(*apiOnly) > 0 {
+		RunApiOnly(*apiOnly)
+		return
 	}
 
 	var config cadent.ConfigServers
