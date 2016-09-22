@@ -88,6 +88,15 @@ func (c *InfoAPI) AddHandlers(mux *mux.Router) {
 
 func (c *InfoAPI) GetInfo(w http.ResponseWriter, r *http.Request) {
 
+	defer func() {
+		if r := recover(); r != nil {
+			msg := fmt.Sprintf("Info Render Err: %v", r)
+			c.a.log.Critical(msg)
+			c.a.OutError(w, msg, http.StatusInternalServerError)
+			return
+		}
+	}()
+
 	stats.StatsdClientSlow.Incr("reader.http.info.hit", 1)
 	name, err := os.Hostname()
 	if err != nil {
