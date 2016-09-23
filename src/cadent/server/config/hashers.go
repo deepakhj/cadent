@@ -14,28 +14,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package cadent
+package config
 
 import (
-	"statsd"
-
 	"cadent/server/accumulator"
 	"cadent/server/prereg"
-	"cadent/server/stats"
 	"cadent/server/utils/tomlenv"
-	"cadent/server/writers/api"
 	"encoding/json"
 	"fmt"
-	logging "gopkg.in/op/go-logging.v1"
 	"math"
 	"net/url"
 	"regexp"
 	"strings"
 	"time"
 )
-
-var log = logging.MustGetLogger("config")
-var memStats *stats.MemStats
 
 type ParsedServerConfig struct {
 	// the server name will default to the hashkey if none is given
@@ -49,50 +41,16 @@ type ParsedServerConfig struct {
 	CheckUrls       []*url.URL
 }
 
-type ConfigServerList struct {
+type HasherServerList struct {
 	CheckServers []string `toml:"check_servers" json:"check_servers,omitempty"`
 	Servers      []string `toml:"servers" json:"servers,omitempty"`
 	HashKeys     []string `toml:"hashkeys" json:"hashkeys,omitempty"`
 }
 
-type GossipConfig struct {
-	Enabled bool   `toml:"enabled" json:"enabled,omitempty"`
-	Port    int    `toml:"port" json:"port,omitempty"` //
-	Mode    string `toml:"mode" json:"mode,omitempty"` // local, lan, wan
-	Name    string `toml:"name" json:"name,omitempty"` // name of this node, otherwise it will pick on (must be unique)
-	Bind    string `toml:"bind" json:"bind,omitempty"` // bind ip
-	Seed    string `toml:"seed" json:"seed,omitempty"` // a seed node
-}
-
-type Config struct {
-	Name string
-
-	// for "DEFAULT" section only
-	Gossip  GossipConfig `toml:"gossip" json:"gossip,omitempty"`
-	PIDfile string       `toml:"pid_file" json:"pid_file,omitempty"`
-	NumProc int          `toml:"num_procs" json:"num_procs,omitempty"`
-
-	// send some stats to the land
-	StatsdServer          string  `toml:"statsd_server" json:"statsd_server,omitempty"`
-	StatsdPrefix          string  `toml:"statsd_prefix" json:"statsd_prefix,omitempty"`
-	StatsdInterval        uint    `toml:"statsd_interval" json:"statsd_interval,omitempty"`
-	StatsdSampleRate      float32 `toml:"statsd_sample_rate" json:"statsd_sample_rate,omitempty"`
-	StatsdTimerSampleRate float32 `toml:"statsd_timer_sample_rate" json:"statsd_timer_sample_rate,omitempty"`
+type HasherConfig struct {
+	Name string `toml:"name" json:"name,omitempty"`
 
 	StatsTick bool `toml:"stats_tick" json:"stats_tick,omitempty"`
-
-	// profiler
-	ProfileBind  string `toml:"cpu_profile_listen" json:"cpu_profile,omitempty"`
-	Profile      bool   `toml:"cpu_profile" json:"cpu_profile,omitempty"`
-	ProfileRate  int    `toml:"cpu_profile_rate" json:"cpu_profile_rate,omitempty"`
-	BlockProfile bool   `toml:"block_profile" json:"block_profile,omitempty"`
-
-	// start a little http server for external health checks and stats probes
-	HealthServerBind   string `toml:"internal_health_server_listen" json:"internal_health_server_listen,omitempty"`
-	HealthServerPoints uint   `toml:"internal_health_server_points" json:"internal_health_server_points,omitempty"`
-	HealthServerPath   string `toml:"internal_health_server_path" json:"internal_health_server_path,omitempty"`
-	HealthServerKey    string `toml:"internal_health_tls_key" json:"internal_health_tls_key,omitempty"`
-	HealthServerCert   string `toml:"internal_health_tls_cert" json:"internal_health_tls_cert,omitempty"`
 
 	// can be set in both defaults or overrides from the children
 
@@ -125,7 +83,7 @@ type Config struct {
 	SplitterTimeout time.Duration `toml:"runner_timeout" json:"runner_timeout,omitempty"`
 
 	//the array of potential servers to send stuff to (yes we can dupe data out)
-	ConfServerList []ConfigServerList `toml:"servers" json:"servers,omitempty"`
+	ConfServerList []HasherServerList `toml:"servers" json:"servers,omitempty"`
 
 	// number of workers to handle message sending queue
 	Workers    int64 `toml:"workers" json:"workers,omitempty"`
@@ -154,42 +112,17 @@ type Config struct {
 	OkToUse bool `toml:"-" json:"-"`
 }
 
-func (c *Config) ToJson() ([]byte, error) {
+func (c *HasherConfig) ToJson() ([]byte, error) {
 	return json.Marshal(c)
 }
 
-func (c *Config) String() string {
+func (c *HasherConfig) String() string {
 	j, _ := json.Marshal(c)
 	return string(j)
 }
 
-/*************** API ONLY bits *******************/
-type ProfileConfig struct {
-	// profiler
-	ProfileBind  string `toml:"listen" json:"listen,omitempty"`
-	Profile      bool   `toml:"enable" json:"enable,omitempty"`
-	ProfileRate  int    `toml:"rate" json:"rate,omitempty"`
-	BlockProfile bool   `toml:"enable_block" json:"enable-block,omitempty"`
-}
-
-type StatsdConfig struct {
-	// send some stats to the land
-	StatsdServer          string  `toml:"server" json:"server,omitempty"`
-	StatsdPrefix          string  `toml:"prefix" json:"prefix,omitempty"`
-	StatsdInterval        uint    `toml:"interval" json:"interval,omitempty"`
-	StatsdSampleRate      float32 `toml:"sample_rate" json:"sample_rate,omitempty"`
-	StatsdTimerSampleRate float32 `toml:"timer_sample_rate" json:"timer_sample_rate,omitempty"`
-}
-
-type ApiOnlyConfig struct {
-	Profile ProfileConfig     `toml:"profile" json:"profile,omitempty"`
-	Statsd  StatsdConfig      `toml:"statsd" json:"statsd,omitempty"`
-	Api     api.SoloApiConfig `toml:"api" json:"api,omitempty"`
-}
-
 const (
 	DEFAULT_CONFIG_SECTION       = "default"
-	DEFAULT_GOSSIP_SECTION       = "gossip"
 	DEFAULT_BACKEND_ONLY         = "backend_only"
 	DEFAULT_LISTEN               = "tcp://127.0.0.1:6000"
 	DEFAULT_HEARTBEAT_COUNT      = uint64(3)
@@ -203,58 +136,20 @@ const (
 	DEFAULT_MAX_POOL_CONNECTIONS = 10
 )
 
-type ConfigServers map[string]*Config
+// full const hash config
+type HasherServers map[string]*HasherConfig
 
-//init a statsd client from our config object
-func SetUpStatsdClient(cfg *Config) {
-
-	if len(cfg.StatsdServer) == 0 {
-		log.Notice("Skipping Statsd setup, no server specified")
-		stats.StatsdClient = new(statsd.StatsdNoop)
-		stats.StatsdClientSlow = new(statsd.StatsdNoop)
-		return
-	}
-	interval := time.Second * 2 // aggregate stats and flush every 2 seconds
-	statsdclient := statsd.NewStatsdClient(cfg.StatsdServer, cfg.StatsdPrefix+".%HOST%.")
-	statsdclientslow := statsd.NewStatsdClient(cfg.StatsdServer, cfg.StatsdPrefix+".%HOST%.")
-
-	if cfg.StatsdTimerSampleRate > 0 {
-		statsdclient.TimerSampleRate = cfg.StatsdTimerSampleRate
-	}
-	if cfg.StatsdSampleRate > 0 {
-		statsdclient.SampleRate = cfg.StatsdSampleRate
-	}
-	//statsdclient.CreateSocket()
-	//StatsdClient = statsdclient
-	//return StatsdClient
-
-	// the buffer client seems broken for some reason
-	if cfg.StatsdInterval > 0 {
-		interval = time.Second * time.Duration(cfg.StatsdInterval)
-	}
-	statsder := statsd.NewStatsdBuffer("fast", interval, statsdclient)
-	statsderslow := statsd.NewStatsdBuffer("slow", interval, statsdclientslow)
-	statsder.RetainKeys = true //retain statsd keys to keep emitting 0's
-	if cfg.StatsdTimerSampleRate > 0 {
-		statsder.TimerSampleRate = cfg.StatsdTimerSampleRate
-	}
-	if cfg.StatsdSampleRate > 0 {
-		statsder.SampleRate = cfg.StatsdSampleRate
-	}
-
-	stats.StatsdClient = statsder
-	stats.StatsdClientSlow = statsderslow // slow does not have sample rates enabled
-	log.Notice("Statsd Fast Client to %s, prefix %s, interval %d", cfg.StatsdServer, cfg.StatsdPrefix, cfg.StatsdInterval)
-	log.Notice("Statsd Slow Client to %s, prefix %s, interval %d", cfg.StatsdServer, cfg.StatsdPrefix, cfg.StatsdInterval)
-
-	// start the MemTicker
-	memStats = new(stats.MemStats)
-	memStats.Start()
-	return
+type ConstHashConfig struct {
+	Gossip  GossipConfig  `toml:"gossip" json:"gossip,omitempty"`
+	Statsd  StatsdConfig  `toml:"statsd" json:"statsd,omitempty"`
+	Health  HealthConfig  `toml:"health" json:"health,omitempty"`
+	Profile ProfileConfig `toml:"profile" json:"profile,omitempty"`
+	System  SystemConfig  `toml:"system" json:"system,omitempty"`
+	Servers HasherServers `toml:"servers" json:"servers,omitempty"`
 }
 
 // make our map of servers to hosts
-func (self *Config) parseServerList(servers []string, checkservers []string, hashkeys []string) (*ParsedServerConfig, error) {
+func (self *HasherConfig) parseServerList(servers []string, checkservers []string, hashkeys []string) (*ParsedServerConfig, error) {
 
 	parsed := new(ParsedServerConfig)
 
@@ -330,15 +225,17 @@ func (self *Config) parseServerList(servers []string, checkservers []string, has
 	return parsed, nil
 }
 
-func (self ConfigServers) ParseConfig(defaults *Config) (out ConfigServers, err error) {
+func (self HasherServers) ParseHasherConfig(defaults *HasherConfig) (out HasherServers, err error) {
 
 	have_listener := false
+	out = make(HasherServers, 0)
+
 	for chunk, cfg := range self {
 		cfg.Name = chunk
 
 		if chunk == DEFAULT_CONFIG_SECTION {
 			cfg.OkToUse = false
-			self[chunk] = cfg
+			out[chunk] = cfg
 			continue
 		}
 
@@ -543,44 +440,67 @@ func (self ConfigServers) ParseConfig(defaults *Config) (out ConfigServers, err 
 
 		}
 		cfg.OkToUse = true
-		self[chunk] = cfg
+		out[chunk] = cfg
 	}
 	//need to have at least ONE listener
 	if !have_listener {
 		panic("No bind/listeners defined, need at least one")
 	}
-	return self, nil
+	return out, nil
 }
 
-func ParseConfigFile(filename string) (cfg ConfigServers, err error) {
-
-	if _, err := tomlenv.DecodeFile(filename, &cfg); err != nil {
+func ParseHasherConfigFile(filename string) (cfg *ConstHashConfig, err error) {
+	cfg = new(ConstHashConfig)
+	if _, err := tomlenv.DecodeFile(filename, cfg); err != nil {
 		log.Critical("Error decoding config file: %s", err)
 		return nil, err
 	}
-	var defaults *Config
+	var defaults *HasherConfig
 	var ok bool
-	if defaults, ok = cfg[DEFAULT_CONFIG_SECTION]; !ok {
+
+	if len(cfg.Servers) == 0 {
+		panic("Need some [server]s in the config")
+	}
+
+	servers := cfg.Servers
+
+	if defaults, ok = servers[DEFAULT_CONFIG_SECTION]; !ok {
 		panic("Need to have a [default] section in the config.")
 	}
-	return cfg.ParseConfig(defaults)
+	cfg.Servers, err = servers.ParseHasherConfig(defaults)
+	if err != nil {
+		return nil, err
+	}
+	return cfg, nil
 }
 
-func ParseConfigString(instr string) (cfg ConfigServers, err error) {
 
-	if _, err := tomlenv.Decode(instr, &cfg); err != nil {
+func ParseHasherConfigString(bits string) (cfg *ConstHashConfig, err error) {
+	cfg = new(ConstHashConfig)
+	if _, err := tomlenv.Decode(bits, cfg); err != nil {
 		log.Critical("Error decoding config file: %s", err)
 		return nil, err
 	}
-	var defaults *Config
+	var defaults *HasherConfig
 	var ok bool
-	if defaults, ok = cfg[DEFAULT_CONFIG_SECTION]; !ok {
+
+	if len(cfg.Servers) == 0 {
+		panic("Need some [server]s in the config")
+	}
+
+	servers := cfg.Servers
+
+	if defaults, ok = servers[DEFAULT_CONFIG_SECTION]; !ok {
 		panic("Need to have a [default] section in the config.")
 	}
-	return cfg.ParseConfig(defaults)
+	cfg.Servers, err = servers.ParseHasherConfig(defaults)
+	if err != nil {
+		return nil, err
+	}
+	return cfg, nil
 }
 
-func (self ConfigServers) DefaultConfig() (def_cfg *Config, err error) {
+func (self HasherServers) DefaultConfig() (def_cfg *HasherConfig, err error) {
 
 	if val, ok := self[DEFAULT_CONFIG_SECTION]; ok {
 		return val, nil
@@ -589,14 +509,14 @@ func (self ConfigServers) DefaultConfig() (def_cfg *Config, err error) {
 	return nil, fmt.Errorf("Could not find default in config file")
 }
 
-func (self ConfigServers) VerifyAndAssignPreReg(prm prereg.PreRegMap) (err error) {
+func (self HasherServers) VerifyAndAssignPreReg(prm prereg.PreRegMap) (err error) {
 
 	// validate that all the backends in the server conf acctually match something
 	// in the regex filtering
 
 	for _, pr := range prm {
 		// check that the listern server is really a listen server and exists
-		var listen_s *Config
+		var listen_s *HasherConfig
 		var ok bool
 		if listen_s, ok = self[pr.ListenServer]; !ok {
 			return fmt.Errorf("ListenServer `%s` is not in the Config servers", pr.ListenServer)
@@ -633,7 +553,7 @@ func (self ConfigServers) VerifyAndAssignPreReg(prm prereg.PreRegMap) (err error
 
 }
 
-func (self ConfigServers) ServableConfigs() (configs []*Config) {
+func (self HasherServers) ServableConfigs() (configs []*HasherConfig) {
 
 	for _, cfg := range self {
 		if !cfg.OkToUse {
@@ -644,7 +564,7 @@ func (self ConfigServers) ServableConfigs() (configs []*Config) {
 	return configs
 }
 
-func (self *ConfigServers) DebugConfig() {
+func (self *HasherServers) DebugConfig() {
 	log.Debug("== Consthash backends ===")
 	for chunk, cfg := range *self {
 		log.Debug("Section '%s'", chunk)
@@ -680,8 +600,6 @@ func (self *ConfigServers) DebugConfig() {
 					}
 				}
 			}
-		} else {
-			log.Debug("  PID: %s", cfg.PIDfile)
 		}
 		if cfg.PreRegFilters != nil {
 			cfg.PreRegFilters.LogConfig()

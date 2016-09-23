@@ -7,6 +7,9 @@
 [default]
 
 
+
+[system]
+
 ## PID file to check if things is running already
 pid_file="/opt/cadent/cadent.pid"
 
@@ -15,8 +18,6 @@ pid_file="/opt/cadent/cadent.pid"
 ## overhead as time goes on)
 #
 
-stats_tick=false
-
 num_procs=4
 
 
@@ -24,41 +25,49 @@ num_procs=4
 ## Profiling
 #############################
 
+[profile]
 ## Turn on CPU/Mem profiling
+enable=true
+
 ##  there will be a http server set up to yank pprof data on :6060
-cpu_profile_listen="0.0.0.0:6060"
-cpu_profile=true
-cpu_profile_rate=100000
+
+listen="0.0.0.0:6060"
+rate=100000
 block_profile=false # this is very expensive
 
 #############################
 ## Internal Stats
 #############################
 
+[health]
+
+enabled=true
+
 ## there will be an internal health http server set up as well
 ## and will respond to '/ops/status' -> "GET OK"
 ## '/stats' --> blob of json data (adding ?jsonp=xxx will return jsonp data)
 ## '/' --> a little file that charts (poorly) the above stats
-internal_health_server_listen="0.0.0.0:6061"
+listen="0.0.0.0:6061"
 
 ## stats are "rendered" every 5 seconds, so this will keep last
 ## `internal_health_server_points` in RAM (careful with how many you store)
 ## (use the statsd emitter to store longer term stuff)
-internal_health_server_points=500
+points=500
 
 # https this server if desired
-# internal_health_tls_key="/tmp/server.key"
-# internal_health_tls_cert="/tmp/server.crt"
+# key="/tmp/server.key"
+# cert="/tmp/server.crt"
 
 
 #############################
 ## Emit To Statsd
 #############################
 
+[statsd]
 ## fire out some internal to statsd if desired
-statsd_server="" # 127.0.0.1:8125"
-statsd_prefix="cadent"
-statsd_interval=1  # send to statd every second (buffered)
+server="" # 127.0.0.1:8125"
+prefix="cadent"
+interval=1  # send to statd every second (buffered)
 
 # global statsd Sample Rates
 
@@ -67,13 +76,33 @@ statsd_interval=1  # send to statd every second (buffered)
 ## unless your server not under much stress 1% is a good number
 ## `statsd_sample_rate` is for counters
 ## `statsd_timer_sample_rate` is for timers
-statsd_timer_sample_rate=0.01
-statsd_sample_rate=0.1
+timer_sample_rate=0.01
+sample_rate=0.1
 
+
+#############################
+## Gossiper
+#############################
+[gossip]
+enabled=true
+mode="local"
+port=8889
+
+
+
+#############################
+## SERVERS
+#############################
+[servers]
 
 #############################
 ## Incoming server defaults
 #############################
+
+[servers.default]
+
+stats_tick=false
+
 
 ## cache keys/server pairs in an LRU mem cache for speed
 cache_items=100000
@@ -116,23 +145,10 @@ workers=10
 out_workers=32
 
 
-#############################
-## Gossiper
-#############################
-[default.gossip]
-enabled=true
-mode="local"
-port=8889
-
-
-#############################
-## SERVERS
-#############################
-
 ################
 ## Statsd -> Backend Writer
 ################
-[statsd-proxy]
+[servers.statsd-proxy]
 # internal statsd listener that pushes things into the below graphite section
 
 listen="udp://0.0.0.0:8125"
@@ -142,7 +158,7 @@ out_dev_null=true
 ################
 ## Graphite -> Backend Writer
 ################
-[graphite-proxy]
+[servers.graphite-proxy]
 
 ## what port/scheme we are listening on for incoming data
 listen="tcp://0.0.0.0:2003"

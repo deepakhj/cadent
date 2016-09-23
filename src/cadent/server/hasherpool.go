@@ -23,6 +23,7 @@ package cadent
 import (
 	"consistent"
 
+	"cadent/server/config"
 	"cadent/server/lrucache"
 	"cadent/server/stats"
 	"cadent/server/utils"
@@ -252,7 +253,7 @@ func (self *ConstHasher) CheckingServers() []string {
 }
 
 //make HasherPool from our basic config object
-func CreateConstHasherFromConfig(cfg *Config, serverlist *ParsedServerConfig) (hasher *ConstHasher, err error) {
+func CreateConstHasherFromConfig(cfg *config.HasherConfig, serverlist *config.ParsedServerConfig) (hasher *ConstHasher, err error) {
 	hasher = new(ConstHasher)
 	hasher.Hasher = consistent.New()
 

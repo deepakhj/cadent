@@ -44,6 +44,7 @@ package cadent
 import (
 	"cadent/server/accumulator"
 	"cadent/server/broadcast"
+	"cadent/server/config"
 	"cadent/server/dispatch"
 	"cadent/server/netpool"
 	"cadent/server/prereg"
@@ -82,7 +83,6 @@ type outMessageType int8
 
 const (
 	normal_message outMessageType = 1 << iota // notmal message
-	shutdown                                  // trap shutdown
 )
 
 type OutputMessage struct {
@@ -93,76 +93,9 @@ type OutputMessage struct {
 	server    *Server
 }
 
+var log = logging.MustGetLogger("server")
+
 /****************** SERVERS *********************/
-
-//helper object for json'ing the basic stat data
-type ServerStats struct {
-	mu *sync.RWMutex
-
-	ValidLineCount       int64 `json:"valid_line_count"`
-	WorkerValidLineCount int64 `json:"worker_line_count"`
-	InvalidLineCount     int64 `json:"invalid_line_count"`
-	SuccessSendCount     int64 `json:"success_send_count"`
-	FailSendCount        int64 `json:"fail_send_count"`
-	UnsendableSendCount  int64 `json:"unsendable_send_count"`
-	UnknownSendCount     int64 `json:"unknown_send_count"`
-	AllLinesCount        int64 `json:"all_lines_count"`
-	RedirectedLinesCount int64 `json:"redirected_lines_count"`
-	RejectedLinesCount   int64 `json:"rejected_lines_count"`
-	BytesWrittenCount    int64 `json:"bytes_written"`
-	BytesReadCount       int64 `json:"bytes_read"`
-
-	CurrentValidLineCount       int64 `json:"current_valid_line_count"`
-	CurrentWorkerValidLineCount int64 `json:"current_worker_line_count"`
-	CurrentInvalidLineCount     int64 `json:"current_invalid_line_count"`
-	CurrentSuccessSendCount     int64 `json:"current_success_send_count"`
-	CurrentFailSendCount        int64 `json:"current_fail_send_count"`
-	CurrentUnsendableSendCount  int64 `json:"current_unsendable_send_count"`
-	CurrentUnknownSendCount     int64 `json:"current_unknown_send_count"`
-	CurrentAllLinesCount        int64 `json:"current_all_lines_count"`
-	CurrentRejectedLinesCount   int64 `json:"current_rejected_lines_count"`
-	CurrentRedirectedLinesCount int64 `json:"current_redirected_lines_count"`
-	CurrentBytesReadCount       int64 `json:"current_bytes_read_count"`
-	CurrentBytesWrittenCount    int64 `json:"current_bytes_written_count"`
-
-	ValidLineCountList       []int64 `json:"valid_line_count_list"`
-	WorkerValidLineCountList []int64 `json:"worker_line_count_list"`
-	InvalidLineCountList     []int64 `json:"invalid_line_count_list"`
-	SuccessSendCountList     []int64 `json:"success_send_count_list"`
-	FailSendCountList        []int64 `json:"fail_send_count_list"`
-	UnsendableSendCountList  []int64 `json:"unsendable_send_count_list"`
-	UnknownSendCountList     []int64 `json:"unknown_send_count_list"`
-	AllLinesCountList        []int64 `json:"all_lines_count_list"`
-	RedirectedCountList      []int64 `json:"redirected_lines_count_list"`
-	RejectedCountList        []int64 `json:"rejected_lines_count_list"`
-	BytesReadCountList       []int64 `json:"bytes_read_count_list"`
-	BytesWrittenCountList    []int64 `json:"bytes_written_count_list"`
-	GoRoutinesList           []int   `json:"go_routines_list"`
-	TicksList                []int64 `json:"ticks_list"`
-
-	GoRoutines                 int      `json:"go_routines"`
-	UpTimeSeconds              int64    `json:"uptime_sec"`
-	ValidLineCountPerSec       float32  `json:"valid_line_count_persec"`
-	WorkerValidLineCountPerSec float32  `json:"worker_line_count_persec"`
-	InvalidLineCountPerSec     float32  `json:"invalid_line_count_persec"`
-	SuccessSendCountPerSec     float32  `json:"success_send_count_persec"`
-	UnsendableSendCountPerSec  float32  `json:"unsendable_count_persec"`
-	UnknownSendCountPerSec     float32  `json:"unknown_send_count_persec"`
-	AllLinesCountPerSec        float32  `json:"all_lines_count_persec"`
-	RedirectedLinesCountPerSec float32  `json:"redirected_lines_count_persec"`
-	RejectedLinesCountPerSec   float32  `json:"rejected_lines_count_persec"`
-	BytesReadCountPerSec       float32  `json:"bytes_read_count_persec"`
-	BytesWrittenCountPerSec    float32  `json:"bytes_written_count_persec"`
-	Listening                  string   `json:"listening"`
-	ServersUp                  []string `json:"servers_up"`
-	ServersDown                []string `json:"servers_down"`
-	ServersChecks              []string `json:"servers_checking"`
-
-	CurrentReadBufferSize int64 `json:"current_read_buffer_size"`
-	MaxReadBufferSize     int64 `json:"max_read_buffer_size"`
-	InputQueueSize        int   `json:"input_queue_size"`
-	WorkQueueSize         int   `json:"work_queue_size"`
-}
 
 // helper object for the json info about a single "key"
 // basically to see "what server" a key will end up going to
@@ -272,15 +205,15 @@ type Server struct {
 	//uptime
 	StartTime time.Time
 
-	stats ServerStats
+	Stats *stats.HashServerStats
 
 	log *logging.Logger
 }
 
 func (server *Server) InitCounters() {
 	//pref := fmt.Sprintf("%p", server)
-
-	server.stats.mu = new(sync.RWMutex)
+	server.Stats = new(stats.HashServerStats)
+	server.Stats.Mu = new(sync.RWMutex)
 
 	server.ValidLineCount = stats.NewStatCount(server.Name + "-ValidLineCount")
 	server.WorkerValidLineCount = stats.NewStatCount(server.Name + "-WorkerValidLineCount")
@@ -304,8 +237,8 @@ func (server *Server) AddToCurrentTotalBufferSize(length int64) int64 {
 	return server.CurrentReadBufferRam.Add(length)
 }
 
-func (server *Server) GetStats() (stats *ServerStats) {
-	return &server.stats
+func (server *Server) GetStats() (stats *stats.HashServerStats) {
+	return server.Stats
 }
 
 func (server *Server) TrapExit() {
@@ -600,7 +533,7 @@ func (server *Server) ResetTickers() {
 	server.BytesReadCount.ResetTick()
 }
 
-func NewServer(cfg *Config) (server *Server, err error) {
+func NewServer(cfg *config.HasherConfig) (server *Server, err error) {
 
 	serv := new(Server)
 	serv.Name = cfg.Name
@@ -630,9 +563,6 @@ func NewServer(cfg *Config) (server *Server, err error) {
 	serv.poolmu = new(sync.Mutex)
 
 	serv.NumStats = DEFAULT_NUM_STATS
-	if cfg.HealthServerPoints > 0 {
-		serv.NumStats = cfg.HealthServerPoints
-	}
 
 	serv.WriteTimeout = DEFAULT_WRITE_TIMEOUT
 	if cfg.WriteTimeout != 0 {
@@ -765,102 +695,102 @@ func (server *Server) StatsTick() {
 	elasped_sec := float64(elapsed) / float64(time.Second)
 	t_stamp := time.Now().UnixNano()
 
-	server.stats.ValidLineCount = server.ValidLineCount.TotalCount.Get()
-	server.stats.WorkerValidLineCount = server.WorkerValidLineCount.TotalCount.Get()
-	server.stats.InvalidLineCount = server.InvalidLineCount.TotalCount.Get()
-	server.stats.SuccessSendCount = server.SuccessSendCount.TotalCount.Get()
-	server.stats.FailSendCount = server.FailSendCount.TotalCount.Get()
-	server.stats.UnsendableSendCount = server.UnsendableSendCount.TotalCount.Get()
-	server.stats.UnknownSendCount = server.UnknownSendCount.TotalCount.Get()
-	server.stats.AllLinesCount = server.AllLinesCount.TotalCount.Get()
-	server.stats.RedirectedLinesCount = server.RedirectedLinesCount.TotalCount.Get()
-	server.stats.RejectedLinesCount = server.RejectedLinesCount.TotalCount.Get()
-	server.stats.BytesReadCount = server.BytesReadCount.TotalCount.Get()
-	server.stats.BytesWrittenCount = server.BytesWrittenCount.TotalCount.Get()
+	server.Stats.ValidLineCount = server.ValidLineCount.TotalCount.Get()
+	server.Stats.WorkerValidLineCount = server.WorkerValidLineCount.TotalCount.Get()
+	server.Stats.InvalidLineCount = server.InvalidLineCount.TotalCount.Get()
+	server.Stats.SuccessSendCount = server.SuccessSendCount.TotalCount.Get()
+	server.Stats.FailSendCount = server.FailSendCount.TotalCount.Get()
+	server.Stats.UnsendableSendCount = server.UnsendableSendCount.TotalCount.Get()
+	server.Stats.UnknownSendCount = server.UnknownSendCount.TotalCount.Get()
+	server.Stats.AllLinesCount = server.AllLinesCount.TotalCount.Get()
+	server.Stats.RedirectedLinesCount = server.RedirectedLinesCount.TotalCount.Get()
+	server.Stats.RejectedLinesCount = server.RejectedLinesCount.TotalCount.Get()
+	server.Stats.BytesReadCount = server.BytesReadCount.TotalCount.Get()
+	server.Stats.BytesWrittenCount = server.BytesWrittenCount.TotalCount.Get()
 
-	server.stats.CurrentValidLineCount = server.ValidLineCount.TickCount.Get()
-	server.stats.CurrentWorkerValidLineCount = server.WorkerValidLineCount.TickCount.Get()
-	server.stats.CurrentInvalidLineCount = server.InvalidLineCount.TickCount.Get()
-	server.stats.CurrentSuccessSendCount = server.SuccessSendCount.TickCount.Get()
-	server.stats.CurrentFailSendCount = server.FailSendCount.TickCount.Get()
-	server.stats.CurrentUnknownSendCount = server.UnknownSendCount.TickCount.Get()
-	server.stats.CurrentAllLinesCount = server.AllLinesCount.TickCount.Get()
-	server.stats.CurrentRedirectedLinesCount = server.RedirectedLinesCount.TickCount.Get()
-	server.stats.CurrentRejectedLinesCount = server.RejectedLinesCount.TickCount.Get()
-	server.stats.CurrentBytesReadCount = server.BytesReadCount.TickCount.Get()
-	server.stats.CurrentBytesWrittenCount = server.BytesWrittenCount.TickCount.Get()
+	server.Stats.CurrentValidLineCount = server.ValidLineCount.TickCount.Get()
+	server.Stats.CurrentWorkerValidLineCount = server.WorkerValidLineCount.TickCount.Get()
+	server.Stats.CurrentInvalidLineCount = server.InvalidLineCount.TickCount.Get()
+	server.Stats.CurrentSuccessSendCount = server.SuccessSendCount.TickCount.Get()
+	server.Stats.CurrentFailSendCount = server.FailSendCount.TickCount.Get()
+	server.Stats.CurrentUnknownSendCount = server.UnknownSendCount.TickCount.Get()
+	server.Stats.CurrentAllLinesCount = server.AllLinesCount.TickCount.Get()
+	server.Stats.CurrentRedirectedLinesCount = server.RedirectedLinesCount.TickCount.Get()
+	server.Stats.CurrentRejectedLinesCount = server.RejectedLinesCount.TickCount.Get()
+	server.Stats.CurrentBytesReadCount = server.BytesReadCount.TickCount.Get()
+	server.Stats.CurrentBytesWrittenCount = server.BytesWrittenCount.TickCount.Get()
 
-	server.stats.ValidLineCountList = append(server.stats.ValidLineCountList, server.ValidLineCount.TickCount.Get())
-	server.stats.WorkerValidLineCountList = append(server.stats.WorkerValidLineCountList, server.WorkerValidLineCount.TickCount.Get())
-	server.stats.InvalidLineCountList = append(server.stats.InvalidLineCountList, server.InvalidLineCount.TickCount.Get())
-	server.stats.SuccessSendCountList = append(server.stats.SuccessSendCountList, server.SuccessSendCount.TickCount.Get())
-	server.stats.FailSendCountList = append(server.stats.FailSendCountList, server.FailSendCount.TickCount.Get())
-	server.stats.UnknownSendCountList = append(server.stats.UnknownSendCountList, server.UnknownSendCount.TickCount.Get())
-	server.stats.UnsendableSendCountList = append(server.stats.UnsendableSendCountList, server.UnsendableSendCount.TickCount.Get())
-	server.stats.AllLinesCountList = append(server.stats.AllLinesCountList, server.AllLinesCount.TickCount.Get())
-	server.stats.RejectedCountList = append(server.stats.RejectedCountList, server.RejectedLinesCount.TickCount.Get())
-	server.stats.RedirectedCountList = append(server.stats.RedirectedCountList, server.RedirectedLinesCount.TickCount.Get())
-	server.stats.BytesReadCountList = append(server.stats.BytesReadCountList, server.BytesReadCount.TickCount.Get())
-	server.stats.BytesWrittenCountList = append(server.stats.BytesWrittenCountList, server.BytesWrittenCount.TickCount.Get())
+	server.Stats.ValidLineCountList = append(server.Stats.ValidLineCountList, server.ValidLineCount.TickCount.Get())
+	server.Stats.WorkerValidLineCountList = append(server.Stats.WorkerValidLineCountList, server.WorkerValidLineCount.TickCount.Get())
+	server.Stats.InvalidLineCountList = append(server.Stats.InvalidLineCountList, server.InvalidLineCount.TickCount.Get())
+	server.Stats.SuccessSendCountList = append(server.Stats.SuccessSendCountList, server.SuccessSendCount.TickCount.Get())
+	server.Stats.FailSendCountList = append(server.Stats.FailSendCountList, server.FailSendCount.TickCount.Get())
+	server.Stats.UnknownSendCountList = append(server.Stats.UnknownSendCountList, server.UnknownSendCount.TickCount.Get())
+	server.Stats.UnsendableSendCountList = append(server.Stats.UnsendableSendCountList, server.UnsendableSendCount.TickCount.Get())
+	server.Stats.AllLinesCountList = append(server.Stats.AllLinesCountList, server.AllLinesCount.TickCount.Get())
+	server.Stats.RejectedCountList = append(server.Stats.RejectedCountList, server.RejectedLinesCount.TickCount.Get())
+	server.Stats.RedirectedCountList = append(server.Stats.RedirectedCountList, server.RedirectedLinesCount.TickCount.Get())
+	server.Stats.BytesReadCountList = append(server.Stats.BytesReadCountList, server.BytesReadCount.TickCount.Get())
+	server.Stats.BytesWrittenCountList = append(server.Stats.BytesWrittenCountList, server.BytesWrittenCount.TickCount.Get())
 	// javascript resolution is ms .. not nanos
-	server.stats.TicksList = append(server.stats.TicksList, int64(t_stamp/int64(time.Millisecond)))
-	server.stats.GoRoutinesList = append(server.stats.GoRoutinesList, runtime.NumGoroutine())
+	server.Stats.TicksList = append(server.Stats.TicksList, int64(t_stamp/int64(time.Millisecond)))
+	server.Stats.GoRoutinesList = append(server.Stats.GoRoutinesList, runtime.NumGoroutine())
 
-	if uint(len(server.stats.ValidLineCountList)) > server.NumStats {
-		server.stats.ValidLineCountList = server.stats.ValidLineCountList[1:server.NumStats]
-		server.stats.WorkerValidLineCountList = server.stats.WorkerValidLineCountList[1:server.NumStats]
-		server.stats.InvalidLineCountList = server.stats.InvalidLineCountList[1:server.NumStats]
-		server.stats.SuccessSendCountList = server.stats.SuccessSendCountList[1:server.NumStats]
-		server.stats.FailSendCountList = server.stats.FailSendCountList[1:server.NumStats]
-		server.stats.UnknownSendCountList = server.stats.UnknownSendCountList[1:server.NumStats]
-		server.stats.UnsendableSendCountList = server.stats.UnsendableSendCountList[1:server.NumStats]
-		server.stats.AllLinesCountList = server.stats.AllLinesCountList[1:server.NumStats]
-		server.stats.RejectedCountList = server.stats.RejectedCountList[1:server.NumStats]
-		server.stats.RedirectedCountList = server.stats.RedirectedCountList[1:server.NumStats]
-		server.stats.TicksList = server.stats.TicksList[1:server.NumStats]
-		server.stats.GoRoutinesList = server.stats.GoRoutinesList[1:server.NumStats]
-		server.stats.BytesReadCountList = server.stats.BytesReadCountList[1:server.NumStats]
-		server.stats.BytesWrittenCountList = server.stats.BytesWrittenCountList[1:server.NumStats]
+	if uint(len(server.Stats.ValidLineCountList)) > server.NumStats {
+		server.Stats.ValidLineCountList = server.Stats.ValidLineCountList[1:server.NumStats]
+		server.Stats.WorkerValidLineCountList = server.Stats.WorkerValidLineCountList[1:server.NumStats]
+		server.Stats.InvalidLineCountList = server.Stats.InvalidLineCountList[1:server.NumStats]
+		server.Stats.SuccessSendCountList = server.Stats.SuccessSendCountList[1:server.NumStats]
+		server.Stats.FailSendCountList = server.Stats.FailSendCountList[1:server.NumStats]
+		server.Stats.UnknownSendCountList = server.Stats.UnknownSendCountList[1:server.NumStats]
+		server.Stats.UnsendableSendCountList = server.Stats.UnsendableSendCountList[1:server.NumStats]
+		server.Stats.AllLinesCountList = server.Stats.AllLinesCountList[1:server.NumStats]
+		server.Stats.RejectedCountList = server.Stats.RejectedCountList[1:server.NumStats]
+		server.Stats.RedirectedCountList = server.Stats.RedirectedCountList[1:server.NumStats]
+		server.Stats.TicksList = server.Stats.TicksList[1:server.NumStats]
+		server.Stats.GoRoutinesList = server.Stats.GoRoutinesList[1:server.NumStats]
+		server.Stats.BytesReadCountList = server.Stats.BytesReadCountList[1:server.NumStats]
+		server.Stats.BytesWrittenCountList = server.Stats.BytesWrittenCountList[1:server.NumStats]
 	}
-	server.stats.UpTimeSeconds = int64(elasped_sec)
-	server.stats.CurrentReadBufferSize = server.CurrentReadBufferRam.Get()
-	server.stats.MaxReadBufferSize = server.MaxReadBufferSize
+	server.Stats.UpTimeSeconds = int64(elasped_sec)
+	server.Stats.CurrentReadBufferSize = server.CurrentReadBufferRam.Get()
+	server.Stats.MaxReadBufferSize = server.MaxReadBufferSize
 
-	server.stats.InputQueueSize = len(server.InputQueue)
-	server.stats.WorkQueueSize = len(server.WorkQueue)
+	server.Stats.InputQueueSize = len(server.InputQueue)
+	server.Stats.WorkQueueSize = len(server.WorkQueue)
 
-	stats.StatsdClientSlow.GaugeAbsolute(fmt.Sprintf("%s.inputqueue.length", server.Name), int64(server.stats.InputQueueSize))
-	stats.StatsdClientSlow.GaugeAbsolute(fmt.Sprintf("%s.workqueue.length", server.Name), int64(server.stats.WorkQueueSize))
-	stats.StatsdClientSlow.GaugeAbsolute(fmt.Sprintf("%s.readbuffer.length", server.Name), int64(server.stats.CurrentReadBufferSize))
+	stats.StatsdClientSlow.GaugeAbsolute(fmt.Sprintf("%s.inputqueue.length", server.Name), int64(server.Stats.InputQueueSize))
+	stats.StatsdClientSlow.GaugeAbsolute(fmt.Sprintf("%s.workqueue.length", server.Name), int64(server.Stats.WorkQueueSize))
+	stats.StatsdClientSlow.GaugeAbsolute(fmt.Sprintf("%s.readbuffer.length", server.Name), int64(server.Stats.CurrentReadBufferSize))
 
-	server.stats.ValidLineCountPerSec = server.ValidLineCount.TotalRate(elapsed)
-	server.stats.WorkerValidLineCountPerSec = server.WorkerValidLineCount.TotalRate(elapsed)
-	server.stats.InvalidLineCountPerSec = server.InvalidLineCount.TotalRate(elapsed)
-	server.stats.SuccessSendCountPerSec = server.SuccessSendCount.TotalRate(elapsed)
-	server.stats.UnsendableSendCountPerSec = server.UnsendableSendCount.TotalRate(elapsed)
-	server.stats.UnknownSendCountPerSec = server.UnknownSendCount.TotalRate(elapsed)
-	server.stats.AllLinesCountPerSec = server.AllLinesCount.TotalRate(elapsed)
-	server.stats.RedirectedLinesCountPerSec = server.RedirectedLinesCount.TotalRate(elapsed)
-	server.stats.RejectedLinesCountPerSec = server.RejectedLinesCount.TotalRate(elapsed)
-	server.stats.BytesReadCountPerSec = server.BytesReadCount.TotalRate(elapsed)
-	server.stats.BytesWrittenCountPerSec = server.BytesWrittenCount.TotalRate(elapsed)
+	server.Stats.ValidLineCountPerSec = server.ValidLineCount.TotalRate(elapsed)
+	server.Stats.WorkerValidLineCountPerSec = server.WorkerValidLineCount.TotalRate(elapsed)
+	server.Stats.InvalidLineCountPerSec = server.InvalidLineCount.TotalRate(elapsed)
+	server.Stats.SuccessSendCountPerSec = server.SuccessSendCount.TotalRate(elapsed)
+	server.Stats.UnsendableSendCountPerSec = server.UnsendableSendCount.TotalRate(elapsed)
+	server.Stats.UnknownSendCountPerSec = server.UnknownSendCount.TotalRate(elapsed)
+	server.Stats.AllLinesCountPerSec = server.AllLinesCount.TotalRate(elapsed)
+	server.Stats.RedirectedLinesCountPerSec = server.RedirectedLinesCount.TotalRate(elapsed)
+	server.Stats.RejectedLinesCountPerSec = server.RejectedLinesCount.TotalRate(elapsed)
+	server.Stats.BytesReadCountPerSec = server.BytesReadCount.TotalRate(elapsed)
+	server.Stats.BytesWrittenCountPerSec = server.BytesWrittenCount.TotalRate(elapsed)
 
 	if server.ListenURL == nil {
-		server.stats.Listening = "BACKEND-ONLY"
+		server.Stats.Listening = "BACKEND-ONLY"
 	} else {
-		server.stats.Listening = server.ListenURL.String()
+		server.Stats.Listening = server.ListenURL.String()
 	}
 
 	//XXX TODO FIX ME to look like a multi service line, not one big puddle
 	for idx, hasher := range server.Hashers {
 		if idx == 0 {
-			server.stats.ServersUp = hasher.Members()
-			server.stats.ServersDown = hasher.DroppedServers()
-			server.stats.ServersChecks = hasher.CheckingServers()
+			server.Stats.ServersUp = hasher.Members()
+			server.Stats.ServersDown = hasher.DroppedServers()
+			server.Stats.ServersChecks = hasher.CheckingServers()
 		} else {
-			server.stats.ServersUp = append(server.stats.ServersUp, hasher.Members()...)
-			server.stats.ServersDown = append(server.stats.ServersDown, hasher.DroppedServers()...)
-			server.stats.ServersChecks = append(server.stats.ServersChecks, hasher.CheckingServers()...)
+			server.Stats.ServersUp = append(server.Stats.ServersUp, hasher.Members()...)
+			server.Stats.ServersDown = append(server.Stats.ServersDown, hasher.DroppedServers()...)
+			server.Stats.ServersChecks = append(server.Stats.ServersChecks, hasher.CheckingServers()...)
 		}
 		//tick the cacher stats
 		length, size, capacity, _ := hasher.Cache.Stats()
@@ -874,7 +804,7 @@ func (server *Server) StatsTick() {
 
 // dump some json data about the stats and server status
 func (server *Server) StatsJsonString() string {
-	resbytes, _ := json.Marshal(server.stats)
+	resbytes, _ := json.Marshal(server.Stats)
 	return string(resbytes)
 }
 
@@ -886,7 +816,7 @@ func (server *Server) tickDisplay() {
 		select {
 		case <-ticker.C:
 			runtime.GC() // clean things each tick
-			server.stats.mu.Lock()
+			server.Stats.Mu.Lock()
 			server.StatsTick()
 			if server.ShowStats {
 				server.log.Info("Server: ValidLineCount: %d", server.ValidLineCount.TotalCount.Get())
@@ -923,9 +853,9 @@ func (server *Server) tickDisplay() {
 				}
 			}
 			server.ResetTickers()
-			server.stats.mu.Unlock()
+			server.Stats.Mu.Unlock()
 
-			//runtime.GC()
+		//runtime.GC()
 
 		case <-server.StopTicker:
 			server.log.Warning("Stopping stats ticker")
@@ -936,7 +866,7 @@ func (server *Server) tickDisplay() {
 
 // Fire up the http server for stats and healthchecks
 // do this only if there is not a
-func (server *Server) AddStatusHandlers() {
+func (server *Server) AddStatusHandlers(mux *http.ServeMux) {
 
 	stats := func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -1096,18 +1026,17 @@ func (server *Server) AddStatusHandlers() {
 	}
 
 	//stats and status
-	http.HandleFunc(fmt.Sprintf("/%s", server.Name), stats)
-	http.HandleFunc(fmt.Sprintf("/%s/ops/status", server.Name), status)
-	http.HandleFunc(fmt.Sprintf("/%s/ping", server.Name), status)
-	http.HandleFunc(fmt.Sprintf("/%s/ops/status/", server.Name), status)
-	http.HandleFunc(fmt.Sprintf("/%s/status", server.Name), status)
-	http.HandleFunc(fmt.Sprintf("/%s/stats/", server.Name), stats)
-	http.HandleFunc(fmt.Sprintf("/%s/stats", server.Name), stats)
+	mux.HandleFunc(fmt.Sprintf("/%s", server.Name), stats)
+	mux.HandleFunc(fmt.Sprintf("/%s/ops/status", server.Name), status)
+	mux.HandleFunc(fmt.Sprintf("/%s/ping", server.Name), status)
+	mux.HandleFunc(fmt.Sprintf("/%s/ops/status/", server.Name), status)
+	mux.HandleFunc(fmt.Sprintf("/%s/status", server.Name), status)
+	mux.HandleFunc(fmt.Sprintf("/%s/stats/", server.Name), stats)
+	mux.HandleFunc(fmt.Sprintf("/%s/stats", server.Name), stats)
 
 	//admin like functions to add and remove servers to a hashring
-	http.HandleFunc(fmt.Sprintf("/%s/addserver", server.Name), addnode)
-	http.HandleFunc(fmt.Sprintf("/%s/purgeserver", server.Name), purgenode)
-
+	mux.HandleFunc(fmt.Sprintf("/%s/addserver", server.Name), addnode)
+	mux.HandleFunc(fmt.Sprintf("/%s/purgeserver", server.Name), purgenode)
 }
 
 // Takes a split item and processes it, all clients need to call this to actually "do" something
@@ -1520,7 +1449,7 @@ func (server *Server) ConsumeProcessedQueue(qu chan splitter.SplitItem) {
 	}
 }
 
-func CreateServer(cfg *Config, hashers []*ConstHasher) (*Server, error) {
+func CreateServer(cfg *config.HasherConfig, hashers []*ConstHasher) (*Server, error) {
 	server, err := NewServer(cfg)
 
 	if err != nil {

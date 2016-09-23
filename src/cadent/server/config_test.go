@@ -27,6 +27,7 @@ import (
 	"net/url"
 	"os"
 	"testing"
+	"cadent/server/config"
 )
 
 func TesterTCPMockListener(inurl string) net.Listener {
@@ -49,9 +50,9 @@ func TesterUDPMockListener(inurl string) *net.UDPConn {
 	return net
 }
 
-var confs ConfigServers
-var defc *Config
-var useconfigs []*Config
+var confs *config.ConstHashConfig
+var defc *config.HasherConfig
+var useconfigs []*config.HasherConfig
 var statsclient statsd.Statsd
 var servers []*Server
 
@@ -60,9 +61,28 @@ var stats_listen *net.UDPConn
 func TestConsthashConfigDecode(t *testing.T) {
 
 	confstr := `
-[default]
+
+[system]
 pid_file="/tmp/consthash.pid"
 num_procs=0
+
+[profile]
+cpu_profile=true
+
+[statsd]
+server="127.0.0.1:5000"
+prefix="consthash"
+interval=1  # send to statd every second (buffered)
+
+[health]
+listen="0.0.0.0:6061"
+points=500
+path="html"
+
+[servers]
+
+[servers.default]
+
 max_pool_connections=10
 sending_method="pool"
 hasher_algo="md5"
@@ -74,42 +94,36 @@ heartbeat_time_delay=5
 heartbeat_time_timeout=1
 failed_heartbeat_count=3
 server_down_policy="remove_node"
-cpu_profile=true
-statsd_server="127.0.0.1:5000"
-statsd_prefix="consthash"
-statsd_interval=1  # send to statd every second (buffered)
-workers=5
-internal_health_server_listen="0.0.0.0:6061"
-internal_health_server_points=500
-internal_health_server_path="html"
 
-[statsd-example]
+workers=5
+
+[servers.statsd-example]
 listen="udp://0.0.0.0:32121"
 msg_type="statsd"
 hasher_algo="nodejs-hashring"
 hasher_elter="statsd"
 hasher_vnodes=40
 
-  [[statsd-example.servers]]
+  [[servers.statsd-example.servers]]
   servers=["udp://192.168.59.103:8126", "udp://192.168.59.103:8136", "udp://192.168.59.103:8146"]
   check_servers=["tcp://192.168.59.103:8127", "tcp://192.168.59.103:8137", "tcp://192.168.59.103:8147"]
 
-  [[statsd-example.servers]]
+  [[servers.statsd-example.servers]]
   servers=["udp://192.168.59.104:8126", "udp://192.168.59.104:8136", "udp://192.168.59.104:8146"]
   check_servers=["tcp://192.168.59.104:8127" ,"tcp://192.168.59.104:8137", "tcp://192.168.59.104:8147"]
 
-[graphite-example]
+[servers.graphite-example]
 listen="tcp://0.0.0.0:33232"
 msg_type="graphite"
 
-  [[graphite-example.servers]]
+  [[servers.graphite-example.servers]]
   servers=["tcp://192.168.59.103:2003", "tcp://192.168.59.103:2004", "tcp://192.168.59.103:2005"]
 
-[graphite-backend]
+[servers.graphite-backend]
 listen="backend_only"
 msg_type="graphite"
 
-  [[graphite-backend.servers]]
+  [[servers.graphite-backend.servers]]
   servers=["tcp://192.168.59.105:2003", "tcp://192.168.59.105:2004", "tcp://192.168.59.105:2005"]
 
 `
@@ -128,9 +142,9 @@ msg_type="graphite"
 		{"tcp://192.168.59.105:2003", "tcp://192.168.59.105:2004", "tcp://192.168.59.105:2005"},
 	}
 
-	confs, _ = ParseConfigString(confstr)
-	defc, _ = confs.DefaultConfig()
-	useconfigs = confs.ServableConfigs()
+	confs, _ = config.ParseHasherConfigString(confstr)
+	defc, _ = confs.Servers.DefaultConfig()
+	useconfigs = confs.Servers.ServableConfigs()
 
 	// nexted loops have issues for Convey
 	Convey("Given a config string", t, func() {
@@ -156,13 +170,14 @@ msg_type="graphite"
 		})
 	})
 
-	SetUpStatsdClient(defc)
+	confs.Statsd.Start()
+
 	statsclient = stats.StatsdClient
-	stats_listen = TesterUDPMockListener("udp://" + defc.StatsdServer)
+	stats_listen = TesterUDPMockListener("udp://" + confs.Statsd.StatsdServer)
 	defer stats_listen.Close()
 
 	Convey("We should be able to set up a statsd client", t, func() {
-		So(statsclient.String(), ShouldEqual, defc.StatsdServer)
+		So(statsclient.String(), ShouldEqual, confs.Statsd.StatsdServer)
 	})
 
 	Convey("We should be able to create a statsd socket", t, func() {
@@ -199,7 +214,7 @@ msg_type="graphite"
 		})
 
 		Convey("Logging test out for coverage", func() {
-			confs.DebugConfig()
+			confs.Servers.DebugConfig()
 		})
 	})
 
@@ -208,12 +223,12 @@ msg_type="graphite"
 		ioutil.WriteFile(fname, []byte(confstr), 0644)
 		defer os.Remove(fname)
 
-		confs, _ := ParseConfigFile(fname)
-		_, err := confs.DefaultConfig()
+		confs, _ := config.ParseHasherConfigFile(fname)
+		_, err := confs.Servers.DefaultConfig()
 		Convey("We should have 1 default server section", func() {
 			So(err, ShouldEqual, nil)
 		})
-		servers := confs.ServableConfigs()
+		servers := confs.Servers.ServableConfigs()
 		Convey("We should have 2 main server section", func() {
 			So(len(servers), ShouldEqual, 3)
 		})

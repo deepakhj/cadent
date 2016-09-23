@@ -1,4 +1,10 @@
-[default]
+
+
+#############################
+## System things
+#############################
+
+[system]
 
 ## PID file to check if things is running already
 pid_file="/opt/cadent/all.pid"
@@ -8,6 +14,78 @@ pid_file="/opt/cadent/all.pid"
 ## overhead as time goes on)
 
 num_procs=4
+
+#############################
+## Profiling
+#############################
+
+[profile]
+## Turn on CPU/Mem profiling
+enable=true
+
+##  there will be a http server set up to yank pprof data on :6060
+
+listen="0.0.0.0:6060"
+rate=100000
+block_profile=false # this is very expensive
+
+#############################
+## Internal Health/Stats
+#############################
+
+[health]
+
+enabled=true
+
+## there will be an internal health http server set up as well
+## and will respond to '/ops/status' -> "GET OK"
+## '/stats' --> blob of json data (adding ?jsonp=xxx will return jsonp data)
+## '/' --> a little file that charts (poorly) the above stats
+listen="0.0.0.0:6061"
+
+## stats are "rendered" every 5 seconds, so this will keep last
+## `internal_health_server_points` in RAM (careful with how many you store)
+## (use the statsd emitter to store longer term stuff)
+points=500
+
+# https this server if desired
+# key="/tmp/server.key"
+# cert="/tmp/server.crt"
+
+
+#############################
+## Emit Internal To Statsd
+#############################
+
+[statsd]
+## fire out some internal to statsd if desired
+server="" # 127.0.0.1:8125"
+prefix="cadent"
+interval=1  # send to statd every second (buffered)
+
+# global statsd Sample Rates
+
+## It's HIGHLY recommended you at least put a statsd_timer_sample_rate as we measure
+## rates of very fast functions, and it can take _alot_ of CPU cycles just to do that
+## unless your server not under much stress 1% is a good number
+## `statsd_sample_rate` is for counters
+## `statsd_timer_sample_rate` is for timers
+timer_sample_rate=0.01
+sample_rate=0.1
+
+
+
+
+#############################
+## SERVERS
+#############################
+[servers]
+
+#############################
+## Incoming server defaults
+#############################
+
+[servers.default]
 
 stats_tick=false
 
@@ -29,26 +107,6 @@ failed_heartbeat_count=3
 ## `remove_node` -- we can REMOVE the node from the hashpool
 ## `ignore` -- stop checking the node
 server_down_policy="ignore"
-
-## Turn on CPU/Mem profiling
-##  there will be a http server set up to yank pprof data on :6060
-cpu_profile=true
-block_profile=false
-
-## fire out some internal to statsd if desired
-statsd_server="127.0.0.1:8125"
-statsd_prefix="cadent-all"
-statsd_interval=1  # send to statd every second (buffered)
-# global statsd Sample Rates
-
-## It's HIGHLY recommended you at least put a statsd_timer_sample_rate as we measure
-## rates of very fast functions, and it can take _alot_ of CPU cycles just to do that
-## unless your server not under much stress 1% is a good number
-## `statsd_sample_rate` is for counters
-## `statsd_timer_sample_rate` is for timers
-statsd_timer_sample_rate=0.01
-statsd_sample_rate=0.1
-
 
 ## outgoing connections are pooled per outgoign server
 ## this sets the number of pool connections
@@ -81,7 +139,10 @@ internal_health_server_listen="0.0.0.0:6062"
 internal_health_server_points=500
 
 
-[statsd-proxy]
+##
+## Statsd server
+##
+[servers.statsd-proxy]
 
 ### Server sections .. note all the above is overridable in each section
 ### (except the `statsd_*` and `internal_health_server_listen`)
@@ -101,7 +162,11 @@ hasher_vnodes=1
 out_dev_null=true
 
 
-[graphite-proxy]
+###
+## Graphite Server
+###
+
+[servers.graphite-proxy]
 
 ### Server sections .. note all the above is overridable in each section
 ### (except the `statsd_*` and `internal_health_server_listen`)

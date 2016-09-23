@@ -21,6 +21,7 @@ limitations under the License.
 package cadent
 
 import (
+	"cadent/server/config"
 	"cadent/server/stats"
 	"fmt"
 	logging "gopkg.in/op/go-logging.v1"
@@ -121,7 +122,7 @@ func (serv *CheckedServerPool) ServerNames() []string {
 }
 
 // create a list of pools
-func createServerPoolsFromConfig(cfg *Config, serveraction ServerPoolRunner) (pools []*CheckedServerPool, err error) {
+func createServerPoolsFromConfig(cfg *config.HasherConfig, serveraction ServerPoolRunner) (pools []*CheckedServerPool, err error) {
 
 	for _, on_servers := range cfg.ServerLists {
 		serverp, err := createServerPoolFromConfig(cfg, on_servers, serveraction)
@@ -134,7 +135,7 @@ func createServerPoolsFromConfig(cfg *Config, serveraction ServerPoolRunner) (po
 }
 
 // create a single
-func createServerPoolFromConfig(cfg *Config, serverlist *ParsedServerConfig, serveraction ServerPoolRunner) (*CheckedServerPool, error) {
+func createServerPoolFromConfig(cfg *config.HasherConfig, serverlist *config.ParsedServerConfig, serveraction ServerPoolRunner) (*CheckedServerPool, error) {
 
 	serverp, err := createServerPool(serverlist.ServerUrls, serverlist.CheckUrls, serveraction)
 	if err != nil {
