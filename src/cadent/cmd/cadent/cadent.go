@@ -27,13 +27,11 @@ import (
 	"flag"
 	"fmt"
 	logging "gopkg.in/op/go-logging.v1"
-	"io"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"runtime/debug"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -43,36 +41,6 @@ import (
 var ConstHashBuild string
 
 var log = logging.MustGetLogger("main")
-
-func logInit(file string, format string) {
-	if format == "" {
-		format = "%{color}%{time:2006-01-02 15:04:05.000} [%{module}] (%{shortfile}) ▶ %{level:.4s} %{color:reset} %{message}"
-	}
-
-	var file_o io.Writer
-	var err error
-	switch file {
-	case "stdout":
-		file_o = os.Stdout
-	case "":
-		file_o = os.Stdout
-	case "stderr":
-		file_o = os.Stderr
-	default:
-
-		file_o, err = os.OpenFile(file, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
-		if os.IsNotExist(err) {
-			err = nil
-			file_o, err = os.Create(file)
-		}
-		if err != nil {
-			panic(err)
-		}
-	}
-	logBackend := logging.NewLogBackend(file_o, "", 0)
-	logging.SetFormatter(logging.MustStringFormatter(format))
-	logging.SetBackend(logBackend)
-}
 
 // due to the API render sometimes needing "LOTS" of ram to do it's stuff
 // we need to force this issue
@@ -153,27 +121,11 @@ func main() {
 		os.Exit(0)
 	}
 
-	logInit(*logfile, "")
-
 	log.Info("Cadent version %s", ConstHashBuild)
 
 	if flag.NFlag() == 0 {
 		flag.PrintDefaults()
 		os.Exit(1)
-	}
-
-	switch strings.ToUpper(*loglevel) {
-	case "DEBUG":
-		logging.SetLevel(logging.DEBUG, "")
-	case "INFO":
-		logging.SetLevel(logging.INFO, "")
-	case "WARNING":
-		logging.SetLevel(logging.WARNING, "")
-	case "ERROR":
-		logging.SetLevel(logging.ERROR, "")
-	case "CRITICAL":
-		logging.SetLevel(logging.CRITICAL, "")
-
 	}
 
 	if len(*apiOnly) > 0 && len(*configFile) > 0 {
@@ -196,15 +148,25 @@ func main() {
 
 	conf, err = config.ParseHasherConfigFile(*configFile)
 	if err != nil {
-		log.Info("Error decoding config file: %s", err)
+		log.Panicf("Error decoding config file: %s", err)
 		os.Exit(1)
 	}
 
 	def, err := conf.Servers.DefaultConfig()
 	if err != nil {
-		log.Critical("Error decoding config file: Could not find default: %s", err)
+		log.Panicf("Error decoding config file: Could not find default: %s", err)
 		os.Exit(1)
 	}
+
+	//overrides
+	if len(*logfile) > 0 {
+		conf.Logger.File = *logfile
+	}
+	if len(*loglevel) > 0 {
+		conf.Logger.Level = *loglevel
+	}
+
+	conf.Logger.Start()
 
 	// fire up procs, etc
 	conf.System.Start()
@@ -214,6 +176,7 @@ func main() {
 	shared.Set("is_writer", false) // these will get overridden later if there are these
 	shared.Set("is_reader", false)
 	shared.Set("is_hasher", false)
+	shared.Set("is_api", false)
 
 	if len(conf.Servers) > 1 {
 		shared.Set("is_hasher", true)

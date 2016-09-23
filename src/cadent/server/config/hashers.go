@@ -141,6 +141,7 @@ type HasherServers map[string]*HasherConfig
 
 type ConstHashConfig struct {
 	Gossip  GossipConfig  `toml:"gossip" json:"gossip,omitempty"`
+	Logger  LogConfig     `toml:"log" json:"log,omitempty"`
 	Statsd  StatsdConfig  `toml:"statsd" json:"statsd,omitempty"`
 	Health  HealthConfig  `toml:"health" json:"health,omitempty"`
 	Profile ProfileConfig `toml:"profile" json:"profile,omitempty"`
@@ -473,7 +474,6 @@ func ParseHasherConfigFile(filename string) (cfg *ConstHashConfig, err error) {
 	}
 	return cfg, nil
 }
-
 
 func ParseHasherConfigString(bits string) (cfg *ConstHashConfig, err error) {
 	cfg = new(ConstHashConfig)

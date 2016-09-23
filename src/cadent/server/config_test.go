@@ -19,6 +19,7 @@ package cadent
 import (
 	"statsd"
 
+	"cadent/server/config"
 	"cadent/server/stats"
 	"fmt"
 	. "github.com/smartystreets/goconvey/convey"
@@ -27,7 +28,6 @@ import (
 	"net/url"
 	"os"
 	"testing"
-	"cadent/server/config"
 )
 
 func TesterTCPMockListener(inurl string) net.Listener {

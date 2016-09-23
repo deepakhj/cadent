@@ -21,6 +21,8 @@ package config
 import "cadent/server/writers/api"
 
 type ApiOnlyConfig struct {
+	System  SystemConfig      `toml:"system" json:"system,omitempty"`
+	Logger  LogConfig         `toml:"log" json:"log,omitempty"`
 	Profile ProfileConfig     `toml:"profile" json:"profile,omitempty"`
 	Statsd  StatsdConfig      `toml:"statsd" json:"statsd,omitempty"`
 	Api     api.SoloApiConfig `toml:"api" json:"api,omitempty"`

@@ -2,11 +2,10 @@
 ## it acts like both Graphite and Statsd and flushes to graphite and writes to Cassandra
 ##  the statsd out put is basically a loopback (see the prereg.toml)
 
-
-
-[default]
-
-
+[log]
+# format = ""%{color}%{time:2006-01-02 15:04:05.000} [%{module}] (%{shortfile}) ▶ %{level:.4s} %{color:reset} %{message}""
+level = "DEBUG"
+file="stdout"
 
 [system]
 
