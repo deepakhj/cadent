@@ -38,7 +38,6 @@ import (
 	"cadent/server/writers/metrics"
 	"fmt"
 	"github.com/gorilla/mux"
-	"github.com/hashicorp/memberlist"
 	"net"
 	"net/http"
 	"os"
@@ -53,15 +52,21 @@ type ApiInfoData struct {
 	Port     string `json:"port"`
 }
 
+type ApiMemberInfo struct {
+	Addr net.IP      `json:"addr,string,omitempty"`
+	Port uint16      `json:"port,string,omitempty"`
+	Meta interface{} `json:"meta,omitempty"`
+}
+
 type InfoData struct {
-	Time          int64              `json:"time"`
-	MetricDriver  string             `json:"metric-driver"`
-	IndexDriver   string             `json:"index-driver"`
-	Resolutions   [][]int            `json:"resolutions"`
-	Hostname      string             `json:"hostname"`
-	Ip            []string           `json:"ip"`
-	Members       []*memberlist.Node `json:"members"`
-	CachedMetrics int                `json:"cached-metrics"`
+	Time          int64           `json:"time"`
+	MetricDriver  string          `json:"metric-driver"`
+	IndexDriver   string          `json:"index-driver"`
+	Resolutions   [][]int         `json:"resolutions"`
+	Hostname      string          `json:"hostname"`
+	Ip            []string        `json:"ip"`
+	Members       []ApiMemberInfo `json:"members"`
+	CachedMetrics int             `json:"cached-metrics"`
 
 	Api ApiInfoData `json:"api-server"`
 
@@ -115,9 +120,16 @@ func (c *InfoAPI) GetInfo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if gossip.Get() != nil {
-		data.Members = gossip.Get().Members()
-		if len(data.Members) == 0 {
+		mems := gossip.Get().Members()
+		if len(mems) == 0 {
 			data.Members = nil
+		} else {
+			for _, m := range mems {
+				data.Members = append(
+					data.Members,
+					ApiMemberInfo{Addr: m.Addr, Port: m.Port, Meta: m.Meta},
+				)
+			}
 		}
 	} else {
 		data.Members = nil

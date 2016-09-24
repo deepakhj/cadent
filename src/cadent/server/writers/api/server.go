@@ -106,6 +106,7 @@ func (re *ApiLoop) Config(conf ApiConfig, resolution float64) (err error) {
 
 	re.Metrics, err = conf.GetMetrics(resolution)
 	if err != nil {
+
 		return err
 	}
 

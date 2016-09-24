@@ -134,21 +134,22 @@ func (kf *KafkaFlatMetrics) Write(stat repr.StatRepr) error {
 
 	stat.Name.MergeMetric2Tags(kf.static_tags)
 	kf.indexer.Write(stat.Name) // to the indexer
-	item := &schemas.SingleMetric{
-		Type:       "metric",
-		Metric:     stat.Name.Key,
-		Time:       time.Now().UnixNano(),
-		Sum:        float64(stat.Sum),
-		Last:       float64(stat.Last),
-		Count:      stat.Count,
-		Max:        float64(stat.Max),
-		Min:        float64(stat.Min),
-		Resolution: stat.Name.Resolution,
-		TTL:        stat.Name.TTL,
-		Id:         uint64(stat.Name.UniqueId()),
-		Uid:        stat.Name.UniqueIdString(),
-		Tags:       stat.Name.SortedTags(),
-		MetaTags:   stat.Name.SortedMetaTags(),
+	item := &schemas.KSingleMetric{
+		SingleMetric: schemas.SingleMetric{
+			Metric:     stat.Name.Key,
+			Time:       time.Now().UnixNano(),
+			Sum:        float64(stat.Sum),
+			Last:       float64(stat.Last),
+			Count:      stat.Count,
+			Max:        float64(stat.Max),
+			Min:        float64(stat.Min),
+			Resolution: stat.Name.Resolution,
+			Ttl:        stat.Name.TTL,
+			Id:         uint64(stat.Name.UniqueId()),
+			Uid:        stat.Name.UniqueIdString(),
+			Tags:       schemas.ToMetricTag(stat.Name.SortedTags()),
+			MetaTags:   schemas.ToMetricTag(stat.Name.SortedMetaTags()),
+		},
 	}
 	item.SetSendEncoding(kf.enctype)
 

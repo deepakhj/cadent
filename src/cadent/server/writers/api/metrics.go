@@ -55,6 +55,11 @@ func (m *MetricsAPI) AddHandlers(mux *mux.Router) {
 	mux.HandleFunc("/rawrender", m.RawRender)
 }
 
+func (re *MetricsAPI) GetMetrics(args MetricQuery) ([]*metrics.RawRenderItem, error) {
+	stp := re.a.minResolution(args.Start, args.End, args.Step)
+	return re.Metrics.RawRender(args.Target, args.Start, args.End, args.Tags, stp)
+}
+
 // take a rawrender and make it a graphite api json format
 // meant for PyCadent hooked into the graphite-api backend storage item
 func (re *MetricsAPI) ToGraphiteRender(raw_data []*metrics.RawRenderItem) *metrics.WhisperRenderItem {
@@ -127,7 +132,7 @@ func (re *MetricsAPI) GraphiteRender(w http.ResponseWriter, r *http.Request) {
 		re.a.OutError(w, fmt.Sprintf("%v", err), http.StatusBadRequest)
 	}
 
-	data, err := re.Metrics.RawRender(args.Target, args.Start, args.End, args.Tags, args.Step)
+	data, err := re.GetMetrics(args)
 	if err != nil {
 		stats.StatsdClientSlow.Incr("reader.http.graphite-render.errors", 1)
 		re.a.OutError(w, fmt.Sprintf("%v", err), http.StatusServiceUnavailable)
@@ -168,9 +173,8 @@ func (re *MetricsAPI) Render(w http.ResponseWriter, r *http.Request) {
 		re.a.OutError(w, fmt.Sprintf("%v", err), http.StatusBadRequest)
 	}
 
-	data, err := re.Metrics.RawRender(
-		args.Target, args.Start, args.End, args.Tags, re.a.minResolution(args.Start, args.End, args.Step),
-	)
+	data, err := re.GetMetrics(args)
+
 	if err != nil {
 		stats.StatsdClientSlow.Incr("reader.http.render.errors", 1)
 		re.a.OutError(w, fmt.Sprintf("%v", err), http.StatusServiceUnavailable)
@@ -207,9 +211,8 @@ func (re *MetricsAPI) RawRender(w http.ResponseWriter, r *http.Request) {
 		re.a.OutError(w, fmt.Sprintf("%v", err), http.StatusBadRequest)
 	}
 
-	data, err := re.Metrics.RawRender(
-		args.Target, args.Start, args.End, args.Tags, re.a.minResolution(args.Start, args.End, args.Step),
-	)
+	data, err := re.GetMetrics(args)
+
 	if err != nil {
 		stats.StatsdClientSlow.Incr("reader.http.rawrender.error", 1)
 		re.a.OutError(w, fmt.Sprintf("%v", err), http.StatusServiceUnavailable)

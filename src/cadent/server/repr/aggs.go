@@ -104,6 +104,7 @@ const (
 	MAX
 	STD
 	MEDIAN
+	COUNT
 )
 
 // if there is a tag that has the agg func in it
@@ -238,6 +239,9 @@ var ACCUMULATE_FUNC = map[AggType]AGG_FUNC{
 			return 0
 		}
 		return vals[0]
+	},
+	COUNT: func(vals AggFloat64) float64 {
+		return float64(len(vals))
 	},
 	LAST: func(vals AggFloat64) float64 {
 		if len(vals) == 0 {

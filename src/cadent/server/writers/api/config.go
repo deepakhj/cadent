@@ -81,6 +81,7 @@ func (s *SoloApiConfig) GetApiConfig() ApiConfig {
 	return ApiConfig{
 		Listen:                     s.Listen,
 		Logfile:                    s.Logfile,
+		BasePath:                   s.BasePath,
 		TLSKeyPath:                 s.TLSKeyPath,
 		TLSCertPath:                s.TLSCertPath,
 		ApiMetricOptions:           s.ApiMetricOptions,

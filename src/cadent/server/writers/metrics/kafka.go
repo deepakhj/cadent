@@ -284,18 +284,19 @@ func (kf *KafkaMetrics) PushSeries(name *repr.StatName, points series.TimeSeries
 		return err
 	}
 
-	obj := &schemas.SeriesMetric{
-		Type:       "metricblob",
-		Metric:     name.Key,
-		Time:       time.Now().UnixNano(),
-		Data:       pts,
-		Encoding:   points.Name(),
-		Resolution: name.Resolution,
-		TTL:        name.TTL,
-		Id:         uint64(name.UniqueId()),
-		Uid:        name.UniqueIdString(),
-		Tags:       name.SortedTags(),
-		MetaTags:   name.SortedMetaTags(),
+	obj := &schemas.KSeriesMetric{
+		SeriesMetric: schemas.SeriesMetric{
+			Metric:     name.Key,
+			Time:       time.Now().UnixNano(),
+			Data:       pts,
+			Encoding:   points.Name(),
+			Resolution: name.Resolution,
+			Ttl:        name.TTL,
+			Id:         uint64(name.UniqueId()),
+			Uid:        name.UniqueIdString(),
+			Tags:       schemas.ToMetricTag(name.SortedTags()),
+			MetaTags:   schemas.ToMetricTag(name.SortedMetaTags()),
+		},
 	}
 	obj.SetSendEncoding(kf.enctype)
 

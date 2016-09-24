@@ -864,8 +864,8 @@ The "Flat" format is
     	    count: int64,
     	    resolution: float64,
     	    ttl: int64,
-    	    tags: [][]string //[[key1,value1], [key2,value2]...]
-    	    meta_tags: [][]string //[[key1,value1], [key2,value2]...]
+    	    tags: [ {tag: [name, val]}, {tag: [name, val]} ...]
+    	    meta_tags:  [ {tag: [name, val]}, {tag: [name, val]} ...]
     	}
 
 The "Blob" format is
@@ -880,9 +880,11 @@ The "Blob" format is
     	    encoding: string // the series encoding gorilla, protobuf, etc
     	    resolution: float64,
     	    ttl: int64,
-    	    tags: [][]string //[[key1,value1], [key2,value2]...]
-            meta_tags: [][]string //[[key1,value1], [key2,value2]...]
+    	    tags:  [ {tag: [name, val]}, {tag: [name, val]} ...]
+            meta_tags:  [ {tag: [name, val]}, {tag: [name, val]} ...]
     	}
+
+*Note* Tags are encoded this way in order to support mulitple encoding formats, specifically Protobufs
 
 Where as the "flat" format is basically a stream of inciming accumulated values, the blob format is
 
@@ -907,7 +909,7 @@ Here are the configuration options
         	    tags = "host=host1,env=prod" # these are static for whatever process is running this
         	    index_topic = "cadent" # topic for index message (default: cadent)
                 metric_topic = "cadent" # topic for data messages (default: cadent)
-                encoding = "msgpack"  # can be "json" or "msgpack"
+                encoding = "msgpack"  # can be "json" or "msgpack" or "protobuf"
 
 
         	[to-kafka..accumulator.writer.indexer]

@@ -54,7 +54,32 @@ func freeOsMem() {
 	}
 }
 
-func RunApiOnly(file string) error {
+func RunApiOnly(file string, logfile string, loglevel string) error {
+
+	conf, err := config.ParseApiConfigFile(file)
+	if err != nil {
+		panic(err)
+	}
+
+	//overrides
+	if len(logfile) > 0 {
+		conf.Logger.File = logfile
+	}
+	if len(loglevel) > 0 {
+		conf.Logger.Level = loglevel
+	}
+	// set goodies in the shared data
+	shared.Set("hashers", conf)
+	shared.Set("is_writer", false) // these will get overridden later if there are these
+	shared.Set("is_reader", true)
+	shared.Set("is_hasher", false)
+	shared.Set("is_api", true)
+
+	err = conf.Start()
+	if err != nil {
+		panic(err)
+	}
+
 	return nil
 }
 
@@ -108,11 +133,11 @@ func AddGlobalHttpHandlers(h *config.HealthConfig, servers []*cadent.Server) {
 
 func main() {
 	version := flag.Bool("version", false, "Print version and exit")
-	configFile := flag.String("config", "config.toml", "Consitent Hash configuration file")
+	configFile := flag.String("config", "", "Consitent Hash configuration file")
 	regConfigFile := flag.String("prereg", "", "File that contains the Regex/Filtering by key to various backends")
-	apiOnly := flag.String("api", "", "for instances of Cadent that only do the API parts")
-	loglevel := flag.String("loglevel", "DEBUG", "Log Level (debug, info, warning, error, critical)")
-	logfile := flag.String("logfile", "stdout", "Log File (stdout, stderr, path/to/file)")
+	apiOnly := flag.String("api", "", "for instances of Cadent that ONLY do the API parts")
+	loglevel := flag.String("loglevel", "", "Log Level (debug, info, warning, error, critical)")
+	logfile := flag.String("logfile", "", "Log File (stdout, stderr, path/to/file)")
 
 	flag.Parse()
 
@@ -139,7 +164,7 @@ func main() {
 
 	// we halt here and just run the API
 	if len(*apiOnly) > 0 {
-		RunApiOnly(*apiOnly)
+		RunApiOnly(*apiOnly, *logfile, *loglevel)
 		return
 	}
 
@@ -201,10 +226,13 @@ func main() {
 	//some printstuff to verify settings
 	conf.Servers.DebugConfig()
 
-	//profileing
+	//gossip
+	conf.Gossip.Start()
+
+	//profiling
 	conf.Profile.Start()
 
-	//initiallize the statsd singleton
+	//initialize the statsd singleton
 	conf.Statsd.Start()
 
 	var servers []*cadent.Server

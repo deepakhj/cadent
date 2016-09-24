@@ -18,7 +18,10 @@ limitations under the License.
 
 package config
 
-import "cadent/server/writers/api"
+import (
+	"cadent/server/utils/tomlenv"
+	"cadent/server/writers/api"
+)
 
 type ApiOnlyConfig struct {
 	System  SystemConfig      `toml:"system" json:"system,omitempty"`
@@ -26,4 +29,31 @@ type ApiOnlyConfig struct {
 	Profile ProfileConfig     `toml:"profile" json:"profile,omitempty"`
 	Statsd  StatsdConfig      `toml:"statsd" json:"statsd,omitempty"`
 	Api     api.SoloApiConfig `toml:"api" json:"api,omitempty"`
+
+	runnapi *api.SoloApiLoop
+}
+
+func ParseApiConfigFile(filename string) (cfg *ApiOnlyConfig, err error) {
+	cfg = new(ApiOnlyConfig)
+	if _, err := tomlenv.DecodeFile(filename, cfg); err != nil {
+		log.Critical("Error decoding config file: %s", err)
+		return nil, err
+	}
+	return cfg, nil
+}
+
+func (c *ApiOnlyConfig) Start() error {
+	c.Logger.Start()
+	c.System.Start()
+	c.Statsd.Start()
+	c.Profile.Start()
+
+	c.runnapi = api.NewSoloApiLoop()
+	err := c.runnapi.Config(c.Api)
+	if err != nil {
+		return err
+	}
+	c.runnapi.Start()
+
+	return nil
 }

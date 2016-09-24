@@ -230,6 +230,8 @@ func (r *RawDataPoint) AggValue(aggfunc repr.AggType) float64 {
 		return r.Max
 	case repr.LAST:
 		return r.Last
+	case repr.COUNT:
+		return float64(r.Count)
 	default:
 		if r.Count > 0 {
 			return r.Sum / float64(r.Count)

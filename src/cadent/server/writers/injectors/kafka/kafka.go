@@ -20,7 +20,7 @@ limitations under the License.
    It's not a good idea, for obvious reasons, to inject these messages into a kafka writer on the same topic
 */
 
-package injectors
+package kafka
 
 import (
 	"cadent/server/utils"
@@ -197,7 +197,7 @@ func (kf *Kafka) onConsume() {
 				return
 			}
 			kf.log.Debug("Got message from %s: partition: %d, offset: %d", msg.Topic, msg.Partition, msg.Offset)
-			new_obj := schemas.MetricObjectFromType(kf.MessageType)
+			new_obj := MetricObjectFromType(kf.MessageType)
 			err := new_obj.Decode(msg.Value)
 			if err != nil {
 				kf.log.Errorf("Counld not process incoming message: %v", err)

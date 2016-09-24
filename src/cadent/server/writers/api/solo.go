@@ -49,7 +49,6 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"github.com/hashicorp/memberlist"
 	"gopkg.in/op/go-logging.v1"
 	"net"
 	"net/http"
@@ -61,8 +60,9 @@ import (
 const DEFAULT_HTTP_TIMEOUT = 10 * time.Second
 
 type SoloApiLoop struct {
-	Conf    ApiConfig
-	Api     *ApiLoop
+	Conf ApiConfig
+	Api  *ApiLoop
+
 	Metrics metrics.Metrics
 	Indexer indexer.Indexer
 
@@ -75,6 +75,40 @@ type SoloApiLoop struct {
 	ReadCache *metrics.ReadCache
 
 	started bool
+}
+
+func NewSoloApiLoop() *SoloApiLoop {
+	s := new(SoloApiLoop)
+	s.log = logging.MustGetLogger("api.solo")
+	return s
+}
+
+// periodically check the seed info for any member info to update the list
+func (re *SoloApiLoop) getMembers() {
+
+	tick := time.NewTicker(time.Minute)
+	for {
+		<-tick.C
+		if len(re.Members) == 0 {
+			continue
+		}
+
+		// loop through current memebers and which ever acctually responds "wins"
+		for _, m := range re.Members {
+			_url := m + "/info"
+			if strings.HasSuffix(m, "/") {
+				_url = m + "info"
+			}
+			u, _ := url.Parse(_url) // need to add the info target
+			_, err := re.GetSeedData(u)
+			if err != nil {
+				re.log.Critical("Unable to get member data at %s", m)
+				continue
+			}
+			break
+		}
+	}
+
 }
 
 func (re *SoloApiLoop) getUrl(u *url.URL, timeout time.Duration) (*http.Response, error) {
@@ -98,41 +132,55 @@ func (re *SoloApiLoop) getUrl(u *url.URL, timeout time.Duration) (*http.Response
 // from the member list, ask each member for it's API info
 // we ASSUME that each member is setup the same old way the seed node is
 // if not, we bail on error, as well that should not be the case
-func (re *SoloApiLoop) ComposeMembers(seed *url.URL, membs []*memberlist.Node) error {
+func (re *SoloApiLoop) ComposeMembers(seed *url.URL, membs []ApiMemberInfo) error {
 
 	spl := strings.Split(seed.Host, ":")
 	port := ""
 	if len(spl) == 2 {
 		port = fmt.Sprintf(":%s", spl[1])
 	}
+	re.log.Debug("Incoming Members: %v", membs)
+	new_info := make([]*InfoData, 0)
+	new_mems := make([]string, 0)
 	for _, n := range membs {
-		n_url, err := url.Parse(fmt.Sprintf("%s://%s%s/%s/info", seed.Scheme, n.Addr, port, seed.Path))
+		re.log.Notice("Found cluster member at %s", n.Addr)
+
+		n_url, err := url.Parse(fmt.Sprintf("%s://%s%s/%s", seed.Scheme, n.Addr, port, seed.Path))
 		if err != nil {
 			return err
 		}
 		info_d, err := re.GetInfoData(n_url)
 		if err != nil {
-			return err
+			re.log.Critical("Failed getting member at %s info: %v", n_url, err)
+			continue
 		}
-		re.MemberInfo = append(re.MemberInfo, info_d)
+		new_info = append(new_info, info_d)
 		if len(info_d.Api.Host) != 0 {
-			re.Members = append(
-				re.Members,
-				fmt.Sprintf("%s://%s:%s/%s", info_d.Api.Scheme, info_d.Api.Host, info_d.Api.Port, info_d.Api.BasePath),
-			)
+			api_host := fmt.Sprintf("%s://%s:%s/%s", info_d.Api.Scheme, info_d.Api.Host, info_d.Api.Port, info_d.Api.BasePath)
+			new_mems = append(new_mems, api_host)
+			re.log.Notice("Found Cluster API memeber at %s", api_host)
+
 		}
 	}
+	re.MemberInfo = new_info
+	re.Members = new_mems
 	return nil
 }
 
-func (re *SoloApiLoop) GetInfoData(url *url.URL) (*InfoData, error) {
+func (re *SoloApiLoop) GetInfoData(url *url.URL) (info *InfoData, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("Error: Recovered: %v", r)
+		}
+	}()
+
 	r, err := re.getUrl(url, DEFAULT_HTTP_TIMEOUT)
 	if err != nil {
 		return nil, err
 	}
 	defer r.Body.Close()
 
-	info := new(InfoData)
+	info = new(InfoData)
 	err = json.NewDecoder(r.Body).Decode(info)
 	if err != nil {
 		return nil, err
@@ -142,20 +190,20 @@ func (re *SoloApiLoop) GetInfoData(url *url.URL) (*InfoData, error) {
 
 func (re *SoloApiLoop) GetSeedData(seed *url.URL) (*InfoData, error) {
 
+	re.log.Notice("Attempting to get cluster info from %s", seed)
 	info, err := re.GetInfoData(seed)
 	if err != nil {
 		return nil, err
 	}
-
 	err = re.ComposeMembers(seed, info.Members)
 	return info, err
 
 }
 
-func (re *SoloApiLoop) Config(conf SoloApiConfig, resolution float64) (err error) {
+func (re *SoloApiLoop) Config(conf SoloApiConfig) (err error) {
 	// first need to grab things from any seeds (if any)
 
-	if len(conf.Seed) == 0 || len(conf.Resolutions) == 0 {
+	if len(conf.Seed) == 0 && len(conf.Resolutions) == 0 {
 		return fmt.Errorf("`seed` or `resolutions` is required")
 	}
 	rl := new(ApiLoop)
@@ -173,13 +221,23 @@ func (re *SoloApiLoop) Config(conf SoloApiConfig, resolution float64) (err error
 		if len(s_data.Resolutions) == 0 {
 			return fmt.Errorf("Unable to determine resolutions from seed %s", conf.Seed)
 		}
-		rl.Config(conf.GetApiConfig(), float64(s_data.Resolutions[0][0]))
-
+		apiconf := conf.GetApiConfig()
+		apiconf.ApiMetricOptions.UseCache = "dummy" // need a fake cacher
+		err = rl.Config(apiconf, float64(s_data.Resolutions[0][0]))
+		if err != nil {
+			return err
+		}
 		rl.SetResolutions(s_data.Resolutions)
 		re.Api = rl
 		return nil
 	} else {
-		rl.Config(conf.GetApiConfig(), float64(conf.Resolutions[0]))
+		apiconf := conf.GetApiConfig()
+		apiconf.ApiMetricOptions.UseCache = "dummy" // need a fake cacher
+
+		err = rl.Config(apiconf, float64(conf.Resolutions[0]))
+		if err != nil {
+			return err
+		}
 		for_res := [][]int{}
 		for _, r := range conf.Resolutions {
 			for_res = append(for_res, []int{int(r), 0})
@@ -194,5 +252,6 @@ func (re *SoloApiLoop) Stop() {
 }
 
 func (re *SoloApiLoop) Start() {
+	go re.getMembers()
 	re.Api.Start()
 }

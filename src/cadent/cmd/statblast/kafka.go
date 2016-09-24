@@ -41,21 +41,23 @@ func GetKafkaProducer(broker string) sarama.AsyncProducer {
 	return k.Connection().(sarama.AsyncProducer)
 }
 
-func UnProcessedMakeKafkaMessage() *schemas.UnProcessedMetric {
+func UnProcessedMakeKafkaMessage() *schemas.KUnProcessedMetric {
 	max := 1000
 	div := 10
 	len := 4
-	taglen := 4
-
-	item := &schemas.UnProcessedMetric{
-		Metric: sprinter(len),
-		Time:   time.Now().UnixNano(),
-		Sum:    randFloat(max, div),
-		Last:   randFloat(max, div),
-		Count:  randInt(max),
-		Max:    randFloat(max, div),
-		Min:    randFloat(max, div),
-		Tags:   sprinterTagList(taglen),
+	taglen := 6
+	tgs := sprinterTagList(taglen)
+	item := &schemas.KUnProcessedMetric{
+		UnProcessedMetric: schemas.UnProcessedMetric{
+			Metric: sprinter(len),
+			Time:   time.Now().UnixNano(),
+			Sum:    randFloat(max, div),
+			Last:   randFloat(max, div),
+			Count:  randInt(max),
+			Max:    randFloat(max, div),
+			Min:    randFloat(max, div),
+			Tags:   schemas.ToMetricTag(tgs),
+		},
 	}
 
 	return item

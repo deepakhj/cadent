@@ -237,6 +237,7 @@ func (cf *ConfigAccumulator) GetAccumulator() (*Accumulator, error) {
 
 		// some data for the shared land
 		shared.Set("is_reader", true)
+		shared.Set("is_api", true)
 	}
 	return ac, nil
 }

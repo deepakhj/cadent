@@ -26,4 +26,4 @@ import (
 	"errors"
 )
 
-var ErrMetricIsNil = errors.New("The kafka metric is nil")
+var ErrMetricIsNil = errors.New("The metric is nil")
