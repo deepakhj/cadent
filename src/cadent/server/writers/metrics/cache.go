@@ -96,7 +96,7 @@ const (
 	CACHER_DEFAULT_OVERFLOW_DURATION = 3600
 
 	// max length for the broadcast channel
-	CACHER_DEFAULT_BROADCAST_LEN = 128
+	CACHER_DEFAULT_BROADCAST_LEN = 256
 )
 
 /*

@@ -707,7 +707,7 @@ Since different resolutions in cassandra are stored in one super table, we need 
             stime bigint,
             ptype int,
             points blob,
-            PRIMARY KEY (mid, etime, stime)
+            PRIMARY KEY (mid, etime, stime, ptype)
         ) WITH COMPACT STORAGE
             AND CLUSTERING ORDER BY etime ASC
             AND compaction = {
