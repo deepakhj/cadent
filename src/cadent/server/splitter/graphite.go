@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -183,17 +184,40 @@ func (g *GraphiteSplitter) ProcessLine(line []byte) (SplitItem, error) {
 		for _, j := range graphite_array {
 			fs = append(fs, []byte(j))
 		}
-		// log.Printf("IN GRAPHITE: %s ARR: %v  t_idx: %d, time: %s", graphite_array, line, graphite_array[job.time_index], t.String())
-		gi := &GraphiteSplitItem{
-			inkey:    []byte(graphite_array[g.key_index]),
-			inline:   []byte(t_l),
-			intime:   t,
-			infields: fs,
-			inphase:  Parsed,
-			inorigin: Other,
-		}
+		gi := getGraphiteItem()
+		gi.inkey = []byte(graphite_array[g.key_index])
+		gi.inline = []byte(t_l)
+		gi.intime = t
+		gi.infields = fs
+		gi.inphase = Parsed
+		gi.inorigin = Other
+		/*
+			// log.Printf("IN GRAPHITE: %s ARR: %v  t_idx: %d, time: %s", graphite_array, line, graphite_array[job.time_index], t.String())
+
+			gi := &GraphiteSplitItem{
+				inkey:    []byte(graphite_array[g.key_index]),
+				inline:   []byte(t_l),
+				intime:   t,
+				infields: fs,
+				inphase:  Parsed,
+				inorigin: Other,
+			}*/
 		return gi, nil
 	}
 	return nil, errBadGraphiteLine
 
+}
+
+var graphiteItemPool sync.Pool
+
+func getGraphiteItem() *GraphiteSplitItem {
+	x := graphiteItemPool.Get()
+	if x == nil {
+		return new(GraphiteSplitItem)
+	}
+	return x.(*GraphiteSplitItem)
+}
+
+func putGraphiteItem(spl *GraphiteSplitItem) {
+	graphiteItemPool.Put(spl)
 }

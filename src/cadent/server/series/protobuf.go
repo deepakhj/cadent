@@ -81,38 +81,8 @@ func (s *ProtobufTimeSeries) Bytes() []byte {
 	return d
 }
 
-/*
-A note about why this is computed in this "not-so-true-to-life" way
-
- the usual route of computing this is
- b, _ := s.MarshalBinary()
- return len(b)
-
- however when there is ALOT of stats in the list, doing this has
- 2 issues
- 1. it creates alot of GC ram elements
- 2. it becomes very expensive, CPU intensive, etc
-
- Since alot of the use of this is to determine if it's beyond some "cache buffer size"
- for many thousands of points added per second, it basically ends up killing itself
-
- So we need to estimate the size
-
-*/
 func (s *ProtobufTimeSeries) Len() int {
-	//  T0 + fullres
-	size := 9
-
-	// marshal the first element in the list to get a guess
-	s_len := len(s.Stats.Stats)
-	if s_len > 0 {
-		b, _ := proto.Marshal(s.Stats.Stats[0])
-		if b != nil {
-			// array len + single element size + some overhead
-			size += len(b)*s_len + s_len*2
-		}
-	}
-	return size
+	return s.Stats.Size()
 }
 
 func (s *ProtobufTimeSeries) Iter() (iter TimeSeriesIter, err error) {

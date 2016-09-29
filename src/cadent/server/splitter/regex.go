@@ -23,6 +23,7 @@ package splitter
 import (
 	"fmt"
 	"regexp"
+	"sync"
 	"time"
 )
 
@@ -147,16 +148,30 @@ func (job *RegExSplitter) ProcessLine(line []byte) (SplitItem, error) {
 	}
 
 	if len(key_param) > 0 {
-		ri := &RegexSplitItem{
-			inkey:    key_param,
-			inline:   line,
-			intime:   t,
-			regexed:  matched,
-			inphase:  Parsed,
-			inorigin: Other,
-		}
+		ri := getRegexItem()
+		ri.inkey = key_param
+		ri.inline = line
+		ri.intime = t
+		ri.regexed = matched
+		ri.inphase = Parsed
+		ri.inorigin = Other
+
 		return ri, nil
 	}
 	return nil, fmt.Errorf("Invalid Regex (cannot find key) line")
 
+}
+
+var regexItemPool sync.Pool
+
+func getRegexItem() *RegexSplitItem {
+	x := regexItemPool.Get()
+	if x == nil {
+		return new(RegexSplitItem)
+	}
+	return x.(*RegexSplitItem)
+}
+
+func putRegexItem(spl *RegexSplitItem) {
+	regexItemPool.Put(spl)
 }

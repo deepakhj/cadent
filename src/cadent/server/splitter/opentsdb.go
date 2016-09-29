@@ -42,6 +42,7 @@ type OpenTSDBSplitItem struct {
 }
 
 type OpenTSDBSplitter struct {
+	graphSplit *GraphiteSplitter
 }
 
 func (g *OpenTSDBSplitter) Name() (name string) { return OPENTSDB_NAME }
@@ -50,6 +51,9 @@ func NewOpenTSDBSplitter(conf map[string]interface{}) (*OpenTSDBSplitter, error)
 
 	//<key> <value> <time> <thigns>
 	job := &OpenTSDBSplitter{}
+	job.graphSplit = new(GraphiteSplitter)
+	job.graphSplit.key_index = 0
+	job.graphSplit.time_index = 2
 	return job, nil
 }
 
@@ -59,10 +63,7 @@ func (g *OpenTSDBSplitter) ProcessLine(line []byte) (SplitItem, error) {
 		return nil, errBadOpenTSDBLine
 	}
 	if bytes.Equal(OPENTSDB_CMD, line[0:4]) {
-		g_fmat := new(GraphiteSplitter)
-		g_fmat.key_index = 0
-		g_fmat.time_index = 2
-		return g_fmat.ProcessLine(line[4:])
+		return g.graphSplit.ProcessLine(line[4:])
 
 	}
 	return nil, errBadOpenTSDBLine

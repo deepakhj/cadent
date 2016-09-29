@@ -24,6 +24,23 @@ import (
 	"fmt"
 )
 
+// note opentsb is not here is it makes a "graphitesplititem" when it's done
+func PutSplitItem(item SplitItem) {
+	switch item.(type) {
+	case *GraphiteSplitItem:
+		putGraphiteItem(item.(*GraphiteSplitItem))
+	case *StatsdSplitItem:
+		putStatsdItem(item.(*StatsdSplitItem))
+	case *CarbonTwoSplitItem:
+		putCarbonTwoItem(item.(*CarbonTwoSplitItem))
+	case *RegexSplitItem:
+		putRegexItem(item.(*RegexSplitItem))
+	case *JsonSplitItem:
+		putJsonItem(item.(*JsonSplitItem))
+	}
+
+}
+
 func NewSplitterItem(name string, conf map[string]interface{}) (Splitter, error) {
 	switch {
 	case name == "statsd":

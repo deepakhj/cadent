@@ -24,6 +24,7 @@ import (
 	"cadent/server/repr"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -115,15 +116,29 @@ func (job *StatsdSplitter) ProcessLine(line []byte) (SplitItem, error) {
 		fs = append(fs, []byte(j))
 	}
 	if len(statd_array) >= 2 {
-		si := &StatsdSplitItem{
-			inkey:    []byte(statd_array[0]),
-			inline:   []byte(in_l),
-			infields: fs,
-			inphase:  Parsed,
-			inorigin: Other,
-		}
+		si := getStatsdItem()
+		si.inkey = []byte(statd_array[0])
+		si.inline = []byte(in_l)
+		si.infields = fs
+		si.inphase = Parsed
+		si.inorigin = Other
+
 		return si, nil
 	}
 	return nil, fmt.Errorf("Invalid Statsd line: " + string(line))
 
+}
+
+var statsdItemPool sync.Pool
+
+func getStatsdItem() *StatsdSplitItem {
+	x := statsdItemPool.Get()
+	if x == nil {
+		return new(StatsdSplitItem)
+	}
+	return x.(*StatsdSplitItem)
+}
+
+func putStatsdItem(spl *StatsdSplitItem) {
+	statsdItemPool.Put(spl)
 }

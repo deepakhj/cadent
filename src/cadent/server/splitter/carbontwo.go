@@ -33,6 +33,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -210,15 +211,29 @@ func (g *CarbonTwoSplitter) ProcessLine(inline []byte) (SplitItem, error) {
 	for _, j := range vals {
 		fs = append(fs, []byte(j))
 	}
-	gi := &CarbonTwoSplitItem{
-		inkey:    []byte(key),
-		inline:   []byte(line),
-		intime:   t,
-		infields: fs,
-		tags:     otags,
-		inphase:  Parsed,
-		inorigin: Other,
-	}
+
+	gi := getCarbontTwoItem()
+	gi.inkey = []byte(key)
+	gi.inline = []byte(line)
+	gi.intime = t
+	gi.infields = fs
+	gi.tags = otags
+	gi.inphase = Parsed
+	gi.inorigin = Other
 	return gi, nil
 
+}
+
+var carbonTwoItemPool sync.Pool
+
+func getCarbontTwoItem() *CarbonTwoSplitItem {
+	x := carbonTwoItemPool.Get()
+	if x == nil {
+		return new(CarbonTwoSplitItem)
+	}
+	return x.(*CarbonTwoSplitItem)
+}
+
+func putCarbonTwoItem(spl *CarbonTwoSplitItem) {
+	carbonTwoItemPool.Put(spl)
 }

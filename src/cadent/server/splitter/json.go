@@ -25,6 +25,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 )
 
@@ -135,7 +136,7 @@ func (g *JsonSplitter) ParseJson(j_item *JsonStructSplitItem) (SplitItem, error)
 		return nil, errBadJsonLine
 	}
 
-	spl_item := new(JsonSplitItem)
+	spl_item := getJsonItem()
 	spl_item.inkey = []byte(j_item.Metric)
 
 	// nano or second tstamps
@@ -161,6 +162,10 @@ func (g *JsonSplitter) ParseJson(j_item *JsonStructSplitItem) (SplitItem, error)
 	// need to "squeeze" the air out of the incoming
 	var err error
 	spl_item.inline, err = json.Marshal(j_item)
+
+	//back in the pool
+	putStructJsonItem(j_item)
+
 	return spl_item, err
 }
 
@@ -189,7 +194,8 @@ func (g *JsonSplitter) ProcessLines(line []byte) ([]SplitItem, error) {
 }
 
 func (g *JsonSplitter) ProcessLine(line []byte) (SplitItem, error) {
-	j_item := new(JsonStructSplitItem)
+	j_item := getStructJsonItem()
+
 	err := json.Unmarshal(line, j_item)
 	if err != nil {
 		return nil, err
@@ -197,4 +203,37 @@ func (g *JsonSplitter) ProcessLine(line []byte) (SplitItem, error) {
 
 	return g.ParseJson(j_item)
 
+}
+
+var jsonStructItemPool sync.Pool
+
+func getStructJsonItem() *JsonStructSplitItem {
+	x := jsonStructItemPool.Get()
+	if x == nil {
+		return new(JsonStructSplitItem)
+	}
+	// need to mull it out
+	x.(*JsonStructSplitItem).Metric = ""
+	x.(*JsonStructSplitItem).Tags = make(map[string]string)
+	x.(*JsonStructSplitItem).Time = 0
+	x.(*JsonStructSplitItem).Value = 0
+	return x.(*JsonStructSplitItem)
+}
+
+func putStructJsonItem(spl *JsonStructSplitItem) {
+	jsonStructItemPool.Put(spl)
+}
+
+var jsonItemPool sync.Pool
+
+func getJsonItem() *JsonSplitItem {
+	x := jsonItemPool.Get()
+	if x == nil {
+		return new(JsonSplitItem)
+	}
+	return x.(*JsonSplitItem)
+}
+
+func putJsonItem(spl *JsonSplitItem) {
+	jsonItemPool.Put(spl)
 }

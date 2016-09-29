@@ -506,6 +506,8 @@ func (server *Server) PushLineToBackend(spl splitter.SplitItem) splitter.SplitIt
 				server.WorkerHold <- 1
 
 			}
+			// finally put the splititem back into the pool
+			splitter.PutSplitItem(spl)
 			out_str += "ok"
 		} else {
 
@@ -1080,6 +1082,10 @@ func (server *Server) ProcessSplitItem(splitem splitter.SplitItem, out_queue cha
 		//log.Debug("Acc:%v Line: %s Phase: %s", server.PreRegFilter.Accumulator.Name, splitem.Line())
 		stats.StatsdClient.Incr(fmt.Sprintf("prereg.accumulated.%s", server.Name), 1)
 		err := server.PreRegFilter.Accumulator.ProcessSplitItem(splitem)
+
+		// put item back into pool
+		splitter.PutSplitItem(splitem)
+
 		if err != nil {
 			log.Warning("Could not parse in accumulator Acc:%s Err: %s", server.PreRegFilter.Accumulator.Name, err)
 		}

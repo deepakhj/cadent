@@ -392,3 +392,34 @@ func TestUnkRunner(t *testing.T) {
 	})
 
 }
+
+
+func Benchmark__Graphite__NoPool(b *testing.B) {
+
+	good_line := []byte("moo.goo.org 123 1465866540 moo=goo loo=moo")
+	gr, _ := NewGraphiteSplitter(nil)
+
+	b.SetBytes(int64(len(good_line))) //8 64byte numbers
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		gr.ProcessLine(good_line)
+	}
+}
+
+
+func Benchmark__Graphite__Pool(b *testing.B) {
+
+	good_line := []byte("moo.goo.org 123 1465866540 moo=goo loo=moo")
+	gr, _ := NewGraphiteSplitter(nil)
+
+	b.SetBytes(int64(len(good_line))) //8 64byte numbers
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		spl, _ := gr.ProcessLine(good_line)
+		PutSplitItem(spl)
+	}
+}
