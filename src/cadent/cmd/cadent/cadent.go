@@ -158,7 +158,7 @@ func main() {
 		os.Exit(1)
 	}
 	if len(*apiOnly) > 0 && len(*regConfigFile) > 0 {
-		log.Critical("Cannot have both a PreRege and an API only config, API should be configured w/ the prereg config")
+		log.Critical("Cannot have both a PreReg and an API only config, API should be configured w/ the prereg config")
 		os.Exit(1)
 	}
 

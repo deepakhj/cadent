@@ -26,6 +26,7 @@ const (
 	MSG_SINGLE
 	MSG_UNPROCESSED
 	MSG_RAW
+	MSG_ANY
 )
 
 func MetricTypeFromString(enc string) MessageType {
@@ -36,6 +37,8 @@ func MetricTypeFromString(enc string) MessageType {
 		return MSG_UNPROCESSED
 	case "raw":
 		return MSG_RAW
+	case "any":
+		return MSG_ANY
 	default:
 		return MSG_SINGLE
 	}

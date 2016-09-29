@@ -6,6 +6,10 @@ message MetricTag {
 	repeated string tag = 1;
 }
 
+message MetricType {
+	required string type = 1;
+}
+
 message MetricName {
     required string metric = 1;
     optional uint64 id = 2;
@@ -44,7 +48,7 @@ message SingleMetric {
 	optional double min = 6;
 	optional double max = 7;
 	optional double last = 8;
-	required double sum =9;
+	required double sum = 9;
 	required int64 count =10;
 	optional uint32 resolution = 11;
 	optional uint32 ttl = 12;
@@ -73,3 +77,9 @@ message RawMetric {
 	repeated MetricTag meta_tags = 14;
 }
 
+message AnyMetric{
+	optional RawMetric raw = 1;
+	optional UnProcessedMetric unprocessed = 2;
+	optional SingleMetric single = 3;
+	optional SeriesMetric series = 4;
+}

@@ -1,0 +1,56 @@
+
+##
+### just the render API and nothing else
+##
+
+[log]
+# format = ""%{color}%{time:2006-01-02 15:04:05.000} [%{module}] (%{shortfile}) ▶ %{level:.4s} %{color:reset} %{message}""
+level = "DEBUG"
+file="stdout"
+
+
+[system]
+pid_file="/opt/cadent/api.pid"
+num_procs=4
+
+[profile]
+## Turn on CPU/Mem profiling
+##  there will be a http server set up to yank pprof data on :6065
+enabled=true
+listen="0.0.0.0:6065"
+rate=100000
+block_profile=false # this is very expensive
+
+## fire out some internal to statsd if desired
+[statsd]
+server="127.0.0.1:8125"
+prefix="cadent"
+interval=1  # send to statd every second (buffered)
+
+# global statsd Sample Rates
+
+## It's HIGHLY recommended you at least put a statsd_timer_sample_rate as we measure
+## rates of very fast functions, and it can take _alot_ of CPU cycles just to do that
+## unless your server not under much stress 1% is a good number
+## `statsd_sample_rate` is for counters
+## `statsd_timer_sample_rate` is for timers
+timer_sample_rate=0.01
+sample_rate=0.1
+
+
+[api]
+base_path = "/graphite/"
+listen = "0.0.0.0:8084"
+
+## used to find the "writer" nodes as we'll need them to grab inflight/cached data
+## this will grab all the ones in the
+seed = "http://localhost:8083/graphite/info"
+
+    [api.metrics]
+        driver = "mysql"
+        dsn = "$ENV{MYSQL_USER:admin}:$ENV{MYSQL_PASS:}@tcp(localhost:3306)/cadent"
+
+
+    [api.indexer]
+        driver = "mysql"
+        dsn = "$ENV{MYSQL_USER:admin}:$ENV{MYSQL_PASS:}@tcp(localhost:3306)/cadent"

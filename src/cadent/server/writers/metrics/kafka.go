@@ -284,25 +284,26 @@ func (kf *KafkaMetrics) PushSeries(name *repr.StatName, points series.TimeSeries
 		return err
 	}
 
-	obj := &schemas.KSeriesMetric{
-		SeriesMetric: schemas.SeriesMetric{
-			Metric:     name.Key,
-			Time:       time.Now().UnixNano(),
-			Data:       pts,
-			Encoding:   points.Name(),
-			Resolution: name.Resolution,
-			Ttl:        name.TTL,
-			Id:         uint64(name.UniqueId()),
-			Uid:        name.UniqueIdString(),
-			Tags:       schemas.ToMetricTag(name.SortedTags()),
-			MetaTags:   schemas.ToMetricTag(name.SortedMetaTags()),
+	s_metric := new(schemas.SeriesMetric)
+	s_metric.Metric = name.Key
+	s_metric.Time = time.Now().UnixNano()
+	s_metric.Data = pts
+	s_metric.Encoding = points.Name()
+	s_metric.Resolution = name.Resolution
+	s_metric.Ttl = name.TTL
+	s_metric.Tags = schemas.ToMetricTag(name.SortedTags())
+	s_metric.MetaTags = schemas.ToMetricTag(name.SortedMetaTags())
+
+	obj := &schemas.KMetric{
+		AnyMetric: schemas.AnyMetric{
+			Series: s_metric,
 		},
 	}
 	obj.SetSendEncoding(kf.enctype)
 
 	kf.conn.Input() <- &sarama.ProducerMessage{
 		Topic: kf.db.DataTopic(),
-		Key:   sarama.StringEncoder(obj.Id), // hash on unique id
+		Key:   sarama.StringEncoder(obj.Id()),
 		Value: obj,
 	}
 

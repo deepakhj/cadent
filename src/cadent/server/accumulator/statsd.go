@@ -755,6 +755,15 @@ func (a *StatsdAccumulate) FlushList() *flushedList {
 	return fl
 }
 
+// for statsd we have to "assume" that tings are not yet process and the "metric" key
+// is basically the full metric to parse.
+// i.e. the stat.Name.Key == "<key>:<value>|<type>|@<sample>|#tags:val,tag:val"
+// this is really the only way to deal w/ statsd as repr values are assumed to be already
+// "aggregated"
+func (a *StatsdAccumulate) ProcessRepr(stat *repr.StatRepr) error {
+	return a.ProcessLine([]byte(stat.Name.Key))
+}
+
 func (a *StatsdAccumulate) ProcessLine(lineb []byte) (err error) {
 	//<key>:<value>|<type>|@<sample>|#tags:val,tag:val
 	line := string(lineb)

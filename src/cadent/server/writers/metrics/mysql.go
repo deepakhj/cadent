@@ -606,6 +606,8 @@ func (my *MySQLMetrics) GetFromDatabase(metric *indexer.MetricFindItem, resoluti
 	rawd.Metric = metric.Path
 
 	rawd.AggFunc = repr.GuessReprValueFromKey(metric.Id)
+	t_start := uint32(start)
+	cur_pt := NullRawDataPoint(t_start)
 
 	for rows.Next() {
 		var p_type uint8
@@ -619,8 +621,6 @@ func (my *MySQLMetrics) GetFromDatabase(metric *indexer.MetricFindItem, resoluti
 			return rawd, err
 		}
 
-		t_start := uint32(0)
-		var cur_pt RawDataPoint
 		// on resamples (if >0 ) we simply merge points until we hit the steps
 		do_resample := resample > 0 && resample > resolution
 		for s_iter.Next() {
@@ -630,11 +630,6 @@ func (my *MySQLMetrics) GetFromDatabase(metric *indexer.MetricFindItem, resoluti
 			// skip if not in range
 			if t > u_end || t < u_start {
 				continue
-			}
-
-			if t_start == 0 {
-				t_start = uint32(t)
-				cur_pt = NullRawDataPoint(t)
 			}
 
 			if do_resample {

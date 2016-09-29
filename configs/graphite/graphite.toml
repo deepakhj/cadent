@@ -1,6 +1,6 @@
 ## this is the current config we run for Integ Stats collectors
-## it acts like both Graphite and Statsd and flushes to graphite and writes to Cassandra
-##  the statsd out put is basically a loopback (see the prereg.toml)
+## it acts like both Graphite and Statsd and flushes to graphite
+##  the statsd out put is basically a loopback
 
 [log]
 # format = ""%{color}%{time:2006-01-02 15:04:05.000} [%{module}] (%{shortfile}) ▶ %{level:.4s} %{color:reset} %{message}""
@@ -17,7 +17,7 @@ pid_file="/opt/cadent/cadent.pid"
 ## overhead as time goes on)
 #
 
-num_procs=4
+num_procs=2
 
 
 #############################
@@ -26,7 +26,7 @@ num_procs=4
 
 [profile]
 ## Turn on CPU/Mem profiling
-enable=true
+enabled=true
 
 ##  there will be a http server set up to yank pprof data on :6060
 

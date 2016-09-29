@@ -59,16 +59,16 @@ type Accumulator struct {
 
 	// these are assigned from the config file in the PreReg config file
 	ToBackend         string          `json:"backend"`
-	FromBackend       string          `json:"from_backend"`
+	FromBackend       string          `json:"from-backend"`
 	FormatterName     string          `json:"formatter"`
 	AccumulatorName   string          `json:"accumulator"`
 	Name              string          `json:"name"`
-	KeepKeys          bool            `json:"keep_keys"` // if true, will not "remove" the keys post flush, just set them to 0
+	KeepKeys          bool            `json:"keep-keys"` // if true, will not "remove" the keys post flush, just set them to 0
 	AccumulateTime    time.Duration   `json:"accumulate-timer"`
 	FlushTimes        []time.Duration `json:"flush-time"`
 	TTLTimes          []time.Duration `json:"ttl-times"`
 	RandomTickerStart bool            `json:"random-ticker-start"`
-	TagMode           uint8           // see repr.TAG_MODE
+	TagMode           uint8           `json:"tag-mode"` // see repr.TAG_MODE
 
 	Accumulate AccumulatorItem `json:"-"`
 	Formatter  FormatterItem   `json:"-"`

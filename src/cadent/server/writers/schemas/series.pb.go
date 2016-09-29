@@ -10,12 +10,14 @@
 
 	It has these top-level messages:
 		MetricTag
+		MetricType
 		MetricName
 		MetricValue
 		SeriesMetric
 		SingleMetric
 		UnProcessedMetric
 		RawMetric
+		AnyMetric
 */
 package schemas
 
@@ -53,6 +55,22 @@ func (m *MetricTag) GetTag() []string {
 	return nil
 }
 
+type MetricType struct {
+	Type string `protobuf:"bytes,1,req,name=type" json:"type"`
+}
+
+func (m *MetricType) Reset()                    { *m = MetricType{} }
+func (m *MetricType) String() string            { return proto.CompactTextString(m) }
+func (*MetricType) ProtoMessage()               {}
+func (*MetricType) Descriptor() ([]byte, []int) { return fileDescriptorSeries, []int{1} }
+
+func (m *MetricType) GetType() string {
+	if m != nil {
+		return m.Type
+	}
+	return ""
+}
+
 type MetricName struct {
 	Metric   string       `protobuf:"bytes,1,req,name=metric" json:"metric"`
 	Id       uint64       `protobuf:"varint,2,opt,name=id" json:"id"`
@@ -64,7 +82,7 @@ type MetricName struct {
 func (m *MetricName) Reset()                    { *m = MetricName{} }
 func (m *MetricName) String() string            { return proto.CompactTextString(m) }
 func (*MetricName) ProtoMessage()               {}
-func (*MetricName) Descriptor() ([]byte, []int) { return fileDescriptorSeries, []int{1} }
+func (*MetricName) Descriptor() ([]byte, []int) { return fileDescriptorSeries, []int{2} }
 
 func (m *MetricName) GetMetric() string {
 	if m != nil {
@@ -113,7 +131,7 @@ type MetricValue struct {
 func (m *MetricValue) Reset()                    { *m = MetricValue{} }
 func (m *MetricValue) String() string            { return proto.CompactTextString(m) }
 func (*MetricValue) ProtoMessage()               {}
-func (*MetricValue) Descriptor() ([]byte, []int) { return fileDescriptorSeries, []int{2} }
+func (*MetricValue) Descriptor() ([]byte, []int) { return fileDescriptorSeries, []int{3} }
 
 func (m *MetricValue) GetTime() int64 {
 	if m != nil {
@@ -173,7 +191,7 @@ type SeriesMetric struct {
 func (m *SeriesMetric) Reset()                    { *m = SeriesMetric{} }
 func (m *SeriesMetric) String() string            { return proto.CompactTextString(m) }
 func (*SeriesMetric) ProtoMessage()               {}
-func (*SeriesMetric) Descriptor() ([]byte, []int) { return fileDescriptorSeries, []int{3} }
+func (*SeriesMetric) Descriptor() ([]byte, []int) { return fileDescriptorSeries, []int{4} }
 
 func (m *SeriesMetric) GetId() uint64 {
 	if m != nil {
@@ -264,7 +282,7 @@ type SingleMetric struct {
 func (m *SingleMetric) Reset()                    { *m = SingleMetric{} }
 func (m *SingleMetric) String() string            { return proto.CompactTextString(m) }
 func (*SingleMetric) ProtoMessage()               {}
-func (*SingleMetric) Descriptor() ([]byte, []int) { return fileDescriptorSeries, []int{4} }
+func (*SingleMetric) Descriptor() ([]byte, []int) { return fileDescriptorSeries, []int{5} }
 
 func (m *SingleMetric) GetId() uint64 {
 	if m != nil {
@@ -372,7 +390,7 @@ type UnProcessedMetric struct {
 func (m *UnProcessedMetric) Reset()                    { *m = UnProcessedMetric{} }
 func (m *UnProcessedMetric) String() string            { return proto.CompactTextString(m) }
 func (*UnProcessedMetric) ProtoMessage()               {}
-func (*UnProcessedMetric) Descriptor() ([]byte, []int) { return fileDescriptorSeries, []int{5} }
+func (*UnProcessedMetric) Descriptor() ([]byte, []int) { return fileDescriptorSeries, []int{6} }
 
 func (m *UnProcessedMetric) GetTime() int64 {
 	if m != nil {
@@ -448,7 +466,7 @@ type RawMetric struct {
 func (m *RawMetric) Reset()                    { *m = RawMetric{} }
 func (m *RawMetric) String() string            { return proto.CompactTextString(m) }
 func (*RawMetric) ProtoMessage()               {}
-func (*RawMetric) Descriptor() ([]byte, []int) { return fileDescriptorSeries, []int{6} }
+func (*RawMetric) Descriptor() ([]byte, []int) { return fileDescriptorSeries, []int{7} }
 
 func (m *RawMetric) GetTime() int64 {
 	if m != nil {
@@ -485,14 +503,56 @@ func (m *RawMetric) GetMetaTags() []*MetricTag {
 	return nil
 }
 
+type AnyMetric struct {
+	Raw         *RawMetric         `protobuf:"bytes,1,opt,name=raw" json:"raw,omitempty"`
+	Unprocessed *UnProcessedMetric `protobuf:"bytes,2,opt,name=unprocessed" json:"unprocessed,omitempty"`
+	Single      *SingleMetric      `protobuf:"bytes,3,opt,name=single" json:"single,omitempty"`
+	Series      *SeriesMetric      `protobuf:"bytes,4,opt,name=series" json:"series,omitempty"`
+}
+
+func (m *AnyMetric) Reset()                    { *m = AnyMetric{} }
+func (m *AnyMetric) String() string            { return proto.CompactTextString(m) }
+func (*AnyMetric) ProtoMessage()               {}
+func (*AnyMetric) Descriptor() ([]byte, []int) { return fileDescriptorSeries, []int{8} }
+
+func (m *AnyMetric) GetRaw() *RawMetric {
+	if m != nil {
+		return m.Raw
+	}
+	return nil
+}
+
+func (m *AnyMetric) GetUnprocessed() *UnProcessedMetric {
+	if m != nil {
+		return m.Unprocessed
+	}
+	return nil
+}
+
+func (m *AnyMetric) GetSingle() *SingleMetric {
+	if m != nil {
+		return m.Single
+	}
+	return nil
+}
+
+func (m *AnyMetric) GetSeries() *SeriesMetric {
+	if m != nil {
+		return m.Series
+	}
+	return nil
+}
+
 func init() {
 	proto.RegisterType((*MetricTag)(nil), "schemas.MetricTag")
+	proto.RegisterType((*MetricType)(nil), "schemas.MetricType")
 	proto.RegisterType((*MetricName)(nil), "schemas.MetricName")
 	proto.RegisterType((*MetricValue)(nil), "schemas.MetricValue")
 	proto.RegisterType((*SeriesMetric)(nil), "schemas.SeriesMetric")
 	proto.RegisterType((*SingleMetric)(nil), "schemas.SingleMetric")
 	proto.RegisterType((*UnProcessedMetric)(nil), "schemas.UnProcessedMetric")
 	proto.RegisterType((*RawMetric)(nil), "schemas.RawMetric")
+	proto.RegisterType((*AnyMetric)(nil), "schemas.AnyMetric")
 }
 func (m *MetricTag) Marshal() (data []byte, err error) {
 	size := m.Size()
@@ -524,6 +584,28 @@ func (m *MetricTag) MarshalTo(data []byte) (int, error) {
 			i += copy(data[i:], s)
 		}
 	}
+	return i, nil
+}
+
+func (m *MetricType) Marshal() (data []byte, err error) {
+	size := m.Size()
+	data = make([]byte, size)
+	n, err := m.MarshalTo(data)
+	if err != nil {
+		return nil, err
+	}
+	return data[:n], nil
+}
+
+func (m *MetricType) MarshalTo(data []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	data[i] = 0xa
+	i++
+	i = encodeVarintSeries(data, i, uint64(len(m.Type)))
+	i += copy(data[i:], m.Type)
 	return i, nil
 }
 
@@ -881,6 +963,64 @@ func (m *RawMetric) MarshalTo(data []byte) (int, error) {
 	return i, nil
 }
 
+func (m *AnyMetric) Marshal() (data []byte, err error) {
+	size := m.Size()
+	data = make([]byte, size)
+	n, err := m.MarshalTo(data)
+	if err != nil {
+		return nil, err
+	}
+	return data[:n], nil
+}
+
+func (m *AnyMetric) MarshalTo(data []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if m.Raw != nil {
+		data[i] = 0xa
+		i++
+		i = encodeVarintSeries(data, i, uint64(m.Raw.Size()))
+		n1, err := m.Raw.MarshalTo(data[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n1
+	}
+	if m.Unprocessed != nil {
+		data[i] = 0x12
+		i++
+		i = encodeVarintSeries(data, i, uint64(m.Unprocessed.Size()))
+		n2, err := m.Unprocessed.MarshalTo(data[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n2
+	}
+	if m.Single != nil {
+		data[i] = 0x1a
+		i++
+		i = encodeVarintSeries(data, i, uint64(m.Single.Size()))
+		n3, err := m.Single.MarshalTo(data[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n3
+	}
+	if m.Series != nil {
+		data[i] = 0x22
+		i++
+		i = encodeVarintSeries(data, i, uint64(m.Series.Size()))
+		n4, err := m.Series.MarshalTo(data[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n4
+	}
+	return i, nil
+}
+
 func encodeFixed64Series(data []byte, offset int, v uint64) int {
 	data[offset] = uint8(v)
 	data[offset+1] = uint8(v >> 8)
@@ -917,6 +1057,14 @@ func (m *MetricTag) Size() (n int) {
 			n += 1 + l + sovSeries(uint64(l))
 		}
 	}
+	return n
+}
+
+func (m *MetricType) Size() (n int) {
+	var l int
+	_ = l
+	l = len(m.Type)
+	n += 1 + l + sovSeries(uint64(l))
 	return n
 }
 
@@ -1066,6 +1214,28 @@ func (m *RawMetric) Size() (n int) {
 	return n
 }
 
+func (m *AnyMetric) Size() (n int) {
+	var l int
+	_ = l
+	if m.Raw != nil {
+		l = m.Raw.Size()
+		n += 1 + l + sovSeries(uint64(l))
+	}
+	if m.Unprocessed != nil {
+		l = m.Unprocessed.Size()
+		n += 1 + l + sovSeries(uint64(l))
+	}
+	if m.Single != nil {
+		l = m.Single.Size()
+		n += 1 + l + sovSeries(uint64(l))
+	}
+	if m.Series != nil {
+		l = m.Series.Size()
+		n += 1 + l + sovSeries(uint64(l))
+	}
+	return n
+}
+
 func sovSeries(x uint64) (n int) {
 	for {
 		n++
@@ -1151,6 +1321,90 @@ func (m *MetricTag) Unmarshal(data []byte) error {
 			}
 			iNdEx += skippy
 		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *MetricType) Unmarshal(data []byte) error {
+	var hasFields [1]uint64
+	l := len(data)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowSeries
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := data[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: MetricType: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: MetricType: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Type", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSeries
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthSeries
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Type = string(data[iNdEx:postIndex])
+			iNdEx = postIndex
+			hasFields[0] |= uint64(0x00000001)
+		default:
+			iNdEx = preIndex
+			skippy, err := skipSeries(data[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthSeries
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+	if hasFields[0]&uint64(0x00000001) == 0 {
+		return github_com_gogo_protobuf_proto.NewRequiredNotSetError("type")
 	}
 
 	if iNdEx > l {
@@ -2677,6 +2931,188 @@ func (m *RawMetric) Unmarshal(data []byte) error {
 	}
 	return nil
 }
+func (m *AnyMetric) Unmarshal(data []byte) error {
+	l := len(data)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowSeries
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := data[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: AnyMetric: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: AnyMetric: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Raw", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSeries
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthSeries
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Raw == nil {
+				m.Raw = &RawMetric{}
+			}
+			if err := m.Raw.Unmarshal(data[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Unprocessed", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSeries
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthSeries
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Unprocessed == nil {
+				m.Unprocessed = &UnProcessedMetric{}
+			}
+			if err := m.Unprocessed.Unmarshal(data[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Single", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSeries
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthSeries
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Single == nil {
+				m.Single = &SingleMetric{}
+			}
+			if err := m.Single.Unmarshal(data[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Series", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSeries
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthSeries
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Series == nil {
+				m.Series = &SeriesMetric{}
+			}
+			if err := m.Series.Unmarshal(data[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipSeries(data[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthSeries
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
 func skipSeries(data []byte) (n int, err error) {
 	l := len(data)
 	iNdEx := 0
@@ -2785,32 +3221,37 @@ var (
 func init() { proto.RegisterFile("series.proto", fileDescriptorSeries) }
 
 var fileDescriptorSeries = []byte{
-	// 423 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x09, 0x6e, 0x88, 0x02, 0xff, 0xb4, 0x93, 0x4f, 0x4e, 0xdb, 0x40,
-	0x14, 0xc6, 0x33, 0xfe, 0x1b, 0x3f, 0x3b, 0x55, 0xe2, 0x56, 0xd5, 0xac, 0xd2, 0xc8, 0x52, 0xa5,
-	0xac, 0xb2, 0xe8, 0x11, 0xb2, 0x6f, 0x55, 0xb5, 0xc0, 0x16, 0x8d, 0xec, 0x51, 0xb0, 0xe4, 0x3f,
-	0xc8, 0x33, 0x06, 0xf6, 0x5c, 0x20, 0x12, 0x67, 0xe1, 0x0e, 0x59, 0x72, 0x02, 0x84, 0x60, 0xc3,
-	0x2d, 0xe0, 0x31, 0xb1, 0xb1, 0x23, 0x9b, 0x05, 0x52, 0xb2, 0x98, 0xc5, 0x7c, 0xf3, 0xfc, 0xbe,
-	0x6f, 0x7e, 0x6f, 0x0c, 0x9e, 0xe0, 0x45, 0xcc, 0xc5, 0xe2, 0xbc, 0xc8, 0x65, 0xee, 0xdb, 0x22,
-	0x3c, 0xe3, 0x29, 0x13, 0x01, 0x05, 0xe7, 0x37, 0x97, 0x45, 0x1c, 0x1e, 0xb1, 0x95, 0xef, 0x82,
-	0x2e, 0xd9, 0x8a, 0x92, 0x99, 0x3e, 0x77, 0x82, 0x35, 0x01, 0xd8, 0x1e, 0xfd, 0x61, 0x29, 0xf7,
-	0xbf, 0x81, 0x95, 0xaa, 0x1d, 0x1e, 0x6b, 0x73, 0x67, 0x69, 0x6c, 0xee, 0x7f, 0x0c, 0xfc, 0x31,
-	0x68, 0x71, 0x44, 0xb5, 0x19, 0x99, 0x1b, 0x95, 0x32, 0x01, 0xbd, 0x44, 0x49, 0x47, 0xa9, 0x2e,
-	0x9a, 0x81, 0x81, 0x6d, 0x05, 0x1d, 0x61, 0x5f, 0xf7, 0x97, 0xbf, 0xa8, 0xbc, 0x17, 0x8d, 0xf1,
-	0x4f, 0x70, 0xb0, 0x39, 0x3b, 0x55, 0x65, 0x5f, 0x3e, 0x2a, 0x0b, 0xae, 0x09, 0xb8, 0xdb, 0xdd,
-	0x09, 0x4b, 0x4a, 0xee, 0xfb, 0xd8, 0x38, 0x4e, 0xb9, 0x4a, 0xa4, 0x37, 0xfe, 0x69, 0x9c, 0xa9,
-	0x48, 0xa4, 0x25, 0xb1, 0x2b, 0x15, 0xa9, 0x96, 0xf0, 0xcb, 0x84, 0x09, 0x49, 0x8d, 0xdd, 0x32,
-	0x51, 0xa6, 0xd4, 0xc4, 0x66, 0xb5, 0xf4, 0x15, 0xcc, 0x30, 0x2f, 0x33, 0x49, 0xad, 0xc6, 0x21,
-	0x78, 0x21, 0xe0, 0xfd, 0x57, 0x30, 0xb7, 0x59, 0xde, 0x21, 0x68, 0x5d, 0x08, 0x0d, 0xa9, 0x3a,
-	0xab, 0xd1, 0xca, 0xda, 0x30, 0x35, 0x5b, 0x95, 0xdf, 0x61, 0xc8, 0xb3, 0x30, 0x8f, 0xe2, 0x6c,
-	0xa5, 0x7c, 0x5b, 0x1d, 0x22, 0x26, 0x19, 0xb5, 0x51, 0xf3, 0x2a, 0x8d, 0x02, 0x14, 0x5c, 0xe4,
-	0x49, 0x29, 0xe3, 0x3c, 0xa3, 0x43, 0xbc, 0xcd, 0xa8, 0x89, 0x20, 0x65, 0x42, 0x9d, 0x96, 0xb4,
-	0xb7, 0x39, 0xdc, 0x6a, 0x48, 0x00, 0xe3, 0x25, 0xfc, 0x30, 0x04, 0xaa, 0x19, 0x5a, 0xdd, 0x19,
-	0xda, 0x3d, 0x33, 0x1c, 0x76, 0x67, 0xe8, 0xf4, 0xcd, 0x10, 0x5a, 0xbe, 0xbb, 0xdc, 0xdc, 0x2e,
-	0x37, 0xef, 0x10, 0xdc, 0x9e, 0x09, 0x4c, 0x8e, 0xb3, 0xbf, 0x45, 0x1e, 0x72, 0x21, 0x78, 0x54,
-	0xc1, 0xeb, 0x7b, 0xc5, 0x0d, 0x17, 0xad, 0xcb, 0x45, 0xef, 0x72, 0x31, 0x7a, 0xb8, 0x98, 0x5d,
-	0x2e, 0x56, 0x1f, 0x17, 0xbb, 0xe5, 0xbb, 0xb7, 0xab, 0xde, 0x10, 0x70, 0xfe, 0xb1, 0xcb, 0x4f,
-	0x5f, 0x11, 0x53, 0x5d, 0xbc, 0xfd, 0xdb, 0xea, 0xe5, 0x90, 0x3d, 0xa7, 0x5a, 0x8e, 0x37, 0x8f,
-	0x53, 0x72, 0x87, 0xeb, 0x01, 0xd7, 0xfa, 0x69, 0x3a, 0x78, 0x0d, 0x00, 0x00, 0xff, 0xff, 0x26,
-	0xe7, 0xbb, 0xbb, 0x17, 0x05, 0x00, 0x00,
+	// 498 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x09, 0x6e, 0x88, 0x02, 0xff, 0xb4, 0x94, 0x4f, 0x8e, 0xd3, 0x30,
+	0x18, 0xc5, 0xc7, 0x49, 0x9a, 0x36, 0x5f, 0x3a, 0x68, 0x26, 0xfc, 0x91, 0xc5, 0x62, 0xa6, 0x8a,
+	0x34, 0x52, 0x57, 0x45, 0xea, 0x0d, 0x98, 0x3d, 0x08, 0xf1, 0x6f, 0x8b, 0xac, 0xd4, 0x2a, 0x91,
+	0x12, 0xa7, 0x8a, 0x1d, 0x86, 0x59, 0x73, 0x81, 0x91, 0x38, 0x06, 0x6b, 0xee, 0x30, 0x4b, 0x4e,
+	0x80, 0x10, 0x6c, 0xb8, 0x05, 0x7c, 0xe3, 0x26, 0xb5, 0x23, 0x87, 0x05, 0x52, 0xbb, 0x88, 0xaa,
+	0xbc, 0xbc, 0xfa, 0x7b, 0xf9, 0xbd, 0xd8, 0x30, 0x95, 0xbc, 0xce, 0xb9, 0x5c, 0x6c, 0xea, 0x4a,
+	0x55, 0xc9, 0x58, 0x66, 0xef, 0x79, 0xc9, 0x64, 0x4a, 0x21, 0x7a, 0xc6, 0x55, 0x9d, 0x67, 0xaf,
+	0xd9, 0x3a, 0x89, 0xc1, 0x57, 0x6c, 0x4d, 0xc9, 0xcc, 0x9f, 0x47, 0xe9, 0x0c, 0xa0, 0x7d, 0x72,
+	0xbd, 0xe1, 0x49, 0x02, 0x81, 0xc2, 0x5f, 0x7c, 0xe6, 0xcd, 0xa3, 0xcb, 0xe0, 0xf6, 0xfb, 0xf9,
+	0x51, 0x7a, 0x43, 0x3a, 0xcb, 0x73, 0x56, 0xf2, 0xe4, 0x01, 0x84, 0xa5, 0xbe, 0xb3, 0x4d, 0xc9,
+	0x09, 0x78, 0xf9, 0x8a, 0x7a, 0x33, 0x32, 0x0f, 0x5a, 0xe5, 0x14, 0xfc, 0x06, 0x25, 0x1f, 0xa5,
+	0xce, 0x34, 0xc3, 0xd5, 0xd9, 0x5a, 0xd2, 0x63, 0x9c, 0x1c, 0x2f, 0x93, 0x45, 0x9b, 0x6e, 0x61,
+	0xa2, 0x5d, 0x40, 0x84, 0x8b, 0xb3, 0x77, 0xda, 0x76, 0xef, 0x5f, 0xb6, 0xf4, 0x13, 0x81, 0x78,
+	0x7b, 0xf7, 0x96, 0x15, 0xcd, 0x36, 0x76, 0x5e, 0x6e, 0x63, 0xfb, 0x66, 0x7e, 0x99, 0x0b, 0x1d,
+	0x89, 0x58, 0x12, 0xfb, 0xa8, 0x23, 0x75, 0x12, 0xfe, 0xb3, 0x60, 0x52, 0xd1, 0xa0, 0x6f, 0x93,
+	0x4d, 0x49, 0x47, 0xb8, 0x58, 0x27, 0xdd, 0x87, 0x51, 0x56, 0x35, 0x42, 0xd1, 0xd0, 0x4c, 0x48,
+	0xff, 0x10, 0x98, 0xbe, 0xd2, 0xb8, 0xb7, 0x59, 0x76, 0x10, 0x3c, 0x17, 0x82, 0x21, 0xd5, 0x65,
+	0x0d, 0xac, 0xac, 0x86, 0xe9, 0xc8, 0x72, 0x3e, 0x82, 0x09, 0x17, 0x59, 0xb5, 0xca, 0xc5, 0x5a,
+	0xcf, 0xb5, 0x56, 0x58, 0x31, 0xc5, 0xe8, 0x18, 0xb5, 0x69, 0xab, 0x51, 0x80, 0x9a, 0xcb, 0xaa,
+	0x68, 0x54, 0x5e, 0x09, 0x3a, 0xc1, 0xb7, 0x39, 0x36, 0x11, 0x94, 0x2a, 0x68, 0x64, 0x49, 0x7b,
+	0xeb, 0xe1, 0xab, 0x87, 0x04, 0x30, 0x5e, 0xc1, 0x0f, 0x43, 0xa0, 0xed, 0x30, 0x74, 0x3b, 0x1c,
+	0x0f, 0x74, 0x38, 0x71, 0x3b, 0x8c, 0x86, 0x3a, 0x04, 0x6b, 0x6e, 0x9f, 0x5b, 0xec, 0x72, 0x9b,
+	0x1e, 0x82, 0xdb, 0x6f, 0x02, 0xa7, 0x6f, 0xc4, 0x8b, 0xba, 0xca, 0xb8, 0x94, 0x7c, 0xd5, 0xc2,
+	0x1b, 0xfa, 0x8a, 0x0d, 0x17, 0xcf, 0xe5, 0xe2, 0xbb, 0x5c, 0x82, 0x01, 0x2e, 0x23, 0x97, 0x4b,
+	0x38, 0xc4, 0x65, 0x6c, 0xcd, 0xdd, 0xdb, 0xab, 0x7e, 0x26, 0x10, 0xbd, 0x64, 0x57, 0xff, 0xfd,
+	0x8a, 0x98, 0xea, 0xc3, 0xdd, 0xde, 0xd6, 0x5f, 0x0e, 0xd9, 0x77, 0xaa, 0x2f, 0x98, 0xea, 0xa9,
+	0xb8, 0x6e, 0x53, 0x9d, 0x83, 0x5f, 0xb3, 0x2b, 0x0c, 0x45, 0x7a, 0x76, 0x13, 0xfb, 0x09, 0xc4,
+	0x8d, 0xd8, 0x74, 0x75, 0xe9, 0x33, 0x25, 0x5e, 0x3e, 0xde, 0x19, 0xdd, 0x2a, 0x2f, 0x20, 0x94,
+	0x7a, 0x5f, 0xe8, 0x8e, 0xe2, 0xe5, 0xc3, 0x9d, 0xb7, 0xb7, 0x5d, 0xee, 0x6c, 0xfa, 0x00, 0xd1,
+	0xbd, 0xf5, 0x6c, 0xd6, 0xb9, 0x72, 0x79, 0x72, 0xfb, 0xf3, 0x8c, 0x7c, 0xc3, 0xeb, 0x07, 0x5e,
+	0x37, 0xbf, 0xce, 0x8e, 0xfe, 0x06, 0x00, 0x00, 0xff, 0xff, 0x95, 0x80, 0x55, 0x28, 0xe7, 0x05,
+	0x00, 0x00,
 }

@@ -672,8 +672,8 @@ func (cass *CassandraMetric) GetFromDatabase(metric *indexer.MetricFindItem, res
 	var p_type uint8
 	var p_bytes []byte
 
-	t_start := uint32(0)
-	var cur_pt RawDataPoint
+	t_start := uint32(start)
+	cur_pt := NullRawDataPoint(t_start)
 	// on resamples (if >0 ) we simply merge points until we hit the steps
 	do_resample := resample > 0 && resample > resolution
 
@@ -692,11 +692,6 @@ func (cass *CassandraMetric) GetFromDatabase(metric *indexer.MetricFindItem, res
 			// skip if not in range
 			if t > u_end || t < u_start {
 				continue
-			}
-
-			if t_start == 0 {
-				t_start = uint32(t)
-				cur_pt = NullRawDataPoint(t)
 			}
 
 			if do_resample {

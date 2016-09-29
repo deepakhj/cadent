@@ -39,6 +39,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"sort"
 	"sync"
 	"time"
 )
@@ -106,6 +107,27 @@ func (s *JsonBaseStatItem) Write(buffer io.Writer, fmatter FormatterItem, acc Ac
 		acc.Tags(),
 	)
 
+}
+
+// merge this item w/ another stat repr
+func (s *JsonBaseStatItem) Merge(stat *repr.StatRepr) error {
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.Min == JSON_ACC_MIN_FLAG || s.Min > float64(stat.Min) {
+		s.Min = float64(stat.Min)
+	}
+	if s.Max == JSON_ACC_MIN_FLAG || s.Max < float64(stat.Max) {
+		s.Max = float64(stat.Max)
+	}
+
+	s.Count += stat.Count
+	s.Sum += float64(stat.Sum)
+	if s.Time.Before(stat.Time) || s.Last == JSON_ACC_MIN_FLAG {
+		s.Last = float64(stat.Last)
+	}
+	return nil
 }
 
 func (s *JsonBaseStatItem) Accumulate(val float64, sample float64, stattime time.Time) error {
@@ -245,6 +267,57 @@ func (a *JsonAccumulate) FlushList() *flushedList {
 	a.mu.RUnlock()
 	a.Reset()
 	return fl
+}
+
+// process a "repr" metric as if it was injected as a Graphite like item
+// basically this is a post parsed string line
+func (a *JsonAccumulate) ProcessRepr(stat *repr.StatRepr) error {
+
+	tgs := stat.Name.SortedTags()
+
+	// obey tag mode
+	var meta repr.SortingTags
+	switch a.TagMode {
+	case repr.TAG_ALLTAGS:
+		tgs = tgs.Merge(stat.Name.MetaTags)
+	default:
+		tgs, meta = repr.SplitIntoMetric2Tags(tgs, stat.Name.MetaTags)
+		stat.Name.Tags = tgs
+		stat.Name.MetaTags = meta
+	}
+	sort.Sort(tgs)
+	stat_key := a.MapKey(stat.Name.Key+tgs.ToStringSep(repr.DOT_SEPARATOR, repr.DOT_SEPARATOR), stat.Time)
+	// now the accumlator
+	a.mu.RLock()
+	gots, ok := a.JsonStats[stat_key]
+	a.mu.RUnlock()
+
+	if !ok {
+
+		stat.Name.TagMode = a.TagMode
+
+		gots = &JsonBaseStatItem{
+			InType:     "graphite",
+			Time:       a.ResolutionTime(stat.Time),
+			InKey:      stat.Name,
+			Count:      0,
+			Min:        float64(stat.Min),
+			Max:        float64(stat.Max),
+			Last:       float64(stat.Last),
+			ReduceFunc: repr.GuessAggFuncFromName(&stat.Name),
+		}
+	}
+
+	gots.(*JsonBaseStatItem).Merge(stat)
+
+	// add it if not there
+	if !ok {
+		a.mu.Lock()
+		a.JsonStats[stat_key] = gots
+		a.mu.Unlock()
+	}
+
+	return nil
 }
 
 func (a *JsonAccumulate) ProcessLine(linebytes []byte) (err error) {

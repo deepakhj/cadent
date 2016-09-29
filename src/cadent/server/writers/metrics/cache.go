@@ -422,7 +422,7 @@ func (wc *Cacher) updateQueue() {
 	}
 	f_len := 0
 	idx := 0
-	wc.mu.RLock() // need both locks
+	wc.mu.RLock()
 	newQueue := make(CacheQueue, len(wc.Cache))
 	for key, values := range wc.Cache {
 		num_points := values.Series.Count()

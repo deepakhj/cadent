@@ -20,7 +20,19 @@ limitations under the License.
 
 package schemas
 
-import "cadent/server/repr"
+import (
+	"cadent/server/repr"
+	"time"
+)
+
+func ToTime(t int64) time.Time {
+	// nano or second tstamps
+	if t > 2147483647 {
+		return time.Unix(0, t)
+	}
+	return time.Unix(t, 0)
+
+}
 
 func ToMetricTag(t repr.SortingTags) []*MetricTag {
 	o := make([]*MetricTag, len(t), len(t))

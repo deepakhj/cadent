@@ -63,7 +63,7 @@ func UnProcessedMakeKafkaMessage() *schemas.KUnProcessedMetric {
 	return item
 }
 
-func KafkaBlast(server string, topic string, rate string, buffer int) {
+func KafkaBlast(server string, topic string, rate string, buffer int, enc string) {
 
 	conn := GetKafkaProducer(server)
 	sleeper, err := time.ParseDuration(rate)
@@ -73,7 +73,8 @@ func KafkaBlast(server string, topic string, rate string, buffer int) {
 	}
 	for {
 		stat := UnProcessedMakeKafkaMessage()
-		stat.SetSendEncoding(schemas.ENCODE_JSON)
+		i_enc := schemas.SendEncodingFromString(enc)
+		stat.SetSendEncoding(i_enc)
 		conn.Input() <- &sarama.ProducerMessage{
 			Topic: topic,
 			Key:   sarama.StringEncoder(stat.Metric), // hash on unique id

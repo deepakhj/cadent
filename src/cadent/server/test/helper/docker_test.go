@@ -14,18 +14,27 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-/*
-	message pack or json "generator" options
+// some helpers for testing various components that are hard to "mock"
+// like databases and what not, here we have a docker compose "fire-upper"
 
-
-*/
-
-package schemas
+package helper
 
 import (
-	"errors"
+	. "github.com/smartystreets/goconvey/convey"
+	"testing"
 )
 
-var ErrMetricIsNil = errors.New("The metric is nil")
-var ErrMetricUnDecodable = errors.New("The metric is not able to be decoded")
-var ErrNoMetricDefined = errors.New("No metric defined")
+func TestDockerUppers(t *testing.T) {
+
+	Convey("Docker up and down", t, func() {
+
+		ok := DockerUp("kafka")
+		So(ok, ShouldEqual, true)
+
+		ok = DockerWaitUntilReady("kafka")
+		So(ok, ShouldEqual, true)
+
+		ok = DockerDown("kafka")
+		So(ok, ShouldEqual, true)
+	})
+}

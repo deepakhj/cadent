@@ -44,6 +44,7 @@ type AccumulatorItem interface {
 	FlushList() *flushedList
 	Name() string
 	ProcessLine(line []byte) error
+	ProcessRepr(stat *repr.StatRepr) error
 	Reset() error
 	Tags() repr.SortingTags
 	SetKeepKeys(bool) error

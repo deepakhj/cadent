@@ -852,39 +852,43 @@ already and consumers can deal with indexing)
 The "Flat" format is
 
     	METRIC{
-    	    type: "metric",
-    	    time: [int64 unix Nano second time stamp],
-    	    metric: "my.metric.is.good",
-    	    id: uint64 FNVa,
-    	    uid: string // base 36 from the ID
-    	    sum: float64,
-    	    min: float64,
-    	    max: float64,
-    	    last: float64,
-    	    count: int64,
-    	    resolution: float64,
-    	    ttl: int64,
-    	    tags: [ {tag: [name, val]}, {tag: [name, val]} ...]
-    	    meta_tags:  [ {tag: [name, val]}, {tag: [name, val]} ...]
+    	    single: {
+    	        time: [int64 unix Nano second time stamp],
+    	        metric: "my.metric.is.good",
+    	        id: uint64 FNVa,
+    	        uid: string // base 36 from the ID
+    	        sum: float64,
+    	        min: float64,
+    	        max: float64,
+    	        last: float64,
+    	        count: int64,
+    	        resolution: float64,
+    	        ttl: int64,
+                tags: [ {tag: [name, val]}, {tag: [name, val]} ...]
+                meta_tags:  [ {tag: [name, val]}, {tag: [name, val]} ...]
+    	    }
     	}
 
 The "Blob" format is
 
     	METRIC{
-    	    type: "metricblob",
-    	    time: [int64 unix Nano second time stamp],
-    	    metric: "my.metric.is.good",
-    	    id: uint64 FNVa,
-    	    uid: string // base 36 from the ID
-    	    data: bytes,
-    	    encoding: string // the series encoding gorilla, protobuf, etc
-    	    resolution: float64,
-    	    ttl: int64,
-    	    tags:  [ {tag: [name, val]}, {tag: [name, val]} ...]
-            meta_tags:  [ {tag: [name, val]}, {tag: [name, val]} ...]
+    	    series: {
+    	        time: [int64 unix Nano second time stamp],
+    	        metric: "my.metric.is.good",
+    	        id: uint64 FNVa,
+    	        uid: string // base 36 from the ID
+    	        data: bytes,
+    	        encoding: string // the series encoding gorilla, protobuf, etc
+    	        resolution: float64,
+    	        ttl: int64,
+    	        tags:  [ {tag: [name, val]}, {tag: [name, val]} ...]
+                meta_tags:  [ {tag: [name, val]}, {tag: [name, val]} ...]
+            }
     	}
 
 *Note* Tags are encoded this way in order to support mulitple encoding formats, specifically Protobufs
+
+Encoding formats supported are "json", "protobuf" and "msgpack"
 
 Where as the "flat" format is basically a stream of inciming accumulated values, the blob format is
 

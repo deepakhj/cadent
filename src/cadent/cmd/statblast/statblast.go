@@ -266,7 +266,18 @@ func Runner(server string, intype string, rate string, buffer int) {
 
 	// the URL is kafka:// w do something very different
 	if i_url.Scheme == "kafka" {
-		KafkaBlast(i_url.Host, strings.Replace(i_url.Path, "/", "", -1), rate, buffer)
+		pth := strings.Split(i_url.Path, "/")
+		enc := "json"
+		if len(pth) == 2 {
+			enc = pth[1]
+		}
+		KafkaBlast(
+			i_url.Host,
+			strings.Replace(pth[0], "/", "", -1),
+			rate,
+			buffer,
+			enc,
+		)
 	}
 
 	var msg string = ""
@@ -332,7 +343,7 @@ func main() {
 		(stdout,tcp://127.0.0.1:6002,tcp://127.0.0.1:6003), you can choose
 		tcp://, udp://, http://, unix://, kafka://
 
-		kafka type should be a list of brokers (kafka://192.168.0.2:9092/topic)
+		kafka type should be a list of brokers (kafka://192.168.0.2:9092/topic/{json,msgpack,protobuf})
 		`,
 	)
 	intype := flag.String("type", "statsd", "statsd or graphite or carbon2 or json")

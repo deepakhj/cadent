@@ -99,6 +99,27 @@ func (s *GraphiteBaseStatItem) Write(buffer io.Writer, fmatter FormatterItem, ac
 
 }
 
+// merge this item w/ another stat repr
+func (s *GraphiteBaseStatItem) Merge(stat *repr.StatRepr) error {
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.Min == GRAPHITE_ACC_MIN_FLAG || s.Min > float64(stat.Min) {
+		s.Min = float64(stat.Min)
+	}
+	if s.Max == GRAPHITE_ACC_MIN_FLAG || s.Max < float64(stat.Max) {
+		s.Max = float64(stat.Max)
+	}
+
+	s.Count += stat.Count
+	s.Sum += float64(stat.Sum)
+	if s.Time.Before(stat.Time) || s.Last == GRAPHITE_ACC_MIN_FLAG {
+		s.Last = float64(stat.Last)
+	}
+	return nil
+}
+
 func (s *GraphiteBaseStatItem) Accumulate(val float64, sample float64, stattime time.Time) error {
 	if math.IsInf(val, 0) || math.IsNaN(val) {
 		return nil
@@ -238,6 +259,64 @@ func (a *GraphiteAccumulate) FlushList() *flushedList {
 	a.mu.RUnlock()
 	a.Reset()
 	return fl
+}
+
+// process a "repr" metric as if it was injected as a Graphite like item
+// basically this is a post parsed string line
+func (a *GraphiteAccumulate) ProcessRepr(stat *repr.StatRepr) error {
+
+	tgs := stat.Name.SortedTags()
+
+	// obey tag mode
+	var meta repr.SortingTags
+	switch a.TagMode {
+	case repr.TAG_ALLTAGS:
+		tgs = tgs.Merge(stat.Name.MetaTags)
+		stat.Name.MetaTags = repr.SortingTags{}
+	default:
+		tgs, meta = repr.SplitIntoMetric2Tags(tgs, stat.Name.MetaTags)
+		stat.Name.Tags = tgs
+		stat.Name.MetaTags = meta
+	}
+	sort.Sort(tgs)
+	stat_key := a.MapKey(stat.Name.Key+tgs.ToStringSep(repr.DOT_SEPARATOR, repr.DOT_SEPARATOR), stat.Time)
+	// now the accumlator
+	a.mu.RLock()
+	gots, ok := a.GraphiteStats[stat_key]
+	a.mu.RUnlock()
+
+	if !ok {
+
+		stat.Name.TagMode = a.TagMode
+
+		gots = &GraphiteBaseStatItem{
+			InType:     "graphite",
+			Time:       a.ResolutionTime(stat.Time),
+			InKey:      stat.Name,
+			Count:      0,
+			Min:        float64(stat.Min),
+			Max:        float64(stat.Max),
+			Last:       float64(stat.Last),
+			ReduceFunc: repr.GuessAggFuncFromName(&stat.Name),
+		}
+	}
+
+	// now for some trickery.  If the count is 1 then we assume not
+	// a "pre-accumulated" repr, but basically a metric/value and need to properly accumulate
+	if stat.Count == 1 {
+		gots.Accumulate(float64(stat.Sum), 1.0, stat.Time)
+	} else {
+		gots.(*GraphiteBaseStatItem).Merge(stat)
+	}
+
+	// add it if not there
+	if !ok {
+		a.mu.Lock()
+		a.GraphiteStats[stat_key] = gots
+		a.mu.Unlock()
+	}
+
+	return nil
 }
 
 /*
