@@ -185,6 +185,7 @@ func (agg *AggregateLoop) SetWriter(conf writers.WriterConfig, mainorsub string)
 	// need only one indexer
 	idx, err := conf_idx.NewIndexer()
 	if err != nil {
+		agg.log.Critical("Error setting indexer: %s", err)
 		return err
 	}
 
@@ -200,7 +201,7 @@ func (agg *AggregateLoop) SetWriter(conf writers.WriterConfig, mainorsub string)
 			wr.IndexerQLen = conf.IndexerQueueLength
 		}
 		if err != nil {
-			agg.log.Error("Writer error:: %s", err)
+			agg.log.Critical("Writer error:: %s", err)
 			return err
 		}
 		mets, err := conf_mets.NewMetrics(dur, conf.Caches)

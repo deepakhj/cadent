@@ -149,6 +149,7 @@ func (acc *Accumulator) SetAggregateLoop(conf writers.WriterConfig) (agg *Aggreg
 	}
 	err = acc.Aggregators.SetWriter(conf, "main")
 	if err != nil {
+		acc.log.Critical("Error setting main writer: %s", err)
 		return nil, err
 	}
 	return acc.Aggregators, nil
@@ -164,6 +165,7 @@ func (acc *Accumulator) SetSubAggregateLoop(conf writers.WriterConfig) (agg *Agg
 	}
 	err = acc.Aggregators.SetWriter(conf, "sub")
 	if err != nil {
+		acc.log.Critical("Error setting sub writer: %s", err)
 		return nil, err
 	}
 	return acc.Aggregators, nil
