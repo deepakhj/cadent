@@ -255,11 +255,13 @@ func (kf *Kafka) onConsume() {
 			kf.log.Debug("Got message from %s: partition: %d, offset: %d", msg.Topic, msg.Partition, msg.Offset)
 			new_obj := schemas.KMetricObjectFromType(kf.MessageType)
 			new_obj.SetSendEncoding(kf.EncodingType)
+
 			err := new_obj.Decode(msg.Value)
 
 			// we have commit offsets for decode fails otherwise we'll never move
 			if err != nil {
 				kf.log.Errorf("Could not process incoming message: %v", err)
+				schemas.PutPool(new_obj) // put it back in the syc pool
 				kf.markDoneChan <- msg
 				continue
 			}
@@ -267,8 +269,11 @@ func (kf *Kafka) onConsume() {
 			err = kf.KafkaWorker.DoWork(new_obj)
 			if err != nil {
 				kf.log.Errorf("Error working on message: %v", err)
+				schemas.PutPool(new_obj) // put it back in the syc pool
+
 				continue
 			}
+			schemas.PutPool(new_obj) // put it back in the syc pool
 
 			kf.markDoneChan <- msg
 		}

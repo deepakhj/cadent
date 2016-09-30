@@ -24,7 +24,119 @@ import (
 	"cadent/server/repr"
 	"encoding/json"
 	"fmt"
+	"sync"
 )
+
+/** sync pools for ease of ram pressure on fast objects **/
+var seriesPool sync.Pool
+
+func getSeries() *KSeriesMetric {
+	x := seriesPool.Get()
+	if x == nil {
+		return new(KSeriesMetric)
+	}
+	x.(*KSeriesMetric).encoded = []byte{}
+	x.(*KSeriesMetric).err = nil
+	return x.(*KSeriesMetric)
+}
+
+func putSeries(spl *KSeriesMetric) {
+	seriesPool.Put(spl)
+}
+
+var unpPool sync.Pool
+
+func getUnp() *KUnProcessedMetric {
+	x := unpPool.Get()
+	if x == nil {
+		return new(KUnProcessedMetric)
+	}
+	x.(*KUnProcessedMetric).encoded = nil
+	x.(*KUnProcessedMetric).err = nil
+	return x.(*KUnProcessedMetric)
+}
+
+func putUnp(spl *KUnProcessedMetric) {
+	unpPool.Put(spl)
+}
+
+var rawPool sync.Pool
+
+func getRaw() *KRawMetric {
+	x := rawPool.Get()
+	if x == nil {
+		return new(KRawMetric)
+	}
+	x.(*KRawMetric).encoded = nil
+	x.(*KRawMetric).err = nil
+	return x.(*KRawMetric)
+}
+
+func putRaw(spl *KRawMetric) {
+	rawPool.Put(spl)
+}
+
+var singPool sync.Pool
+
+func getSing() *KSingleMetric {
+	x := singPool.Get()
+	if x == nil {
+		return new(KSingleMetric)
+	}
+	x.(*KSingleMetric).encoded = nil
+	x.(*KSingleMetric).err = nil
+	return x.(*KSingleMetric)
+}
+
+func putSing(spl *KSingleMetric) {
+	singPool.Put(spl)
+}
+
+var anyPool sync.Pool
+
+func getAny() *KMetric {
+	x := anyPool.Get()
+	if x == nil {
+		return new(KMetric)
+	}
+	x.(*KMetric).encoded = nil
+	x.(*KMetric).err = nil
+	return x.(*KMetric)
+}
+
+func putAny(spl *KMetric) {
+	anyPool.Put(spl)
+}
+
+func PutPool(ty KMessageBase) {
+	switch ty.(type) {
+	case *KMetric:
+		putAny(ty.(*KMetric))
+	case *KSeriesMetric:
+		putSeries(ty.(*KSeriesMetric))
+	case *KUnProcessedMetric:
+		putUnp(ty.(*KUnProcessedMetric))
+	case *KRawMetric:
+		putRaw(ty.(*KRawMetric))
+	case *KSingleMetric:
+		putSing(ty.(*KSingleMetric))
+	}
+}
+
+func KMetricObjectFromType(ty MessageType) KMessageBase {
+	switch ty {
+	case MSG_SERIES:
+		return getSeries()
+	case MSG_UNPROCESSED:
+		return getUnp()
+	case MSG_RAW:
+		return getRaw()
+	case MSG_ANY:
+		return getAny()
+	default:
+		return getSing()
+	}
+}
 
 // root type needed for in/out
 type KMessageBase interface {
@@ -43,21 +155,6 @@ type KMessageSingle interface {
 type KMessageSeries interface {
 	KMessageBase
 	Reprs() []*repr.StatRepr
-}
-
-func KMetricObjectFromType(ty MessageType) KMessageBase {
-	switch ty {
-	case MSG_SERIES:
-		return new(KSeriesMetric)
-	case MSG_UNPROCESSED:
-		return new(KUnProcessedMetric)
-	case MSG_RAW:
-		return new(KRawMetric)
-	case MSG_ANY:
-		return new(KMetric)
-	default:
-		return new(KSingleMetric)
-	}
 }
 
 /*************** Envelope message, containing the "type" with it ****/
@@ -150,7 +247,6 @@ func (kp *KMetric) ensureEncoded() {
 	}()
 
 	if kp != nil && kp.encoded == nil && kp.err == nil {
-
 		switch kp.encodetype {
 		case ENCODE_MSGP:
 			kp.encoded, kp.err = kp.AnyMetric.MarshalMsg(nil)

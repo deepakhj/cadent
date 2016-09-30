@@ -108,7 +108,7 @@ func (w *TestWorker) DoWork(metric schemas.KMessageBase) error {
 	}
 }
 
-func getConsumer(t *testing.T, enctype string) *Kafka {
+func getConsumer(enctype string) (*Kafka, error) {
 	on_ip := helper.DockerIp()
 
 	config_opts := options.Options{}
@@ -122,40 +122,80 @@ func getConsumer(t *testing.T, enctype string) *Kafka {
 	kf := New("tester")
 	err := kf.Config(config_opts)
 	if err != nil {
-		t.Fatalf("%v", err)
+		return nil, err
 	}
 
 	// set the work to the echo type
 	kf.KafkaWorker = new(TestWorker)
 
-	return kf
+	return kf, nil
 }
 
-func getProducer(t *testing.T) sarama.AsyncProducer {
+func getProducer() (sarama.AsyncProducer, error) {
 	config := sarama.NewConfig()
 	on_ip := helper.DockerIp()
 
 	config.Producer.Retry.Max = int(3)
 	config.Producer.RequiredAcks = sarama.WaitForAll
 	producer, err := sarama.NewAsyncProducer([]string{on_ip + ":" + kport}, config)
-	if err != nil {
-		t.Fatalf("Error on producer: %v", fmt.Errorf("Failed to start Kafka producer: %v", err))
+
+
+	return producer, err
+}
+
+func getMetrics(len int, useencoding schemas.SendEncoding) []schemas.KMessageBase {
+	msgs := make([]schemas.KMessageBase, len)
+
+	for idx := range msgs {
+
+		switch idx % 3 {
+		case 0:
+			msgs[idx] = &schemas.KMetric{
+				AnyMetric: schemas.AnyMetric{
+					Raw: &schemas.RawMetric{
+						Metric: "moo.goo",
+						Time:   time.Now().Unix(),
+						Value:  100.0 * float64(idx),
+						Tags:   schemas.ToMetricTag(repr.SortingTags([][]string{{"name", "val"}, {"name2", "val2"}})),
+					},
+				},
+			}
+		case 1:
+			msgs[idx] = &schemas.KMetric{
+				AnyMetric: schemas.AnyMetric{
+					Unprocessed: &schemas.UnProcessedMetric{
+						Metric: "moo.goo.unp",
+						Time:   time.Now().Unix(),
+						Sum:    1000.0,
+						Min:    1.0,
+						Max:    120.0,
+						Count:  2 + int64(idx),
+						Tags:   schemas.ToMetricTag(repr.SortingTags([][]string{{"name", "val"}, {"name2", "val2"}})),
+					},
+				},
+			}
+
+		default:
+
+			msgs[idx] = &schemas.KMetric{
+				AnyMetric: schemas.AnyMetric{
+					Single: &schemas.SingleMetric{
+						Metric: "moo.goo.sing",
+						Id:     123123,
+						Uid:    "asdasd",
+						Time:   time.Now().Unix(),
+						Sum:    100.0,
+						Min:    1.0,
+						Max:    10.0,
+						Count:  20 + int64(idx),
+						Tags:   schemas.ToMetricTag(repr.SortingTags([][]string{{"name", "val"}, {"name2", "val2"}})),
+					},
+				},
+			}
+		}
+		msgs[idx].SetSendEncoding(useencoding)
 	}
-	// We will just log to STDOUT if we're not able to produce messages.
-	// Note: messages will only be returned here after all retry attempts are exhausted.
-	go func() {
-		for err := range producer.Errors() {
-			t.Errorf("Failed to write message: %v", err)
-		}
-	}()
-
-	go func() {
-		for ret := range producer.Successes() {
-			t.Logf("Send messages: %v", ret)
-		}
-	}()
-
-	return producer
+	return msgs
 }
 
 func TestKafkaInjector(t *testing.T) {
@@ -170,8 +210,11 @@ func TestKafkaInjector(t *testing.T) {
 	for _, enctype := range enctypes {
 		var useencoding schemas.SendEncoding = schemas.SendEncodingFromString(enctype)
 
-		kf := getConsumer(t, enctype)
-		err := kf.Start()
+		kf, err := getConsumer(enctype)
+		if err != nil{
+			t.Fatalf("Failed to get consumer: %v", err)
+		}
+		err = kf.Start()
 		if err != nil {
 			t.Fatalf("Failed to start: %v", err)
 		}
@@ -180,60 +223,11 @@ func TestKafkaInjector(t *testing.T) {
 
 		// some raw messages
 		NumMessages := 10
-		msgs := make([]schemas.KMessageBase, NumMessages)
-
-		for idx := range msgs {
-
-			switch idx % 3 {
-			case 0:
-				msgs[idx] = &schemas.KMetric{
-					AnyMetric: schemas.AnyMetric{
-						Raw: &schemas.RawMetric{
-							Metric: "moo.goo",
-							Time:   time.Now().Unix(),
-							Value:  100.0 * float64(idx),
-							Tags:   schemas.ToMetricTag(repr.SortingTags([][]string{{"name", "val"}, {"name2", "val2"}})),
-						},
-					},
-				}
-			case 1:
-				msgs[idx] = &schemas.KMetric{
-					AnyMetric: schemas.AnyMetric{
-						Unprocessed: &schemas.UnProcessedMetric{
-							Metric: "moo.goo.unp",
-							Time:   time.Now().Unix(),
-							Sum:    1000.0,
-							Min:    1.0,
-							Max:    120.0,
-							Count:  2 + int64(idx),
-							Tags:   schemas.ToMetricTag(repr.SortingTags([][]string{{"name", "val"}, {"name2", "val2"}})),
-						},
-					},
-				}
-
-			default:
-
-				msgs[idx] = &schemas.KMetric{
-					AnyMetric: schemas.AnyMetric{
-						Single: &schemas.SingleMetric{
-							Metric: "moo.goo.sing",
-							Id:     123123,
-							Uid:    "asdasd",
-							Time:   time.Now().Unix(),
-							Sum:    100.0,
-							Min:    1.0,
-							Max:    10.0,
-							Count:  20 + int64(idx),
-							Tags:   schemas.ToMetricTag(repr.SortingTags([][]string{{"name", "val"}, {"name2", "val2"}})),
-						},
-					},
-				}
-			}
-			msgs[idx].SetSendEncoding(useencoding)
-
+		msgs := getMetrics(NumMessages, useencoding)
+		prod, err := getProducer()
+		if err!=nil{
+			t.Fatalf("Error on producer: %v", err)
 		}
-
-		prod := getProducer(t)
 
 		t.Logf("testing messages")
 
@@ -257,7 +251,7 @@ func TestKafkaInjector(t *testing.T) {
 
 		t.Logf("consumer: running")
 
-		time.Sleep(20)
+		time.Sleep(400)
 		t.Logf("consumer: stopping")
 
 		err = kf.Stop()
@@ -271,5 +265,57 @@ func TestKafkaInjector(t *testing.T) {
 
 		t.Logf("consumer: stopped")
 	}
+
+}
+
+func Benchmark__Kafka_Encoding_JSON(b *testing.B) {
+	// fire up the docker test helper
+	helper.DockerUp("kafka")
+	ok := helper.DockerWaitUntilReady("kafka")
+	if !ok {
+		b.Fatalf("Could not start the docker container for kafka")
+	}
+
+	kf, err := getConsumer("json")
+	if err != nil {
+		b.Fatalf("Failed to get consumer: %v", err)
+	}
+	err = kf.Start()
+	if err != nil {
+		b.Fatalf("Failed to start: %v", err)
+	}
+
+
+	// some raw messages
+	NumMessages := 1000
+	msgs := getMetrics(NumMessages, schemas.ENCODE_JSON)
+	prod, err := getProducer()
+	if err != nil{
+		b.Fatalf("%v", err)
+	}
+	//wait till we are good to go
+	for {
+		if kf.IsReady {
+			break
+		}
+		time.Sleep(time.Second)
+
+	}
+	b.ResetTimer()
+	b.ReportAllocs()
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		for _, msg := range msgs {
+			prod.Input() <- &sarama.ProducerMessage{
+				Topic: topic,
+				Key:   sarama.StringEncoder(msg.Id()),
+				Value: msg,
+			}
+		}
+	}
+	b.StopTimer()
+	prod.Close()
+
+	err = kf.Stop()
 
 }

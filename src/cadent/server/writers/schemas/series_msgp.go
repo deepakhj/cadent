@@ -351,22 +351,22 @@ func (z *MetricName) DecodeMsg(dc *msgp.Reader) (err error) {
 			return
 		}
 		switch msgp.UnsafeString(field) {
-		case "Metric":
+		case "metric":
 			z.Metric, err = dc.ReadString()
 			if err != nil {
 				return
 			}
-		case "Id":
+		case "id":
 			z.Id, err = dc.ReadUint64()
 			if err != nil {
 				return
 			}
-		case "Uid":
+		case "uid":
 			z.Uid, err = dc.ReadString()
 			if err != nil {
 				return
 			}
-		case "Tags":
+		case "tags":
 			var zcua uint32
 			zcua, err = dc.ReadArrayHeader()
 			if err != nil {
@@ -426,7 +426,7 @@ func (z *MetricName) DecodeMsg(dc *msgp.Reader) (err error) {
 					}
 				}
 			}
-		case "MetaTags":
+		case "meta_tags":
 			var zdaf uint32
 			zdaf, err = dc.ReadArrayHeader()
 			if err != nil {
@@ -499,8 +499,8 @@ func (z *MetricName) DecodeMsg(dc *msgp.Reader) (err error) {
 // EncodeMsg implements msgp.Encodable
 func (z *MetricName) EncodeMsg(en *msgp.Writer) (err error) {
 	// map header, size 5
-	// write "Metric"
-	err = en.Append(0x85, 0xa6, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63)
+	// write "metric"
+	err = en.Append(0x85, 0xa6, 0x6d, 0x65, 0x74, 0x72, 0x69, 0x63)
 	if err != nil {
 		return err
 	}
@@ -508,8 +508,8 @@ func (z *MetricName) EncodeMsg(en *msgp.Writer) (err error) {
 	if err != nil {
 		return
 	}
-	// write "Id"
-	err = en.Append(0xa2, 0x49, 0x64)
+	// write "id"
+	err = en.Append(0xa2, 0x69, 0x64)
 	if err != nil {
 		return err
 	}
@@ -517,8 +517,8 @@ func (z *MetricName) EncodeMsg(en *msgp.Writer) (err error) {
 	if err != nil {
 		return
 	}
-	// write "Uid"
-	err = en.Append(0xa3, 0x55, 0x69, 0x64)
+	// write "uid"
+	err = en.Append(0xa3, 0x75, 0x69, 0x64)
 	if err != nil {
 		return err
 	}
@@ -526,8 +526,8 @@ func (z *MetricName) EncodeMsg(en *msgp.Writer) (err error) {
 	if err != nil {
 		return
 	}
-	// write "Tags"
-	err = en.Append(0xa4, 0x54, 0x61, 0x67, 0x73)
+	// write "tags"
+	err = en.Append(0xa4, 0x74, 0x61, 0x67, 0x73)
 	if err != nil {
 		return err
 	}
@@ -560,8 +560,8 @@ func (z *MetricName) EncodeMsg(en *msgp.Writer) (err error) {
 			}
 		}
 	}
-	// write "MetaTags"
-	err = en.Append(0xa8, 0x4d, 0x65, 0x74, 0x61, 0x54, 0x61, 0x67, 0x73)
+	// write "meta_tags"
+	err = en.Append(0xa9, 0x6d, 0x65, 0x74, 0x61, 0x5f, 0x74, 0x61, 0x67, 0x73)
 	if err != nil {
 		return err
 	}
@@ -601,17 +601,17 @@ func (z *MetricName) EncodeMsg(en *msgp.Writer) (err error) {
 func (z *MetricName) MarshalMsg(b []byte) (o []byte, err error) {
 	o = msgp.Require(b, z.Msgsize())
 	// map header, size 5
-	// string "Metric"
-	o = append(o, 0x85, 0xa6, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63)
+	// string "metric"
+	o = append(o, 0x85, 0xa6, 0x6d, 0x65, 0x74, 0x72, 0x69, 0x63)
 	o = msgp.AppendString(o, z.Metric)
-	// string "Id"
-	o = append(o, 0xa2, 0x49, 0x64)
+	// string "id"
+	o = append(o, 0xa2, 0x69, 0x64)
 	o = msgp.AppendUint64(o, z.Id)
-	// string "Uid"
-	o = append(o, 0xa3, 0x55, 0x69, 0x64)
+	// string "uid"
+	o = append(o, 0xa3, 0x75, 0x69, 0x64)
 	o = msgp.AppendString(o, z.Uid)
-	// string "Tags"
-	o = append(o, 0xa4, 0x54, 0x61, 0x67, 0x73)
+	// string "tags"
+	o = append(o, 0xa4, 0x74, 0x61, 0x67, 0x73)
 	o = msgp.AppendArrayHeader(o, uint32(len(z.Tags)))
 	for zbai := range z.Tags {
 		if z.Tags[zbai] == nil {
@@ -626,8 +626,8 @@ func (z *MetricName) MarshalMsg(b []byte) (o []byte, err error) {
 			}
 		}
 	}
-	// string "MetaTags"
-	o = append(o, 0xa8, 0x4d, 0x65, 0x74, 0x61, 0x54, 0x61, 0x67, 0x73)
+	// string "meta_tags"
+	o = append(o, 0xa9, 0x6d, 0x65, 0x74, 0x61, 0x5f, 0x74, 0x61, 0x67, 0x73)
 	o = msgp.AppendArrayHeader(o, uint32(len(z.MetaTags)))
 	for zajw := range z.MetaTags {
 		if z.MetaTags[zajw] == nil {
@@ -661,22 +661,22 @@ func (z *MetricName) UnmarshalMsg(bts []byte) (o []byte, err error) {
 			return
 		}
 		switch msgp.UnsafeString(field) {
-		case "Metric":
+		case "metric":
 			z.Metric, bts, err = msgp.ReadStringBytes(bts)
 			if err != nil {
 				return
 			}
-		case "Id":
+		case "id":
 			z.Id, bts, err = msgp.ReadUint64Bytes(bts)
 			if err != nil {
 				return
 			}
-		case "Uid":
+		case "uid":
 			z.Uid, bts, err = msgp.ReadStringBytes(bts)
 			if err != nil {
 				return
 			}
-		case "Tags":
+		case "tags":
 			var zeff uint32
 			zeff, bts, err = msgp.ReadArrayHeaderBytes(bts)
 			if err != nil {
@@ -736,7 +736,7 @@ func (z *MetricName) UnmarshalMsg(bts []byte) (o []byte, err error) {
 					}
 				}
 			}
-		case "MetaTags":
+		case "meta_tags":
 			var zdnj uint32
 			zdnj, bts, err = msgp.ReadArrayHeaderBytes(bts)
 			if err != nil {
@@ -820,7 +820,7 @@ func (z *MetricName) Msgsize() (s int) {
 			}
 		}
 	}
-	s += 9 + msgp.ArrayHeaderSize
+	s += 10 + msgp.ArrayHeaderSize
 	for zajw := range z.MetaTags {
 		if z.MetaTags[zajw] == nil {
 			s += msgp.NilSize
@@ -980,7 +980,7 @@ func (z *MetricType) DecodeMsg(dc *msgp.Reader) (err error) {
 			return
 		}
 		switch msgp.UnsafeString(field) {
-		case "Type":
+		case "type":
 			z.Type, err = dc.ReadString()
 			if err != nil {
 				return
@@ -998,8 +998,8 @@ func (z *MetricType) DecodeMsg(dc *msgp.Reader) (err error) {
 // EncodeMsg implements msgp.Encodable
 func (z MetricType) EncodeMsg(en *msgp.Writer) (err error) {
 	// map header, size 1
-	// write "Type"
-	err = en.Append(0x81, 0xa4, 0x54, 0x79, 0x70, 0x65)
+	// write "type"
+	err = en.Append(0x81, 0xa4, 0x74, 0x79, 0x70, 0x65)
 	if err != nil {
 		return err
 	}
@@ -1014,8 +1014,8 @@ func (z MetricType) EncodeMsg(en *msgp.Writer) (err error) {
 func (z MetricType) MarshalMsg(b []byte) (o []byte, err error) {
 	o = msgp.Require(b, z.Msgsize())
 	// map header, size 1
-	// string "Type"
-	o = append(o, 0x81, 0xa4, 0x54, 0x79, 0x70, 0x65)
+	// string "type"
+	o = append(o, 0x81, 0xa4, 0x74, 0x79, 0x70, 0x65)
 	o = msgp.AppendString(o, z.Type)
 	return
 }
@@ -1036,7 +1036,7 @@ func (z *MetricType) UnmarshalMsg(bts []byte) (o []byte, err error) {
 			return
 		}
 		switch msgp.UnsafeString(field) {
-		case "Type":
+		case "type":
 			z.Type, bts, err = msgp.ReadStringBytes(bts)
 			if err != nil {
 				return
@@ -1074,32 +1074,32 @@ func (z *MetricValue) DecodeMsg(dc *msgp.Reader) (err error) {
 			return
 		}
 		switch msgp.UnsafeString(field) {
-		case "Time":
+		case "time":
 			z.Time, err = dc.ReadInt64()
 			if err != nil {
 				return
 			}
-		case "Min":
+		case "min":
 			z.Min, err = dc.ReadFloat64()
 			if err != nil {
 				return
 			}
-		case "Max":
+		case "max":
 			z.Max, err = dc.ReadFloat64()
 			if err != nil {
 				return
 			}
-		case "Last":
+		case "last":
 			z.Last, err = dc.ReadFloat64()
 			if err != nil {
 				return
 			}
-		case "Sum":
+		case "sum":
 			z.Sum, err = dc.ReadFloat64()
 			if err != nil {
 				return
 			}
-		case "Count":
+		case "count":
 			z.Count, err = dc.ReadInt64()
 			if err != nil {
 				return
@@ -1117,8 +1117,8 @@ func (z *MetricValue) DecodeMsg(dc *msgp.Reader) (err error) {
 // EncodeMsg implements msgp.Encodable
 func (z *MetricValue) EncodeMsg(en *msgp.Writer) (err error) {
 	// map header, size 6
-	// write "Time"
-	err = en.Append(0x86, 0xa4, 0x54, 0x69, 0x6d, 0x65)
+	// write "time"
+	err = en.Append(0x86, 0xa4, 0x74, 0x69, 0x6d, 0x65)
 	if err != nil {
 		return err
 	}
@@ -1126,8 +1126,8 @@ func (z *MetricValue) EncodeMsg(en *msgp.Writer) (err error) {
 	if err != nil {
 		return
 	}
-	// write "Min"
-	err = en.Append(0xa3, 0x4d, 0x69, 0x6e)
+	// write "min"
+	err = en.Append(0xa3, 0x6d, 0x69, 0x6e)
 	if err != nil {
 		return err
 	}
@@ -1135,8 +1135,8 @@ func (z *MetricValue) EncodeMsg(en *msgp.Writer) (err error) {
 	if err != nil {
 		return
 	}
-	// write "Max"
-	err = en.Append(0xa3, 0x4d, 0x61, 0x78)
+	// write "max"
+	err = en.Append(0xa3, 0x6d, 0x61, 0x78)
 	if err != nil {
 		return err
 	}
@@ -1144,8 +1144,8 @@ func (z *MetricValue) EncodeMsg(en *msgp.Writer) (err error) {
 	if err != nil {
 		return
 	}
-	// write "Last"
-	err = en.Append(0xa4, 0x4c, 0x61, 0x73, 0x74)
+	// write "last"
+	err = en.Append(0xa4, 0x6c, 0x61, 0x73, 0x74)
 	if err != nil {
 		return err
 	}
@@ -1153,8 +1153,8 @@ func (z *MetricValue) EncodeMsg(en *msgp.Writer) (err error) {
 	if err != nil {
 		return
 	}
-	// write "Sum"
-	err = en.Append(0xa3, 0x53, 0x75, 0x6d)
+	// write "sum"
+	err = en.Append(0xa3, 0x73, 0x75, 0x6d)
 	if err != nil {
 		return err
 	}
@@ -1162,8 +1162,8 @@ func (z *MetricValue) EncodeMsg(en *msgp.Writer) (err error) {
 	if err != nil {
 		return
 	}
-	// write "Count"
-	err = en.Append(0xa5, 0x43, 0x6f, 0x75, 0x6e, 0x74)
+	// write "count"
+	err = en.Append(0xa5, 0x63, 0x6f, 0x75, 0x6e, 0x74)
 	if err != nil {
 		return err
 	}
@@ -1178,23 +1178,23 @@ func (z *MetricValue) EncodeMsg(en *msgp.Writer) (err error) {
 func (z *MetricValue) MarshalMsg(b []byte) (o []byte, err error) {
 	o = msgp.Require(b, z.Msgsize())
 	// map header, size 6
-	// string "Time"
-	o = append(o, 0x86, 0xa4, 0x54, 0x69, 0x6d, 0x65)
+	// string "time"
+	o = append(o, 0x86, 0xa4, 0x74, 0x69, 0x6d, 0x65)
 	o = msgp.AppendInt64(o, z.Time)
-	// string "Min"
-	o = append(o, 0xa3, 0x4d, 0x69, 0x6e)
+	// string "min"
+	o = append(o, 0xa3, 0x6d, 0x69, 0x6e)
 	o = msgp.AppendFloat64(o, z.Min)
-	// string "Max"
-	o = append(o, 0xa3, 0x4d, 0x61, 0x78)
+	// string "max"
+	o = append(o, 0xa3, 0x6d, 0x61, 0x78)
 	o = msgp.AppendFloat64(o, z.Max)
-	// string "Last"
-	o = append(o, 0xa4, 0x4c, 0x61, 0x73, 0x74)
+	// string "last"
+	o = append(o, 0xa4, 0x6c, 0x61, 0x73, 0x74)
 	o = msgp.AppendFloat64(o, z.Last)
-	// string "Sum"
-	o = append(o, 0xa3, 0x53, 0x75, 0x6d)
+	// string "sum"
+	o = append(o, 0xa3, 0x73, 0x75, 0x6d)
 	o = msgp.AppendFloat64(o, z.Sum)
-	// string "Count"
-	o = append(o, 0xa5, 0x43, 0x6f, 0x75, 0x6e, 0x74)
+	// string "count"
+	o = append(o, 0xa5, 0x63, 0x6f, 0x75, 0x6e, 0x74)
 	o = msgp.AppendInt64(o, z.Count)
 	return
 }
@@ -1215,32 +1215,32 @@ func (z *MetricValue) UnmarshalMsg(bts []byte) (o []byte, err error) {
 			return
 		}
 		switch msgp.UnsafeString(field) {
-		case "Time":
+		case "time":
 			z.Time, bts, err = msgp.ReadInt64Bytes(bts)
 			if err != nil {
 				return
 			}
-		case "Min":
+		case "min":
 			z.Min, bts, err = msgp.ReadFloat64Bytes(bts)
 			if err != nil {
 				return
 			}
-		case "Max":
+		case "max":
 			z.Max, bts, err = msgp.ReadFloat64Bytes(bts)
 			if err != nil {
 				return
 			}
-		case "Last":
+		case "last":
 			z.Last, bts, err = msgp.ReadFloat64Bytes(bts)
 			if err != nil {
 				return
 			}
-		case "Sum":
+		case "sum":
 			z.Sum, bts, err = msgp.ReadFloat64Bytes(bts)
 			if err != nil {
 				return
 			}
-		case "Count":
+		case "count":
 			z.Count, bts, err = msgp.ReadInt64Bytes(bts)
 			if err != nil {
 				return
@@ -1278,22 +1278,22 @@ func (z *RawMetric) DecodeMsg(dc *msgp.Reader) (err error) {
 			return
 		}
 		switch msgp.UnsafeString(field) {
-		case "Time":
+		case "time":
 			z.Time, err = dc.ReadInt64()
 			if err != nil {
 				return
 			}
-		case "Metric":
+		case "metric":
 			z.Metric, err = dc.ReadString()
 			if err != nil {
 				return
 			}
-		case "Value":
+		case "value":
 			z.Value, err = dc.ReadFloat64()
 			if err != nil {
 				return
 			}
-		case "Tags":
+		case "tags":
 			var zrjx uint32
 			zrjx, err = dc.ReadArrayHeader()
 			if err != nil {
@@ -1353,7 +1353,7 @@ func (z *RawMetric) DecodeMsg(dc *msgp.Reader) (err error) {
 					}
 				}
 			}
-		case "MetaTags":
+		case "meta_tags":
 			var zrbe uint32
 			zrbe, err = dc.ReadArrayHeader()
 			if err != nil {
@@ -1426,8 +1426,8 @@ func (z *RawMetric) DecodeMsg(dc *msgp.Reader) (err error) {
 // EncodeMsg implements msgp.Encodable
 func (z *RawMetric) EncodeMsg(en *msgp.Writer) (err error) {
 	// map header, size 5
-	// write "Time"
-	err = en.Append(0x85, 0xa4, 0x54, 0x69, 0x6d, 0x65)
+	// write "time"
+	err = en.Append(0x85, 0xa4, 0x74, 0x69, 0x6d, 0x65)
 	if err != nil {
 		return err
 	}
@@ -1435,8 +1435,8 @@ func (z *RawMetric) EncodeMsg(en *msgp.Writer) (err error) {
 	if err != nil {
 		return
 	}
-	// write "Metric"
-	err = en.Append(0xa6, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63)
+	// write "metric"
+	err = en.Append(0xa6, 0x6d, 0x65, 0x74, 0x72, 0x69, 0x63)
 	if err != nil {
 		return err
 	}
@@ -1444,8 +1444,8 @@ func (z *RawMetric) EncodeMsg(en *msgp.Writer) (err error) {
 	if err != nil {
 		return
 	}
-	// write "Value"
-	err = en.Append(0xa5, 0x56, 0x61, 0x6c, 0x75, 0x65)
+	// write "value"
+	err = en.Append(0xa5, 0x76, 0x61, 0x6c, 0x75, 0x65)
 	if err != nil {
 		return err
 	}
@@ -1453,8 +1453,8 @@ func (z *RawMetric) EncodeMsg(en *msgp.Writer) (err error) {
 	if err != nil {
 		return
 	}
-	// write "Tags"
-	err = en.Append(0xa4, 0x54, 0x61, 0x67, 0x73)
+	// write "tags"
+	err = en.Append(0xa4, 0x74, 0x61, 0x67, 0x73)
 	if err != nil {
 		return err
 	}
@@ -1487,8 +1487,8 @@ func (z *RawMetric) EncodeMsg(en *msgp.Writer) (err error) {
 			}
 		}
 	}
-	// write "MetaTags"
-	err = en.Append(0xa8, 0x4d, 0x65, 0x74, 0x61, 0x54, 0x61, 0x67, 0x73)
+	// write "meta_tags"
+	err = en.Append(0xa9, 0x6d, 0x65, 0x74, 0x61, 0x5f, 0x74, 0x61, 0x67, 0x73)
 	if err != nil {
 		return err
 	}
@@ -1528,17 +1528,17 @@ func (z *RawMetric) EncodeMsg(en *msgp.Writer) (err error) {
 func (z *RawMetric) MarshalMsg(b []byte) (o []byte, err error) {
 	o = msgp.Require(b, z.Msgsize())
 	// map header, size 5
-	// string "Time"
-	o = append(o, 0x85, 0xa4, 0x54, 0x69, 0x6d, 0x65)
+	// string "time"
+	o = append(o, 0x85, 0xa4, 0x74, 0x69, 0x6d, 0x65)
 	o = msgp.AppendInt64(o, z.Time)
-	// string "Metric"
-	o = append(o, 0xa6, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63)
+	// string "metric"
+	o = append(o, 0xa6, 0x6d, 0x65, 0x74, 0x72, 0x69, 0x63)
 	o = msgp.AppendString(o, z.Metric)
-	// string "Value"
-	o = append(o, 0xa5, 0x56, 0x61, 0x6c, 0x75, 0x65)
+	// string "value"
+	o = append(o, 0xa5, 0x76, 0x61, 0x6c, 0x75, 0x65)
 	o = msgp.AppendFloat64(o, z.Value)
-	// string "Tags"
-	o = append(o, 0xa4, 0x54, 0x61, 0x67, 0x73)
+	// string "tags"
+	o = append(o, 0xa4, 0x74, 0x61, 0x67, 0x73)
 	o = msgp.AppendArrayHeader(o, uint32(len(z.Tags)))
 	for zrfe := range z.Tags {
 		if z.Tags[zrfe] == nil {
@@ -1553,8 +1553,8 @@ func (z *RawMetric) MarshalMsg(b []byte) (o []byte, err error) {
 			}
 		}
 	}
-	// string "MetaTags"
-	o = append(o, 0xa8, 0x4d, 0x65, 0x74, 0x61, 0x54, 0x61, 0x67, 0x73)
+	// string "meta_tags"
+	o = append(o, 0xa9, 0x6d, 0x65, 0x74, 0x61, 0x5f, 0x74, 0x61, 0x67, 0x73)
 	o = msgp.AppendArrayHeader(o, uint32(len(z.MetaTags)))
 	for ztaf := range z.MetaTags {
 		if z.MetaTags[ztaf] == nil {
@@ -1588,22 +1588,22 @@ func (z *RawMetric) UnmarshalMsg(bts []byte) (o []byte, err error) {
 			return
 		}
 		switch msgp.UnsafeString(field) {
-		case "Time":
+		case "time":
 			z.Time, bts, err = msgp.ReadInt64Bytes(bts)
 			if err != nil {
 				return
 			}
-		case "Metric":
+		case "metric":
 			z.Metric, bts, err = msgp.ReadStringBytes(bts)
 			if err != nil {
 				return
 			}
-		case "Value":
+		case "value":
 			z.Value, bts, err = msgp.ReadFloat64Bytes(bts)
 			if err != nil {
 				return
 			}
-		case "Tags":
+		case "tags":
 			var zbal uint32
 			zbal, bts, err = msgp.ReadArrayHeaderBytes(bts)
 			if err != nil {
@@ -1663,7 +1663,7 @@ func (z *RawMetric) UnmarshalMsg(bts []byte) (o []byte, err error) {
 					}
 				}
 			}
-		case "MetaTags":
+		case "meta_tags":
 			var ztmt uint32
 			ztmt, bts, err = msgp.ReadArrayHeaderBytes(bts)
 			if err != nil {
@@ -1747,7 +1747,7 @@ func (z *RawMetric) Msgsize() (s int) {
 			}
 		}
 	}
-	s += 9 + msgp.ArrayHeaderSize
+	s += 10 + msgp.ArrayHeaderSize
 	for ztaf := range z.MetaTags {
 		if z.MetaTags[ztaf] == nil {
 			s += msgp.NilSize
@@ -1777,47 +1777,47 @@ func (z *SeriesMetric) DecodeMsg(dc *msgp.Reader) (err error) {
 			return
 		}
 		switch msgp.UnsafeString(field) {
-		case "Id":
+		case "id":
 			z.Id, err = dc.ReadUint64()
 			if err != nil {
 				return
 			}
-		case "Uid":
+		case "uid":
 			z.Uid, err = dc.ReadString()
 			if err != nil {
 				return
 			}
-		case "Time":
+		case "time":
 			z.Time, err = dc.ReadInt64()
 			if err != nil {
 				return
 			}
-		case "Metric":
+		case "metric":
 			z.Metric, err = dc.ReadString()
 			if err != nil {
 				return
 			}
-		case "Encoding":
+		case "encoding":
 			z.Encoding, err = dc.ReadString()
 			if err != nil {
 				return
 			}
-		case "Data":
+		case "data":
 			z.Data, err = dc.ReadBytes(z.Data)
 			if err != nil {
 				return
 			}
-		case "Resolution":
+		case "resolution":
 			z.Resolution, err = dc.ReadUint32()
 			if err != nil {
 				return
 			}
-		case "Ttl":
+		case "ttl":
 			z.Ttl, err = dc.ReadUint32()
 			if err != nil {
 				return
 			}
-		case "Tags":
+		case "tags":
 			var zrsc uint32
 			zrsc, err = dc.ReadArrayHeader()
 			if err != nil {
@@ -1877,7 +1877,7 @@ func (z *SeriesMetric) DecodeMsg(dc *msgp.Reader) (err error) {
 					}
 				}
 			}
-		case "MetaTags":
+		case "meta_tags":
 			var znsg uint32
 			znsg, err = dc.ReadArrayHeader()
 			if err != nil {
@@ -1950,8 +1950,8 @@ func (z *SeriesMetric) DecodeMsg(dc *msgp.Reader) (err error) {
 // EncodeMsg implements msgp.Encodable
 func (z *SeriesMetric) EncodeMsg(en *msgp.Writer) (err error) {
 	// map header, size 10
-	// write "Id"
-	err = en.Append(0x8a, 0xa2, 0x49, 0x64)
+	// write "id"
+	err = en.Append(0x8a, 0xa2, 0x69, 0x64)
 	if err != nil {
 		return err
 	}
@@ -1959,8 +1959,8 @@ func (z *SeriesMetric) EncodeMsg(en *msgp.Writer) (err error) {
 	if err != nil {
 		return
 	}
-	// write "Uid"
-	err = en.Append(0xa3, 0x55, 0x69, 0x64)
+	// write "uid"
+	err = en.Append(0xa3, 0x75, 0x69, 0x64)
 	if err != nil {
 		return err
 	}
@@ -1968,8 +1968,8 @@ func (z *SeriesMetric) EncodeMsg(en *msgp.Writer) (err error) {
 	if err != nil {
 		return
 	}
-	// write "Time"
-	err = en.Append(0xa4, 0x54, 0x69, 0x6d, 0x65)
+	// write "time"
+	err = en.Append(0xa4, 0x74, 0x69, 0x6d, 0x65)
 	if err != nil {
 		return err
 	}
@@ -1977,8 +1977,8 @@ func (z *SeriesMetric) EncodeMsg(en *msgp.Writer) (err error) {
 	if err != nil {
 		return
 	}
-	// write "Metric"
-	err = en.Append(0xa6, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63)
+	// write "metric"
+	err = en.Append(0xa6, 0x6d, 0x65, 0x74, 0x72, 0x69, 0x63)
 	if err != nil {
 		return err
 	}
@@ -1986,8 +1986,8 @@ func (z *SeriesMetric) EncodeMsg(en *msgp.Writer) (err error) {
 	if err != nil {
 		return
 	}
-	// write "Encoding"
-	err = en.Append(0xa8, 0x45, 0x6e, 0x63, 0x6f, 0x64, 0x69, 0x6e, 0x67)
+	// write "encoding"
+	err = en.Append(0xa8, 0x65, 0x6e, 0x63, 0x6f, 0x64, 0x69, 0x6e, 0x67)
 	if err != nil {
 		return err
 	}
@@ -1995,8 +1995,8 @@ func (z *SeriesMetric) EncodeMsg(en *msgp.Writer) (err error) {
 	if err != nil {
 		return
 	}
-	// write "Data"
-	err = en.Append(0xa4, 0x44, 0x61, 0x74, 0x61)
+	// write "data"
+	err = en.Append(0xa4, 0x64, 0x61, 0x74, 0x61)
 	if err != nil {
 		return err
 	}
@@ -2004,8 +2004,8 @@ func (z *SeriesMetric) EncodeMsg(en *msgp.Writer) (err error) {
 	if err != nil {
 		return
 	}
-	// write "Resolution"
-	err = en.Append(0xaa, 0x52, 0x65, 0x73, 0x6f, 0x6c, 0x75, 0x74, 0x69, 0x6f, 0x6e)
+	// write "resolution"
+	err = en.Append(0xaa, 0x72, 0x65, 0x73, 0x6f, 0x6c, 0x75, 0x74, 0x69, 0x6f, 0x6e)
 	if err != nil {
 		return err
 	}
@@ -2013,8 +2013,8 @@ func (z *SeriesMetric) EncodeMsg(en *msgp.Writer) (err error) {
 	if err != nil {
 		return
 	}
-	// write "Ttl"
-	err = en.Append(0xa3, 0x54, 0x74, 0x6c)
+	// write "ttl"
+	err = en.Append(0xa3, 0x74, 0x74, 0x6c)
 	if err != nil {
 		return err
 	}
@@ -2022,8 +2022,8 @@ func (z *SeriesMetric) EncodeMsg(en *msgp.Writer) (err error) {
 	if err != nil {
 		return
 	}
-	// write "Tags"
-	err = en.Append(0xa4, 0x54, 0x61, 0x67, 0x73)
+	// write "tags"
+	err = en.Append(0xa4, 0x74, 0x61, 0x67, 0x73)
 	if err != nil {
 		return err
 	}
@@ -2056,8 +2056,8 @@ func (z *SeriesMetric) EncodeMsg(en *msgp.Writer) (err error) {
 			}
 		}
 	}
-	// write "MetaTags"
-	err = en.Append(0xa8, 0x4d, 0x65, 0x74, 0x61, 0x54, 0x61, 0x67, 0x73)
+	// write "meta_tags"
+	err = en.Append(0xa9, 0x6d, 0x65, 0x74, 0x61, 0x5f, 0x74, 0x61, 0x67, 0x73)
 	if err != nil {
 		return err
 	}
@@ -2097,32 +2097,32 @@ func (z *SeriesMetric) EncodeMsg(en *msgp.Writer) (err error) {
 func (z *SeriesMetric) MarshalMsg(b []byte) (o []byte, err error) {
 	o = msgp.Require(b, z.Msgsize())
 	// map header, size 10
-	// string "Id"
-	o = append(o, 0x8a, 0xa2, 0x49, 0x64)
+	// string "id"
+	o = append(o, 0x8a, 0xa2, 0x69, 0x64)
 	o = msgp.AppendUint64(o, z.Id)
-	// string "Uid"
-	o = append(o, 0xa3, 0x55, 0x69, 0x64)
+	// string "uid"
+	o = append(o, 0xa3, 0x75, 0x69, 0x64)
 	o = msgp.AppendString(o, z.Uid)
-	// string "Time"
-	o = append(o, 0xa4, 0x54, 0x69, 0x6d, 0x65)
+	// string "time"
+	o = append(o, 0xa4, 0x74, 0x69, 0x6d, 0x65)
 	o = msgp.AppendInt64(o, z.Time)
-	// string "Metric"
-	o = append(o, 0xa6, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63)
+	// string "metric"
+	o = append(o, 0xa6, 0x6d, 0x65, 0x74, 0x72, 0x69, 0x63)
 	o = msgp.AppendString(o, z.Metric)
-	// string "Encoding"
-	o = append(o, 0xa8, 0x45, 0x6e, 0x63, 0x6f, 0x64, 0x69, 0x6e, 0x67)
+	// string "encoding"
+	o = append(o, 0xa8, 0x65, 0x6e, 0x63, 0x6f, 0x64, 0x69, 0x6e, 0x67)
 	o = msgp.AppendString(o, z.Encoding)
-	// string "Data"
-	o = append(o, 0xa4, 0x44, 0x61, 0x74, 0x61)
+	// string "data"
+	o = append(o, 0xa4, 0x64, 0x61, 0x74, 0x61)
 	o = msgp.AppendBytes(o, z.Data)
-	// string "Resolution"
-	o = append(o, 0xaa, 0x52, 0x65, 0x73, 0x6f, 0x6c, 0x75, 0x74, 0x69, 0x6f, 0x6e)
+	// string "resolution"
+	o = append(o, 0xaa, 0x72, 0x65, 0x73, 0x6f, 0x6c, 0x75, 0x74, 0x69, 0x6f, 0x6e)
 	o = msgp.AppendUint32(o, z.Resolution)
-	// string "Ttl"
-	o = append(o, 0xa3, 0x54, 0x74, 0x6c)
+	// string "ttl"
+	o = append(o, 0xa3, 0x74, 0x74, 0x6c)
 	o = msgp.AppendUint32(o, z.Ttl)
-	// string "Tags"
-	o = append(o, 0xa4, 0x54, 0x61, 0x67, 0x73)
+	// string "tags"
+	o = append(o, 0xa4, 0x74, 0x61, 0x67, 0x73)
 	o = msgp.AppendArrayHeader(o, uint32(len(z.Tags)))
 	for ztyy := range z.Tags {
 		if z.Tags[ztyy] == nil {
@@ -2137,8 +2137,8 @@ func (z *SeriesMetric) MarshalMsg(b []byte) (o []byte, err error) {
 			}
 		}
 	}
-	// string "MetaTags"
-	o = append(o, 0xa8, 0x4d, 0x65, 0x74, 0x61, 0x54, 0x61, 0x67, 0x73)
+	// string "meta_tags"
+	o = append(o, 0xa9, 0x6d, 0x65, 0x74, 0x61, 0x5f, 0x74, 0x61, 0x67, 0x73)
 	o = msgp.AppendArrayHeader(o, uint32(len(z.MetaTags)))
 	for zare := range z.MetaTags {
 		if z.MetaTags[zare] == nil {
@@ -2172,47 +2172,47 @@ func (z *SeriesMetric) UnmarshalMsg(bts []byte) (o []byte, err error) {
 			return
 		}
 		switch msgp.UnsafeString(field) {
-		case "Id":
+		case "id":
 			z.Id, bts, err = msgp.ReadUint64Bytes(bts)
 			if err != nil {
 				return
 			}
-		case "Uid":
+		case "uid":
 			z.Uid, bts, err = msgp.ReadStringBytes(bts)
 			if err != nil {
 				return
 			}
-		case "Time":
+		case "time":
 			z.Time, bts, err = msgp.ReadInt64Bytes(bts)
 			if err != nil {
 				return
 			}
-		case "Metric":
+		case "metric":
 			z.Metric, bts, err = msgp.ReadStringBytes(bts)
 			if err != nil {
 				return
 			}
-		case "Encoding":
+		case "encoding":
 			z.Encoding, bts, err = msgp.ReadStringBytes(bts)
 			if err != nil {
 				return
 			}
-		case "Data":
+		case "data":
 			z.Data, bts, err = msgp.ReadBytesBytes(bts, z.Data)
 			if err != nil {
 				return
 			}
-		case "Resolution":
+		case "resolution":
 			z.Resolution, bts, err = msgp.ReadUint32Bytes(bts)
 			if err != nil {
 				return
 			}
-		case "Ttl":
+		case "ttl":
 			z.Ttl, bts, err = msgp.ReadUint32Bytes(bts)
 			if err != nil {
 				return
 			}
-		case "Tags":
+		case "tags":
 			var zfzb uint32
 			zfzb, bts, err = msgp.ReadArrayHeaderBytes(bts)
 			if err != nil {
@@ -2272,7 +2272,7 @@ func (z *SeriesMetric) UnmarshalMsg(bts []byte) (o []byte, err error) {
 					}
 				}
 			}
-		case "MetaTags":
+		case "meta_tags":
 			var zqgz uint32
 			zqgz, bts, err = msgp.ReadArrayHeaderBytes(bts)
 			if err != nil {
@@ -2356,7 +2356,7 @@ func (z *SeriesMetric) Msgsize() (s int) {
 			}
 		}
 	}
-	s += 9 + msgp.ArrayHeaderSize
+	s += 10 + msgp.ArrayHeaderSize
 	for zare := range z.MetaTags {
 		if z.MetaTags[zare] == nil {
 			s += msgp.NilSize
@@ -2386,62 +2386,62 @@ func (z *SingleMetric) DecodeMsg(dc *msgp.Reader) (err error) {
 			return
 		}
 		switch msgp.UnsafeString(field) {
-		case "Id":
+		case "id":
 			z.Id, err = dc.ReadUint64()
 			if err != nil {
 				return
 			}
-		case "Uid":
+		case "uid":
 			z.Uid, err = dc.ReadString()
 			if err != nil {
 				return
 			}
-		case "Time":
+		case "time":
 			z.Time, err = dc.ReadInt64()
 			if err != nil {
 				return
 			}
-		case "Metric":
+		case "metric":
 			z.Metric, err = dc.ReadString()
 			if err != nil {
 				return
 			}
-		case "Min":
+		case "min":
 			z.Min, err = dc.ReadFloat64()
 			if err != nil {
 				return
 			}
-		case "Max":
+		case "max":
 			z.Max, err = dc.ReadFloat64()
 			if err != nil {
 				return
 			}
-		case "Last":
+		case "last":
 			z.Last, err = dc.ReadFloat64()
 			if err != nil {
 				return
 			}
-		case "Sum":
+		case "sum":
 			z.Sum, err = dc.ReadFloat64()
 			if err != nil {
 				return
 			}
-		case "Count":
+		case "count":
 			z.Count, err = dc.ReadInt64()
 			if err != nil {
 				return
 			}
-		case "Resolution":
+		case "resolution":
 			z.Resolution, err = dc.ReadUint32()
 			if err != nil {
 				return
 			}
-		case "Ttl":
+		case "ttl":
 			z.Ttl, err = dc.ReadUint32()
 			if err != nil {
 				return
 			}
-		case "Tags":
+		case "tags":
 			var zupd uint32
 			zupd, err = dc.ReadArrayHeader()
 			if err != nil {
@@ -2501,7 +2501,7 @@ func (z *SingleMetric) DecodeMsg(dc *msgp.Reader) (err error) {
 					}
 				}
 			}
-		case "MetaTags":
+		case "meta_tags":
 			var zarz uint32
 			zarz, err = dc.ReadArrayHeader()
 			if err != nil {
@@ -2574,8 +2574,8 @@ func (z *SingleMetric) DecodeMsg(dc *msgp.Reader) (err error) {
 // EncodeMsg implements msgp.Encodable
 func (z *SingleMetric) EncodeMsg(en *msgp.Writer) (err error) {
 	// map header, size 13
-	// write "Id"
-	err = en.Append(0x8d, 0xa2, 0x49, 0x64)
+	// write "id"
+	err = en.Append(0x8d, 0xa2, 0x69, 0x64)
 	if err != nil {
 		return err
 	}
@@ -2583,8 +2583,8 @@ func (z *SingleMetric) EncodeMsg(en *msgp.Writer) (err error) {
 	if err != nil {
 		return
 	}
-	// write "Uid"
-	err = en.Append(0xa3, 0x55, 0x69, 0x64)
+	// write "uid"
+	err = en.Append(0xa3, 0x75, 0x69, 0x64)
 	if err != nil {
 		return err
 	}
@@ -2592,8 +2592,8 @@ func (z *SingleMetric) EncodeMsg(en *msgp.Writer) (err error) {
 	if err != nil {
 		return
 	}
-	// write "Time"
-	err = en.Append(0xa4, 0x54, 0x69, 0x6d, 0x65)
+	// write "time"
+	err = en.Append(0xa4, 0x74, 0x69, 0x6d, 0x65)
 	if err != nil {
 		return err
 	}
@@ -2601,8 +2601,8 @@ func (z *SingleMetric) EncodeMsg(en *msgp.Writer) (err error) {
 	if err != nil {
 		return
 	}
-	// write "Metric"
-	err = en.Append(0xa6, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63)
+	// write "metric"
+	err = en.Append(0xa6, 0x6d, 0x65, 0x74, 0x72, 0x69, 0x63)
 	if err != nil {
 		return err
 	}
@@ -2610,8 +2610,8 @@ func (z *SingleMetric) EncodeMsg(en *msgp.Writer) (err error) {
 	if err != nil {
 		return
 	}
-	// write "Min"
-	err = en.Append(0xa3, 0x4d, 0x69, 0x6e)
+	// write "min"
+	err = en.Append(0xa3, 0x6d, 0x69, 0x6e)
 	if err != nil {
 		return err
 	}
@@ -2619,8 +2619,8 @@ func (z *SingleMetric) EncodeMsg(en *msgp.Writer) (err error) {
 	if err != nil {
 		return
 	}
-	// write "Max"
-	err = en.Append(0xa3, 0x4d, 0x61, 0x78)
+	// write "max"
+	err = en.Append(0xa3, 0x6d, 0x61, 0x78)
 	if err != nil {
 		return err
 	}
@@ -2628,8 +2628,8 @@ func (z *SingleMetric) EncodeMsg(en *msgp.Writer) (err error) {
 	if err != nil {
 		return
 	}
-	// write "Last"
-	err = en.Append(0xa4, 0x4c, 0x61, 0x73, 0x74)
+	// write "last"
+	err = en.Append(0xa4, 0x6c, 0x61, 0x73, 0x74)
 	if err != nil {
 		return err
 	}
@@ -2637,8 +2637,8 @@ func (z *SingleMetric) EncodeMsg(en *msgp.Writer) (err error) {
 	if err != nil {
 		return
 	}
-	// write "Sum"
-	err = en.Append(0xa3, 0x53, 0x75, 0x6d)
+	// write "sum"
+	err = en.Append(0xa3, 0x73, 0x75, 0x6d)
 	if err != nil {
 		return err
 	}
@@ -2646,8 +2646,8 @@ func (z *SingleMetric) EncodeMsg(en *msgp.Writer) (err error) {
 	if err != nil {
 		return
 	}
-	// write "Count"
-	err = en.Append(0xa5, 0x43, 0x6f, 0x75, 0x6e, 0x74)
+	// write "count"
+	err = en.Append(0xa5, 0x63, 0x6f, 0x75, 0x6e, 0x74)
 	if err != nil {
 		return err
 	}
@@ -2655,8 +2655,8 @@ func (z *SingleMetric) EncodeMsg(en *msgp.Writer) (err error) {
 	if err != nil {
 		return
 	}
-	// write "Resolution"
-	err = en.Append(0xaa, 0x52, 0x65, 0x73, 0x6f, 0x6c, 0x75, 0x74, 0x69, 0x6f, 0x6e)
+	// write "resolution"
+	err = en.Append(0xaa, 0x72, 0x65, 0x73, 0x6f, 0x6c, 0x75, 0x74, 0x69, 0x6f, 0x6e)
 	if err != nil {
 		return err
 	}
@@ -2664,8 +2664,8 @@ func (z *SingleMetric) EncodeMsg(en *msgp.Writer) (err error) {
 	if err != nil {
 		return
 	}
-	// write "Ttl"
-	err = en.Append(0xa3, 0x54, 0x74, 0x6c)
+	// write "ttl"
+	err = en.Append(0xa3, 0x74, 0x74, 0x6c)
 	if err != nil {
 		return err
 	}
@@ -2673,8 +2673,8 @@ func (z *SingleMetric) EncodeMsg(en *msgp.Writer) (err error) {
 	if err != nil {
 		return
 	}
-	// write "Tags"
-	err = en.Append(0xa4, 0x54, 0x61, 0x67, 0x73)
+	// write "tags"
+	err = en.Append(0xa4, 0x74, 0x61, 0x67, 0x73)
 	if err != nil {
 		return err
 	}
@@ -2707,8 +2707,8 @@ func (z *SingleMetric) EncodeMsg(en *msgp.Writer) (err error) {
 			}
 		}
 	}
-	// write "MetaTags"
-	err = en.Append(0xa8, 0x4d, 0x65, 0x74, 0x61, 0x54, 0x61, 0x67, 0x73)
+	// write "meta_tags"
+	err = en.Append(0xa9, 0x6d, 0x65, 0x74, 0x61, 0x5f, 0x74, 0x61, 0x67, 0x73)
 	if err != nil {
 		return err
 	}
@@ -2748,41 +2748,41 @@ func (z *SingleMetric) EncodeMsg(en *msgp.Writer) (err error) {
 func (z *SingleMetric) MarshalMsg(b []byte) (o []byte, err error) {
 	o = msgp.Require(b, z.Msgsize())
 	// map header, size 13
-	// string "Id"
-	o = append(o, 0x8d, 0xa2, 0x49, 0x64)
+	// string "id"
+	o = append(o, 0x8d, 0xa2, 0x69, 0x64)
 	o = msgp.AppendUint64(o, z.Id)
-	// string "Uid"
-	o = append(o, 0xa3, 0x55, 0x69, 0x64)
+	// string "uid"
+	o = append(o, 0xa3, 0x75, 0x69, 0x64)
 	o = msgp.AppendString(o, z.Uid)
-	// string "Time"
-	o = append(o, 0xa4, 0x54, 0x69, 0x6d, 0x65)
+	// string "time"
+	o = append(o, 0xa4, 0x74, 0x69, 0x6d, 0x65)
 	o = msgp.AppendInt64(o, z.Time)
-	// string "Metric"
-	o = append(o, 0xa6, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63)
+	// string "metric"
+	o = append(o, 0xa6, 0x6d, 0x65, 0x74, 0x72, 0x69, 0x63)
 	o = msgp.AppendString(o, z.Metric)
-	// string "Min"
-	o = append(o, 0xa3, 0x4d, 0x69, 0x6e)
+	// string "min"
+	o = append(o, 0xa3, 0x6d, 0x69, 0x6e)
 	o = msgp.AppendFloat64(o, z.Min)
-	// string "Max"
-	o = append(o, 0xa3, 0x4d, 0x61, 0x78)
+	// string "max"
+	o = append(o, 0xa3, 0x6d, 0x61, 0x78)
 	o = msgp.AppendFloat64(o, z.Max)
-	// string "Last"
-	o = append(o, 0xa4, 0x4c, 0x61, 0x73, 0x74)
+	// string "last"
+	o = append(o, 0xa4, 0x6c, 0x61, 0x73, 0x74)
 	o = msgp.AppendFloat64(o, z.Last)
-	// string "Sum"
-	o = append(o, 0xa3, 0x53, 0x75, 0x6d)
+	// string "sum"
+	o = append(o, 0xa3, 0x73, 0x75, 0x6d)
 	o = msgp.AppendFloat64(o, z.Sum)
-	// string "Count"
-	o = append(o, 0xa5, 0x43, 0x6f, 0x75, 0x6e, 0x74)
+	// string "count"
+	o = append(o, 0xa5, 0x63, 0x6f, 0x75, 0x6e, 0x74)
 	o = msgp.AppendInt64(o, z.Count)
-	// string "Resolution"
-	o = append(o, 0xaa, 0x52, 0x65, 0x73, 0x6f, 0x6c, 0x75, 0x74, 0x69, 0x6f, 0x6e)
+	// string "resolution"
+	o = append(o, 0xaa, 0x72, 0x65, 0x73, 0x6f, 0x6c, 0x75, 0x74, 0x69, 0x6f, 0x6e)
 	o = msgp.AppendUint32(o, z.Resolution)
-	// string "Ttl"
-	o = append(o, 0xa3, 0x54, 0x74, 0x6c)
+	// string "ttl"
+	o = append(o, 0xa3, 0x74, 0x74, 0x6c)
 	o = msgp.AppendUint32(o, z.Ttl)
-	// string "Tags"
-	o = append(o, 0xa4, 0x54, 0x61, 0x67, 0x73)
+	// string "tags"
+	o = append(o, 0xa4, 0x74, 0x61, 0x67, 0x73)
 	o = msgp.AppendArrayHeader(o, uint32(len(z.Tags)))
 	for zmvo := range z.Tags {
 		if z.Tags[zmvo] == nil {
@@ -2797,8 +2797,8 @@ func (z *SingleMetric) MarshalMsg(b []byte) (o []byte, err error) {
 			}
 		}
 	}
-	// string "MetaTags"
-	o = append(o, 0xa8, 0x4d, 0x65, 0x74, 0x61, 0x54, 0x61, 0x67, 0x73)
+	// string "meta_tags"
+	o = append(o, 0xa9, 0x6d, 0x65, 0x74, 0x61, 0x5f, 0x74, 0x61, 0x67, 0x73)
 	o = msgp.AppendArrayHeader(o, uint32(len(z.MetaTags)))
 	for zopb := range z.MetaTags {
 		if z.MetaTags[zopb] == nil {
@@ -2832,62 +2832,62 @@ func (z *SingleMetric) UnmarshalMsg(bts []byte) (o []byte, err error) {
 			return
 		}
 		switch msgp.UnsafeString(field) {
-		case "Id":
+		case "id":
 			z.Id, bts, err = msgp.ReadUint64Bytes(bts)
 			if err != nil {
 				return
 			}
-		case "Uid":
+		case "uid":
 			z.Uid, bts, err = msgp.ReadStringBytes(bts)
 			if err != nil {
 				return
 			}
-		case "Time":
+		case "time":
 			z.Time, bts, err = msgp.ReadInt64Bytes(bts)
 			if err != nil {
 				return
 			}
-		case "Metric":
+		case "metric":
 			z.Metric, bts, err = msgp.ReadStringBytes(bts)
 			if err != nil {
 				return
 			}
-		case "Min":
+		case "min":
 			z.Min, bts, err = msgp.ReadFloat64Bytes(bts)
 			if err != nil {
 				return
 			}
-		case "Max":
+		case "max":
 			z.Max, bts, err = msgp.ReadFloat64Bytes(bts)
 			if err != nil {
 				return
 			}
-		case "Last":
+		case "last":
 			z.Last, bts, err = msgp.ReadFloat64Bytes(bts)
 			if err != nil {
 				return
 			}
-		case "Sum":
+		case "sum":
 			z.Sum, bts, err = msgp.ReadFloat64Bytes(bts)
 			if err != nil {
 				return
 			}
-		case "Count":
+		case "count":
 			z.Count, bts, err = msgp.ReadInt64Bytes(bts)
 			if err != nil {
 				return
 			}
-		case "Resolution":
+		case "resolution":
 			z.Resolution, bts, err = msgp.ReadUint32Bytes(bts)
 			if err != nil {
 				return
 			}
-		case "Ttl":
+		case "ttl":
 			z.Ttl, bts, err = msgp.ReadUint32Bytes(bts)
 			if err != nil {
 				return
 			}
-		case "Tags":
+		case "tags":
 			var zlsx uint32
 			zlsx, bts, err = msgp.ReadArrayHeaderBytes(bts)
 			if err != nil {
@@ -2947,7 +2947,7 @@ func (z *SingleMetric) UnmarshalMsg(bts []byte) (o []byte, err error) {
 					}
 				}
 			}
-		case "MetaTags":
+		case "meta_tags":
 			var zmbt uint32
 			zmbt, bts, err = msgp.ReadArrayHeaderBytes(bts)
 			if err != nil {
@@ -3031,7 +3031,7 @@ func (z *SingleMetric) Msgsize() (s int) {
 			}
 		}
 	}
-	s += 9 + msgp.ArrayHeaderSize
+	s += 10 + msgp.ArrayHeaderSize
 	for zopb := range z.MetaTags {
 		if z.MetaTags[zopb] == nil {
 			s += msgp.NilSize
@@ -3061,42 +3061,42 @@ func (z *UnProcessedMetric) DecodeMsg(dc *msgp.Reader) (err error) {
 			return
 		}
 		switch msgp.UnsafeString(field) {
-		case "Time":
+		case "time":
 			z.Time, err = dc.ReadInt64()
 			if err != nil {
 				return
 			}
-		case "Metric":
+		case "metric":
 			z.Metric, err = dc.ReadString()
 			if err != nil {
 				return
 			}
-		case "Min":
+		case "min":
 			z.Min, err = dc.ReadFloat64()
 			if err != nil {
 				return
 			}
-		case "Max":
+		case "max":
 			z.Max, err = dc.ReadFloat64()
 			if err != nil {
 				return
 			}
-		case "Last":
+		case "last":
 			z.Last, err = dc.ReadFloat64()
 			if err != nil {
 				return
 			}
-		case "Sum":
+		case "sum":
 			z.Sum, err = dc.ReadFloat64()
 			if err != nil {
 				return
 			}
-		case "Count":
+		case "count":
 			z.Count, err = dc.ReadInt64()
 			if err != nil {
 				return
 			}
-		case "Tags":
+		case "tags":
 			var zzqm uint32
 			zzqm, err = dc.ReadArrayHeader()
 			if err != nil {
@@ -3156,7 +3156,7 @@ func (z *UnProcessedMetric) DecodeMsg(dc *msgp.Reader) (err error) {
 					}
 				}
 			}
-		case "MetaTags":
+		case "meta_tags":
 			var zhgh uint32
 			zhgh, err = dc.ReadArrayHeader()
 			if err != nil {
@@ -3229,8 +3229,8 @@ func (z *UnProcessedMetric) DecodeMsg(dc *msgp.Reader) (err error) {
 // EncodeMsg implements msgp.Encodable
 func (z *UnProcessedMetric) EncodeMsg(en *msgp.Writer) (err error) {
 	// map header, size 9
-	// write "Time"
-	err = en.Append(0x89, 0xa4, 0x54, 0x69, 0x6d, 0x65)
+	// write "time"
+	err = en.Append(0x89, 0xa4, 0x74, 0x69, 0x6d, 0x65)
 	if err != nil {
 		return err
 	}
@@ -3238,8 +3238,8 @@ func (z *UnProcessedMetric) EncodeMsg(en *msgp.Writer) (err error) {
 	if err != nil {
 		return
 	}
-	// write "Metric"
-	err = en.Append(0xa6, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63)
+	// write "metric"
+	err = en.Append(0xa6, 0x6d, 0x65, 0x74, 0x72, 0x69, 0x63)
 	if err != nil {
 		return err
 	}
@@ -3247,8 +3247,8 @@ func (z *UnProcessedMetric) EncodeMsg(en *msgp.Writer) (err error) {
 	if err != nil {
 		return
 	}
-	// write "Min"
-	err = en.Append(0xa3, 0x4d, 0x69, 0x6e)
+	// write "min"
+	err = en.Append(0xa3, 0x6d, 0x69, 0x6e)
 	if err != nil {
 		return err
 	}
@@ -3256,8 +3256,8 @@ func (z *UnProcessedMetric) EncodeMsg(en *msgp.Writer) (err error) {
 	if err != nil {
 		return
 	}
-	// write "Max"
-	err = en.Append(0xa3, 0x4d, 0x61, 0x78)
+	// write "max"
+	err = en.Append(0xa3, 0x6d, 0x61, 0x78)
 	if err != nil {
 		return err
 	}
@@ -3265,8 +3265,8 @@ func (z *UnProcessedMetric) EncodeMsg(en *msgp.Writer) (err error) {
 	if err != nil {
 		return
 	}
-	// write "Last"
-	err = en.Append(0xa4, 0x4c, 0x61, 0x73, 0x74)
+	// write "last"
+	err = en.Append(0xa4, 0x6c, 0x61, 0x73, 0x74)
 	if err != nil {
 		return err
 	}
@@ -3274,8 +3274,8 @@ func (z *UnProcessedMetric) EncodeMsg(en *msgp.Writer) (err error) {
 	if err != nil {
 		return
 	}
-	// write "Sum"
-	err = en.Append(0xa3, 0x53, 0x75, 0x6d)
+	// write "sum"
+	err = en.Append(0xa3, 0x73, 0x75, 0x6d)
 	if err != nil {
 		return err
 	}
@@ -3283,8 +3283,8 @@ func (z *UnProcessedMetric) EncodeMsg(en *msgp.Writer) (err error) {
 	if err != nil {
 		return
 	}
-	// write "Count"
-	err = en.Append(0xa5, 0x43, 0x6f, 0x75, 0x6e, 0x74)
+	// write "count"
+	err = en.Append(0xa5, 0x63, 0x6f, 0x75, 0x6e, 0x74)
 	if err != nil {
 		return err
 	}
@@ -3292,8 +3292,8 @@ func (z *UnProcessedMetric) EncodeMsg(en *msgp.Writer) (err error) {
 	if err != nil {
 		return
 	}
-	// write "Tags"
-	err = en.Append(0xa4, 0x54, 0x61, 0x67, 0x73)
+	// write "tags"
+	err = en.Append(0xa4, 0x74, 0x61, 0x67, 0x73)
 	if err != nil {
 		return err
 	}
@@ -3326,8 +3326,8 @@ func (z *UnProcessedMetric) EncodeMsg(en *msgp.Writer) (err error) {
 			}
 		}
 	}
-	// write "MetaTags"
-	err = en.Append(0xa8, 0x4d, 0x65, 0x74, 0x61, 0x54, 0x61, 0x67, 0x73)
+	// write "meta_tags"
+	err = en.Append(0xa9, 0x6d, 0x65, 0x74, 0x61, 0x5f, 0x74, 0x61, 0x67, 0x73)
 	if err != nil {
 		return err
 	}
@@ -3367,29 +3367,29 @@ func (z *UnProcessedMetric) EncodeMsg(en *msgp.Writer) (err error) {
 func (z *UnProcessedMetric) MarshalMsg(b []byte) (o []byte, err error) {
 	o = msgp.Require(b, z.Msgsize())
 	// map header, size 9
-	// string "Time"
-	o = append(o, 0x89, 0xa4, 0x54, 0x69, 0x6d, 0x65)
+	// string "time"
+	o = append(o, 0x89, 0xa4, 0x74, 0x69, 0x6d, 0x65)
 	o = msgp.AppendInt64(o, z.Time)
-	// string "Metric"
-	o = append(o, 0xa6, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63)
+	// string "metric"
+	o = append(o, 0xa6, 0x6d, 0x65, 0x74, 0x72, 0x69, 0x63)
 	o = msgp.AppendString(o, z.Metric)
-	// string "Min"
-	o = append(o, 0xa3, 0x4d, 0x69, 0x6e)
+	// string "min"
+	o = append(o, 0xa3, 0x6d, 0x69, 0x6e)
 	o = msgp.AppendFloat64(o, z.Min)
-	// string "Max"
-	o = append(o, 0xa3, 0x4d, 0x61, 0x78)
+	// string "max"
+	o = append(o, 0xa3, 0x6d, 0x61, 0x78)
 	o = msgp.AppendFloat64(o, z.Max)
-	// string "Last"
-	o = append(o, 0xa4, 0x4c, 0x61, 0x73, 0x74)
+	// string "last"
+	o = append(o, 0xa4, 0x6c, 0x61, 0x73, 0x74)
 	o = msgp.AppendFloat64(o, z.Last)
-	// string "Sum"
-	o = append(o, 0xa3, 0x53, 0x75, 0x6d)
+	// string "sum"
+	o = append(o, 0xa3, 0x73, 0x75, 0x6d)
 	o = msgp.AppendFloat64(o, z.Sum)
-	// string "Count"
-	o = append(o, 0xa5, 0x43, 0x6f, 0x75, 0x6e, 0x74)
+	// string "count"
+	o = append(o, 0xa5, 0x63, 0x6f, 0x75, 0x6e, 0x74)
 	o = msgp.AppendInt64(o, z.Count)
-	// string "Tags"
-	o = append(o, 0xa4, 0x54, 0x61, 0x67, 0x73)
+	// string "tags"
+	o = append(o, 0xa4, 0x74, 0x61, 0x67, 0x73)
 	o = msgp.AppendArrayHeader(o, uint32(len(z.Tags)))
 	for zzak := range z.Tags {
 		if z.Tags[zzak] == nil {
@@ -3404,8 +3404,8 @@ func (z *UnProcessedMetric) MarshalMsg(b []byte) (o []byte, err error) {
 			}
 		}
 	}
-	// string "MetaTags"
-	o = append(o, 0xa8, 0x4d, 0x65, 0x74, 0x61, 0x54, 0x61, 0x67, 0x73)
+	// string "meta_tags"
+	o = append(o, 0xa9, 0x6d, 0x65, 0x74, 0x61, 0x5f, 0x74, 0x61, 0x67, 0x73)
 	o = msgp.AppendArrayHeader(o, uint32(len(z.MetaTags)))
 	for zsym := range z.MetaTags {
 		if z.MetaTags[zsym] == nil {
@@ -3439,42 +3439,42 @@ func (z *UnProcessedMetric) UnmarshalMsg(bts []byte) (o []byte, err error) {
 			return
 		}
 		switch msgp.UnsafeString(field) {
-		case "Time":
+		case "time":
 			z.Time, bts, err = msgp.ReadInt64Bytes(bts)
 			if err != nil {
 				return
 			}
-		case "Metric":
+		case "metric":
 			z.Metric, bts, err = msgp.ReadStringBytes(bts)
 			if err != nil {
 				return
 			}
-		case "Min":
+		case "min":
 			z.Min, bts, err = msgp.ReadFloat64Bytes(bts)
 			if err != nil {
 				return
 			}
-		case "Max":
+		case "max":
 			z.Max, bts, err = msgp.ReadFloat64Bytes(bts)
 			if err != nil {
 				return
 			}
-		case "Last":
+		case "last":
 			z.Last, bts, err = msgp.ReadFloat64Bytes(bts)
 			if err != nil {
 				return
 			}
-		case "Sum":
+		case "sum":
 			z.Sum, bts, err = msgp.ReadFloat64Bytes(bts)
 			if err != nil {
 				return
 			}
-		case "Count":
+		case "count":
 			z.Count, bts, err = msgp.ReadInt64Bytes(bts)
 			if err != nil {
 				return
 			}
-		case "Tags":
+		case "tags":
 			var zjhy uint32
 			zjhy, bts, err = msgp.ReadArrayHeaderBytes(bts)
 			if err != nil {
@@ -3534,7 +3534,7 @@ func (z *UnProcessedMetric) UnmarshalMsg(bts []byte) (o []byte, err error) {
 					}
 				}
 			}
-		case "MetaTags":
+		case "meta_tags":
 			var zhhj uint32
 			zhhj, bts, err = msgp.ReadArrayHeaderBytes(bts)
 			if err != nil {
@@ -3618,7 +3618,7 @@ func (z *UnProcessedMetric) Msgsize() (s int) {
 			}
 		}
 	}
-	s += 9 + msgp.ArrayHeaderSize
+	s += 10 + msgp.ArrayHeaderSize
 	for zsym := range z.MetaTags {
 		if z.MetaTags[zsym] == nil {
 			s += msgp.NilSize
