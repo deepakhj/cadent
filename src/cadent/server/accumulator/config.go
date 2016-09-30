@@ -197,6 +197,7 @@ func (cf *ConfigAccumulator) GetAccumulator() (*Accumulator, error) {
 	ac.Accumulate.SetTags(cf.Tags)
 	err = ac.Accumulate.SetOptions(cf.Option)
 	if err != nil {
+		log.Critical("Error setting options: %s", err)
 		return nil, err
 	}
 
@@ -208,6 +209,7 @@ func (cf *ConfigAccumulator) GetAccumulator() (*Accumulator, error) {
 		}
 		_, err = ac.SetAggregateLoop(cf.Writer)
 		if err != nil {
+			log.Critical("Error setting main writer: %s", err)
 			return nil, err
 		}
 		shared.Set("is_writer", true)
@@ -221,6 +223,7 @@ func (cf *ConfigAccumulator) GetAccumulator() (*Accumulator, error) {
 		}
 		_, err = ac.SetSubAggregateLoop(cf.Writer)
 		if err != nil {
+			log.Critical("Error setting sub writer: %s", err)
 			return nil, err
 		}
 		// some data for the shared land
@@ -232,6 +235,7 @@ func (cf *ConfigAccumulator) GetAccumulator() (*Accumulator, error) {
 
 		err = ac.Aggregators.SetReader(cf.Reader)
 		if err != nil {
+			log.Critical("Error setting reader: %s", err)
 			return nil, err
 		}
 

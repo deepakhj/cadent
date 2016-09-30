@@ -139,7 +139,6 @@ func getProducer() (sarama.AsyncProducer, error) {
 	config.Producer.RequiredAcks = sarama.WaitForAll
 	producer, err := sarama.NewAsyncProducer([]string{on_ip + ":" + kport}, config)
 
-
 	return producer, err
 }
 
@@ -211,7 +210,7 @@ func TestKafkaInjector(t *testing.T) {
 		var useencoding schemas.SendEncoding = schemas.SendEncodingFromString(enctype)
 
 		kf, err := getConsumer(enctype)
-		if err != nil{
+		if err != nil {
 			t.Fatalf("Failed to get consumer: %v", err)
 		}
 		err = kf.Start()
@@ -225,7 +224,7 @@ func TestKafkaInjector(t *testing.T) {
 		NumMessages := 10
 		msgs := getMetrics(NumMessages, useencoding)
 		prod, err := getProducer()
-		if err!=nil{
+		if err != nil {
 			t.Fatalf("Error on producer: %v", err)
 		}
 
@@ -285,12 +284,11 @@ func Benchmark__Kafka_Encoding_JSON(b *testing.B) {
 		b.Fatalf("Failed to start: %v", err)
 	}
 
-
 	// some raw messages
 	NumMessages := 1000
 	msgs := getMetrics(NumMessages, schemas.ENCODE_JSON)
 	prod, err := getProducer()
-	if err != nil{
+	if err != nil {
 		b.Fatalf("%v", err)
 	}
 	//wait till we are good to go
