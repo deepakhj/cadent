@@ -65,10 +65,7 @@ func findFirstNonRegexSegment(name string) string {
 	return strings.Join(out_str, ".")
 }
 
-// convert the "graphite regex" into something golang understands (just the "."s really)
-// need to replace things like "moo*" -> "moo.*" but careful not to do "..*"
-// the "graphite" globs of {moo,goo} we can do with (moo|goo) so convert { -> (, , -> |, } -> )
-func regifyKey(name string) (*regexp.Regexp, error) {
+func fullRegString(name string) string {
 	regable := regifyKeyString(name)
 	// we need to make sure we add the "^" + "$" to the end of things as well
 	if !strings.HasPrefix(regable, "^") {
@@ -77,6 +74,14 @@ func regifyKey(name string) (*regexp.Regexp, error) {
 	if !strings.HasSuffix(regable, "$") {
 		regable = regable + "$"
 	}
+	return regable
+}
+
+// convert the "graphite regex" into something golang understands (just the "."s really)
+// need to replace things like "moo*" -> "moo.*" but careful not to do "..*"
+// the "graphite" globs of {moo,goo} we can do with (moo|goo) so convert { -> (, , -> |, } -> )
+func regifyKey(name string) (*regexp.Regexp, error) {
+	regable := fullRegString(name)
 	return regexp.Compile(regable)
 }
 

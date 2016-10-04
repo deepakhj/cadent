@@ -250,7 +250,7 @@ func TestKafkaInjector(t *testing.T) {
 
 		t.Logf("consumer: running")
 
-		time.Sleep(400)
+		time.Sleep(20)
 		t.Logf("consumer: stopping")
 
 		err = kf.Stop()

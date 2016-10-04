@@ -59,24 +59,14 @@ default_backend="carbon2-proxy"  # failing a match go here
         max_metrics=1024000  # for 1 million points @ 1024 b you'll need lots o ram
         # max_time_in_cache="2m" # force a cache flush for metrics in ram longer then this number
         # broadcast_length="128" # buffer channel for pushed overflow writes
-        # overflow_method="drop" # if over bytes/maxmetrics for non-series writers, drop incoming
-        # for non-series metrics, the typical behavior is to flush the highest counts first,
-        # but that may mean lower counts never get written, this value "flips" the sorter at this % rate to
-        # force the "smaller" ones to get written more often
-        # low_fruit_rate= 0.25
+
 
     [[graphite-proxy-map.accumulator.writer.caches]]
             name="gob"
             series_encoding="gob"
             bytes_per_metric=512
             max_metrics=1024000  # for 1 million points @ 1024 b you'll need lots o ram
-            # max_time_in_cache="2m" # force a cache flush for metrics in ram longer then this number
-            # broadcast_length="128" # buffer channel for pushed overflow writes
-            # overflow_method="drop" # if over bytes/maxmetrics for non-series writers, drop incoming
-            # for non-series metrics, the typical behavior is to flush the highest counts first,
-            # but that may mean lower counts never get written, this value "flips" the sorter at this % rate to
-            # force the "smaller" ones to get written more often
-            # low_fruit_rate= 0.25
+
 
 
     # primary write things to the mysql DB

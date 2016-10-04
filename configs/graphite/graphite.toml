@@ -2,11 +2,19 @@
 ## it acts like both Graphite and Statsd and flushes to graphite
 ##  the statsd out put is basically a loopback
 
+
+#############################
+## logging
+#############################
 [log]
 # format = ""%{color}%{time:2006-01-02 15:04:05.000} [%{module}] (%{shortfile}) ▶ %{level:.4s} %{color:reset} %{message}""
 level = "DEBUG"
 file="stdout"
 
+
+#############################
+## System
+#############################
 [system]
 
 ## PID file to check if things is running already

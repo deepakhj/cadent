@@ -35,9 +35,9 @@ import (
 )
 
 const (
-	ZIP_SIMPLE_BIN_SERIES_TAG       = "zbts" // just a flag to note we are using this one at the begining of each blob
-	ZIP_SIMPLE_BIN_SERIES_LOWRE_TAG = "zbtl" // just a flag to note we are using this one at the begining of each blob
-	ZIPGOB_NAME                     = "zipgob"
+	ZIP_SIMPLE_BIN_SERIES_TAG        = "zbts" // just a flag to note we are using this one at the begining of each blob
+	ZIP_SIMPLE_BIN_SERIES_LOWRES_TAG = "zbtl" // just a flag to note we are using this one at the begining of each blob
+	ZIPGOB_NAME                      = "zipgob"
 )
 
 // this can only handle "future pushing times" not random times
@@ -76,7 +76,7 @@ func NewZipGobTimeSeries(t0 int64, options *Options) *ZipGobTimeSeries {
 		buf:            new(gobBuffer),
 	}
 	if !ret.fullResolution {
-		ret.sTag = ZIP_SIMPLE_BIN_SERIES_LOWRE_TAG
+		ret.sTag = ZIP_SIMPLE_BIN_SERIES_LOWRES_TAG
 		ts, _ := splitNano(t0)
 		ret.T0 = int64(ts)
 	}

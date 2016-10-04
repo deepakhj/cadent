@@ -1,24 +1,107 @@
-[default]
 
-##
-##  Graphite incoming and a relay backend
-##
-##  This config listens on :2003 (`graphite-proxy`),
-##  maintains another backend-only server set (`graphite-gg-relay`) pointing to :2013
-##  this is ideal for acting like `carbon-relay.py + carbon-aggregator.py`
-##
-##  see `graphite-relay-preg.toml` for the relay setup
-##
+#############################
+## logging
+#############################
+[log]
+# format = ""%{color}%{time:2006-01-02 15:04:05.000} [%{module}] (%{shortfile}) ▶ %{level:.4s} %{color:reset} %{message}""
+level = "DEBUG"
+file="stdout"
 
+
+#############################
+## System
+#############################
+[system]
 
 ## PID file to check if things is running already
-pid_file="/opt/cadent/graphite.pid"
+pid_file="/opt/cadent/cadent.pid"
 
 ## performance tuning suggest that n - 2 is best to avoid over creation
 ## of File Descriptors for the many sockets we need (and thus cause more OS
 ## overhead as time goes on)
+#
 
-num_procs=4
+num_procs=2
+
+
+#############################
+## Profiling
+#############################
+
+[profile]
+## Turn on CPU/Mem profiling
+enabled=true
+
+##  there will be a http server set up to yank pprof data on :6060
+
+listen="0.0.0.0:6060"
+rate=100000
+block_profile=false # this is very expensive
+
+#############################
+## Internal Stats
+#############################
+
+[health]
+
+enabled=true
+
+## there will be an internal health http server set up as well
+## and will respond to '/ops/status' -> "GET OK"
+## '/stats' --> blob of json data (adding ?jsonp=xxx will return jsonp data)
+## '/' --> a little file that charts (poorly) the above stats
+listen="0.0.0.0:6061"
+
+## stats are "rendered" every 5 seconds, so this will keep last
+## `internal_health_server_points` in RAM (careful with how many you store)
+## (use the statsd emitter to store longer term stuff)
+points=500
+
+# https this server if desired
+# key="/tmp/server.key"
+# cert="/tmp/server.crt"
+
+
+#############################
+## Emit To Statsd
+#############################
+
+[statsd]
+## fire out some internal to statsd if desired
+server="127.0.0.1:8125"
+prefix="cadent"
+interval=1  # send to statd every second (buffered)
+
+# global statsd Sample Rates
+
+## It's HIGHLY recommended you at least put a statsd_timer_sample_rate as we measure
+## rates of very fast functions, and it can take _alot_ of CPU cycles just to do that
+## unless your server not under much stress 1% is a good number
+## `statsd_sample_rate` is for counters
+## `statsd_timer_sample_rate` is for timers
+timer_sample_rate=0.01
+sample_rate=0.1
+
+
+#############################
+## Gossiper
+#############################
+[gossip]
+enabled=true
+mode="local"
+port=8889
+
+
+#############################
+## SERVERS
+#############################
+[servers]
+
+#############################
+## Incoming server defaults
+#############################
+
+[servers.default]
 
 stats_tick=false
 
@@ -41,30 +124,10 @@ failed_heartbeat_count=3
 ## `ignore` -- stop checking the node
 server_down_policy="ignore"
 
-## Turn on CPU/Mem profiling
-##  there will be a http server set up to yank pprof data on :6060
-cpu_profile=false
-block_profile=false # this is very expensive
-
-## fire out some internal to statsd if desired
-statsd_server="localhost:8125"
-statsd_prefix="consthash-graphite"
-statsd_interval=1  # send to statd every second (buffered)
-# global statsd Sample Rates
-
-## It's HIGHLY recommended you at least put a statsd_timer_sample_rate as we measure
-## rates of very fast functions, and it can take _alot_ of CPU cycles just to do that
-## unless your server not under much stress 1% is a good number
-## `statsd_sample_rate` is for counters
-## `statsd_timer_sample_rate` is for timers
-statsd_timer_sample_rate=0.01
-statsd_sample_rate=0.1
-
-
 ## outgoing connections are pooled per outgoign server
 ## this sets the number of pool connections
 ## 10 seems to be a "good" number for us
-max_pool_connections=20
+max_pool_connections=10
 
 ## if using the `bufferedpool` this is the size in bytes to use for the buffer
 ## (defaults to 512)
@@ -76,23 +139,18 @@ read_buffer_size=1048576
 max_buffer_size=104857600
 
 ## number of workers to chew on the sending queue
-## adjust this based on the input load (1-5)
-## one does a pretty good job so start there
-workers=1
+## adjust this based on the input load, dont make it too big otherwise you'll get stuck
+## in the land of lock contententions
+workers=10
 
-## there will be an internal health http server set up as well
-## and will respond to '/ops/status' -> "GET OK"
-## '/stats' --> blob of json data (adding ?jsonp=xxx will return jsonp data)
-## '/' --> a little file that charts (poorly) the above stats
-internal_health_server_listen="0.0.0.0:6061"
-
-## stats are "rendered" every 5 seconds, so this will keep last
-## `internal_health_server_points` in RAM (careful with how many you store)
-## (use the statsd emitter to store longer term stuff)
-internal_health_server_points=500
+## number of dispatcher workers to process output to backends
+out_workers=32
 
 
-[graphite-proxy]
+################
+## Statsd -> Graphite Writer
+################
+[servers.graphite-proxy]
 
 ### Server sections .. note all the above is overridable in each section
 ### (except the `statsd_*` and `internal_health_server_listen`)
@@ -121,7 +179,11 @@ max_buffer_size=819200
 [[graphite-proxy.servers]]
 servers=["tcp://127.0.0.1:2013"]
 
-[graphite-gg-relay]
+
+################
+## Graphite -> Graphite Writer
+################
+[servers.graphite-gg-relay]
 listen="backend_only"
 msg_type="graphite"
 

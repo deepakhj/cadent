@@ -353,9 +353,8 @@ func (my *MySQLIndexer) WriteOne(inname *repr.StatName) error {
 	stats.StatsdClientSlow.Incr("indexer.mysql.noncached-writes-path", 1)
 
 	skey := inname.Key
-	s_parts := strings.Split(skey, ".")
-	p_len := len(s_parts)
 	unique_ID := inname.UniqueIdString()
+	pth := NewParsedPath(skey, unique_ID)
 
 	// we are going to assume that if the path is already in the system, we've indexed it and therefore
 	// do not need to do the super loop (which is very expensive)
@@ -375,32 +374,6 @@ func (my *MySQLIndexer) WriteOne(inname *repr.StatName) error {
 		}
 	}
 
-	// just use the Cassandra Base objects
-	cur_part := ""
-	segments := []CassSegment{}
-	paths := []CassPath{}
-
-	for idx, part := range s_parts {
-		if len(cur_part) > 1 {
-			cur_part += "."
-		}
-		cur_part += part
-		on_segment := CassSegment{
-			Segment: cur_part,
-			Pos:     idx,
-		}
-		segments = append(segments, on_segment)
-
-		on_path := CassPath{
-			Id:      unique_ID,
-			Segment: on_segment,
-			Path:    skey,
-			Length:  p_len - 1, // starts at 0
-		}
-
-		paths = append(paths, on_path)
-	}
-
 	// begin the big transation
 	tx, err := my.conn.Begin()
 	if err != nil {
@@ -408,9 +381,9 @@ func (my *MySQLIndexer) WriteOne(inname *repr.StatName) error {
 		return err
 	}
 
-	last_path := paths[len(paths)-1]
+	last_path := pth.Last()
 	// now to upsert them all (inserts in cass are upserts)
-	for idx, seg := range segments {
+	for idx, seg := range pth.Segments {
 		Q := fmt.Sprintf(
 			"INSERT IGNORE INTO %s (pos, segment) VALUES  (?, ?) ",
 			my.db.SegmentTable(),
@@ -445,14 +418,14 @@ func (my *MySQLIndexer) WriteOne(inname *repr.StatName) error {
 			my.db.PathTable(),
 		)
 
-		if skey != seg.Segment && idx < len(paths)-1 {
+		if skey != seg.Segment && idx < pth.Len-1 {
 			_, err = tx.Exec(Q,
-				seg.Segment, seg.Pos, seg.Segment+"."+s_parts[idx+1], "", seg.Pos+1, false,
+				seg.Segment, seg.Pos, seg.Segment+"."+pth.Parts[idx+1], "", seg.Pos+1, false,
 			)
 		} else {
 			// now add the has data path as well
 			_, err = tx.Exec(Q,
-				seg.Segment, seg.Pos, skey, unique_ID, p_len-1, true,
+				seg.Segment, seg.Pos, skey, unique_ID, pth.Len-1, true,
 			)
 		}
 

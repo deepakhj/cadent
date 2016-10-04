@@ -80,10 +80,12 @@ func DockerUp(which string) bool {
 	}
 	cmd := exec.Command("docker-compose", "-f", compose_pth, "up", "-d", which)
 	var out bytes.Buffer
+	var errb bytes.Buffer
 	cmd.Stdout = &out
+	cmd.Stderr = &errb
 	err := cmd.Run()
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("%s :: %v", errb.String(), err)
 		return false
 	}
 	log.Printf(out.String())

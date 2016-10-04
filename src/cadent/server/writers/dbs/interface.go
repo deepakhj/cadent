@@ -64,6 +64,12 @@ func NewDB(dbtype string, dbkey string, config options.Options) (DB, error) {
 		if err != nil {
 			return nil, err
 		}
+	case "elasticsearch":
+		db = NewElasticSearch()
+		err := db.Config(config)
+		if err != nil {
+			return nil, err
+		}
 	case "leveldb":
 		db = NewLevelDB()
 		err := db.Config(config)

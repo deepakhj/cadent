@@ -102,37 +102,6 @@ const (
 	CASSANDRA_WRITES_PER_SECOND = 1000
 )
 
-/** Being Cassandra we need some mappings to match the schemas **/
-
-/*
- 	CREATE TYPE metric.segment_pos (
-    		pos int,
-    		segment text
-	);
-*/
-type CassSegment struct {
-	Pos     int
-	Segment string
-}
-
-/*
- 	CREATE TABLE metric.path (
-            segment frozen<segment_pos>,
-            length int,
-            path text,
-            id varchar,
-            has_data boolean,
-            PRIMARY KEY (segment, length, path, id)
-        )
-*/
-type CassPath struct {
-	Segment CassSegment
-	Path    string
-	Id      string
-	Length  int
-	Hasdata bool
-}
-
 /****************** Writer *********************/
 type CassandraIndexer struct {
 	db        *dbs.CassandraDB
@@ -249,8 +218,6 @@ func (cass *CassandraIndexer) WriteOne(inname repr.StatName) error {
 	stats.StatsdClientSlow.Incr("indexer.cassandra.noncached-writes-path", 1)
 
 	skey := inname.Key
-	s_parts := strings.Split(skey, ".")
-	p_len := len(s_parts)
 
 	// we are going to assume that if the path is already in the system, we've indexed it and therefore
 	// do not need to do the super loop (which is very expensive)
@@ -258,50 +225,26 @@ func (cass *CassandraIndexer) WriteOne(inname repr.StatName) error {
 		"SELECT path, length, has_data FROM %s WHERE segment={pos: ?, segment: ?}",
 		cass.db.PathTable(),
 	)
+	uid := inname.UniqueIdString()
+	pth := NewParsedPath(skey, uid)
 
 	var _pth string
 	var _len int
 	var _dd bool
 	gerr := cass.conn.Query(SelQ,
-		p_len-1, skey,
+		pth.Len-1, skey,
 	).Scan(&_pth, &_len, &_dd)
+
 	// got it
 	if gerr == nil {
-		if _pth == skey && _dd && _len == p_len-1 {
+		if _pth == skey && _dd && _len == pth.Len-1 {
 			return nil
 		}
 	}
-	//	cass.log.Notice("Indexer pre-get check fail, on to indexing ... : '%s'", gerr)
 
-	cur_part := ""
-	segments := []CassSegment{}
-	paths := []CassPath{}
-	unique_ID := inname.UniqueIdString()
-
-	for idx, part := range s_parts {
-		if len(cur_part) > 1 {
-			cur_part += "."
-		}
-		cur_part += part
-		on_segment := CassSegment{
-			Segment: cur_part,
-			Pos:     idx,
-		}
-		segments = append(segments, on_segment)
-
-		on_path := CassPath{
-			Id:      unique_ID,
-			Segment: on_segment,
-			Path:    skey,
-			Length:  p_len - 1, // starts at 0
-		}
-
-		paths = append(paths, on_path)
-	}
-
-	last_path := paths[len(paths)-1]
+	last_path := pth.Last()
 	// now to upsert them all (inserts in cass are upserts)
-	for idx, seg := range segments {
+	for idx, seg := range pth.Segments {
 		Q := fmt.Sprintf(
 			"INSERT INTO %s (pos, segment) VALUES  (?, ?) ",
 			cass.db.SegmentTable(),
@@ -342,21 +285,21 @@ func (cass *CassandraIndexer) WriteOne(inname repr.StatName) error {
 			cass.db.PathTable(),
 		)
 
-		if skey != seg.Segment && idx < len(paths)-1 {
+		if skey != seg.Segment && idx < pth.Len-1 {
 			err = cass.conn.Query(Q,
-				seg.Pos, seg.Segment, seg.Segment+"."+s_parts[idx+1], "", seg.Pos+1, false,
+				seg.Pos, seg.Segment, seg.Segment+"."+pth.Parts[idx+1], "", seg.Pos+1, false,
 			).Exec()
 		} else {
 			//the "raw data" path
 			err = cass.conn.Query(Q,
-				seg.Pos, seg.Segment, skey, unique_ID, p_len-1, true,
+				seg.Pos, seg.Segment, skey, uid, pth.Len-1, true,
 			).Exec()
 		}
 
 		//cass.log.Critical("DATA:: Seg INS: %s PATH: %s Len: %d", seg.Segment, skey, p_len-1)
 
 		if err != nil {
-			cass.log.Error("Could not insert path %v (%v) :: %v", last_path, unique_ID, err)
+			cass.log.Error("Could not insert path %v (%v) :: %v", last_path, uid, err)
 			stats.StatsdClientSlow.Incr("indexer.cassandra.path-failures", 1)
 		} else {
 			stats.StatsdClientSlow.Incr("indexer.cassandra.path-writes", 1)

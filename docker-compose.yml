@@ -56,6 +56,19 @@ services:
     ## External deps
     #####
 
+    elasticsearch:
+      image: elasticsearch:2.4
+      ports:
+          - "0.0.0.0:9200:9200"
+          - "9300:9300"
+
+    kibana:
+      image: kibana:latest
+      ports:
+          - "0.0.0.0:5601:5601"
+      links:
+          - elasticsearch
+
     zookeeper:
       image: wurstmeister/zookeeper
       ports:

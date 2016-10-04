@@ -317,7 +317,7 @@ func NewGobIter(buf *bytes.Buffer, tag string) (*GobIter, error) {
 	if err != nil {
 		return nil, err
 	}
-	if st != SIMPLE_BIN_SERIES_TAG_LOWRES && st != ZIP_SIMPLE_BIN_SERIES_LOWRE_TAG {
+	if st != SIMPLE_BIN_SERIES_TAG_LOWRES && st != ZIP_SIMPLE_BIN_SERIES_LOWRES_TAG {
 		it.fullResolution = true
 	}
 

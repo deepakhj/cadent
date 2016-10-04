@@ -649,6 +649,12 @@
 			"revisionTime": "2016-06-09T04:57:12Z"
 		},
 		{
+			"checksumSHA1": "WHc3uByvGaMcnSoI21fhzYgbOgg=",
+			"path": "golang.org/x/net/context/ctxhttp",
+			"revision": "0f2be02c5ddfa7c7936000ad519b04c6c795eab3",
+			"revisionTime": "2016-10-01T18:52:36Z"
+		},
+		{
 			"checksumSHA1": "zxA5c9WSpUYfg2SCWX/GuRTuALE=",
 			"path": "golang.org/x/tools/go/ast/astutil",
 			"revision": "72064bd64745c21ad7fe43d550d08e8f07bf4f73",
@@ -665,6 +671,24 @@
 			"path": "gopkg.in/inf.v0",
 			"revision": "3887ee99ecf07df5b447e9b00d9c0b2adaa9f3e4",
 			"revisionTime": "2015-09-11T12:57:57Z"
+		},
+		{
+			"checksumSHA1": "sIlbZoFN8vOY+HVnz2j4UimDPCY=",
+			"path": "gopkg.in/olivere/elastic.v3",
+			"revision": "eaecbad7a83e6b60f131825553e5eb7fd5a50b41",
+			"revisionTime": "2016-10-01T12:34:41Z"
+		},
+		{
+			"checksumSHA1": "lLdKOn9RPtFoTtPUNq5+sIInAiE=",
+			"path": "gopkg.in/olivere/elastic.v3/backoff",
+			"revision": "eaecbad7a83e6b60f131825553e5eb7fd5a50b41",
+			"revisionTime": "2016-10-01T12:34:41Z"
+		},
+		{
+			"checksumSHA1": "XQg6xG6l15Ke43KolthYYnVDCYo=",
+			"path": "gopkg.in/olivere/elastic.v3/uritemplates",
+			"revision": "eaecbad7a83e6b60f131825553e5eb7fd5a50b41",
+			"revisionTime": "2016-10-01T12:34:41Z"
 		},
 		{
 			"checksumSHA1": "rL5r44ASTGubGW88gqQwlvVQshw=",

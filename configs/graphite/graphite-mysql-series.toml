@@ -58,9 +58,13 @@ default_backend="graphite-proxy"  # failing a match go here
     [graphite-proxy-map.accumulator.writer.indexer]
         driver = "mysql"
         dsn = "$ENV{MYSQL_USER:admin}:$ENV{MYSQL_PASS:}@tcp(localhost:3306)/cadent"
+        #driver = "elasticsearch"
+        #dsn = "http://127.0.0.1:9200"
+
 
         [graphite-proxy-map.accumulator.writer.indexer.options]
         writes_per_second=200
+        sniff=false
 
     [graphite-proxy-map.accumulator.api]
         base_path = "/graphite/"
@@ -78,6 +82,12 @@ default_backend="graphite-proxy"  # failing a match go here
             [graphite-proxy-map.accumulator.api.indexer]
                 driver = "mysql"
                 dsn = "$ENV{MYSQL_USER:admin}:$ENV{MYSQL_PASS:}@tcp(localhost:3306)/cadent"
+                #driver = "elasticsearch"
+                #dsn = "http://127.0.0.1:9200"
+
+
+                [graphite-proxy-map.accumulator.api.indexer.options]
+                sniff=false
 
     # Sub string type match
     [[graphite-proxy-map.map]]

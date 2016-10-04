@@ -36,6 +36,8 @@ func NewIndexer(name string) (Indexer, error) {
 		return NewMySQLIndexer(), nil
 	case name == "leveldb":
 		return NewLevelDBIndexer(), nil
+	case name == "elasticsearch":
+		return NewElasticIndexer(), nil
 	case name == "noop":
 		return NewNoopIndexer(), nil
 	default:
