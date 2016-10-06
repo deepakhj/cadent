@@ -77,7 +77,7 @@ func NewLevelDB() *LevelDB {
 	return lb
 }
 
-func (lb *LevelDB) Config(conf options.Options) (err error) {
+func (lb *LevelDB) Config(conf *options.Options) (err error) {
 	dsn, err := conf.StringRequired("dsn")
 	if err != nil {
 		return fmt.Errorf("`dsn` (/path/to/db/folder) is needed for leveldb config")

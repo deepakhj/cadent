@@ -37,7 +37,7 @@ const MAX_PER_PAGE = 2048
 
 /****************** Data writers *********************/
 type Indexer interface {
-	Config(options.Options) error
+	Config(*options.Options) error
 
 	// some identifier mostly used for logs
 	Name() string

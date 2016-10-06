@@ -25,15 +25,9 @@ default_backend="graphite-proxy"  # failing a match go here
     [[graphite-proxy-map.accumulator.writer.caches]]
         name="gorilla"
         series_encoding="gorilla"
-        bytes_per_metric=2048
+        bytes_per_metric=1024
         max_metrics=1024000  # for 1 million points @ 1024 b you'll need lots o ram
-        # max_time_in_cache="2m" # force a cache flush for metrics in ram longer then this number
-        # broadcast_length="128" # buffer channel for pushed overflow writes
-        # overflow_method="drop" # if over bytes/maxmetrics for non-series writers, drop incoming
-        # for non-series metrics, the typical behavior is to flush the highest counts first,
-        # but that may mean lower counts never get written, this value "flips" the sorter at this % rate to
-        # force the "smaller" ones to get written more often
-        # low_fruit_rate= 0.25
+
 
     # AND write things to the cassandra DB
     # cassandra api, metrics writer and path indexer
@@ -43,6 +37,7 @@ default_backend="graphite-proxy"  # failing a match go here
         cache="gorilla"
         [graphite-proxy-map.accumulator.writer.metrics.options]
             port=9042
+            table_per_resolution=true
             keyspace="metric"
             metrics_table="metric_series"
             write_queue_length=100
@@ -55,7 +50,7 @@ default_backend="graphite-proxy"  # failing a match go here
         [graphite-proxy-map.accumulator.writer.indexer.options]
             writes_per_second=100
             port=9042
-            metrics_table="metric_series"
+            table_per_resolution=true
             keyspace="metric"
             path_table="path"
             segment_table="segment"
@@ -71,6 +66,7 @@ default_backend="graphite-proxy"  # failing a match go here
             [graphite-proxy-map.accumulator.api.metrics.options]
                 port=9042
                 metrics_table="metric_series"
+                table_per_resolution=true
                 keyspace="metric"
                 path_table="path"
        		    segment_table="segment"
@@ -80,12 +76,6 @@ default_backend="graphite-proxy"  # failing a match go here
             dsn = "127.0.0.1"
             [graphite-proxy-map.accumulator.api.indexer.options]
                 port=9042
-                metrics_table="metric_series"
                 keyspace="metric"
                 path_table="path"
                 segment_table="segment"
-
-    # Sub string type match
-    [[graphite-proxy-map.map]]
-        substring=".marvel"  # ignore elastic search marvel stuff
-        reject=true

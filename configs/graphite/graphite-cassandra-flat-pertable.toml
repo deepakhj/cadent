@@ -1,0 +1,67 @@
+##
+##  Cassandra-flat ONLY writer
+##
+##  note the `backend = "BLACKHOLE"` below, this implys the Lines stop at the writer
+##
+##  cadent --config=graphite.toml --prereg=graphite-cassandra-flat.toml
+##
+##
+
+[graphite-proxy-map]
+listen_server="graphite-proxy" # which listener to sit in front of  (must be in the main config)
+default_backend="graphite-proxy"  # failing a match go here
+
+    [graphite-proxy-map.accumulator]
+    backend = "BLACKHOLE"
+    input_format = "graphite"
+    output_format = "graphite"
+    accumulate_flush = "5s"
+    random_ticker_start = false
+
+    # aggregate bin counts
+    times = ["1s:24h", "10s:96h", "1m:168h"]
+
+    # cache objects to be shared (or not) across the writer backends
+    [[graphite-proxy-map.accumulator.writer.caches]]
+        name="gorilla"
+        series_encoding="gorilla"
+        bytes_per_metric=1024
+        max_metrics=1024000
+        low_fruit_rate= 0.25
+
+
+    # AND write things to the cassandra DB
+    # cassandra api, metrics writer and path indexer
+    [graphite-proxy-map.accumulator.writer.metrics]
+        driver = "cassandra-flat"
+        dsn = "127.0.0.1:9042"
+        cache = "gorilla"
+        [graphite-proxy-map.accumulator.writer.metrics.options]
+            table_per_resolution = true
+            write_queue_length=100
+            writes_per_second=500
+
+    [graphite-proxy-map.accumulator.writer.indexer]
+        driver = "cassandra"
+        dsn = "127.0.0.1:9042"
+        [graphite-proxy-map.accumulator.writer.indexer.options]
+            writes_per_second=100
+
+    [graphite-proxy-map.accumulator.api]
+        base_path = "/graphite/"
+        listen = "0.0.0.0:8083"
+        # this is the read cache that will keep the latest goods in ram
+        read_cache_total_bytes=16384000
+        read_cache_max_bytes_per_metric=16384
+
+            [graphite-proxy-map.accumulator.api.metrics]
+                driver = "cassandra-flat"
+                dsn = "127.0.0.1:9042"
+                cache = "gorilla"
+
+            [graphite-proxy-map.accumulator.api.metrics.options]
+                table_per_resolution = true
+
+            [graphite-proxy-map.accumulator.api.indexer]
+                driver = "cassandra"
+                dsn = "127.0.0.1:9042"

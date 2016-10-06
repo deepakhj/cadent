@@ -63,17 +63,15 @@ CREATE TABLE IF NOT EXISTS %s  (
 
 const MYSQL_METRICS_FLAT_TABLE = `
 CREATE TABLE IF NOT EXISTS %s  (
-	id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
           uid varchar(50) CHARACTER SET ascii NOT NULL,
           path varchar(255) NOT NULL DEFAULT '',
           sum float NULL,
           min float NULL,
           max float NULL,
           last float NULL,
-          count float NULL,
-          time datetime(6) NOT NULL,
-          PRIMARY KEY (id),
-          KEY uid (uid),
+          count int NULL,
+          time BIGINT unsigned NOT NULL,
+          PRIMARY KEY (uid, time),
           KEY time (time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 ROW_FORMAT=COMPRESSED`
 

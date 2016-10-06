@@ -38,7 +38,7 @@ func getEsIndexer() (*ElasticIndexer, error) {
 	}
 	on_ip := helper.DockerIp()
 
-	config_opts := options.Options{}
+	config_opts := options.New()
 	config_opts.Set("dsn", fmt.Sprintf("http://%s:%d", on_ip, es_port))
 	config_opts.Set("metric_index", "test_mets")
 	config_opts.Set("path_index", "test_path")
@@ -48,7 +48,7 @@ func getEsIndexer() (*ElasticIndexer, error) {
 	config_opts.Set("enable_traceing", true)
 
 	_es := NewElasticIndexer()
-	err := _es.Config(config_opts)
+	err := _es.Config(&config_opts)
 	if err != nil {
 		return nil, err
 	}

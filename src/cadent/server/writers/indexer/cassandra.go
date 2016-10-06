@@ -172,13 +172,13 @@ func (cass *CassandraIndexer) Stop() {
 	})
 }
 
-func (cass *CassandraIndexer) Config(conf options.Options) (err error) {
+func (cass *CassandraIndexer) Config(conf *options.Options) (err error) {
 	dsn, err := conf.StringRequired("dsn")
 	if err != nil {
 		return fmt.Errorf("Indexer: `dsn` (server1,server2,server3) is needed for cassandra config")
 	}
 	cass.indexerId = fmt.Sprintf(
-		"%v:%v/%v/%v|%v",
+		"%v:%v/%v|%v|%v",
 		dsn,
 		conf.Int64("port", 9042),
 		conf.String("keyspace", "metric"),

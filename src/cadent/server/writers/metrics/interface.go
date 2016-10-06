@@ -32,6 +32,7 @@ import (
 	"cadent/server/repr"
 	"cadent/server/series"
 	"cadent/server/utils"
+	"cadent/server/utils/options"
 	"cadent/server/writers/indexer"
 	logging "gopkg.in/op/go-logging.v1"
 )
@@ -66,7 +67,7 @@ type Metrics interface {
 	Cache() *Cacher
 	CachePrefix() string
 
-	Config(map[string]interface{}) error
+	Config(*options.Options) error
 
 	// need an Indexer 99% of the time to deal with render
 	SetIndexer(indexer.Indexer) error

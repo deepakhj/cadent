@@ -93,7 +93,7 @@ func NewElasticIndexer() *ElasticIndexer {
 	return my
 }
 
-func (my *ElasticIndexer) Config(conf options.Options) (err error) {
+func (my *ElasticIndexer) Config(conf *options.Options) (err error) {
 	dsn, err := conf.StringRequired("dsn")
 	if err != nil {
 		return fmt.Errorf("`dsn` host:9200/index_name is needed for elasticsearch config")
@@ -157,6 +157,12 @@ func (my *ElasticIndexer) Stop() {
 		my.cache.Stop()
 		my.shutitdown = 1
 	})
+}
+
+// this fills up the tag cache on startup
+func (my *ElasticIndexer) fillTagCache() {
+	//ToDo
+
 }
 
 // pop from the cache and send to actual writers
@@ -286,6 +292,9 @@ func (my *ElasticIndexer) WriteOne(inname *repr.StatName) error {
 
 	// do the segments
 	last_path := pth.Last()
+
+	bulk := my.conn.Bulk()
+
 	// now to upsert them all (inserts in cass are upserts)
 	for idx, seg := range pth.Segments {
 
@@ -318,12 +327,11 @@ func (my *ElasticIndexer) WriteOne(inname *repr.StatName) error {
 		// we set the "_id" to the md5 of the path to avoid dupes
 		seg_md := md5.New()
 		seg_md.Write([]byte(es_obj.Segment))
-		_, err = my.conn.Index().
+		bulk.Add(elastic.NewBulkIndexRequest().
 			Index(my.db.SegmentTable()).
 			Type(my.db.SegmentType).
 			Id(hex.EncodeToString(seg_md.Sum(nil))).
-			BodyJson(es_seg).
-			Do()
+			Doc(es_seg))
 
 		if skey != seg.Segment && idx < pth.Len-1 {
 			es_obj.Path = seg.Segment + "." + pth.Parts[idx+1]
@@ -331,12 +339,11 @@ func (my *ElasticIndexer) WriteOne(inname *repr.StatName) error {
 			// we set the "_id" to the md5 of the path to avoid dupes
 			pth_md := md5.New()
 			pth_md.Write([]byte(es_obj.Path))
-			_, err = my.conn.Index().
+			bulk.Add(elastic.NewBulkIndexRequest().
 				Index(my.db.PathTable()).
 				Type(my.db.PathType).
 				Id(hex.EncodeToString(pth_md.Sum(nil))).
-				BodyJson(es_obj).
-				Do()
+				Doc(es_obj))
 
 		} else {
 			// full path object
@@ -363,24 +370,22 @@ func (my *ElasticIndexer) WriteOne(inname *repr.StatName) error {
 					})
 				}
 			}
-			_, err = my.conn.Index().
+			bulk.Add(elastic.NewBulkIndexRequest().
 				Index(my.db.PathTable()).
 				Type(my.db.PathType).
 				Id(unique_ID).
-				BodyJson(es_obj).
-				Do()
-
+				Doc(es_obj))
 		}
 
-		if err != nil {
-			my.log.Error("Could not insert path %v (%v) :: %v", last_path, unique_ID, err)
-			stats.StatsdClientSlow.Incr("indexer.elastic.path-failures", 1)
-		} else {
-			stats.StatsdClientSlow.Incr("indexer.elastic.path-writes", 1)
-		}
 	}
+
+	_, err = bulk.Do()
+
 	if err != nil {
-		my.log.Error("Could not write index", err)
+		my.log.Error("Could not insert path %v (%v) :: %v", last_path, unique_ID, err)
+		stats.StatsdClientSlow.Incr("indexer.elastic.path-failures", 1)
+	} else {
+		stats.StatsdClientSlow.Incr("indexer.elastic.path-writes", 1)
 	}
 
 	err = my.WriteTags(inname, true, true)

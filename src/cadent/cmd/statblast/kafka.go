@@ -32,8 +32,8 @@ import (
 func GetKafkaProducer(broker string) sarama.AsyncProducer {
 	opts := options.New()
 	opts.Set("compression", "none")
-	opts["dsn"] = broker
-	k, e := dbs.NewDB("kafka", broker, opts)
+	opts.Set("dsn", broker)
+	k, e := dbs.NewDB("kafka", broker, &opts)
 	if e != nil {
 		panic(e)
 	}

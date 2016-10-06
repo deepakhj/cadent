@@ -31,7 +31,7 @@ func NewNoopIndexer() *NoopIndexer {
 	return new(NoopIndexer)
 }
 
-func (my *NoopIndexer) Config(conf options.Options) error {
+func (my *NoopIndexer) Config(conf *options.Options) error {
 	return nil
 }
 func (my *NoopIndexer) Name() string                     { return "noop-indexer" }

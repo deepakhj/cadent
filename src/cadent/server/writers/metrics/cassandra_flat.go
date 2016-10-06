@@ -40,17 +40,16 @@ limitations under the License.
         );
 
 
-        CREATE TYPE metric_path (
-            path text,
-            resolution int
+        CREATE TYPE metric_id_res (
+            id ascii,
+            res int
         );
 
         CREATE TABLE metric.metric (
-            id varchar,
-            mpath frozen<metric_path>,
+            mid frozen<metric_id_res>,
             time bigint,
             point frozen<metric_point>,
-            PRIMARY KEY (id, mpath, time)
+            PRIMARY KEY (id, time)
         ) WITH COMPACT STORAGE
             AND CLUSTERING ORDER BY (mpath ASC, time ASC)
             AND compaction = {
@@ -60,15 +59,34 @@ limitations under the License.
                 'max_sstable_age_days': '0.083',
                 'base_time_seconds': '50'
             }
-            AND compression = {'sstable_compression': 'org.apache.cassandra.io.compress.LZ4Compressor'}
-            AND dclocal_read_repair_chance = 0.1
-            AND default_time_to_live = 0
-            AND gc_grace_seconds = 864000
-            AND max_index_interval = 2048
-            AND memtable_flush_period_in_ms = 0
-            AND min_index_interval = 128
-            AND read_repair_chance = 0.0
-            AND speculative_retry = '99.0PERCENTILE';
+            AND compression = {'sstable_compression': 'org.apache.cassandra.io.compress.LZ4Compressor'};
+
+        CREATE TYPE metric.segment_pos (
+            pos int,
+            segment text
+        );
+
+
+        CREATE TABLE metric.path (
+            segment frozen<segment_pos>,
+            length int,
+            path text,
+            id varchar,
+            has_data boolean,
+            PRIMARY KEY (segment, length, path, id)
+        ) WITH compaction = {'class': 'org.apache.cassandra.db.compaction.SizeTieredCompactionStrategy'}
+            AND compression = {'sstable_compression': 'org.apache.cassandra.io.compress.LZ4Compressor'};
+
+        CREATE INDEX ON metric.path (id);
+
+        CREATE TABLE metric.segment (
+            pos int,
+            segment text,
+            PRIMARY KEY (pos, segment)
+        ) WITH COMPACT STORAGE
+            AND CLUSTERING ORDER BY (segment ASC)
+            AND compaction = {'class': 'org.apache.cassandra.db.compaction.SizeTieredCompactionStrategy'}
+            AND compression = {'sstable_compression': 'org.apache.cassandra.io.compress.LZ4Compressor'};
 
 	CONFIG options::
 
@@ -117,6 +135,7 @@ import (
 	"cadent/server/broadcast"
 	"cadent/server/dispatch"
 	"cadent/server/utils"
+	"cadent/server/utils/options"
 	"cadent/server/utils/shutdown"
 	"cadent/server/writers/indexer"
 	"math"
@@ -126,12 +145,12 @@ import (
 )
 
 const (
-	CASSANDRA_FLAT_METRIC_WORKERS    = 32
-	CASSANDRA_FLAT_METRIC_QUEUE_LEN  = 1024 * 100
-	CASSANDRA_FLAT_WRITES_PER_SECOND = 5000
-	CASSANDRA_FLAT_WRITE_UPSERT      = true
-	CASSANDRA_FLAT_RENDER_TIMEOUT    = "5s" // 5 second time out on any render
-
+	CASSANDRA_FLAT_METRIC_WORKERS               = 32
+	CASSANDRA_FLAT_METRIC_QUEUE_LEN             = 1024 * 100
+	CASSANDRA_FLAT_WRITES_PER_SECOND            = 5000
+	CASSANDRA_FLAT_WRITE_UPSERT                 = true
+	CASSANDRA_FLAT_RENDER_TIMEOUT               = "5s" // 5 second time out on any render
+	CASSANDRA_FLAT_DEFAULT_TABLE_PER_RESOLUTION = false
 )
 
 var errNotImplimented = errors.New("Method not implimented")
@@ -157,14 +176,14 @@ type CassMetricPoint struct {
 }
 
 /*
-	CREATE TYPE metric_id (
-        path text,
+	CREATE TYPE metric_id_res (
+        id ascii,
         resolution int
     );
 */
 
 type CassMetricID struct {
-	Path       string
+	Id         string
 	Resolution int
 }
 
@@ -202,15 +221,18 @@ type CassMetric struct {
 var _CASS_FLAT_WRITER_SINGLETON map[string]*CassandraFlatWriter
 var _cass_flat_set_mutex sync.Mutex
 
-func _get_flat_signelton(conf map[string]interface{}) (*CassandraFlatWriter, error) {
+func init() {
+	_CASS_FLAT_WRITER_SINGLETON = make(map[string]*CassandraFlatWriter)
+}
+
+func _get_flat_signelton(conf *options.Options) (*CassandraFlatWriter, error) {
 	_cass_flat_set_mutex.Lock()
 	defer _cass_flat_set_mutex.Unlock()
-	gots := conf["dsn"]
-	if gots == nil {
+	dsn, err := conf.StringRequired("dsn")
+	if err != nil {
 		return nil, fmt.Errorf("Metrics: `dsn` (server1,server2,server3) is needed for cassandra config")
 	}
 
-	dsn := gots.(string)
 	if val, ok := _CASS_FLAT_WRITER_SINGLETON[dsn]; ok {
 		return val, nil
 	}
@@ -272,24 +294,25 @@ type CassandraFlatWriter struct {
 	// either squish metrics that have the same time windowe as a previious insert
 	// or try to "update" the data point if exists
 	// note upsert is WAY faster and should handle most of the cases
-	insert_mode bool
+	insert_mode        bool
+	tablePerResolution bool
 
 	_insert_query      string //render once
 	_select_time_query string //render once
 	_get_query         string //render once
 }
 
-func NewCassandraFlatWriter(conf map[string]interface{}) (*CassandraFlatWriter, error) {
+func NewCassandraFlatWriter(conf *options.Options) (*CassandraFlatWriter, error) {
 	cass := new(CassandraFlatWriter)
 	cass.log = logging.MustGetLogger("metrics.cassandraflat")
 	cass.shutitdown = false
 
-	gots := conf["dsn"]
-	if gots == nil {
+	gots, err := conf.StringRequired("dsn")
+	if err != nil {
 		return nil, fmt.Errorf("Metrics: `dsn` (server1,server2,server3) is needed for cassandra config")
 	}
 
-	conn_key := fmt.Sprintf("%v:%v/%v/%v", gots, conf["port"], conf["keyspace"], conf["metrics_table"])
+	conn_key := fmt.Sprintf("%v:%v/%v/%v", gots, conf.Int64("port", 9042), conf.String("keyspace", "metric"), conf.String("metrics_table", "metrics"))
 	cass.log.Notice("Connecting Metrics to Cassandra (%s)", conn_key)
 
 	db, err := dbs.NewDB("cassandra", conn_key, conf)
@@ -300,69 +323,27 @@ func NewCassandraFlatWriter(conf map[string]interface{}) (*CassandraFlatWriter, 
 	cass.db = db.(*dbs.CassandraDB)
 	cass.conn = db.Connection().(*gocql.Session)
 
-	_wr_buffer := conf["batch_count"]
-	if _wr_buffer == nil {
-		cass.max_write_size = 50
-	} else {
-		// toml things generic ints are int64
-		cass.max_write_size = int(_wr_buffer.(int64))
-	}
+	cass.max_write_size = int(conf.Int64("batch_count", 50))
+
 	if gocql.BatchSizeMaximum < cass.max_write_size {
 		cass.log.Warning("Cassandra Driver: Setting batch size to %d, as it's the largest allowed", gocql.BatchSizeMaximum)
 		cass.max_write_size = gocql.BatchSizeMaximum
 	}
 
-	_pr_flush := conf["periodic_flush"]
-	cass.max_idle = time.Duration(time.Second)
-	if _pr_flush != nil {
-		dur, err := time.ParseDuration(_pr_flush.(string))
-		if err == nil {
-			cass.max_idle = dur
-		} else {
-			cass.log.Error("Cassandra Driver: Invalid Duration `%v`", _pr_flush)
-		}
-	}
+	cass.max_idle = conf.Duration("periodic_flush", time.Duration(time.Second))
 
 	// tweak queus and worker sizes
-	_workers := conf["write_workers"]
-	cass.num_workers = CASSANDRA_FLAT_METRIC_WORKERS
-	if _workers != nil {
-		cass.num_workers = int(_workers.(int64))
-	}
+	cass.num_workers = int(conf.Int64("write_workers", CASSANDRA_FLAT_METRIC_WORKERS))
+	cass.queue_len = int(conf.Int64("write_queue_length", CASSANDRA_FLAT_METRIC_QUEUE_LEN))
+	cass.writes_per_second = int(conf.Int64("writes_per_second", CASSANDRA_FLAT_WRITES_PER_SECOND))
+	cass.insert_mode = conf.Bool("write_upsert", CASSANDRA_FLAT_WRITE_UPSERT)
+	cass.tablePerResolution = conf.Bool("table_per_resolution", CASSANDRA_FLAT_DEFAULT_TABLE_PER_RESOLUTION)
 
-	_qs := conf["write_queue_length"]
-	cass.queue_len = CASSANDRA_FLAT_METRIC_QUEUE_LEN
-	if _qs != nil {
-		cass.queue_len = int(_qs.(int64))
-	}
+	cass._insert_query = "INSERT INTO %s (mid, time, point) VALUES  ({id: ?, res: ?}, ?, {sum: ?, min: ?, max: ?, last: ?, count: ?})"
 
-	_rs := conf["writes_per_second"]
-	cass.writes_per_second = CASSANDRA_FLAT_WRITES_PER_SECOND
-	if _rs != nil {
-		cass.writes_per_second = int(_rs.(int64))
-	}
+	cass._select_time_query = "SELECT point.max, point.min, point.sum, point.last, point.count, time FROM %s WHERE mid={id: ?, res: ?} AND time <= ? and time >= ?"
 
-	cass.insert_mode = CASSANDRA_FLAT_WRITE_UPSERT
-	_up := conf["write_upsert"]
-	if _up != nil {
-		cass.insert_mode = _up.(bool)
-	}
-
-	cass._insert_query = fmt.Sprintf(
-		"INSERT INTO %s (id, mpath, time, point) VALUES  (?, {path: ?, resolution: ?}, ?, {sum: ?, min: ?, max: ?, last: ?, count: ?})",
-		cass.db.MetricTable(),
-	)
-
-	cass._select_time_query = fmt.Sprintf(
-		"SELECT point.max, point.min, point.sum, point.last, point.count, time FROM %s WHERE id=? and mpath={path: ?, resolution: ?} AND time <= ? and time >= ?",
-		cass.db.MetricTable(),
-	)
-
-	cass._get_query = fmt.Sprintf(
-		"SELECT point.max, point.min, point.sum, point.last, point.count, time FROM %s WHERE id=? and mpath={path: ?, resolution: ?} and time = ?",
-		cass.db.MetricTable(),
-	)
-
+	cass._get_query = "SELECT point.max, point.min, point.sum, point.last, point.count, time FROM %s WHERE mid={id: ?, res: ?} and time = ?"
 	return cass, nil
 }
 
@@ -449,11 +430,14 @@ func (cass *CassandraFlatWriter) mergeWrite(stat *repr.StatRepr) *repr.StatRepr 
 
 	time := stat.Time.UnixNano()
 
+	t_name := cass.db.MetricTable()
+	if cass.tablePerResolution {
+		t_name = fmt.Sprintf("%s_%ds", t_name, stat.Name.Resolution)
+	}
+	Q := fmt.Sprintf(cass._select_time_query, t_name)
+
 	// grab ze data. (note data is already sorted by time asc va the cassandra schema)
-	iter := cass.conn.Query(
-		cass._select_time_query,
-		stat.Name.Key, stat.Name.Resolution, time,
-	).Iter()
+	iter := cass.conn.Query(Q, stat.Name.UniqueIdString(), stat.Name.Resolution, time).Iter()
 
 	var t, count int64
 	var min, max, sum, last float64
@@ -518,16 +502,19 @@ func (cass *CassandraFlatWriter) InsertMulti(name *repr.StatName, points repr.St
 	}*/
 
 	batch := cass.conn.NewBatch(gocql.LoggedBatch)
+	t_name := cass.db.MetricTable()
+	if cass.tablePerResolution {
+		t_name = fmt.Sprintf("%s_%ds", t_name, name.Resolution)
+	}
 
 	for _, stat := range points {
-		DO_Q := cass._insert_query
+		DO_Q := fmt.Sprintf(cass._insert_query, t_name)
 		if stat.Name.TTL > 0 {
 			DO_Q += fmt.Sprintf(" USING TTL %d", stat.Name.TTL)
 		}
 		batch.Query(
 			DO_Q,
 			name.UniqueIdString(),
-			name.Key,
 			int64(stat.Name.Resolution),
 			stat.Time.UnixNano(),
 			float64(stat.Sum),
@@ -558,7 +545,12 @@ func (cass *CassandraFlatWriter) InsertOne(name *repr.StatName, stat *repr.StatR
 		ttl = stat.Name.TTL
 	}
 
-	Q := cass._insert_query
+	t_name := cass.db.MetricTable()
+	if cass.tablePerResolution {
+		t_name = fmt.Sprintf("%s_%ds", t_name, name.Resolution)
+	}
+	Q := fmt.Sprintf(cass._insert_query, t_name)
+
 	if ttl > 0 {
 		Q += " USING TTL ?"
 	}
@@ -566,7 +558,6 @@ func (cass *CassandraFlatWriter) InsertOne(name *repr.StatName, stat *repr.StatR
 	write_stat := cass.mergeWrite(stat)
 	err := cass.conn.Query(Q,
 		name.UniqueIdString(),
-		name.Key,
 		int64(stat.Name.Resolution),
 		stat.Time.UnixNano(),
 		float64(write_stat.Sum),
@@ -677,19 +668,19 @@ func (cass *CassandraFlatMetric) Stop() {
 	cass.writer.Stop()
 }
 
-func (cass *CassandraFlatMetric) Config(conf map[string]interface{}) (err error) {
+func (cass *CassandraFlatMetric) Config(conf *options.Options) (err error) {
 	gots, err := _get_flat_signelton(conf)
 	if err != nil {
 		return err
 	}
 	cass.writer = gots
 
-	resolution := conf["resolution"]
-	if resolution == nil {
+	res, err := conf.Int64Required("resolution")
+	if err != nil {
 		return fmt.Errorf("Resulotuion needed for cassandra writer")
 	}
 
-	cache_key := fmt.Sprintf("cassandraflat:cache:%s:%v", conf["dsn"], resolution)
+	cache_key := fmt.Sprintf("cassandraflat:cache:%s:%v", conf.String("dsn", ""), res)
 
 	gots.cacher, err = GetCacherSingleton(cache_key)
 
@@ -703,44 +694,26 @@ func (cass *CassandraFlatMetric) Config(conf map[string]interface{}) (err error)
 	}
 	cass.render_timeout = rdur
 
-	g_tag, ok := conf["tags"]
-	if ok {
-		cass.static_tags = repr.SortingTagsFromString(g_tag.(string))
+	g_tag := conf.String("tags", "")
+	if len(g_tag) > 0 {
+		cass.static_tags = repr.SortingTagsFromString(g_tag)
 	}
 
 	// prevent a reader from squshing this cacher
 	if !gots.cacher.started && !gots.cacher.inited {
 		gots.cacher.inited = true
 		// set the cacher bits
-		_ms := conf["cache_metric_size"]
-		if _ms != nil {
-			gots.cacher.maxKeys = int(_ms.(int64))
+		gots.cacher.maxKeys = int(conf.Int64("cache_metric_size", CACHER_METRICS_KEYS))
+		gots.cacher.maxBytes = int(conf.Int64("cache_byte_size", CACHER_NUMBER_BYTES))
+		gots.cacher.lowFruitRate = conf.Float64("cache_low_fruit_rate", 0.25)
+		gots.cacher.seriesType = conf.String("cache_series_type", CACHER_SERIES_TYPE)
+		gots.cacher.overFlowMethod = conf.String("cache_overflow_method", CACHER_DEFAULT_OVERFLOW)
+
+		if gots.cacher.overFlowMethod == "chan" {
+			gots.cacheOverFlowListener = gots.cacher.GetOverFlowChan()
+			go gots.overFlowWrite()
 		}
 
-		_ps := conf["cache_byte_size"]
-		if _ps != nil {
-			gots.cacher.maxBytes = int(_ps.(int64))
-		}
-
-		_lf := conf["cache_low_fruit_rate"]
-		if _lf != nil {
-			gots.cacher.lowFruitRate = _lf.(float64)
-		}
-
-		_st := conf["cache_series_type"]
-		if _st != nil {
-			gots.cacher.seriesType = _st.(string)
-		}
-
-		_ov := conf["cache_overflow_method"]
-		if _ov != nil {
-			gots.cacher.overFlowMethod = _ov.(string)
-			// set th overflow chan, and start the listener for that channel
-			if gots.cacher.overFlowMethod == "chan" {
-				gots.cacheOverFlowListener = gots.cacher.GetOverFlowChan()
-				go gots.overFlowWrite()
-			}
-		}
 	}
 
 	return nil
@@ -775,7 +748,7 @@ func (cass *CassandraFlatMetric) getResolution(from int64, to int64) uint32 {
 	return uint32(cass.resolutions[len(cass.resolutions)-1][0])
 }
 
-func (cass *CassandraFlatMetric) RawRenderOne(metric indexer.MetricFindItem, start int64, end int64) (*RawRenderItem, error) {
+func (cass *CassandraFlatMetric) RawRenderOne(metric indexer.MetricFindItem, start int64, end int64, resample uint32) (*RawRenderItem, error) {
 	defer stats.StatsdSlowNanoTimeFunc("reader.cassandraflat.renderraw.get-time-ns", time.Now())
 
 	rawd := new(RawRenderItem)
@@ -786,11 +759,17 @@ func (cass *CassandraFlatMetric) RawRenderOne(metric indexer.MetricFindItem, sta
 
 	//figure out the best res
 	resolution := cass.getResolution(start, end)
+	out_resolution := resolution
+
+	//obey the bigger
+	if resample > resolution {
+		out_resolution = resample
+	}
 
 	start = TruncateTimeTo(start, int(resolution))
 	end = TruncateTimeTo(end, int(resolution))
 
-	b_len := uint32(end-start) / resolution //just to be safe
+	b_len := uint32(end-start) / out_resolution //just to be safe
 	if b_len <= 0 {
 		return rawd, fmt.Errorf("Cassandra: RawRenderOne: time too narrow")
 	}
@@ -803,44 +782,92 @@ func (cass *CassandraFlatMetric) RawRenderOne(metric indexer.MetricFindItem, sta
 	first_t := uint32(start)
 	last_t := uint32(end)
 
+	// try the write inflight cache as nothing is written yet
+	stat_name := metric.StatName()
+	inflight_renderitem, err := cass.writer.cacher.GetAsRawRenderItem(stat_name)
+
+	// need at LEAST 2 points to get the proper step size
+	if inflight_renderitem != nil && err == nil {
+		// move the times to the "requested" ones and quantize the list
+		inflight_renderitem.Metric = metric.Id
+		inflight_renderitem.Tags = metric.Tags
+		inflight_renderitem.MetaTags = metric.MetaTags
+		inflight_renderitem.Id = metric.UniqueId
+		inflight_renderitem.AggFunc = stat_name.AggType()
+		if inflight_renderitem.Start < uint32(start) {
+			inflight_renderitem.RealEnd = uint32(end)
+			inflight_renderitem.RealStart = uint32(start)
+			inflight_renderitem.Start = inflight_renderitem.RealStart
+			inflight_renderitem.End = inflight_renderitem.RealEnd
+			return inflight_renderitem, err
+		}
+	}
+
+	t_name := cass.writer.db.MetricTable()
+	if cass.writer.tablePerResolution {
+		t_name = fmt.Sprintf("%s_%ds", t_name, resolution)
+	}
+	Q := fmt.Sprintf(cass.writer._select_time_query, t_name)
+
 	// grab ze data. (note data is already sorted by time asc va the cassandra schema)
-	iter := cass.writer.conn.Query(
-		cass.writer._select_time_query,
-		metric.UniqueId, metric.Id, resolution, nano_end, nano_start,
-	).Iter()
+	iter := cass.writer.conn.Query(Q, metric.UniqueId, resolution, nano_end, nano_start).Iter()
 
 	var t, count int64
 	var min, max, sum, last float64
 
 	m_key := metric.Id
 
-	var d_points []RawDataPoint
-
-	ct := uint32(0)
 	// sorting order for the table is time ASC (i.e. first_t == first entry)
 
-	for iter.Scan(&max, &min, &sum, &last, &count, &t) {
-		on_t := uint32(t / nano) // back convert to seconds
+	t_start := uint32(start)
+	cur_pt := NullRawDataPoint(t_start)
 
-		d_points = append(d_points, RawDataPoint{
-			Count: count,
-			Sum:   sum,
-			Max:   max,
-			Min:   min,
-			Last:  last,
-			Time:  on_t,
-		})
-		//cass.log.Critical("POINT %s time:%d data:%f", metric.Id, on_t, sum)
-		ct++
-		last_t = on_t
+	// on resamples (if >0 ) we simply merge points until we hit the time steps
+	do_resample := resample > 0 && resample > resolution
+
+	for iter.Scan(&max, &min, &sum, &last, &count, &t) {
+		t := uint32(time.Unix(0, t).Unix())
+		if do_resample {
+			if t >= t_start+resample {
+				t_start += resample
+				rawd.Data = append(rawd.Data, cur_pt)
+				cur_pt = RawDataPoint{
+					Count: count,
+					Sum:   sum,
+					Max:   max,
+					Min:   min,
+					Last:  last,
+					Time:  t,
+				}
+			} else {
+				cur_pt.Merge(&RawDataPoint{
+					Count: count,
+					Sum:   sum,
+					Max:   max,
+					Min:   min,
+					Last:  last,
+					Time:  t,
+				})
+			}
+		} else {
+			rawd.Data = append(rawd.Data, RawDataPoint{
+				Count: count,
+				Sum:   sum,
+				Max:   max,
+				Min:   min,
+				Last:  last,
+				Time:  t,
+			})
+		}
+		last_t = t
 	}
 
 	if err := iter.Close(); err != nil {
 		cass.writer.log.Error("RawRender: Failure closing iterator: %v", err)
 	}
 
-	if ct > 0 && d_points[0].Time > 0 {
-		first_t = d_points[0].Time
+	if len(rawd.Data) > 0 && rawd.Data[0].Time > 0 {
+		first_t = rawd.Data[0].Time
 	}
 
 	//cass.log.Critical("METR: %s Start: %d END: %d LEN: %d GotLen: %d", metric.Id, first_t, last_t, len(d_points), ct)
@@ -849,128 +876,21 @@ func (cass *CassandraFlatMetric) RawRenderOne(metric indexer.MetricFindItem, sta
 	rawd.RealStart = uint32(first_t)
 	rawd.Start = uint32(start)
 	rawd.End = uint32(end)
-	rawd.Step = resolution
+	rawd.Step = out_resolution
 	rawd.Metric = m_key
 	rawd.Id = metric.UniqueId
-	rawd.Data = d_points
-	rawd.AggFunc = repr.GuessReprValueFromKey(m_key)
+	rawd.Tags = metric.Tags
+	rawd.MetaTags = metric.MetaTags
+	rawd.AggFunc = stat_name.AggType()
+
+	// grab the "current inflight" from the cache and merge into the main array
+	if inflight_renderitem != nil && len(inflight_renderitem.Data) > 1 {
+		//merge with any inflight bits (inflight has higher precedence over the file)
+		inflight_renderitem.MergeWithResample(rawd, out_resolution)
+		return inflight_renderitem, nil
+	}
 
 	return rawd, nil
-}
-
-func (cass *CassandraFlatMetric) RenderOne(metric indexer.MetricFindItem, from int64, to int64) (WhisperRenderItem, error) {
-
-	defer stats.StatsdSlowNanoTimeFunc("reader.cassandraflat.renderone.get-time-ns", time.Now())
-
-	var whis WhisperRenderItem
-
-	rawd, err := cass.RawRenderOne(metric, from, to)
-
-	if err != nil {
-		return whis, err
-	}
-	whis.RealEnd = rawd.RealEnd
-	whis.RealStart = rawd.RealStart
-	whis.Start = rawd.Start
-	whis.End = rawd.End
-	whis.Step = rawd.Step
-	whis.Series = make(map[string][]DataPoint)
-
-	// which value to actually return
-	use_metric := metric.SelectValue()
-
-	m_key := metric.Id
-	stat_name := metric.StatName()
-	stat_name.Resolution = rawd.Step
-	b_len := (rawd.End - rawd.Start) / rawd.Step //"proper" length of the metric
-
-	// Since graphite does not care about the actual time stamp, but assumes
-	// a "constant step" in time. Since data may not necessarily "be there" for a given
-	// interval we need to "insert nils" for steps that don't really exist
-	// as basically (start - end) / resolution needs to match
-	// the vector length, in effect we need to "interpolate" the vector to match sizes
-
-	// now for the interpolation bit .. basically leaving "times that have no data as nulls"
-	// XXX HOPEFULLY there are usually FEWER or as much "real" data then "wanted" by the resolution
-	// if there's not :boom: and you should really keep tabs on who is messing with your data in the DB
-	interp_vec := make([]DataPoint, b_len)
-	cur_step_time := rawd.Start
-	d_points := rawd.Data
-	ct := uint32(len(d_points))
-	var last_got_t uint32
-	var last_got_index uint32
-
-	// grab from cache too if not yet written
-	_, inflight, err := cass.writer.cacher.GetById(stat_name.UniqueId())
-
-	// debuggers
-	//cass.writer.log.Critical("%s", s_key)
-	//cass.writer.cacher.DumpPoints(inflight)
-	inflight_len := uint32(len(inflight))
-
-	if ct > 0 { // got something from cassandra, make sure to fill any "missing times" w/ nils
-		j := uint32(0)
-		for i := uint32(0); i < b_len; i++ {
-
-			interp_vec[i] = DataPoint{Time: cur_step_time, Value: nil}
-
-			for ; j < ct; j++ {
-				d := d_points[j]
-				if d.Time <= cur_step_time {
-
-					// cass.writer.log.Critical("ONPS %v : %v Len %d :I %d, j %d, iLen: %v SUM: %v", d_points[j], interp_vec[i], ct, i, j, b_len, d_points[j].Sum,)
-					use_value := d.AggValue(use_metric)
-					interp_vec[i].Value = &use_value
-					interp_vec[i].Time = d.Time //this is the "real" time, graphite does not care, but something might
-					last_got_t = d.Time
-					last_got_index = j
-					j++
-				}
-				break
-			}
-			cur_step_time += rawd.Step
-		}
-
-		// now attempt to merge the inflight data
-		if len(inflight) > 0 && err == nil && last_got_t <= cur_step_time {
-			j := uint32(0)
-			for i := last_got_index; i < b_len; i++ {
-				for ; j < inflight_len; j++ {
-					d := inflight[j]
-					if uint32(d.Time.Unix()) <= interp_vec[i].Time {
-						use_value := d.AggValue(use_metric)
-						interp_vec[i].Value = &use_value
-						j++
-					}
-					break
-				}
-			}
-		}
-	} else if len(inflight) > 0 && err == nil { // no data in cassandra yet, use inflight
-		//fill it up
-		j := uint32(0)
-		for i := uint32(0); i < b_len; i++ {
-			interp_vec[i] = DataPoint{Time: cur_step_time, Value: nil}
-			for ; j < inflight_len; j++ {
-				d := inflight[j]
-				if uint32(d.Time.Unix()) <= cur_step_time {
-
-					// cass.writer.log.Critical("ONPS %v : %v Len %d :I %d, j %d, iLen: %v SUM: %v", d_points[j], interp_vec[i], ct, i, j, b_len, d_points[j].Sum,)
-					use_value := d.AggValue(use_metric)
-					interp_vec[i].Value = &use_value
-					interp_vec[i].Time = uint32(d.Time.Unix()) //this is the "real" time, graphite does not care, but something might
-					j++
-				}
-				break
-			}
-			cur_step_time += rawd.Step
-		}
-	}
-	//cass.log.Critical("METR: %s Start: %d END: %d LEN: %d GotLen: %d", metric.Id, first_t, last_t, len(d_points), ct)
-
-	whis.Series[m_key] = interp_vec
-
-	return whis, nil
 }
 
 func (cass *CassandraFlatMetric) RawRender(path string, from int64, to int64, tags repr.SortingTags, resample uint32) ([]*RawRenderItem, error) {
@@ -996,7 +916,7 @@ func (cass *CassandraFlatMetric) RawRender(path string, from int64, to int64, ta
 	// ye old fan out technique
 	render_one := func(metric indexer.MetricFindItem, idx int) {
 		defer render_wg.Done()
-		_ri, err := cass.RawRenderOne(metric, from, to)
+		_ri, err := cass.RawRenderOne(metric, from, to, resample)
 		if err != nil {
 			return
 		}

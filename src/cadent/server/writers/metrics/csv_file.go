@@ -33,6 +33,7 @@ package metrics
 import (
 	"cadent/server/broadcast"
 	"cadent/server/repr"
+	"cadent/server/utils/options"
 	"cadent/server/utils/shutdown"
 	"errors"
 	"fmt"
@@ -87,34 +88,17 @@ func (fi *CSVFileMetrics) Start() {
 	})
 }
 
-func (fi *CSVFileMetrics) Config(conf map[string]interface{}) error {
-	gots := conf["dsn"]
-	if gots == nil {
+func (fi *CSVFileMetrics) Config(conf *options.Options) error {
+	dsn, err := conf.StringRequired("dsn")
+	if err != nil {
 		return fmt.Errorf("`dsn` (/path/to/file) needed for FileWriter")
 	}
-	dsn := gots.(string)
 	fi.filename = dsn
 
-	_wr_buffer := conf["max_file_size"]
-	if _wr_buffer == nil {
-		fi.max_file_size = 100 * 1024 * 1024
-	} else {
-		// toml things generic ints are int64
-		fi.max_file_size = _wr_buffer.(int64)
-	}
-	// file prefix
-	_pref := conf["prefix"]
-	if _pref == nil {
-		fi.prefix = ""
-	} else {
-		fi.prefix = _pref.(string)
-	}
+	fi.max_file_size = conf.Int64("max_file_size", 100*1024*1024)
+	fi.prefix = conf.String("prefix", "")
+	fi.rotate_check = conf.Duration("rotate_every", time.Duration(10*time.Second))
 
-	fi.rotate_check = time.Duration(10 * time.Second)
-	_rotate := conf["rotate_every"]
-	if _rotate != nil {
-		fi.rotate_check = _rotate.(time.Duration)
-	}
 	fi.fp = nil
 	fi.Rotate()
 

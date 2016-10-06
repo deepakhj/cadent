@@ -72,6 +72,7 @@ import (
 	"cadent/server/series"
 	"cadent/server/stats"
 	"cadent/server/utils"
+	"cadent/server/utils/options"
 	"cadent/server/utils/shutdown"
 	"cadent/server/writers/dbs"
 	"cadent/server/writers/indexer"
@@ -171,21 +172,20 @@ func NewMySQLTriggeredMetrics() *MySQLMetrics {
 	return my
 }
 
-func (my *MySQLMetrics) Config(conf map[string]interface{}) error {
+func (my *MySQLMetrics) Config(conf *options.Options) error {
 
-	gots := conf["dsn"]
-	if gots == nil {
+	dsn, err := conf.StringRequired("dsn")
+	if err != nil {
 		return fmt.Errorf("`dsn` (user:pass@tcp(host:port)/db) is needed for mysql config")
 	}
-	dsn := gots.(string)
 
-	resolution := conf["resolution"]
-	if resolution == nil {
+	resolution, err := conf.Float64Required("resolution")
+	if err != nil {
 		return fmt.Errorf("Resolution needed for mysql writer")
 	}
 
 	// newDB is a "cached" item to let us pass the connections around
-	db_key := dsn + fmt.Sprintf("%f", resolution)
+	db_key := dsn + fmt.Sprintf("%f", resolution) + conf.String("table", "metrics")
 	db, err := dbs.NewDB("mysql", db_key, conf)
 	if err != nil {
 		return err
@@ -194,53 +194,27 @@ func (my *MySQLMetrics) Config(conf map[string]interface{}) error {
 	my.db = db.(*dbs.MySQLDB)
 	my.conn = db.Connection().(*sql.DB)
 
-	g_tag, ok := conf["tags"]
-	if ok {
-		my.static_tags = repr.SortingTagsFromString(g_tag.(string))
-	}
-
-	if err != nil {
-		return err
+	_tgs := conf.String("tags", "")
+	if len(_tgs) > 0 {
+		my.static_tags = repr.SortingTagsFromString(_tgs)
 	}
 
 	// rolluptype
-	my.rollupType = MYSQL_DEFAULT_ROLLUP_TYPE
-	_rot, ok := conf["rollup_type"]
-	if ok {
-		my.rollupType = _rot.(string)
-	}
+	my.rollupType = conf.String("rollup_type", MYSQL_DEFAULT_ROLLUP_TYPE)
 
 	// tweak queues and worker sizes
-	_workers := conf["write_workers"]
-	my.num_workers = MYSQL_DEFAULT_METRIC_WORKERS
-	if _workers != nil {
-		my.num_workers = int(_workers.(int64))
-	}
-
-	_qs := conf["write_queue_length"]
-	my.queue_len = MYSQL_DEFAULT_METRIC_QUEUE_LEN
-	if _qs != nil {
-		my.queue_len = int(_qs.(int64))
-	}
-	_rt := conf["write_queue_retries"]
-	my.dispatch_retries = MYSQL_DEFAULT_METRIC_RETRIES
-	if _rt != nil {
-		my.dispatch_retries = int(_rt.(int64))
-	}
-
-	_exp := conf["expire_on_ttl"]
-	my.runExpire = true
-	if _exp != nil {
-		my.runExpire = _exp.(bool)
-	}
+	my.num_workers = int(conf.Int64("write_workers", MYSQL_DEFAULT_METRIC_WORKERS))
+	my.queue_len = int(conf.Int64("write_queue_length", MYSQL_DEFAULT_METRIC_QUEUE_LEN))
+	my.dispatch_retries = int(conf.Int64("write_queue_retries", MYSQL_DEFAULT_METRIC_RETRIES))
+	my.runExpire = conf.Bool("expire_on_ttl", true)
 
 	my.expireTick, err = time.ParseDuration(MYSQL_DEFAULT_EXPIRE_TICK)
 	if err != nil {
 		return err
 	}
 
-	_cache := conf["cache"]
-	if _cache == nil {
+	_cache, err := conf.ObjectRequired("cache")
+	if err != nil {
 		return errMetricsCacheRequired
 	}
 	my.cacher = _cache.(*Cacher)
@@ -600,12 +574,16 @@ func (my *MySQLMetrics) GetFromDatabase(metric *indexer.MetricFindItem, resoluti
 	// for each "series" we get make a list of points
 	u_start := uint32(start)
 	u_end := uint32(end)
+
+	stat_name := metric.StatName()
 	rawd.Start = u_start
 	rawd.End = u_end
 	rawd.Id = metric.UniqueId
 	rawd.Metric = metric.Path
+	rawd.AggFunc = stat_name.AggType()
+	rawd.Tags = metric.Tags
+	rawd.MetaTags = metric.MetaTags
 
-	rawd.AggFunc = repr.GuessReprValueFromKey(metric.Id)
 	t_start := uint32(start)
 	cur_pt := NullRawDataPoint(t_start)
 
@@ -707,7 +685,8 @@ func (my *MySQLMetrics) GetFromWriteCache(metric *indexer.MetricFindItem, start 
 	if use_cache == nil {
 		use_cache = my.cacher
 	}
-	inflight, err := use_cache.GetAsRawRenderItem(metric.StatName())
+	stat_name := metric.StatName()
+	inflight, err := use_cache.GetAsRawRenderItem(stat_name)
 
 	if err != nil {
 		return nil, err
@@ -723,6 +702,7 @@ func (my *MySQLMetrics) GetFromWriteCache(metric *indexer.MetricFindItem, start 
 	inflight.End = end
 	inflight.Tags = metric.Tags
 	inflight.MetaTags = metric.MetaTags
+	inflight.AggFunc = stat_name.AggType()
 	return inflight, nil
 }
 
@@ -743,6 +723,7 @@ func (my *MySQLMetrics) RawDataRenderOne(metric *indexer.MetricFindItem, start i
 	u_start := uint32(start)
 	u_end := uint32(end)
 
+	stat_name := metric.StatName()
 	rawd.Step = resolution
 	rawd.Metric = metric.Path
 	rawd.Id = metric.UniqueId
@@ -750,7 +731,7 @@ func (my *MySQLMetrics) RawDataRenderOne(metric *indexer.MetricFindItem, start i
 	rawd.MetaTags = metric.MetaTags
 	rawd.Start = rawd.RealStart
 	rawd.End = rawd.RealEnd
-	rawd.AggFunc = repr.GuessReprValueFromKey(metric.Id)
+	rawd.AggFunc = stat_name.AggType()
 
 	if metric.Leaf == 0 {
 		//data only but return a "blank" data set otherwise graphite no likey
@@ -792,8 +773,6 @@ func (my *MySQLMetrics) RawDataRenderOne(metric *indexer.MetricFindItem, start i
 	mysql_data.Step = out_resolution
 	mysql_data.Start = u_start
 	mysql_data.End = u_end
-	mysql_data.Tags = metric.Tags
-	mysql_data.MetaTags = metric.MetaTags
 
 	//mysql_data.PrintPoints()
 	if inflight == nil || len(inflight.Data) == 0 {

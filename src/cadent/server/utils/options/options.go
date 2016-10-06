@@ -58,6 +58,22 @@ func (o *Options) StringRequired(name string) (string, error) {
 	return "", fmt.Errorf("%s is required", name)
 }
 
+func (o *Options) Object(name, def string) interface{} {
+	got, ok := o.get(name)
+	if ok {
+		return got
+	}
+	return def
+}
+
+func (o *Options) ObjectRequired(name string) (interface{}, error) {
+	got, ok := o.get(name)
+	if ok {
+		return got, nil
+	}
+	return nil, fmt.Errorf("%s is required", name)
+}
+
 func (o *Options) Int64(name string, def int64) int64 {
 	got, ok := o.get(name)
 	if ok {
@@ -70,6 +86,8 @@ func (o *Options) Int64(name string, def int64) int64 {
 			return int64(got.(uint16))
 		case uint32:
 			return int64(got.(uint32))
+		case uint64:
+			return int64(got.(uint64))
 		case int8:
 			return int64(got.(int8))
 		case int16:
@@ -78,6 +96,10 @@ func (o *Options) Int64(name string, def int64) int64 {
 			return int64(got.(int32))
 		case int:
 			return int64(got.(int))
+		case float64:
+			return int64(got.(float64))
+		case float32:
+			return int64(got.(float32))
 		default:
 			panic(fmt.Errorf("Cannot convert int type"))
 		}
@@ -97,6 +119,8 @@ func (o *Options) Int64Required(name string) (int64, error) {
 			return int64(got.(uint16)), nil
 		case uint32:
 			return int64(got.(uint32)), nil
+		case uint64:
+			return int64(got.(uint64)), nil
 		case int8:
 			return int64(got.(int8)), nil
 		case int16:
@@ -105,8 +129,12 @@ func (o *Options) Int64Required(name string) (int64, error) {
 			return int64(got.(int32)), nil
 		case int:
 			return int64(got.(int)), nil
+		case float64:
+			return int64(got.(float64)), nil
+		case float32:
+			return int64(got.(float32)), nil
 		default:
-			return 0, fmt.Errorf("%s is not an int", name)
+			return 0, fmt.Errorf("%s is not an int (it's a `%T`)", name, got)
 		}
 	}
 	return 0, fmt.Errorf("%s is required", name)
@@ -116,6 +144,24 @@ func (o *Options) Float64(name string, def float64) float64 {
 	got, ok := o.get(name)
 	if ok {
 		switch got.(type) {
+		case int64:
+			return float64(got.(int64))
+		case uint8:
+			return float64(got.(uint8))
+		case uint16:
+			return float64(got.(uint16))
+		case uint32:
+			return float64(got.(uint32))
+		case uint64:
+			return float64(got.(uint64))
+		case int8:
+			return float64(got.(int8))
+		case int16:
+			return float64(got.(int16))
+		case int32:
+			return float64(got.(int32))
+		case int:
+			return float64(got.(int))
 		case float32:
 			return float64(got.(float32))
 		case float64:
@@ -131,6 +177,24 @@ func (o *Options) Float64Required(name string) (float64, error) {
 	got, ok := o.get(name)
 	if ok {
 		switch got.(type) {
+		case int64:
+			return float64(got.(int64)), nil
+		case uint8:
+			return float64(got.(uint8)), nil
+		case uint16:
+			return float64(got.(uint16)), nil
+		case uint32:
+			return float64(got.(uint32)), nil
+		case uint64:
+			return float64(got.(uint64)), nil
+		case int8:
+			return float64(got.(int8)), nil
+		case int16:
+			return float64(got.(int16)), nil
+		case int32:
+			return float64(got.(int32)), nil
+		case int:
+			return float64(got.(int)), nil
 		case float32:
 			return float64(got.(float32)), nil
 		case float64:
@@ -181,4 +245,13 @@ func (o *Options) DurationRequired(name string) (time.Duration, error) {
 		return rdur, nil
 	}
 	return time.Duration(0), fmt.Errorf("%s is required", name)
+}
+
+func (o *Options) ToString() string {
+	out := "Options("
+	for k, v := range *o {
+		out += fmt.Sprintf("%s=%v, ", k, v)
+	}
+	out += ")"
+	return out
 }

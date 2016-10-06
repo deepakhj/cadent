@@ -46,6 +46,7 @@ import (
 
 	"cadent/server/broadcast"
 	"cadent/server/utils"
+	"cadent/server/utils/options"
 	"cadent/server/utils/shutdown"
 	"errors"
 	whisper "github.com/robyoung/go-whisper"
@@ -78,15 +79,14 @@ func init() {
 	_WHISP_WRITER_SINGLETON = make(map[string]*WhisperWriter)
 }
 
-func _get_whisp_signelton(conf map[string]interface{}) (*WhisperWriter, error) {
+func _get_whisp_signelton(conf *options.Options) (*WhisperWriter, error) {
 	_whisp_set_mutex.Lock()
 	defer _whisp_set_mutex.Unlock()
-	gots := conf["dsn"]
-	if gots == nil {
+	dsn, err := conf.StringRequired("dsn")
+	if err != nil {
 		return nil, fmt.Errorf("Metrics: `dsn` /root/path/to/files is needed for whisper config")
 	}
 
-	dsn := gots.(string)
 	if val, ok := _WHISP_WRITER_SINGLETON[dsn]; ok {
 		return val, nil
 	}
@@ -124,37 +124,24 @@ type WhisperWriter struct {
 	log        *logging.Logger
 }
 
-func NewWhisperWriter(conf map[string]interface{}) (*WhisperWriter, error) {
+func NewWhisperWriter(conf *options.Options) (*WhisperWriter, error) {
 	ws := new(WhisperWriter)
 	ws.log = logging.MustGetLogger("metrics.whisper")
-	gots := conf["dsn"]
-	if gots == nil {
+	dsn, err := conf.StringRequired("dsn")
+	if err != nil {
 		return nil, fmt.Errorf("`dsn` /root/path/of/data is needed for whisper config")
 	}
-	dsn := gots.(string)
+
 	ws.base_path = dsn
 
 	// remove trialing "/"
 	if strings.HasSuffix(dsn, "/") {
 		ws.base_path = dsn[0 : len(dsn)-1]
 	}
-	ws.xFilesFactor = 0.3
-	_xf := conf["xFilesFactor"]
-	if _xf != nil {
-		ws.xFilesFactor = float32(_xf.(float64))
-	}
-
-	ws.num_workers = WHISPER_METRIC_WORKERS
-	_workers := conf["write_workers"]
-	if _workers != nil {
-		ws.num_workers = int(_workers.(int64))
-	}
-
-	_qs := conf["write_queue_length"]
-	ws.queue_len = WHISPER_METRIC_QUEUE_LEN
-	if _qs != nil {
-		ws.queue_len = int(_qs.(int64))
-	}
+	ws.xFilesFactor = float32(conf.Float64("xFilesFactor", 0.3))
+	ws.num_workers = int(conf.Int64("write_workers", WHISPER_METRIC_WORKERS))
+	ws.queue_len = int(conf.Int64("write_queue_length", WHISPER_METRIC_QUEUE_LEN))
+	ws.writes_per_second = int(conf.Int64("writes_per_second", WHISPER_WRITES_PER_SECOND))
 
 	info, err := os.Stat(ws.base_path)
 	if err != nil {
@@ -164,17 +151,12 @@ func NewWhisperWriter(conf map[string]interface{}) (*WhisperWriter, error) {
 		return nil, fmt.Errorf("Whisper Metrics: base path %s is not a directory", ws.base_path)
 	}
 
-	_cache := conf["cache"]
-	if _cache == nil {
+	_cache, err := conf.ObjectRequired("cache")
+	if err != nil {
 		return nil, errMetricsCacheRequired
 	}
 	ws.cacher = _cache.(*Cacher)
 
-	_rs := conf["writes_per_second"]
-	ws.writes_per_second = WHISPER_WRITES_PER_SECOND
-	if _rs != nil {
-		ws.writes_per_second = int(_rs.(int64))
-	}
 	ws.shutdown = make(chan bool, 5)
 	ws.shutitdown = false
 
@@ -528,7 +510,7 @@ func (ws *WhisperMetrics) Stop() {
 	ws.writer.Stop()
 }
 
-func (ws *WhisperMetrics) Config(conf map[string]interface{}) error {
+func (ws *WhisperMetrics) Config(conf *options.Options) error {
 	gots, err := _get_whisp_signelton(conf)
 	if err != nil {
 		return err
@@ -626,7 +608,9 @@ func (ws *WhisperMetrics) RawDataRenderOne(metric indexer.MetricFindItem, start 
 
 	rawd.Start = uint32(start)
 	rawd.End = uint32(end)
-	rawd.AggFunc = repr.GuessReprValueFromKey(metric.Id)
+	stat_name := metric.StatName()
+
+	rawd.AggFunc = stat_name.AggType()
 	rawd.Step = 1 // just for something in case of errors
 	rawd.Metric = metric.Id
 	rawd.Id = metric.UniqueId
@@ -636,7 +620,6 @@ func (ws *WhisperMetrics) RawDataRenderOne(metric indexer.MetricFindItem, start 
 	//cache check
 	// the read cache should have "all" the points from a "start" to "end" if the read cache has been activated for
 	// a while.  If not, then it's a partial list (basically the read cache just started)
-	stat_name := metric.StatName()
 	cached, got_cache := ws.GetFromReadCache(stat_name.Key, start, end)
 	// we assume the "cache" is hot data (by design) so if the num points is "lacking"
 	// we know we need to get to the data store (or at least the inflight) for the rest

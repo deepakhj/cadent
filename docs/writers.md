@@ -85,6 +85,11 @@ dropping of data at the proper time (and thus some of your indexes may change). 
 query patterns expect some element of consitency in the Primary key, but you may want different replication,
 drivers, and other options that make your environment happy.
 
+*Almost*
+
+Currently _MySQL_ and _ElasticSearch_ have modules to add their schemas and least verify they are there as well. Hopefully
+a good solution can be found with Cassandra in a bit.
+
 
 ## Status
 
@@ -95,6 +100,7 @@ Not everything is "done" .. as there are many things to write and verify, this i
 | cassandra | write+read  | No  | write+read | write+read | Yes | Index: "cassandra", Line: "cassandra-flat", Series: "cassandra", Series Triggered: "cassandra-triggered" |
 | mysql  | write+read  | write+read  | write+read  | write+read  | Yes | Index: "mysql", Line: "mysql-flat", Series: "mysql",  Series Triggered: "cassandra-triggered" |
 | kafka  |  write | write | write  | write  | n/a | Index: "kafka", Line: "kafka-flat", Series: "kafka" |
+| elasticsearch |  read+write | read+write | No | No | No | Index: "elasticsearch", Line: "n/a", Series: "n/a" |
 | whisper|  read | n/a | n/a  | write+read |  n/a | Index: "whisper", Line: "whisper", Series: "n/a" |
 | leveldb |  write+read | No | No  | No |  n/a | Index: "leveldb", Line: "n/a", Series: "n/a" |
 | file |  n/a | n/a | n/a  | write |  n/a | Index: "n/a", Line: "file", Series: "n/a" |
@@ -156,6 +162,11 @@ The main writers are
     - kafka + kafka-flat:
 
         Toss stats into a kafka topic (no readers/render api for this mode) for processing by some other entity
+
+    - elasticsearch:
+
+       Currently just for Indexing both Tags and Metric keys.
+
 
 ## Indexing
 
@@ -611,17 +622,16 @@ If you want to allow 24h windows, simply raise `max_sstable_age_days` to â€˜1.0â
         );
 
 
-        CREATE TYPE metric_path (
-            path text,
-            resolution int
+        CREATE TYPE metric_id_res (
+            id varchar,
+            res int
         );
 
         CREATE TABLE metric.metric (
-            id varchar,
-            mpath frozen<metric_path>,
+            mid frozen<metric_id_res>,
             time bigint,
             point frozen<metric_point>,
-            PRIMARY KEY (id, mpath, time)
+            PRIMARY KEY (id, time)
         ) WITH COMPACT STORAGE
             AND CLUSTERING ORDER BY (mpath ASC, time ASC)
             AND compaction = {
@@ -631,15 +641,7 @@ If you want to allow 24h windows, simply raise `max_sstable_age_days` to â€˜1.0â
                 'max_sstable_age_days': '0.083',
                 'base_time_seconds': '50'
             }
-            AND compression = {'sstable_compression': 'org.apache.cassandra.io.compress.LZ4Compressor'}
-            AND dclocal_read_repair_chance = 0.1
-            AND default_time_to_live = 0
-            AND gc_grace_seconds = 864000
-            AND max_index_interval = 2048
-            AND memtable_flush_period_in_ms = 0
-            AND min_index_interval = 128
-            AND read_repair_chance = 0.0
-            AND speculative_retry = '99.0PERCENTILE';
+            AND compression = {'sstable_compression': 'org.apache.cassandra.io.compress.LZ4Compressor'};
 
         CREATE TYPE metric.segment_pos (
             pos int,
@@ -654,20 +656,9 @@ If you want to allow 24h windows, simply raise `max_sstable_age_days` to â€˜1.0â
             id varchar,
             has_data boolean,
             PRIMARY KEY (segment, length, path, id)
-        ) WITH
-             bloom_filter_fp_chance = 0.01
-            AND caching = {'keys':'ALL', 'rows_per_partition':'NONE'}
-            AND comment = ''
-            AND compaction = {'class': 'org.apache.cassandra.db.compaction.SizeTieredCompactionStrategy'}
-            AND compression = {'sstable_compression': 'org.apache.cassandra.io.compress.LZ4Compressor'}
-            AND dclocal_read_repair_chance = 0.1
-            AND default_time_to_live = 0
-            AND gc_grace_seconds = 864000
-            AND max_index_interval = 2048
-            AND memtable_flush_period_in_ms = 0
-            AND min_index_interval = 128
-            AND read_repair_chance = 0.0
-            AND speculative_retry = '99.0PERCENTILE';
+        ) WITH compaction = {'class': 'org.apache.cassandra.db.compaction.SizeTieredCompactionStrategy'}
+            AND compression = {'sstable_compression': 'org.apache.cassandra.io.compress.LZ4Compressor'};
+
         CREATE INDEX ON metric.path (id);
 
         CREATE TABLE metric.segment (
@@ -676,19 +667,8 @@ If you want to allow 24h windows, simply raise `max_sstable_age_days` to â€˜1.0â
             PRIMARY KEY (pos, segment)
         ) WITH COMPACT STORAGE
             AND CLUSTERING ORDER BY (segment ASC)
-            AND bloom_filter_fp_chance = 0.01
-            AND caching = {'keys':'ALL', 'rows_per_partition':'NONE'}
-            AND comment = ''
             AND compaction = {'class': 'org.apache.cassandra.db.compaction.SizeTieredCompactionStrategy'}
-            AND compression = {'sstable_compression': 'org.apache.cassandra.io.compress.LZ4Compressor'}
-            AND dclocal_read_repair_chance = 0.1
-            AND default_time_to_live = 0
-            AND gc_grace_seconds = 864000
-            AND max_index_interval = 2048
-            AND memtable_flush_period_in_ms = 0
-            AND min_index_interval = 128
-            AND read_repair_chance = 0.0
-            AND speculative_retry = '99.0PERCENTILE';
+            AND compression = {'sstable_compression': 'org.apache.cassandra.io.compress.LZ4Compressor'};
 
 ##### Blob Schema
 
@@ -696,10 +676,33 @@ Much the same, but instead we store the bytes blob of the series.  `ptype` is th
 Since different resolutions in cassandra are stored in one super table, we need to disinguish the id+resolution
  as a unique id.
 
-        CREATE TYPE metric_id_res (
-            id varchar,
-            res int
-        );
+        CREATE TABLE metric.metric (
+            mid frozen<metric_id_res>,
+            etime bigint,
+            stime bigint,
+            ptype int,
+            points blob,
+            PRIMARY KEY (mid, etime)
+        ) WITH CLUSTERING ORDER BY etime ASC
+            AND compaction = {
+                'class': 'DateTieredCompactionStrategy',
+                'min_threshold': '12',
+                'max_threshold': '32',
+                'max_sstable_age_days': '0.083',
+                'base_time_seconds': '50',
+                'tombstone_threshold': 0.05
+            }
+            AND compression = {'sstable_compression': 'org.apache.cassandra.io.compress.LZ4Compressor'};
+
+
+### NOTE: for Cassandra 3
+
+There's a better compaction method for the metrics that have pretty much constant time inputs (i.e. server metrics)
+so i recommend doing below.
+
+If, however, the data you injest is "sparse" and/or out of order it's better to use the Date compaction method above.
+As it will lead to better behavior for large time spans.
+
 
         CREATE TABLE metric.metric (
             mid frozen<metric_id_res>,
@@ -707,28 +710,85 @@ Since different resolutions in cassandra are stored in one super table, we need 
             stime bigint,
             ptype int,
             points blob,
-            PRIMARY KEY (mid, etime, stime, ptype)
-        ) WITH COMPACT STORAGE
-            AND CLUSTERING ORDER BY etime ASC
-            AND compaction = {
-                'class': 'DateTieredCompactionStrategy',
-                'min_threshold': '12',
-                'max_threshold': '32',
-                'max_sstable_age_days': '0.083',
-                'base_time_seconds': '50'
-            }
-            AND compression = {'sstable_compression': 'org.apache.cassandra.io.compress.LZ4Compressor'}
-            AND dclocal_read_repair_chance = 0.1
-            AND default_time_to_live = 0
-            AND gc_grace_seconds = 864000
-            AND max_index_interval = 2048
-            AND memtable_flush_period_in_ms = 0
-            AND min_index_interval = 128
-            AND read_repair_chance = 0.0
-            AND speculative_retry = '99.0PERCENTILE';
+            PRIMARY KEY (mid, etime)
+        ) WITH CLUSTERING ORDER BY etime ASC
+        AND compaction = {
+            'class': 'TimeWindowCompactionStrategy',
+            'compaction_window_unit': 'DAYS',
+            'timestamp_resolution': 'SECONDS',
+            'compaction_window_size': '1',
+            'tombstone_threshold': 0.05
+        }
+        AND compression = {'sstable_compression': 'org.apache.cassandra.io.compress.LZ4Compressor'}
+        AND read_repair_chance = 0,
+        AND dclocal_read_repair_chance = 0;
 
 
-### Gotcha's
+     -- Or for single metric items
+
+
+       CREATE TABLE metric.metric (
+           mid frozen<metric_id_res>,
+           time bigint,
+           point frozen<metric_point>,
+           PRIMARY KEY (id, time)
+       ) WITH COMPACT STORAGE
+           AND CLUSTERING ORDER BY (mid ASC, time ASC)
+           AND compaction = {
+               'class': 'TimeWindowCompactionStrategy',
+               'compaction_window_unit': 'DAYS',
+               'timestamp_resolution': 'SECONDS',
+               'compaction_window_size': '1',
+                'tombstone_threshold': 0.05
+           }
+           AND compression = {'sstable_compression': 'org.apache.cassandra.io.compress.LZ4Compressor'},
+           AND read_repair_chance = 0,
+           AND dclocal_read_repair_chance = 0;
+
+
+DO NOT use this if things will be inserted "out of order by time" data or have alot of sparse data.
+
+So you may wish to change the `compaction_window_size` to suit your query/insert patterns. Also change the
+`timestamp_resolution` to the acctuall resolution you need.  Keep in mind that Cadent assumes second resolution for
+any queries, as that's what graphite does/did.
+
+For instance a 3 DAY size w/ expireing TTLs of 90 DAYS is good.  Or a 1 DAY size w/ 30 DAYS and so on.
+
+
+### Cassandra + Table Per Resolution
+
+If in the Options for the writres you specify `table_per_resolution` then we adopt the same model that we do for MySQL
+
+Namly things expect a table names `{metric_table}_{resolution in seconds}s` for each resolution. Like so
+
+    metric_1s
+    metric_10s
+    metric_60s
+    etc
+
+This is acctually a good way to handle cassandra effectively.  Since in a trigger rollup world, we must "delete and are-add"
+the row for the rollup rows (or in this case tables).  Those tables will have many tombstones and need more compaction,
+but since their resolution is smaller there will mcuh less data to rollup.  This also lets you use the
+`TimeWindowCompactionStrategy` more effecively in Cassandra 3, in that you can specifiy `compaction_window_size` more
+appropriate for your TTL on the data.  It also keeps the write/read volume for the "quick (highest resolution)" data
+out of the picture for doing rollups (if using triggered rollups), thus making things more effcient there.
+
+* Remember * You'll need to add these tables to cassandra itself for now.
+
+The potential only issue is that you're not able to "change resolutions", but if this needs to happen, you're better
+off "restarting" everything anyway as all the old data is going to be hard to query and match up.
+
+    [myaccumulator.accumulator.writers.metrics.options]
+    table_per_resolution=true
+
+Remember you should add your tables to use the proper `compaction_window_size` you need.
+
+* REMEMBER * to set the same option in the API section (otherwise it will look for the know what to look for)
+
+        [myaccumulator.accumulator.api.metrics.options]
+        table_per_resolution=true
+
+### Cassandra + Gotcha's
 
 Some notes from the field::
 
@@ -765,7 +825,94 @@ To further make Cassandra data points and timers align, FLUSH times should all b
     times = ["10s:168h", "1m:720h", "10m:21600h"]
 
     [graphite-cassandra.accumulator.writer.metrics]
-    ...
+
+#### ElasticSearch
+
+Probably makes the most sence for Indexing data efficently, however, the metrics can also be passed to this backend store
+The drivers have not been written yet.
+
+This is the Index schema for elastic search
+
+    metric_path/path mapping
+    {
+        "properties":{
+            "uid":{
+                "type": "string",
+                "index": "not_analyzed"
+            },
+            "segment":{
+                "type": "string",
+                "index": "not_analyzed"
+            },
+            "path":{
+                "type": "string",
+                "index": "not_analyzed"
+            },
+            "pos": {
+                "type": "integer",
+                "index": "not_analyzed"
+            },
+            "length": {
+                "type": "integer",
+                "index": "not_analyzed"
+            },
+            "has_data": {
+                "type": "boolean",
+                "index":  "not_analyzed"
+            },
+            "tags":{
+                "type": "nested",
+                "properties":{
+                    "name": {
+                        "type": "string",
+                        "index": "not_analyzed"
+                    },
+                    "value": {
+                        "type": "string",
+                        "index": "not_analyzed"
+                    },
+                    "is_meta":{
+                        "type":"boolean",
+                        "index": "not_analyzed"
+                    }
+                }
+            }
+        }
+    }
+
+    metric_segment/segment mapping
+    {
+        "properties":{
+           "segment":{
+                "type": "string",
+                "index": "not_analyzed"
+            },
+            "pos": {
+                "type": "integer",
+                "index": "not_analyzed"
+            }
+        }
+    }
+
+    metric_tag/tag mapping
+    {
+        "properties": {
+            "name":{
+                "type": "string",
+                "index": "not_analyzed"
+            },
+            "value": {
+                "type": "string",
+                "index":  "not_analyzed"
+            },
+            "is_meta": {
+                "type": "boolean",
+                "index": "not_analyzed"
+            }
+        }
+    }
+
+
 
 #### Whisper
 

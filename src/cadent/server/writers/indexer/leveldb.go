@@ -373,7 +373,7 @@ func NewLevelDBIndexer() *LevelDBIndexer {
 	return lb
 }
 
-func (lb *LevelDBIndexer) Config(conf options.Options) (err error) {
+func (lb *LevelDBIndexer) Config(conf *options.Options) (err error) {
 	dsn, err := conf.StringRequired("dsn")
 	if err != nil {
 		return fmt.Errorf("Indexer: `dsn` (/path/to/dbs) is needed for leveldb config")
@@ -394,11 +394,7 @@ func (lb *LevelDBIndexer) Config(conf options.Options) (err error) {
 		return err
 	}
 
-	_ms := conf["cache_index_size"]
-	if _ms != nil {
-		lb.cache.maxKeys = int(_ms.(int64))
-	}
-
+	lb.cache.maxKeys = int(conf.Int64("cache_index_size", CACHER_METRICS_KEYS))
 	lb.writes_per_second = int(conf.Int64("writes_per_second", LEVELDB_WRITES_PER_SECOND))
 	lb.num_workers = int(conf.Int64("write_workers", LEVELDB_INDEXER_WORKERS))
 	lb.queue_len = int(conf.Int64("write_queue_length", LEVELDB_INDEXER_QUEUE_LEN))

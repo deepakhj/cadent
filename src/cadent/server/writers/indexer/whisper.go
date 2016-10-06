@@ -46,7 +46,7 @@ func NewWhisperIndexer() *WhisperIndexer {
 	return my
 }
 
-func (ws *WhisperIndexer) Config(conf options.Options) (err error) {
+func (ws *WhisperIndexer) Config(conf *options.Options) (err error) {
 	dsn, err := conf.StringRequired("dsn")
 	if err != nil {
 		return fmt.Errorf("`dsn` /root/path/of/data is needed for whisper config")

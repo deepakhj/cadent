@@ -95,6 +95,7 @@ import (
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
 	logging "gopkg.in/op/go-logging.v1"
+	"strings"
 	"time"
 )
 
@@ -117,16 +118,23 @@ func NewMySQLDB() *MySQLDB {
 	return my
 }
 
-func (my *MySQLDB) Config(conf options.Options) error {
+func (my *MySQLDB) Config(conf *options.Options) error {
+
 	dsn, err := conf.StringRequired("dsn")
 	if err != nil {
 		return fmt.Errorf("`dsn` (user:pass@tcp(host:port)/db) is needed for mysql config")
+	}
+
+	//parse time yes
+	if !strings.Contains(dsn, "parseTime=true") {
+		dsn = dsn + "?parseTime=true"
 	}
 
 	my.conn, err = sql.Open("mysql", dsn)
 	if err != nil {
 		return err
 	}
+
 	my.table = conf.String("table", "metrics")
 	my.path_table = conf.String("path_table", "metric_path")
 	my.segment_table = conf.String("segment_table", "metric_segment")

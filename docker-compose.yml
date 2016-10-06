@@ -90,7 +90,7 @@ services:
         - /var/run/docker.sock:/var/run/docker.sock
 
     cassandra:
-      image: cassandra
+      image: cassandra:3.0.9
       ports:
         - "0.0.0.0:9042:9042"
         - "0.0.0.0:7199:7199"

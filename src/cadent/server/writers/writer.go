@@ -29,6 +29,7 @@ import (
 	logging "gopkg.in/op/go-logging.v1"
 
 	"cadent/server/utils"
+	"cadent/server/utils/options"
 	"errors"
 	"fmt"
 	"strings"
@@ -102,8 +103,8 @@ type WriterMetricConfig struct {
 	DSN      string `toml:"dsn" json:"dsn"`
 	UseCache string `toml:"cache" json:"cache"`
 
-	QueueLength int                    `toml:"input_queue_length" json:"input_queue_length"` // metric write queue length
-	Options     map[string]interface{} `toml:"options" json:"options"`                       // option=[ [key, value], [key, value] ...]
+	QueueLength int             `toml:"input_queue_length" json:"input_queue_length"` // metric write queue length
+	Options     options.Options `toml:"options" json:"options"`
 }
 
 func (wc WriterMetricConfig) ResolutionsNeeded() (metrics.WritersNeeded, error) {
@@ -118,15 +119,15 @@ func (wc WriterMetricConfig) NewMetrics(duration time.Duration, cache_config []W
 	}
 	i_ops := wc.Options
 	if i_ops == nil {
-		i_ops = make(map[string]interface{})
+		i_ops = options.New()
 	}
-	i_ops["dsn"] = wc.DSN
-	i_ops["prefix"] = fmt.Sprintf("_%0.0fs", duration.Seconds())
-	i_ops["resolution"] = duration.Seconds()
+	i_ops.Set("dsn", wc.DSN)
+	i_ops.Set("prefix", fmt.Sprintf("_%0.0fs", duration.Seconds()))
+	i_ops.Set("resolution", duration.Seconds())
 
 	// a little special case to set the rollupType == "triggered" if we are the triggered driver
 	if strings.HasSuffix(wc.Driver, "-triggered") {
-		i_ops["rollup_type"] = "triggered"
+		i_ops.Set("rollup_type", "triggered")
 	}
 
 	// use the defined cacher object
@@ -144,7 +145,7 @@ func (wc WriterMetricConfig) NewMetrics(duration time.Duration, cache_config []W
 			return nil, err
 		}
 		if got.Name == proper_name {
-			i_ops["cache"] = got
+			i_ops.Set("cache", got)
 			have = true
 			break
 		}
@@ -153,7 +154,7 @@ func (wc WriterMetricConfig) NewMetrics(duration time.Duration, cache_config []W
 		return nil, errCacheNotFound
 	}
 
-	err = mets.Config(i_ops)
+	err = mets.Config(&i_ops)
 	if err != nil {
 		return nil, err
 	}
@@ -161,14 +162,15 @@ func (wc WriterMetricConfig) NewMetrics(duration time.Duration, cache_config []W
 	if wc.QueueLength <= 0 {
 		wc.QueueLength = WRITER_DEFAULT_METRIC_QUEUE_LENGTH
 	}
+
 	return mets, nil
 }
 
 // toml config for Indexer
 type WriterIndexerConfig struct {
-	Driver  string                 `toml:"driver" json:"driver"`
-	DSN     string                 `toml:"dsn" json:"dsn"`
-	Options map[string]interface{} `toml:"options" json:"options"` // option=[ [key, value], [key, value] ...]
+	Driver  string          `toml:"driver" json:"driver"`
+	DSN     string          `toml:"dsn" json:"dsn"`
+	Options options.Options `toml:"options" json:"options"` // option=[ [key, value], [key, value] ...]
 }
 
 func (wc WriterIndexerConfig) NewIndexer() (indexer.Indexer, error) {
@@ -178,10 +180,10 @@ func (wc WriterIndexerConfig) NewIndexer() (indexer.Indexer, error) {
 	}
 	i_ops := wc.Options
 	if i_ops == nil {
-		i_ops = make(map[string]interface{})
+		i_ops = options.New()
 	}
-	i_ops["dsn"] = wc.DSN
-	err = idx.Config(i_ops)
+	i_ops.Set("dsn", wc.DSN)
+	err = idx.Config(&i_ops)
 	if err != nil {
 		return nil, err
 	}

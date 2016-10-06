@@ -75,7 +75,7 @@ func NewKafkaDB() *KafkaDB {
 	return kf
 }
 
-func (kf *KafkaDB) Config(conf options.Options) error {
+func (kf *KafkaDB) Config(conf *options.Options) error {
 	dsn, err := conf.StringRequired("dsn")
 	if err != nil {
 		return fmt.Errorf("`dsn` (kafkahost1,kafkahost2...) is needed for kafka config")

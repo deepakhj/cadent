@@ -93,6 +93,7 @@ import (
 	"cadent/server/dispatch"
 	"cadent/server/series"
 	"cadent/server/utils"
+	"cadent/server/utils/options"
 	"cadent/server/utils/shutdown"
 	"cadent/server/writers/indexer"
 	"math"
@@ -108,30 +109,30 @@ const (
 	CASSANDRA_DEFAULT_METRIC_QUEUE_LEN      = 1024 * 100
 	CASSANDRA_DEFAULT_METRIC_RETRIES        = 2
 	CASSANDRA_DEFAULT_METRIC_RENDER_WORKERS = 4
+	CASSANDRA_DEFAULT_TABLE_PER_RESOLUTION  = false
 )
 
-/*** set up "one" real writer (per dsn) .. need just a single cassandra DB connection for all the time resoltuions
-
- */
+/*** set up "one" real writer (per dsn) .. need just a single cassandra DB connection for all the time resolutions */
 
 // the singleton
 var _CASS_WRITER_SINGLETON map[string]*CassandraWriter
 var _cass_set_mutex sync.Mutex
 
-func _get_cass_signelton(conf map[string]interface{}) (*CassandraWriter, error) {
+func _get_cass_singleton(conf *options.Options) (*CassandraWriter, error) {
 	_cass_set_mutex.Lock()
 	defer _cass_set_mutex.Unlock()
-	gots := conf["dsn"]
-	if gots == nil {
+	gots, err := conf.StringRequired("dsn")
+	if err != nil {
 		return nil, fmt.Errorf("Metrics: `dsn` (server1,server2,server3) is needed for cassandra config")
 	}
 
 	// unique per dns:port:keyspace:metrics_table
-	keysp := conf["keyspace"]
-	tbl := conf["metrics_table"]
-	port := conf["port"]
-	dsn := fmt.Sprintf("%v:%v:%v:%v", gots, port, keysp, tbl)
+	keysp := conf.String("keyspace", "metric")
+	tbl := conf.String("metrics_table", "metric")
+	port := conf.Int64("port", 9042)
+	tPerRes := conf.Bool("table_per_resolution", CASSANDRA_DEFAULT_TABLE_PER_RESOLUTION)
 
+	dsn := fmt.Sprintf("%v:%v:%v:%v:%v", gots, port, keysp, tbl, tPerRes)
 	if val, ok := _CASS_WRITER_SINGLETON[dsn]; ok {
 		return val, nil
 	}
@@ -155,24 +156,26 @@ type CassandraWriter struct {
 	conn *gocql.Session
 
 	// shutdowners
-	shutitdown bool
-	shutdown   chan bool
+	shutitdown         bool
+	shutdown           chan bool
+	tablePerResolution bool
 
-	log *logging.Logger
+	insQ string //insert query
+	log  *logging.Logger
 }
 
-func NewCassandraWriter(conf map[string]interface{}) (*CassandraWriter, error) {
+func NewCassandraWriter(conf *options.Options) (*CassandraWriter, error) {
 	cass := new(CassandraWriter)
 	cass.log = logging.MustGetLogger("metrics.cassandra")
 	cass.shutdown = make(chan bool)
 	cass.shutitdown = false
 
-	gots := conf["dsn"]
-	if gots == nil {
+	gots, err := conf.StringRequired("dsn")
+	if err != nil {
 		return nil, fmt.Errorf("Metrics: `dsn` (server1,server2,server3) is needed for cassandra config")
 	}
 
-	conn_key := fmt.Sprintf("%v:%v/%v/%v", gots, conf["port"], conf["keyspace"], conf["metrics_table"])
+	conn_key := fmt.Sprintf("%v:%v/%v/%v", gots, conf.Int64("port", 9042), conf.String("keyspace", "metric"), conf.String("metrics_table", "metric"))
 	cass.log.Notice("Connecting Metrics to Cassandra (%s)", conn_key)
 
 	db, err := dbs.NewDB("cassandra", conn_key, conf)
@@ -183,42 +186,50 @@ func NewCassandraWriter(conf map[string]interface{}) (*CassandraWriter, error) {
 	cass.db = db.(*dbs.CassandraDB)
 	cass.conn = db.Connection().(*gocql.Session)
 
-	if err != nil {
-		return nil, err
-	}
+	cass.tablePerResolution = conf.Bool("table_per_resolution", CASSANDRA_DEFAULT_TABLE_PER_RESOLUTION)
 
+	cass.insQ = "INSERT INTO %s (mid, etime, stime, ptype, points) VALUES  ({id: ?, res: ?}, ?, ?, ?, ?)"
+	if cass.tablePerResolution {
+		cass.insQ = "INSERT INTO %s (id, etime, stime, ptype, points) VALUES  (?, ?, ?, ?, ?)"
+	}
 	return cass, nil
 }
 
-func (cass *CassandraWriter) InsertSeries(name *repr.StatName, timeseries series.TimeSeries) (n int, err error) {
-
-	defer func() {
-		if r := recover(); r != nil {
-			cass.log.Critical("Cassandra Failure (panic) %v ::", r)
-			err = fmt.Errorf("The recover error: %v", r)
-		}
-	}()
-
-	if name == nil {
-		return 0, errNameIsNil
-	}
-	if timeseries == nil {
-		return 0, errSeriesIsNil
-	}
-	defer stats.StatsdNanoTimeFunc(fmt.Sprintf("writer.cassandra.insert.metric-time-ns"), time.Now())
-
-	l := timeseries.Count()
-	if l == 0 {
-		return 0, nil
-	}
-
-	DO_Q := fmt.Sprintf(
-		"INSERT INTO %s (mid, etime, stime, ptype, points) VALUES  ({id: ?, res: ?}, ?, ?, ?, ?)",
-		cass.db.MetricTable(),
-	)
+func (cass *CassandraWriter) onePerTableInsert(name *repr.StatName, timeseries series.TimeSeries, resolution uint32) (n int, err error) {
+	t_name := cass.db.MetricTable() + fmt.Sprintf("_%d", resolution) + "s"
+	DO_Q := fmt.Sprintf(cass.insQ, t_name)
 	if name.TTL > 0 {
 		DO_Q += fmt.Sprintf(" USING TTL %d", name.TTL)
 	}
+
+	blob, err := timeseries.MarshalBinary()
+	if err != nil {
+		return 0, err
+	}
+
+	// if no bytes don't add
+	if len(blob) == 0 {
+		return 0, nil
+	}
+	err = cass.conn.Query(
+		DO_Q,
+		name.UniqueIdString(),
+		timeseries.LastTime(),
+		timeseries.StartTime(),
+		series.IdFromName(timeseries.Name()),
+		blob,
+	).Exec()
+
+	return 1, err
+}
+
+func (cass *CassandraWriter) oneTableInsert(name *repr.StatName, timeseries series.TimeSeries, resolution uint32) (n int, err error) {
+
+	DO_Q := fmt.Sprintf(cass.insQ, cass.db.MetricTable())
+	if name.TTL > 0 {
+		DO_Q += fmt.Sprintf(" USING TTL %d", name.TTL)
+	}
+
 	blob, err := timeseries.MarshalBinary()
 	if err != nil {
 		return 0, err
@@ -237,6 +248,39 @@ func (cass *CassandraWriter) InsertSeries(name *repr.StatName, timeseries series
 		series.IdFromName(timeseries.Name()),
 		blob,
 	).Exec()
+
+	return 1, err
+}
+
+func (cass *CassandraWriter) InsertSeries(name *repr.StatName, timeseries series.TimeSeries, resolution uint32) (n int, err error) {
+
+	defer func() {
+		if r := recover(); r != nil {
+			cass.log.Critical("Cassandra Failure (panic) %v ::", r)
+			err = fmt.Errorf("The recover error: %v", r)
+		}
+	}()
+
+	//panic(fmt.Sprintf("InsertSeries: %v :: %v", cass.tablePerResolution, cass.insQ))
+	if name == nil {
+		return 0, errNameIsNil
+	}
+	if timeseries == nil {
+		return 0, errSeriesIsNil
+	}
+	defer stats.StatsdNanoTimeFunc(fmt.Sprintf("writer.cassandra.insert.metric-time-ns"), time.Now())
+
+	l := timeseries.Count()
+	if l == 0 {
+		return 0, nil
+	}
+
+	switch cass.tablePerResolution {
+	case true:
+		n, err = cass.onePerTableInsert(name, timeseries, resolution)
+	default:
+		n, err = cass.oneTableInsert(name, timeseries, resolution)
+	}
 
 	if err != nil {
 		cass.log.Error("Cassandra Driver:Metric insert failed, %v", err)
@@ -304,6 +348,9 @@ type CassandraMetric struct {
 	dispatch_retries int
 	dispatcher       *dispatch.DispatchQueue
 
+	tablePerResolution bool   // if this is "true" then rather then "one big table" we assume different tables for each rollup
+	selQ               string //select query
+
 	shutdown chan bool
 }
 
@@ -321,47 +368,37 @@ func NewCassandraTriggerMetrics() *CassandraMetric {
 	return cass
 }
 
-func (cass *CassandraMetric) Config(conf map[string]interface{}) (err error) {
+func (cass *CassandraMetric) Config(conf *options.Options) (err error) {
 
-	// only need one real "writer DB" here as we are writing to the same metrics table
-	gots, err := _get_cass_signelton(conf)
+	_, err = conf.StringRequired("dsn")
 	if err != nil {
-		return err
-	}
-	cass.writer = gots
-
-	_dsn := conf["dsn"]
-	if _dsn == nil {
 		return fmt.Errorf("Metrics: `dsn` (server1,server2,server3) is needed for cassandra config")
 	}
 
-	resolution := conf["resolution"]
-	if resolution == nil {
-		return fmt.Errorf("resolution needed for cassandra writer")
+	// only need one real "writer DB" here as we are writing to the same metrics table
+	gots, err := _get_cass_singleton(conf)
+	if err != nil {
+		return err
 	}
 
-	g_tag, ok := conf["tags"]
-	if ok {
-		cass.static_tags = repr.SortingTagsFromString(g_tag.(string))
+	cass.writer = gots
+
+	// even if not used, it best be here for future goodies
+	_, err = conf.Int64Required("resolution")
+	if err != nil {
+		return fmt.Errorf("resolution needed for cassandra writer: %v", err)
+	}
+
+	_tgs := conf.String("tags", "")
+	if len(_tgs) > 0 {
+		cass.static_tags = repr.SortingTagsFromString(_tgs)
 	}
 
 	// tweak queus and worker sizes
-	_workers := conf["write_workers"]
-	cass.num_workers = CASSANDRA_DEFAULT_METRIC_WORKERS
-	if _workers != nil {
-		cass.num_workers = int(_workers.(int64))
-	}
-
-	_qs := conf["write_queue_length"]
-	cass.queue_len = CASSANDRA_DEFAULT_METRIC_QUEUE_LEN
-	if _qs != nil {
-		cass.queue_len = int(_qs.(int64))
-	}
-	_rt := conf["write_queue_retries"]
-	cass.dispatch_retries = CASSANDRA_DEFAULT_METRIC_RETRIES
-	if _rt != nil {
-		cass.dispatch_retries = int(_rt.(int64))
-	}
+	cass.num_workers = int(conf.Int64("write_workers", CASSANDRA_DEFAULT_METRIC_WORKERS))
+	cass.queue_len = int(conf.Int64("write_queue_length", CASSANDRA_DEFAULT_METRIC_QUEUE_LEN))
+	cass.dispatch_retries = int(conf.Int64("write_queue_retries", CASSANDRA_DEFAULT_METRIC_RETRIES))
+	cass.tablePerResolution = conf.Bool("table_per_resolution", false)
 
 	rdur, err := time.ParseDuration(CASSANDRA_DEFAULT_RENDER_TIMEOUT)
 	if err != nil {
@@ -370,13 +407,9 @@ func (cass *CassandraMetric) Config(conf map[string]interface{}) (err error) {
 	cass.renderTimeout = rdur
 
 	// rolluptype
-	cass.rollupType = CASSANDRA_DEFAULT_ROLLUP_TYPE
-	_rot, ok := conf["rollup_type"]
-	if ok {
-		cass.rollupType = _rot.(string)
-	}
+	cass.rollupType = conf.String("rollup_type", CASSANDRA_DEFAULT_ROLLUP_TYPE)
 
-	_cache := conf["cache"]
+	_cache, err := conf.ObjectRequired("cache")
 	if _cache == nil {
 		return errMetricsCacheRequired
 	}
@@ -398,6 +431,12 @@ func (cass *CassandraMetric) Config(conf map[string]interface{}) (err error) {
 	if cass.rollupType == "triggered" {
 		cass.driver = "cassandra-triggered" // reset the name
 		cass.rollup = NewRollupMetric(cass, cass.cacher.maxBytes)
+	}
+
+	if cass.tablePerResolution {
+		cass.selQ = "SELECT ptype, points FROM %s WHERE id=? AND etime >= ? AND etime <= ?"
+	} else {
+		cass.selQ = "SELECT ptype, points FROM %s WHERE mid={id: ?, res: ?} AND etime >= ? AND etime <= ?"
 	}
 
 	return nil
@@ -473,7 +512,7 @@ func (cass *CassandraMetric) Stop() {
 						return
 					}
 					stats.StatsdClient.Incr(fmt.Sprintf("writer.cache.shutdown.send-to-writers"), 1)
-					cass.writer.InsertSeries(s.Name, s.Series)
+					cass.writer.InsertSeries(s.Name, s.Series, s.Name.Resolution)
 					if cass.doRollup {
 						cass.rollup.DoRollup(&s)
 					}
@@ -519,7 +558,7 @@ func (cass *CassandraMetric) SetIndexer(idx indexer.Indexer) error {
 
 func (cass *CassandraMetric) doInsert(ts *TotalTimeSeries) error {
 	stats.StatsdClientSlow.Incr("writer.cassandra.consume.add", 1)
-	_, err := cass.writer.InsertSeries(ts.Name, ts.Series)
+	_, err := cass.writer.InsertSeries(ts.Name, ts.Series, ts.Name.Resolution)
 	if err == nil && cass.doRollup {
 		cass.rollup.Add(ts)
 	} else if err != nil {
@@ -642,10 +681,12 @@ func (cass *CassandraMetric) GetFromDatabase(metric *indexer.MetricFindItem, res
 	defer stats.StatsdSlowNanoTimeFunc("reader.cassandra.database.get-time-ns", time.Now())
 	rawd = new(RawRenderItem)
 
-	Q := fmt.Sprintf(
-		"SELECT ptype, points FROM %s WHERE mid={id: ?, res: ?} AND etime >= ? AND etime <= ?",
-		cass.writer.db.MetricTable(),
-	)
+	t_name := cass.writer.db.MetricTable()
+	if cass.tablePerResolution {
+		t_name = fmt.Sprintf("%s_%ds", t_name, resolution)
+	}
+
+	Q := fmt.Sprintf(cass.selQ, t_name)
 
 	// times need to be in Nanos, but comming as a epoch
 	// time in cassandra is in NanoSeconds so we need to pad the times from seconds -> nanos
@@ -653,22 +694,26 @@ func (cass *CassandraMetric) GetFromDatabase(metric *indexer.MetricFindItem, res
 	nano_end := end * nano
 	nano_start := start * nano
 
-	iter := cass.writer.conn.Query(
-		Q,
-		metric.UniqueId, resolution, nano_start, nano_end,
-	).Iter()
+	args := []interface{}{metric.UniqueId, resolution, nano_start, nano_end}
+	if cass.tablePerResolution {
+		args = []interface{}{metric.UniqueId, nano_start, nano_end}
+	}
+
+	iter := cass.writer.conn.Query(Q, args...).Iter()
 
 	// cass.writer.log.Debug("Select Q for %s: %s (%v, %v, %v, %v)", metric.Id, Q, metric.UniqueId, resolution, nano_start, nano_end)
 
 	// for each "series" we get make a list of points
+	stat_name := metric.StatName()
+
 	u_start := uint32(start)
 	u_end := uint32(end)
 	rawd.Start = u_start
 	rawd.End = u_end
 	rawd.Id = metric.UniqueId
 	rawd.Metric = metric.Path
+	rawd.AggFunc = stat_name.AggType()
 
-	rawd.AggFunc = repr.GuessReprValueFromKey(metric.Id)
 	var p_type uint8
 	var p_bytes []byte
 
@@ -765,7 +810,8 @@ func (cass *CassandraMetric) GetFromWriteCache(metric *indexer.MetricFindItem, s
 	if use_cache == nil {
 		use_cache = cass.cacher
 	}
-	inflight, err := use_cache.GetAsRawRenderItem(metric.StatName())
+	stat_name := metric.StatName()
+	inflight, err := use_cache.GetAsRawRenderItem(stat_name)
 
 	if err != nil {
 		return nil, err
@@ -780,6 +826,7 @@ func (cass *CassandraMetric) GetFromWriteCache(metric *indexer.MetricFindItem, s
 	inflight.End = end
 	inflight.Tags = metric.Tags
 	inflight.MetaTags = metric.MetaTags
+	inflight.AggFunc = stat_name.AggType()
 	return inflight, nil
 }
 
@@ -804,6 +851,8 @@ func (cass *CassandraMetric) RawDataRenderOne(metric *indexer.MetricFindItem, st
 	u_start := uint32(start)
 	u_end := uint32(end)
 
+	stat_name := metric.StatName()
+
 	rawd.Step = out_resolution
 	rawd.Metric = metric.Path
 	rawd.Id = metric.UniqueId
@@ -813,7 +862,7 @@ func (cass *CassandraMetric) RawDataRenderOne(metric *indexer.MetricFindItem, st
 	rawd.End = rawd.RealEnd
 	rawd.Tags = metric.Tags
 	rawd.MetaTags = metric.MetaTags
-	rawd.AggFunc = repr.GuessReprValueFromKey(metric.Id)
+	rawd.AggFunc = stat_name.AggType()
 
 	if metric.Leaf == 0 {
 		//data only but return a "blank" data set otherwise graphite no likey
@@ -1122,41 +1171,50 @@ func (cass *CassandraMetric) UpdateDBSeries(dbs *DBSeries, ts series.TimeSeries)
 	// sadly cassandra does not allow one to update the Primary Key bits
 	// so we need to "delete" then "insert" a new row
 	// this may not be the "best" way to deal w/ rollups as there will be many-a-tombstone
-	delQ := fmt.Sprintf(
-		"DELETE FROM %s WHERE mid={id: ?, res:?} AND stime=? AND etime=?",
-		cass.writer.db.MetricTable(),
-	)
+
 	points, err := ts.MarshalBinary()
 	if err != nil {
 		return err
 	}
 
 	ptype := series.IdFromName(ts.Name())
-	batch.Query(
-		delQ,
-		dbs.Uid,
-		dbs.Resolution,
-		dbs.Start,
-		dbs.End,
-	)
 
+	t_name := cass.writer.db.MetricTable()
+	delQ := fmt.Sprintf(
+		"DELETE FROM %s WHERE mid={id: ?, res:?} AND stime=? AND etime=?",
+		t_name,
+	)
 	InsQ := fmt.Sprintf(
 		"INSERT INTO %s (mid, stime, etime, ptype, points) VALUES ({id: ?, res:?}, ?, ?, ?, ?)",
-		cass.writer.db.MetricTable(),
+		t_name,
 	)
+
+	del_args := []interface{}{dbs.Uid, dbs.Resolution, dbs.Start, dbs.End}
+	ins_args := []interface{}{dbs.Uid, dbs.Resolution, ts.StartTime(), ts.LastTime(), ptype, points}
+	if cass.tablePerResolution {
+		t_name = fmt.Sprintf("%s_%ds", t_name, dbs.Resolution)
+		delQ = fmt.Sprintf(
+			"DELETE FROM %s WHERE id AND stime=? AND etime=?",
+			t_name,
+		)
+		del_args = []interface{}{dbs.Uid, dbs.Start, dbs.End}
+
+		InsQ = fmt.Sprintf(
+			"INSERT INTO %s (id, stime, etime, ptype, points) VALUES (?, ?, ?, ?, ?)",
+			t_name,
+		)
+
+		ins_args = []interface{}{dbs.Uid, ts.StartTime(), ts.LastTime(), ptype, points}
+
+	}
+
+	batch.Query(delQ, del_args...)
+
 	if dbs.TTL > 0 {
 		InsQ += fmt.Sprintf(" USING TTL %d", dbs.TTL)
 	}
 
-	batch.Query(
-		InsQ,
-		dbs.Uid,
-		dbs.Resolution,
-		ts.StartTime(),
-		ts.LastTime(),
-		ptype,
-		points,
-	)
+	batch.Query(InsQ, ins_args...)
 	err = cass.writer.conn.ExecuteBatch(batch)
 
 	return err
@@ -1164,5 +1222,5 @@ func (cass *CassandraMetric) UpdateDBSeries(dbs *DBSeries, ts series.TimeSeries)
 
 // update the row defined in dbs w/ the new bytes from the new Timeseries
 func (cass *CassandraMetric) InsertDBSeries(name *repr.StatName, timeseries series.TimeSeries, resolution uint32) (added int, err error) {
-	return cass.writer.InsertSeries(name, timeseries)
+	return cass.writer.InsertSeries(name, timeseries, resolution)
 }

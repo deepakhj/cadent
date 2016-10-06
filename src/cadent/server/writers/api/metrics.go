@@ -121,7 +121,7 @@ func (re *MetricsAPI) ToGraphiteApiRender(raw_data []*metrics.RawRenderItem) Gra
 	return graphite
 }
 
-// if using another system (aka grafan, that expects the graphite-api delivered format)
+// if using another system (aka grafana, that expects the graphite-api delivered format)
 func (re *MetricsAPI) GraphiteRender(w http.ResponseWriter, r *http.Request) {
 
 	defer stats.StatsdSlowNanoTimeFunc("reader.http.graphite-render.get-time-ns", time.Now())
@@ -152,8 +152,8 @@ func (re *MetricsAPI) GraphiteRender(w http.ResponseWriter, r *http.Request) {
 		data[idx].Start = uint32(args.Start)
 		data[idx].End = uint32(args.End)
 		data[idx].Quantize()
-
 	}
+
 	render_data := re.ToGraphiteApiRender(data)
 
 	re.a.AddToCache(data)

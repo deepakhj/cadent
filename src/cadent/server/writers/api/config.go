@@ -73,7 +73,7 @@ type ApiConfig struct {
 
 type SoloApiConfig struct {
 	ApiConfig
-	Seed        string  `toml:"seed"  json:"seed,omitempty"` // only used in "api only" mode
+	Seed        string  `toml:"seed" json:"seed,omitempty"` // only used in "api only" mode
 	Resolutions []int64 `toml:"resolutions" json:"resolutions,omitempty"`
 }
 
@@ -99,8 +99,8 @@ func (re *ApiConfig) GetMetrics(resolution float64) (metrics.Metrics, error) {
 	if re.ApiMetricOptions.Options == nil {
 		re.ApiMetricOptions.Options = options.New()
 	}
-	re.ApiMetricOptions.Options["dsn"] = re.ApiMetricOptions.DSN
-	re.ApiMetricOptions.Options["resolution"] = resolution
+	re.ApiMetricOptions.Options.Set("dsn", re.ApiMetricOptions.DSN)
+	re.ApiMetricOptions.Options.Set("resolution", resolution)
 
 	// need to match caches
 	// use the defined cacher object
@@ -115,9 +115,10 @@ func (re *ApiConfig) GetMetrics(resolution float64) (metrics.Metrics, error) {
 	if err != nil {
 		return nil, err
 	}
-	re.ApiMetricOptions.Options["cache"] = c
+	re.ApiMetricOptions.Options.Set("cache", c)
 
-	err = reader.Config(re.ApiMetricOptions.Options)
+	err = reader.Config(&re.ApiMetricOptions.Options)
+
 	if err != nil {
 		return nil, err
 	}
@@ -132,8 +133,8 @@ func (re *ApiConfig) GetIndexer() (indexer.Indexer, error) {
 	if re.ApiIndexerOptions.Options == nil {
 		re.ApiIndexerOptions.Options = options.New()
 	}
-	re.ApiIndexerOptions.Options["dsn"] = re.ApiIndexerOptions.DSN
-	err = idx.Config(re.ApiIndexerOptions.Options)
+	re.ApiIndexerOptions.Options.Set("dsn", re.ApiIndexerOptions.DSN)
+	err = idx.Config(&re.ApiIndexerOptions.Options)
 	if err != nil {
 		return nil, err
 	}

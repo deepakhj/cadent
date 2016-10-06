@@ -90,7 +90,7 @@ func NewKafkaIndexer() *KafkaIndexer {
 	return kf
 }
 
-func (kf *KafkaIndexer) Config(conf options.Options) (err error) {
+func (kf *KafkaIndexer) Config(conf *options.Options) (err error) {
 	dsn, err := conf.StringRequired("dsn")
 	if err != nil {
 		return fmt.Errorf("`dsn` (kafkahost1,kafkahost2) is needed for kafka config")

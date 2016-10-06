@@ -60,7 +60,7 @@ func NewElasticSearch() *ElasticSearch {
 	return my
 }
 
-func (my *ElasticSearch) Config(conf options.Options) (err error) {
+func (my *ElasticSearch) Config(conf *options.Options) (err error) {
 	dsn, err := conf.StringRequired("dsn")
 	if err != nil {
 		return fmt.Errorf("`dsn` http://host:port,http://host:port is needed for elatic search config")

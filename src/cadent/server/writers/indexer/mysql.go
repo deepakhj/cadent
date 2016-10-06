@@ -123,7 +123,7 @@ func NewMySQLIndexer() *MySQLIndexer {
 	return my
 }
 
-func (my *MySQLIndexer) Config(conf options.Options) (err error) {
+func (my *MySQLIndexer) Config(conf *options.Options) (err error) {
 	dsn, err := conf.StringRequired("dsn")
 	if err != nil {
 		return fmt.Errorf("`dsn` (user:pass@tcp(host:port)/db) is needed for mysql config")

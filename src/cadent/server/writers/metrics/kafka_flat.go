@@ -26,6 +26,7 @@ package metrics
 import (
 	"cadent/server/repr"
 	"cadent/server/stats"
+	"cadent/server/utils/options"
 	"cadent/server/utils/shutdown"
 	"cadent/server/writers/dbs"
 	"cadent/server/writers/indexer"
@@ -59,29 +60,30 @@ func NewKafkaFlatMetrics() *KafkaFlatMetrics {
 	return kf
 }
 
-func (kf *KafkaFlatMetrics) Config(conf map[string]interface{}) error {
-	gots := conf["dsn"]
-	if gots == nil {
+func (kf *KafkaFlatMetrics) Config(conf *options.Options) error {
+	dsn, err := conf.StringRequired("dsn")
+	if err != nil {
 		return fmt.Errorf("`dsn` (kafkahost1,kafkahost2) is needed for kafka config")
 	}
-	dsn := gots.(string)
+
 	db, err := dbs.NewDB("kafka", dsn, conf)
 	if err != nil {
 		return err
 	}
 
-	enct, ok := conf["encoding"]
-	if ok {
-		kf.enctype = schemas.SendEncodingFromString(enct.(string))
+	g_tag := conf.String("tags", "")
+	if len(g_tag) > 0 {
+		kf.static_tags = repr.SortingTagsFromString(g_tag)
+	}
+
+	enct := conf.String("encoding", "json")
+	if len(enct) > 0 {
+		kf.enctype = schemas.SendEncodingFromString(enct)
 	}
 
 	kf.db = db.(*dbs.KafkaDB)
 	kf.conn = db.Connection().(sarama.AsyncProducer)
 
-	g_tag, ok := conf["tags"]
-	if ok {
-		kf.static_tags = repr.SortingTagsFromString(g_tag.(string))
-	}
 	return nil
 }
 

@@ -77,7 +77,7 @@ func NewCassandraDB() *CassandraDB {
 	return cass
 }
 
-func (cass *CassandraDB) Config(conf options.Options) (err error) {
+func (cass *CassandraDB) Config(conf *options.Options) (err error) {
 	dsn, err := conf.StringRequired("dsn")
 	if err != nil {
 		return fmt.Errorf("`dsn` (server1,server2,server3) is needed for cassandra config")
@@ -111,7 +111,7 @@ func (cass *CassandraDB) Config(conf options.Options) (err error) {
 
 	numcons := conf.Int64("numcons", CASSANDRA_DEFAULT_CONNECTIONS)
 
-	con_key := fmt.Sprintf("%s:%v/%v/%v|%v|%v", dsn, port, cass.keyspace, cass.metric_table, cass.path_table, cass.segment_table)
+	con_key := fmt.Sprintf("%s:%v/keyspace:%v-tables:%v+%v+%v", dsn, port, cass.keyspace, cass.metric_table, cass.path_table, cass.segment_table)
 
 	servers := strings.Split(dsn, ",")
 	cluster := gocql.NewCluster(servers...)
@@ -125,26 +125,14 @@ func (cass *CassandraDB) Config(conf options.Options) (err error) {
 
 	cluster.PoolConfig.HostSelectionPolicy = gocql.TokenAwareHostPolicy(gocql.RoundRobinHostPolicy())
 
-	compress := true
-	_compress := conf["compress"]
-	if _compress != nil {
-		compress = _compress.(bool)
-	}
-	if compress {
+	_compress := conf.Bool("compress", true)
+	if _compress {
 		cluster.Compressor = new(gocql.SnappyCompressor)
 	}
 
 	// auth
-	user := ""
-	_user := conf["user"]
-	if _user != nil {
-		user = _user.(string)
-	}
-	pass := ""
-	_pass := conf["pass"]
-	if _pass != nil {
-		pass = _pass.(string)
-	}
+	user := conf.String("user", "")
+	pass := conf.String("pass", "")
 
 	if user != "" {
 		cluster.Authenticator = gocql.PasswordAuthenticator{

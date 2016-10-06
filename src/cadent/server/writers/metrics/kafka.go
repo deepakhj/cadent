@@ -30,6 +30,7 @@ import (
 	"cadent/server/series"
 	"cadent/server/stats"
 	"cadent/server/utils"
+	"cadent/server/utils/options"
 	"cadent/server/utils/shutdown"
 	"cadent/server/writers/dbs"
 	"cadent/server/writers/schemas"
@@ -70,38 +71,38 @@ func NewKafkaMetrics() *KafkaMetrics {
 	return kf
 }
 
-func (kf *KafkaMetrics) Config(conf map[string]interface{}) error {
-	gots := conf["dsn"]
-	if gots == nil {
+func (kf *KafkaMetrics) Config(conf *options.Options) error {
+	dsn, err := conf.StringRequired("dsn")
+	if err != nil {
 		return fmt.Errorf("`dsn` (kafkahost1,kafkahost2) is needed for kafka config")
 	}
-	dsn := gots.(string)
+
 	db, err := dbs.NewDB("kafka", dsn, conf)
 	if err != nil {
 		return err
 	}
 
-	resolution := conf["resolution"]
-	if resolution == nil {
+	resolution, err := conf.Float64Required("resolution")
+	if err != nil {
 		return fmt.Errorf("Resolution needed for kafka blob writer")
 	} else {
-		kf.resolution = uint32(resolution.(float64))
+		kf.resolution = uint32(resolution)
 	}
 
 	kf.db = db.(*dbs.KafkaDB)
 	kf.conn = db.Connection().(sarama.AsyncProducer)
 
-	g_tag, ok := conf["tags"]
-	if ok {
-		kf.static_tags = repr.SortingTagsFromString(g_tag.(string))
+	g_tag := conf.String("tags", "")
+	if len(g_tag) > 0 {
+		kf.static_tags = repr.SortingTagsFromString(g_tag)
 	}
 
-	enct, ok := conf["encoding"]
-	if ok {
-		kf.enctype = schemas.SendEncodingFromString(enct.(string))
+	enct := conf.String("encoding", "json")
+	if len(enct) > 0 {
+		kf.enctype = schemas.SendEncodingFromString(enct)
 	}
 
-	_cache := conf["cache"]
+	_cache, err := conf.ObjectRequired("cache")
 	if _cache == nil {
 		return errMetricsCacheRequired
 	}
