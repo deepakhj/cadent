@@ -339,7 +339,7 @@ func (my *MySQLFlatMetrics) RawRenderOne(metric indexer.MetricFindItem, start in
 	)
 
 	iter, err := my.conn.Query(Q, metric.UniqueId, nano_start, nano_end)
-	my.log.Critical("%s %v %v %v", Q, metric.UniqueId, nano_start, nano_end)
+
 	if err != nil {
 		return rawd, err
 	}
