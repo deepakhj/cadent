@@ -56,6 +56,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	logging "gopkg.in/op/go-logging.v1"
 	"math"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -101,6 +102,20 @@ func (my *MySQLFlatMetrics) Config(conf *options.Options) error {
 	my.db = db.(*dbs.MySQLDB)
 	my.conn = db.Connection().(*sql.DB)
 
+	res, err := conf.Int64Required("resolution")
+	if err != nil {
+		return fmt.Errorf("Resulotuion needed for cassandra writer")
+	}
+
+	//need to hide the usr/pw from things
+	p, _ := url.Parse("mysql://" + dsn)
+	cache_key := fmt.Sprintf("mysqlflat:cache:%s/%s:%v", p.Host, conf.String("table", "metrics"), res)
+	my.cacher, err = GetCacherSingleton(cache_key)
+
+	if err != nil {
+		return err
+	}
+
 	my.max_write_size = int(conf.Int64("batch_count", 1000))
 	my.max_idle = conf.Duration("periodic_flush", time.Duration(time.Second))
 	_tgs := conf.String("tags", "")
@@ -129,7 +144,6 @@ func (my *MySQLFlatMetrics) Stop() {
 		if my.shutitdown {
 			return
 		}
-
 		my.shutitdown = true
 		shutdown.AddToShutdown()
 		my.shutdown <- true
@@ -139,13 +153,13 @@ func (my *MySQLFlatMetrics) Stop() {
 
 func (my *MySQLFlatMetrics) Start() {
 	my.startstop.Start(func() {
-		go my.PeriodFlush()
-
 		// now we make sure the metrics schemas are added
 		err := NewMySQLMetricsSchema(my.conn, my.db.RootMetricsTableName(), my.resolutions, "flat").AddMetricsTable()
 		if err != nil {
 			panic(err)
 		}
+		my.cacher.Start()
+		go my.PeriodFlush()
 	})
 }
 
@@ -170,8 +184,8 @@ func (my *MySQLFlatMetrics) PeriodFlush() {
 	for {
 		select {
 		case <-my.shutdown:
-			shutdown.ReleaseFromShutdown()
 			my.Flush()
+			shutdown.ReleaseFromShutdown()
 			return
 		default:
 			time.Sleep(my.max_idle)
@@ -240,8 +254,8 @@ func (my *MySQLFlatMetrics) Write(stat repr.StatRepr) error {
 
 	// Flush can cause double locking
 	my.write_lock.Lock()
-	defer my.write_lock.Unlock()
 	my.write_list = append(my.write_list, stat)
+	my.write_lock.Unlock()
 	return nil
 }
 
@@ -320,12 +334,12 @@ func (my *MySQLFlatMetrics) RawRenderOne(metric indexer.MetricFindItem, start in
 	}
 
 	// grab ze data. (note data is already sorted by time asc va the cassandra schema)
-	Q := fmt.Sprintf("SELECT max, min, sum, last, count, time FROM %s_%ds WHERE uid=? AND time <= ? and time >= ? ORDER BY time ASC",
+	Q := fmt.Sprintf("SELECT max, min, sum, last, count, time FROM %s_%ds WHERE uid=? AND time BETWEEN ? AND ? ORDER BY time ASC",
 		my.db.RootMetricsTableName(), resolution,
 	)
 
 	iter, err := my.conn.Query(Q, metric.UniqueId, nano_start, nano_end)
-
+	my.log.Critical("%s %v %v %v", Q, metric.UniqueId, nano_start, nano_end)
 	if err != nil {
 		return rawd, err
 	}

@@ -22,9 +22,9 @@ import (
 	//. "github.com/smartystreets/goconvey/convey"
 	"bytes"
 	"cadent/server/repr"
+	"cadent/server/utils/options"
 	"encoding/json"
 	"testing"
-	"cadent/server/utils/options"
 )
 
 func TestCassandraReader(t *testing.T) {

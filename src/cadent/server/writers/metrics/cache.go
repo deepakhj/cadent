@@ -633,7 +633,9 @@ func (wc *Cacher) GetAsRawRenderItem(name *repr.StatName) (*RawRenderItem, error
 
 func (wc *Cacher) GetById(metric_id repr.StatId) (*repr.StatName, repr.StatReprSlice, error) {
 	stats.StatsdClientSlow.Incr("cacher.read.cache-gets", 1)
-
+	if wc == nil || wc.mu == nil {
+		return nil, nil, nil
+	}
 	wc.mu.RLock()
 	defer wc.mu.RUnlock()
 
