@@ -36,7 +36,7 @@ func TestConfigAccumualtorAccumulator(t *testing.T) {
 	output_format = "graphite"
 	accumulate_flush = "1s"
 	times = ["5s", "1m", "10m"]
-	tags = [ [ "foo", "bar"], ["loo", "moo"]]
+	tags = "foo=bar,loo=moo"
 
 	[writer]
 	driver="file"

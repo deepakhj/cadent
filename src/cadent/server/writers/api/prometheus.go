@@ -164,12 +164,12 @@ func (p *PrometheusAPI) QueryRange(w http.ResponseWriter, r *http.Request) {
 
 		if !data.Tags.IsEmpty() {
 			for _, tg := range data.Tags {
-				p_data.Metric[tg[0]] = tg[1]
+				p_data.Metric[tg.Name] = tg.Value
 			}
 		}
 		if !data.MetaTags.IsEmpty() {
 			for _, tg := range data.MetaTags {
-				p_data.Metric[tg[0]] = tg[1]
+				p_data.Metric[tg.Name] = tg.Value
 			}
 		}
 		nm := &repr.StatName{Key: data.Metric, Tags: data.Tags}

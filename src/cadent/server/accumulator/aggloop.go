@@ -307,7 +307,7 @@ func (agg *AggregateLoop) startWriteLooper(mws *multiWriter) {
 		for _, stat := range items {
 			// agg.log.Critical("FLUSH POST: %s", stat)
 			stat.Name.Resolution = uint32(_dur.Seconds())
-			stat.Name.TTL = uint32(_ttl.Seconds()) // need to add in the TTL
+			stat.Name.Ttl = uint32(_ttl.Seconds()) // need to add in the TTL
 			w.WriterChan() <- stat
 		}
 		//agg.log.Critical("CHAN WRITE: LEN: %d Items: %d", len(writer.WriterChan()), m_items)

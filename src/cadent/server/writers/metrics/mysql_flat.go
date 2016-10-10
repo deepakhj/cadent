@@ -213,7 +213,7 @@ func (my *MySQLFlatMetrics) Flush() (int, error) {
 	for _, stat := range my.write_list {
 		Q += "(?,?,?,?,?,?,?,?), "
 		vals = append(
-			vals, stat.Name.UniqueIdString(), stat.Name.Key, stat.Sum, stat.Min, stat.Max, stat.Last, stat.Count, stat.Time.UnixNano(),
+			vals, stat.Name.UniqueIdString(), stat.Name.Key, stat.Sum, stat.Min, stat.Max, stat.Last, stat.Count, stat.ToTime().UnixNano(),
 		)
 	}
 
@@ -250,7 +250,7 @@ func (my *MySQLFlatMetrics) Write(stat repr.StatRepr) error {
 		}
 	}
 
-	my.indexer.Write(stat.Name) // to the indexer
+	my.indexer.Write(*stat.Name) // to the indexer
 
 	// Flush can cause double locking
 	my.write_lock.Lock()

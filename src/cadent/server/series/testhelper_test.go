@@ -43,38 +43,38 @@ func init() {
 	rand.Seed(time.Now().UnixNano())
 }
 
-func dummyStat() (*repr.StatRepr, time.Time) {
+func dummyStat() (*repr.StatRepr, int64) {
 	stat := &repr.StatRepr{
-		Sum:   repr.JsonFloat64(rand.Float64()),
-		Min:   repr.JsonFloat64(rand.Float64()),
-		Max:   repr.JsonFloat64(rand.Float64()),
-		Last:  repr.JsonFloat64(rand.Float64()),
+		Sum:   rand.Float64(),
+		Min:   rand.Float64(),
+		Max:   rand.Float64(),
+		Last:  rand.Float64(),
 		Count: 123123123,
 	}
-	n := time.Now()
+	n := time.Now().UnixNano()
 	stat.Time = n
 	return stat, n
 }
 
-func dummyStatSingleVal() (*repr.StatRepr, time.Time) {
+func dummyStatSingleVal() (*repr.StatRepr, int64) {
 	stat := &repr.StatRepr{
-		Sum:   repr.JsonFloat64(rand.Float64()),
+		Sum:   rand.Float64(),
 		Count: 1,
 	}
-	n := time.Now()
+	n := time.Now().UnixNano()
 	stat.Time = n
 	return stat, n
 }
 
-func dummyStatInt() (*repr.StatRepr, time.Time) {
+func dummyStatInt() (*repr.StatRepr, int64) {
 	stat := &repr.StatRepr{
-		Sum:   repr.JsonFloat64(rand.Int63n(100)),
-		Min:   repr.JsonFloat64(rand.Int63n(100)),
-		Max:   repr.JsonFloat64(rand.Int63n(100)),
-		Last:  repr.JsonFloat64(rand.Int63n(100)),
+		Sum:   float64(rand.Int63n(100)),
+		Min:   float64(rand.Int63n(100)),
+		Max:   float64(rand.Int63n(100)),
+		Last:  float64(rand.Int63n(100)),
 		Count: rand.Int63n(100),
 	}
-	n := time.Now()
+	n := time.Now().UnixNano()
 	stat.Time = n
 	return stat, n
 }
@@ -87,22 +87,22 @@ func getSeries(stat *repr.StatRepr, num_s int, randomize bool) ([]int64, []*repr
 
 		if randomize {
 			dd, _ := time.ParseDuration(fmt.Sprintf("%ds", rand.Int31n(10)+1))
-			stat.Time = stat.Time.Add(dd)
-			stat.Max = repr.JsonFloat64(rand.Float64() * 20000.0)
-			stat.Min = repr.JsonFloat64(rand.Float64() * 20000.0)
-			stat.Last = repr.JsonFloat64(rand.Float64() * 20000.0)
-			stat.Sum = repr.JsonFloat64(float64(stat.Sum) + float64(i))
+			stat.Time = stat.Time + int64(dd.Seconds())
+			stat.Max = rand.Float64() * 20000.0
+			stat.Min = rand.Float64() * 20000.0
+			stat.Last = rand.Float64() * 20000.0
+			stat.Sum = float64(stat.Sum) + float64(i)
 			stat.Count = rand.Int63n(1000)
 		} else {
 			dd, _ := time.ParseDuration(fmt.Sprintf("%ds", 1+i))
-			stat.Time = stat.Time.Add(dd)
-			stat.Max += repr.JsonFloat64(1 + i)
-			stat.Min += repr.JsonFloat64(1 + i)
-			stat.Last += repr.JsonFloat64(1 + i)
-			stat.Sum += repr.JsonFloat64(1 + i)
+			stat.Time = stat.Time + int64(dd.Seconds())
+			stat.Max += float64(1 + i)
+			stat.Min += float64(1 + i)
+			stat.Last += float64(1 + i)
+			stat.Sum += float64(1 + i)
 			stat.Count += int64(1 + i)
 		}
-		times = append(times, stat.Time.UnixNano())
+		times = append(times, stat.Time)
 		stats = append(stats, stat.Copy())
 	}
 	return times, stats, err
@@ -116,24 +116,24 @@ func addStats(ser TimeSeries, stat *repr.StatRepr, num_s int, randomize bool) ([
 
 		if randomize {
 			dd, _ := time.ParseDuration(fmt.Sprintf("%ds", rand.Int31n(10)+1))
-			stat.Time = stat.Time.Add(dd)
-			stat.Max = repr.JsonFloat64(rand.Float64() * 20000.0)
-			stat.Min = repr.JsonFloat64(rand.Float64() * 20000.0)
-			stat.Last = repr.JsonFloat64(rand.Float64() * 20000.0)
-			stat.Sum = repr.JsonFloat64(float64(stat.Sum) + float64(i))
+			stat.Time = stat.Time + int64(dd.Seconds())
+			stat.Max = rand.Float64() * 20000.0
+			stat.Min = rand.Float64() * 20000.0
+			stat.Last = rand.Float64() * 20000.0
+			stat.Sum = float64(stat.Sum) + float64(i)
 			stat.Count = rand.Int63n(1000)
 		} else {
 			dd, _ := time.ParseDuration(fmt.Sprintf("%ds", 1+i))
-			stat.Time = stat.Time.Add(dd)
-			stat.Max += repr.JsonFloat64(1 + i)
-			stat.Min += repr.JsonFloat64(1 + i)
-			stat.Last += repr.JsonFloat64(1 + i)
-			stat.Sum += repr.JsonFloat64(1 + i)
+			stat.Time = stat.Time + int64(dd.Seconds())
+			stat.Max += float64(1 + i)
+			stat.Min += float64(1 + i)
+			stat.Last += float64(1 + i)
+			stat.Sum += float64(1 + i)
 			stat.Count += int64(1 + i)
 		}
-		times = append(times, stat.Time.UnixNano())
+		times = append(times, stat.Time)
 		stats = append(stats, stat.Copy())
-		err = ser.AddStat(stat)
+		err = ser.AddStat(stat.Copy())
 		if err != nil {
 			return times, stats, err
 		}
@@ -149,14 +149,14 @@ func addSingleValStat(ser TimeSeries, stat *repr.StatRepr, num_s int, randomize 
 
 		if randomize {
 			dd, _ := time.ParseDuration(fmt.Sprintf("%ds", rand.Int31n(10)+1))
-			stat.Time = stat.Time.Add(dd)
-			stat.Sum = repr.JsonFloat64(float64(stat.Sum) + float64(i))
+			stat.Time = stat.Time + int64(dd.Seconds())
+			stat.Sum = float64(stat.Sum) + float64(i)
 		} else {
 			dd, _ := time.ParseDuration(fmt.Sprintf("%ds", 1+i))
-			stat.Time = stat.Time.Add(dd)
-			stat.Sum += repr.JsonFloat64(1 + i)
+			stat.Time = stat.Time + int64(dd.Seconds())
+			stat.Sum += float64(1 + i)
 		}
-		times = append(times, stat.Time.UnixNano())
+		times = append(times, stat.Time)
 		stats = append(stats, stat.Copy())
 		err = ser.AddStat(stat)
 		if err != nil {
@@ -181,7 +181,7 @@ func benchmarkRawSize(b *testing.B, stype string, n_stat int) {
 	pre_len := int64(0)
 	_benchReset(b)
 	for i := 0; i < b.N; i++ {
-		ser, _ := NewTimeSeries(stype, n.UnixNano(), NewDefaultOptions())
+		ser, _ := NewTimeSeries(stype, n, NewDefaultOptions())
 		addStats(ser, stat, n_stat, true)
 		bss, _ := ser.MarshalBinary()
 		pre_len += int64(len(bss))
@@ -201,7 +201,7 @@ func benchmarkRawSizeSingleStat(b *testing.B, stype string, n_stat int) {
 	_benchReset(b)
 
 	for i := 0; i < b.N; i++ {
-		ser, _ := NewTimeSeries(stype, n.UnixNano(), NewDefaultOptions())
+		ser, _ := NewTimeSeries(stype, n, NewDefaultOptions())
 		addSingleValStat(ser, stat, n_stat, true)
 		bss, _ := ser.MarshalBinary()
 		pre_len += int64(len(bss))
@@ -221,7 +221,7 @@ func benchmarkNonRandomRawSizeSingleStat(b *testing.B, stype string, n_stat int)
 	_benchReset(b)
 
 	for i := 0; i < b.N; i++ {
-		ser, _ := NewTimeSeries(stype, n.UnixNano(), NewDefaultOptions())
+		ser, _ := NewTimeSeries(stype, n, NewDefaultOptions())
 		addSingleValStat(ser, stat, n_stat, false)
 		bss, _ := ser.MarshalBinary()
 		pre_len += int64(len(bss))
@@ -242,7 +242,7 @@ func benchmarkFlateCompress(b *testing.B, stype string, n_stat int) {
 	_benchReset(b)
 
 	for i := 0; i < b.N; i++ {
-		ser, _ := NewTimeSeries(stype, n.UnixNano(), NewDefaultOptions())
+		ser, _ := NewTimeSeries(stype, n, NewDefaultOptions())
 		addStats(ser, stat, n_stat, true)
 		bss, _ := ser.MarshalBinary()
 		c_bss := new(bytes.Buffer)
@@ -270,7 +270,7 @@ func benchmarkZipCompress(b *testing.B, stype string, n_stat int) {
 	_benchReset(b)
 
 	for i := 0; i < b.N; i++ {
-		ser, _ := NewTimeSeries(stype, n.UnixNano(), NewDefaultOptions())
+		ser, _ := NewTimeSeries(stype, n, NewDefaultOptions())
 		addStats(ser, stat, n_stat, true)
 		bss, _ := ser.MarshalBinary()
 		c_bss := new(bytes.Buffer)
@@ -297,7 +297,7 @@ func benchmarkSnappyCompress(b *testing.B, stype string, n_stat int) {
 	_benchReset(b)
 
 	for i := 0; i < b.N; i++ {
-		ser, _ := NewTimeSeries(stype, n.UnixNano(), NewDefaultOptions())
+		ser, _ := NewTimeSeries(stype, n, NewDefaultOptions())
 		addStats(ser, stat, n_stat, true)
 		bss, _ := ser.MarshalBinary()
 		c_bss := snappy.Encode(nil, bss)
@@ -324,7 +324,7 @@ func benchmarkZStdCompress(b *testing.B, stype string, n_stat int) {
 	_benchReset(b)
 
 	for i := 0; i < b.N; i++ {
-		ser, _ := NewTimeSeries(stype, n.UnixNano(), NewDefaultOptions())
+		ser, _ := NewTimeSeries(stype, n, NewDefaultOptions())
 		addStats(ser, stat, n_stat, true)
 		bss, _ := ser.MarshalBinary()
 		c_bss := new(bytes.Buffer)
@@ -354,7 +354,7 @@ func benchmarkLZWCompress(b *testing.B, stype string, n_stat int) {
 	_benchReset(b)
 
 	for i := 0; i < b.N; i++ {
-		ser, _ := NewTimeSeries(stype, n.UnixNano(), NewDefaultOptions())
+		ser, _ := NewTimeSeries(stype, n, NewDefaultOptions())
 		addStats(ser, stat, n_stat, true)
 		bss, _ := ser.MarshalBinary()
 		c_bss := new(bytes.Buffer)
@@ -383,7 +383,7 @@ func benchmarkSeriesReading(b *testing.B, stype string, n_stat int) {
 
 	for i := 0; i < b.N; i++ {
 
-		ser, _ := NewTimeSeries(stype, n.UnixNano(), NewDefaultOptions())
+		ser, _ := NewTimeSeries(stype, n, NewDefaultOptions())
 		addStats(ser, stat, n_stat, true)
 		it, err := ser.Iter()
 		if err != nil {
@@ -407,7 +407,7 @@ func benchmarkSeriesPut(b *testing.B, stype string, n_stat int) {
 	b.SetBytes(int64(8 * 8)) //8 64bit numbers
 	_benchReset(b)
 	for i := 0; i < b.N; i++ {
-		ser, err := NewTimeSeries(stype, n.UnixNano(), NewDefaultOptions())
+		ser, err := NewTimeSeries(stype, n, NewDefaultOptions())
 		if err != nil {
 			b.Fatalf("ERROR: %v", err)
 		}
@@ -427,7 +427,7 @@ func benchmarkSeriesPut8kRandom(b *testing.B, stype string) {
 	for i := 0; i < b.N; i++ {
 
 		stat, n := dummyStat()
-		ser, _ := NewTimeSeries(stype, n.UnixNano(), NewDefaultOptions())
+		ser, _ := NewTimeSeries(stype, n, NewDefaultOptions())
 		for true {
 			stat_ct++
 			_, _, err := addStats(ser, stat, 1, true)
@@ -456,7 +456,7 @@ func benchmarkSeriesPut8kNonRandom(b *testing.B, stype string) {
 	for i := 0; i < b.N; i++ {
 
 		stat, n := dummyStat()
-		ser, _ := NewTimeSeries(stype, n.UnixNano(), NewDefaultOptions())
+		ser, _ := NewTimeSeries(stype, n, NewDefaultOptions())
 		for true {
 			stat_ct++
 			_, _, err := addStats(ser, stat, 1, false)
@@ -485,7 +485,7 @@ func benchmarkSeriesPut8kRandomInt(b *testing.B, stype string) {
 	for i := 0; i < b.N; i++ {
 
 		stat, n := dummyStatInt()
-		ser, _ := NewTimeSeries(stype, n.UnixNano(), NewDefaultOptions())
+		ser, _ := NewTimeSeries(stype, n, NewDefaultOptions())
 		for true {
 			stat_ct++
 			_, _, err := addStats(ser, stat, 1, false)
@@ -518,12 +518,12 @@ func genericTestSeries(t *testing.T, stype string, options *Options) {
 		Convey("Series Type : "+stype+" : "+nm, t, func() {
 			stat, n := dummyStat()
 
-			ser, _ := NewTimeSeries(stype, n.UnixNano(), opt)
+			ser, _ := NewTimeSeries(stype, n, opt)
 			n_stats := 10
 			times, stats, err := addStats(ser, stat, n_stats, true)
 			So(err, ShouldEqual, nil)
 
-			s_time_test := n.UnixNano()
+			s_time_test := n
 			e_time_test := times[len(times)-1]
 			if !ser.HighResolution() {
 				tt, _ := splitNano(s_time_test)
@@ -615,7 +615,7 @@ func genericTestSeries(t *testing.T, stype string, options *Options) {
 			Convey("Series Type: "+stype+" - 'Smart' Single Point - "+nm, func() {
 
 				n_dd, nn := dummyStatSingleVal()
-				nser, _ := NewTimeSeries(stype, nn.UnixNano(), opt)
+				nser, _ := NewTimeSeries(stype, nn, opt)
 				n_times, o_stats, terr := addSingleValStat(nser, n_dd, n_stats, true)
 				So(terr, ShouldEqual, nil)
 				nit, _ := nser.Iter()

@@ -92,17 +92,17 @@ func SplitIntoMetric2Tags(intag SortingTags, inmeta SortingTags) (SortingTags, S
 	var new_tag SortingTags
 
 	for _, ntag := range inmeta {
-		if IsMetric2Tag(ntag[0]) {
-			new_tag = new_tag.Set(ntag[0], ntag[1])
+		if IsMetric2Tag(ntag.Name) {
+			new_tag = new_tag.Set(ntag.Name, ntag.Value)
 		} else {
-			new_meta = new_meta.Set(ntag[0], ntag[1])
+			new_meta = new_meta.Set(ntag.Name, ntag.Value)
 		}
 	}
 	for _, ntag := range intag {
-		if IsMetric2Tag(ntag[0]) {
-			new_tag = new_tag.Set(ntag[0], ntag[1])
+		if IsMetric2Tag(ntag.Name) {
+			new_tag = new_tag.Set(ntag.Name, ntag.Value)
 		} else {
-			new_meta = new_meta.Set(ntag[0], ntag[1])
+			new_meta = new_meta.Set(ntag.Name, ntag.Value)
 		}
 	}
 	return new_tag, new_meta
@@ -113,10 +113,10 @@ func MergeMetric2Tags(newtags SortingTags, intag SortingTags, inmeta SortingTags
 		return intag, inmeta
 	}
 	for _, ntag := range newtags {
-		if IsMetric2Tag(ntag[0]) {
-			intag = intag.Set(ntag[0], ntag[1])
+		if IsMetric2Tag(ntag.Name) {
+			intag = intag.Set(ntag.Name, ntag.Value)
 		} else {
-			inmeta = inmeta.Set(ntag[0], ntag[1])
+			inmeta = inmeta.Set(ntag.Name, ntag.Value)
 		}
 	}
 	return intag, inmeta

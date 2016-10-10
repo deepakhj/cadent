@@ -101,10 +101,10 @@ func (g *CarbonTwoFormatter) Write(buf io.Writer, name *repr.StatName, val float
 		sort.Sort(name.Tags)
 		name.Tags.WriteBytes(buf, repr.EQUAL_SEPARATOR_BYTE, repr.SPACE_SEPARATOR_BYTE)
 	} else {
-		s_tags := repr.SortingTags([][]string{
-			{"mtype", mtype},
-			{"unit", unit},
-			{"what", name.Key},
+		s_tags := repr.SortingTags([]*repr.Tag{
+			{Name: "mtype", Value: mtype},
+			{Name: "unit", Value: unit},
+			{Name: "what", Value: name.Key},
 		})
 		s_tags.WriteBytes(buf, repr.EQUAL_SEPARATOR_BYTE, repr.SPACE_SEPARATOR_BYTE)
 

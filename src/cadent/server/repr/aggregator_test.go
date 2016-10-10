@@ -25,32 +25,33 @@ import (
 func TestStatReprAggregator(t *testing.T) {
 	// Only pass t into top-level Convey calls
 	t_time := time.Now()
+	t_time_u := t_time.UnixNano()
 	ss := StatRepr{
-		Name:  StatName{Key: "moo", Resolution: 1},
+		Name:  &StatName{Key: "moo", Resolution: 1},
 		Sum:   5,
 		Min:   1,
 		Max:   3,
 		Count: 4,
 		Last:  1,
-		Time:  t_time,
+		Time:  t_time_u,
 	}
 	ssM := StatRepr{
-		Name:  StatName{Key: "moo", Resolution: 1},
+		Name:  &StatName{Key: "moo", Resolution: 1},
 		Sum:   5,
 		Min:   0,
 		Max:   8,
 		Count: 4,
 		Last:  2,
-		Time:  t_time,
+		Time:  t_time_u,
 	}
 	ss2 := StatRepr{
-		Name:  StatName{Key: "goo", Resolution: 2},
+		Name:  &StatName{Key: "goo", Resolution: 2},
 		Sum:   5,
 		Min:   1,
 		Max:   3,
 		Count: 4,
 		Last:  4,
-		Time:  t_time,
+		Time:  t_time_u,
 	}
 
 	Convey("Aggregator", t, func() {

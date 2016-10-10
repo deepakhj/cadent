@@ -162,7 +162,7 @@ func TestPoolerConns(t *testing.T) {
 	Convey("TCP Pool connections should", t, func() {
 		_, err := NewWriterConn("moo", "goo", t_out)
 
-		Convey("error on bad protocal", func() {
+		Convey("error on bad protocol", func() {
 			So(err, ShouldNotBeNil)
 		})
 

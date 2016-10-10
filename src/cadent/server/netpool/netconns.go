@@ -27,14 +27,14 @@ import (
 	"time"
 )
 
-func NewWriterConn(protocal string, host string, timeout time.Duration) (net.Conn, error) {
-	if protocal == "tcp" || protocal == "udp" || protocal == "unix" {
-		conn, err := net.DialTimeout(protocal, host, timeout)
+func NewWriterConn(protocol string, host string, timeout time.Duration) (net.Conn, error) {
+	if protocol == "tcp" || protocol == "udp" || protocol == "unix" {
+		conn, err := net.DialTimeout(protocol, host, timeout)
 		return conn, err
-	} else if protocal == "http" || protocal == "https" {
-		return NewWriterHttpConn(protocal, host, timeout)
+	} else if protocol == "http" || protocol == "https" {
+		return NewWriterHttpConn(protocol, host, timeout)
 	}
-	return nil, fmt.Errorf("Invalid connection protocal")
+	return nil, fmt.Errorf("Invalid connection protocol")
 }
 
 /** the net.Conn interface for ease
@@ -81,14 +81,14 @@ func (ha HTTPAddr) String() string {
 }
 
 // basically delgate the dial timeout
-func NewWriterHttpConn(protocal string, host string, timeout time.Duration) (*WrtiterHttpConn, error) {
+func NewWriterHttpConn(protocol string, host string, timeout time.Duration) (*WrtiterHttpConn, error) {
 	// the "host" may be url + path
 	w := new(WrtiterHttpConn)
-	w.Proto = protocal
+	w.Proto = protocol
 	w.Host = host
 	w.Timeout = timeout
 	// the input may have a PATH as well, but we may need to host as some point
-	w.url, _ = url.Parse(protocal + "://" + host)
+	w.url, _ = url.Parse(protocol + "://" + host)
 	w.Method = "POST"
 	w.tr = &http.Transport{}
 	w.client = &http.Client{

@@ -83,7 +83,7 @@ type ConfigAccumulator struct {
 	OutputFormat      string               `toml:"output_format"  json:"output_format"`
 	KeepKeys          bool                 `toml:"keep_keys"  json:"keep_keys"` // keeps the keys on flush  "0's" them rather then removal
 	Option            [][]string           `toml:"options"  json:"options"`     // option=[ [key, value], [key, value] ...]
-	Tags              repr.SortingTags     `toml:"tags"  json:"tags"`
+	Tags              string               `toml:"tags"  json:"tags"`
 	Writer            writers.WriterConfig `toml:"writer"  json:"writer"`
 	Reader            api.ApiConfig        `toml:"api"  json:"api"`                                 // http server for reading
 	Times             []string             `toml:"times"  json:"times"`                             // Aggregate Timers (or the first will be used for Accumulator flushes)
@@ -194,7 +194,9 @@ func (cf *ConfigAccumulator) GetAccumulator() (*Accumulator, error) {
 		return nil, fmt.Errorf("Need a `backend` for post delegation")
 	}
 	ac.ToBackend = cf.ToBackend
-	ac.Accumulate.SetTags(cf.Tags)
+	if len(cf.Tags) > 0 {
+		ac.Accumulate.SetTags(repr.SortingTagsFromString(cf.Tags))
+	}
 	err = ac.Accumulate.SetOptions(cf.Option)
 	if err != nil {
 		log.Critical("Error setting options: %s", err)

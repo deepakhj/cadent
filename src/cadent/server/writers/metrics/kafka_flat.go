@@ -135,7 +135,7 @@ func (kf *KafkaFlatMetrics) Write(stat repr.StatRepr) error {
 	}
 
 	stat.Name.MergeMetric2Tags(kf.static_tags)
-	kf.indexer.Write(stat.Name) // to the indexer
+	kf.indexer.Write(*stat.Name) // to the indexer
 	item := &schemas.KMetric{
 		AnyMetric: schemas.AnyMetric{
 			Single: &schemas.SingleMetric{
@@ -147,11 +147,11 @@ func (kf *KafkaFlatMetrics) Write(stat repr.StatRepr) error {
 				Max:        float64(stat.Max),
 				Min:        float64(stat.Min),
 				Resolution: stat.Name.Resolution,
-				Ttl:        stat.Name.TTL,
+				Ttl:        stat.Name.Ttl,
 				Id:         uint64(stat.Name.UniqueId()),
 				Uid:        stat.Name.UniqueIdString(),
-				Tags:       schemas.ToMetricTag(stat.Name.SortedTags()),
-				MetaTags:   schemas.ToMetricTag(stat.Name.SortedMetaTags()),
+				Tags:       stat.Name.SortedTags(),
+				MetaTags:   stat.Name.SortedMetaTags(),
 			},
 		},
 	}

@@ -408,7 +408,7 @@ func (s *GorillaTimeSeries) AddPoint(t int64, min float64, max float64, last flo
 }
 
 func (s *GorillaTimeSeries) AddStat(stat *repr.StatRepr) error {
-	return s.AddPoint(stat.Time.UnixNano(), float64(stat.Min), float64(stat.Max), float64(stat.Last), float64(stat.Sum), stat.Count)
+	return s.AddPoint(stat.Time, stat.Min, stat.Max, stat.Last, stat.Sum, stat.Count)
 }
 
 type GorillaIter struct {
@@ -729,9 +729,9 @@ func (it *GorillaIter) Values() (int64, float64, float64, float64, float64, int6
 
 func (it *GorillaIter) ReprValue() *repr.StatRepr {
 	if it.curSmartEnc == utils.ZeroBit {
-		v := repr.JsonFloat64(it.curVals[3])
+		v := repr.CheckFloat(it.curVals[3])
 		return &repr.StatRepr{
-			Time:  time.Unix(int64(it.curTime), int64(it.curTimeMs)),
+			Time:  time.Unix(int64(it.curTime), int64(it.curTimeMs)).UnixNano(),
 			Min:   v,
 			Max:   v,
 			Last:  v,
@@ -740,11 +740,11 @@ func (it *GorillaIter) ReprValue() *repr.StatRepr {
 		}
 	}
 	return &repr.StatRepr{
-		Time:  time.Unix(int64(it.curTime), int64(it.curTimeMs)),
-		Min:   repr.JsonFloat64(it.curVals[0]),
-		Max:   repr.JsonFloat64(it.curVals[1]),
-		Last:  repr.JsonFloat64(it.curVals[2]),
-		Sum:   repr.JsonFloat64(it.curVals[3]),
+		Time:  time.Unix(int64(it.curTime), int64(it.curTimeMs)).UnixNano(),
+		Min:   repr.CheckFloat(it.curVals[0]),
+		Max:   repr.CheckFloat(it.curVals[1]),
+		Last:  repr.CheckFloat(it.curVals[2]),
+		Sum:   repr.CheckFloat(it.curVals[3]),
 		Count: int64(it.curVals[4]),
 	}
 }

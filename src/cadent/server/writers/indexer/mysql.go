@@ -264,14 +264,14 @@ func (my *MySQLIndexer) WriteTags(inname *repr.StatName, do_main bool, do_meta b
 	if have_tgs && do_main {
 
 		for _, tag := range inname.Tags.Tags() {
-			c_id, c_meta := my.inTagCache(tag[0], tag[1])
+			c_id, c_meta := my.inTagCache(tag.Name, tag.Name)
 			if c_id > 0 && c_meta == false {
 				tag_ids = append(tag_ids, c_id)
 			} else {
-				res, err := tx.Exec(tagQ, tag[0], tag[1], false)
+				res, err := tx.Exec(tagQ, tag.Name, tag.Value, false)
 				if err != nil {
 					if strings.Contains(fmt.Sprintf("%s", err), "Duplicate entry") {
-						id, err := my.FindTagId(tag[0], tag[1], false)
+						id, err := my.FindTagId(tag.Name, tag.Value, false)
 						if err == nil {
 							tag_ids = append(tag_ids, id)
 							continue
@@ -287,21 +287,21 @@ func (my *MySQLIndexer) WriteTags(inname *repr.StatName, do_main bool, do_meta b
 					continue
 				}
 				tag_ids = append(tag_ids, id)
-				my.tagIdCache.Add(tag[0], tag[1], false, id)
+				my.tagIdCache.Add(tag.Name, tag.Value, false, id)
 			}
 		}
 	}
 
 	if have_meta && do_meta {
 		for _, tag := range inname.MetaTags.Tags() {
-			c_id, c_meta := my.inTagCache(tag[0], tag[1])
+			c_id, c_meta := my.inTagCache(tag.Name, tag.Value)
 			if c_id > 0 && c_meta == true {
 				tag_ids = append(tag_ids, c_id)
 			} else {
-				res, err := tx.Exec(tagQ, tag[0], tag[1], true)
+				res, err := tx.Exec(tagQ, tag.Name, tag.Value, true)
 				if err != nil {
 					if strings.Contains(fmt.Sprintf("%s", err), "Duplicate entry") {
-						id, err := my.FindTagId(tag[0], tag[1], true)
+						id, err := my.FindTagId(tag.Name, tag.Value, true)
 						if err == nil {
 							tag_ids = append(tag_ids, id)
 							continue
@@ -316,7 +316,7 @@ func (my *MySQLIndexer) WriteTags(inname *repr.StatName, do_main bool, do_meta b
 					continue
 				}
 				tag_ids = append(tag_ids, id)
-				my.tagIdCache.Add(tag[0], tag[1], true, id)
+				my.tagIdCache.Add(tag.Name, tag.Value, true, id)
 
 			}
 		}
@@ -773,7 +773,7 @@ func (my *MySQLIndexer) GetUidsByTags(key string, tags repr.SortingTags, page in
 	}
 
 	for idx, ontag := range tags {
-		rows, err := my.conn.Query(tags_idsQ, ontag[0], ontag[1])
+		rows, err := my.conn.Query(tags_idsQ, ontag.Name, ontag.Value)
 		if err != nil {
 			my.log.Error("Error Getting Uid: %v", err)
 			return uids, err
@@ -907,7 +907,7 @@ func (my *MySQLIndexer) FindNonRegex(metric string, tags repr.SortingTags, exact
 	tag_ids := make([]int64, 0)
 	having_ct := 0
 	for _, tag := range tags {
-		t_ids, _ := my.GetTagsByNameValue(tag[0], tag[1], 0)
+		t_ids, _ := my.GetTagsByNameValue(tag.Name, tag.Value, 0)
 		having_ct += 1 // need this as the value may be a regex
 		for _, tg := range t_ids {
 			tag_ids = append(tag_ids, tg.Id.(int64))

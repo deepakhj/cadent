@@ -126,7 +126,7 @@ func (re *CacheAPI) GetSeriesFromCache(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-CadentSeries-MetaTags", string(t_str))
 
 	w.Header().Set("X-CadentSeries-Resolution", fmt.Sprintf("%d", data.Name.Resolution))
-	w.Header().Set("X-CadentSeries-TTL", fmt.Sprintf("%d", data.Name.TTL))
+	w.Header().Set("X-CadentSeries-TTL", fmt.Sprintf("%d", data.Name.Ttl))
 	w.Header().Set("X-CadentSeries-Encoding", data.Series.Name())
 	w.Header().Set("X-CadentSeries-Start", fmt.Sprintf("%d", data.Series.StartTime()))
 	w.Header().Set("X-CadentSeries-End", fmt.Sprintf("%d", data.Series.LastTime()))

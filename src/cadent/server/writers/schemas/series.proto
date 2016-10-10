@@ -1,85 +1,97 @@
-//go:generate protoc --gogofaster_out=. series.proto
+//go:generate  protoc --proto_path=../../../../cadent/vendor/:./:../../../../ --gogofaster_out=. series.proto
+
+// also need to generate the msgpack from the rendered result
+// msgp -o series_msgp.go --file series.pb.go
+
+syntax = 'proto3';
 
 package schemas;
 
-message MetricTag {
-	repeated string tag = 1;
-}
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "cadent/server/repr/repr.proto";
+
+option (gogoproto.goproto_getters_all) = false;
+option (gogoproto.benchgen_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.sizer_all) = true;
+option (gogoproto.populate_all) = true;
+
 
 message MetricType {
-	required string type = 1;
+	string type = 1;
 }
 
 message MetricName {
-    required string metric = 1;
-    optional uint64 id = 2;
-    optional string uid = 3;
-    repeated MetricTag tags = 13;
-    repeated MetricTag meta_tags = 14;
+	string metric = 1;
+	uint64 id = 2;
+	string uid = 3;
+	repeated repr.Tag tags = 13;
+	repeated repr.Tag meta_tags = 14;
 }
 
 message MetricValue {
-    required int64 time = 1;
-    optional double min = 2;
-    optional double max = 3;
-    optional double last = 4;
-    required double sum = 5;
-    required int64 count = 6;
+	int64 time = 1;
+	double min = 2;
+	double max = 3;
+	double last = 4;
+	double sum = 5;
+	int64 count = 6;
 }
 
 message SeriesMetric {
-	required uint64 id = 2;
-	required string uid = 3;
-	required int64 time = 4;
-	required string metric = 5;
-	required string encoding = 6;
-	required bytes data = 7;
-	optional uint32 resolution = 8;
-	optional uint32 ttl = 9;
-	repeated MetricTag tags = 13;
-	repeated MetricTag meta_tags = 14;
+	uint64 id = 2;
+	string uid = 3;
+	int64 time = 4;
+	string metric = 5;
+	string encoding = 6;
+	bytes data = 7;
+	uint32 resolution = 8;
+	uint32 ttl = 9;
+	repeated repr.Tag tags = 13;
+	repeated repr.Tag meta_tags = 14;
 }
 
 message SingleMetric {
-	required uint64 id = 2;
-	required string uid = 3;
-	required int64 time = 4;
-	required string metric = 5;
-	optional double min = 6;
-	optional double max = 7;
-	optional double last = 8;
-	required double sum = 9;
-	required int64 count =10;
-	optional uint32 resolution = 11;
-	optional uint32 ttl = 12;
-	repeated MetricTag tags = 13;
-	repeated MetricTag meta_tags = 14;
+	uint64 id = 2;
+	string uid = 3;
+	int64 time = 4;
+	string metric = 5;
+	double min = 6;
+	double max = 7;
+	double last = 8;
+	double sum = 9;
+	int64 count =10;
+	uint32 resolution = 11;
+	uint32 ttl = 12;
+	repeated repr.Tag tags = 13;
+	repeated repr.Tag meta_tags = 14;
 }
 
 message UnProcessedMetric {
-	required int64 time = 1;
-	required string metric = 2;
-	optional double min = 3;
-	optional double max = 4;
-	optional double last = 5;
-	required double sum = 6;
-	required int64 count = 7;
-	repeated MetricTag tags = 13;
-	repeated MetricTag meta_tags = 14;
+	int64 time = 1;
+	string metric = 2;
+	double min = 3;
+	double max = 4;
+	double last = 5;
+	double sum = 6;
+	int64 count = 7;
+	repeated repr.Tag tags = 13;
+	repeated repr.Tag meta_tags = 14;
 }
 
 
 message RawMetric {
-	required int64 time = 1;
-	required string metric = 2;
-	required double value = 3;
-	repeated MetricTag tags = 13;
-	repeated MetricTag meta_tags = 14;
+	int64 time = 1;
+	string metric = 2;
+	double value = 3;
+	repeated repr.Tag tags = 13;
+	repeated repr.Tag meta_tags = 14;
 }
 
 message AnyMetric{
-	optional RawMetric raw = 1;
-	optional UnProcessedMetric unprocessed = 2;
-	optional SingleMetric single = 3;
-	optional SeriesMetric series = 4;
+	RawMetric raw = 1;
+	UnProcessedMetric unprocessed = 2;
+	SingleMetric single = 3;
+	SeriesMetric series = 4;
 }

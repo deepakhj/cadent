@@ -48,7 +48,6 @@ import (
 	"io"
 	"math"
 	"sync"
-	"time"
 )
 
 const (
@@ -279,7 +278,7 @@ func (s *GobTimeSeries) AddPoint(t int64, min float64, max float64, last float64
 }
 
 func (s *GobTimeSeries) AddStat(stat *repr.StatRepr) error {
-	return s.AddPoint(stat.Time.UnixNano(), float64(stat.Min), float64(stat.Max), float64(stat.Last), float64(stat.Sum), stat.Count)
+	return s.AddPoint(stat.Time, stat.Min, stat.Max, stat.Last, stat.Sum, stat.Count)
 }
 
 // Iter lets you iterate over a series.  It is not concurrency-safe.
@@ -471,18 +470,12 @@ func (it *GobIter) Values() (int64, float64, float64, float64, float64, int64) {
 }
 
 func (it *GobIter) ReprValue() *repr.StatRepr {
-	var t time.Time
-	if it.fullResolution {
-		t = time.Unix(0, it.curTime)
-	} else {
-		t = time.Unix(it.curTime, 0)
-	}
 	return &repr.StatRepr{
-		Time:  t,
-		Min:   repr.JsonFloat64(it.min),
-		Max:   repr.JsonFloat64(it.max),
-		Last:  repr.JsonFloat64(it.last),
-		Sum:   repr.JsonFloat64(it.sum),
+		Time:  it.curTime,
+		Min:   repr.CheckFloat(it.min),
+		Max:   repr.CheckFloat(it.max),
+		Last:  repr.CheckFloat(it.last),
+		Sum:   repr.CheckFloat(it.sum),
 		Count: it.count,
 	}
 }

@@ -443,7 +443,7 @@ func (my *MySQLMetrics) Write(stat repr.StatRepr) error {
 
 	// only need to do this if the first resolution
 	if my.currentResolution == my.resolutions[0][0] {
-		my.indexer.Write(stat.Name)
+		my.indexer.Write(*stat.Name)
 	}
 
 	// not primary writer .. move along
@@ -461,10 +461,10 @@ func (my *MySQLMetrics) Write(stat repr.StatRepr) error {
 
 	if my.rollupType == "triggered" {
 		if my.currentResolution == my.resolutions[0][0] {
-			my.cacher.Add(&stat.Name, &stat)
+			my.cacher.Add(stat.Name, &stat)
 		}
 	} else {
-		my.cacher.Add(&stat.Name, &stat)
+		my.cacher.Add(stat.Name, &stat)
 	}
 	return nil
 }
@@ -510,10 +510,10 @@ func (my *MySQLMetrics) GetFromReadCache(metric string, start int64, end int64) 
 
 		f_t := uint32(0)
 		for _, stat := range cached_stats {
-			t := uint32(stat.Time.Unix())
+			t := uint32(stat.ToTime().Unix())
 			d_points = append(d_points, RawDataPoint{
 				Count: 1,
-				Sum:   float64(stat.Sum),
+				Sum:   stat.Sum,
 				Time:  t,
 			})
 			if f_t <= 0 {
@@ -747,7 +747,6 @@ func (my *MySQLMetrics) RawDataRenderOne(metric *indexer.MetricFindItem, start i
 	// the read cache should have "all" the points from a "start" to "end" if the read cache has been activated for
 	// a while.  If not, then it's a partial list (basically the read cache just started)
 	inflight, err := my.GetFromWriteCache(metric, u_start, u_end, resolution)
-
 	// need at LEAST 2 points to get the proper step size
 	if inflight != nil && err == nil && len(inflight.Data) > 1 {
 		// if all the data is in this list we don't need to go any further

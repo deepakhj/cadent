@@ -27,12 +27,12 @@ import (
 )
 
 // for TCP conns
-func GetReuseListener(protocal string, addr string) (net.Listener, error) {
-	return reuse.Listen(protocal, addr)
+func GetReuseListener(protocol string, addr string) (net.Listener, error) {
+	return reuse.Listen(protocol, addr)
 
 }
 
 // for UDP conns
-func GetReusePacketListener(protocal string, addr string) (net.PacketConn, error) {
-	return reuse.ListenPacket(protocal, addr)
+func GetReusePacketListener(protocol string, addr string) (net.PacketConn, error) {
+	return reuse.ListenPacket(protocol, addr)
 }

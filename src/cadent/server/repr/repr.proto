@@ -1,0 +1,52 @@
+//go:generate protoc --proto_path=../../../cadent/vendor/:./ --gogofaster_out=. repr.proto
+// also need to generate the msgpack from the rendered result
+// msgp -o repr_msgp.go --file repr.pb.go
+// msgp -o tags_msgp.go --file tags.go
+
+// XXX NOTE: after generation you will need to replace []*Tag w/ SortingTags in the repr.pb.go
+
+syntax = 'proto3';
+
+package repr;
+
+
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+
+option (gogoproto.goproto_getters_all) = false;
+option (gogoproto.benchgen_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.sizer_all) = true;
+option (gogoproto.populate_all) = true;
+
+enum TagMode {
+	METRICS2 = 0;
+	ALL = 1;
+}
+
+message Tag{
+	string name = 1;
+	string value = 2;
+}
+
+message StatName {
+
+	string key = 1;
+	uint64 uniqueId = 2 [(gogoproto.customname) = "XXX_uniqueId", (gogoproto.jsontag) = ""];
+	string uniqueIdstr = 3 [(gogoproto.customname) = "XXX_uniqueIdstr", (gogoproto.jsontag) = ""];
+	uint32 resolution = 4;
+	uint32 ttl = 5;
+	TagMode tagMode = 6;
+	repeated Tag tags = 13;
+	repeated Tag meta_tags = 14;
+}
+
+message StatRepr {
+	StatName name = 1;
+	int64 time = 2;
+	double min = 3;
+	double max = 4;
+	double last = 5;
+	double sum = 6;
+	int64 count = 7;
+}

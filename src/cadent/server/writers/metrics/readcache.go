@@ -90,11 +90,12 @@ func (rc *ReadCacheItem) Add(stat *repr.StatRepr) {
 	}
 
 	rc.Data.AddStat(stat)
-	if stat.Time.After(rc.EndTime) {
-		rc.EndTime = stat.Time
+	s_time := stat.ToTime()
+	if s_time.After(rc.EndTime) {
+		rc.EndTime = s_time
 	}
-	if stat.Time.Before(rc.StartTime) || rc.StartTime.IsZero() {
-		rc.StartTime = stat.Time
+	if s_time.Before(rc.StartTime) || rc.StartTime.IsZero() {
+		rc.StartTime = s_time
 	}
 }
 
@@ -152,20 +153,21 @@ func (rc *ReadCacheItem) Get(start time.Time, end time.Time) (stats repr.StatRep
 	for it.Next() {
 		stat := it.ReprValue()
 
-		if stat == nil || stat.Time.IsZero() {
+		if stat == nil || stat.Time == 0 {
 			continue
 		}
-		t_int := stat.Time.UnixNano()
+		s_time := stat.ToTime()
+		t_int := s_time.UnixNano()
 		if s_int <= t_int && e_int >= t_int {
 			if firsttime.IsZero() {
-				firsttime = stat.Time
-			} else if stat.Time.After(firsttime) {
-				firsttime = stat.Time
+				firsttime = s_time
+			} else if s_time.After(firsttime) {
+				firsttime = s_time
 			}
 			if lasttime.IsZero() {
-				lasttime = stat.Time
-			} else if stat.Time.Before(lasttime) {
-				lasttime = stat.Time
+				lasttime = s_time
+			} else if s_time.Before(lasttime) {
+				lasttime = s_time
 			}
 
 			stats = append(stats, stat)
@@ -184,7 +186,7 @@ func (rc *ReadCacheItem) GetAll() repr.StatReprSlice {
 	}
 	for it.Next() {
 		stat := it.ReprValue()
-		if stat == nil || stat.Time.IsZero() {
+		if stat == nil || stat.Time == 0 {
 			continue
 		}
 

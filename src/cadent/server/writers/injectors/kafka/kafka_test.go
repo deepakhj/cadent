@@ -155,7 +155,7 @@ func getMetrics(len int, useencoding schemas.SendEncoding) []schemas.KMessageBas
 						Metric: "moo.goo",
 						Time:   time.Now().Unix(),
 						Value:  100.0 * float64(idx),
-						Tags:   schemas.ToMetricTag(repr.SortingTags([][]string{{"name", "val"}, {"name2", "val2"}})),
+						Tags:   repr.SortingTags([]*repr.Tag{{Name: "name", Value: "val"}, {Name: "name2", Value: "val2"}}),
 					},
 				},
 			}
@@ -169,7 +169,7 @@ func getMetrics(len int, useencoding schemas.SendEncoding) []schemas.KMessageBas
 						Min:    1.0,
 						Max:    120.0,
 						Count:  2 + int64(idx),
-						Tags:   schemas.ToMetricTag(repr.SortingTags([][]string{{"name", "val"}, {"name2", "val2"}})),
+						Tags:   repr.SortingTags([]*repr.Tag{{Name: "name", Value: "val"}, {Name: "name2", Value: "val2"}}),
 					},
 				},
 			}
@@ -187,7 +187,7 @@ func getMetrics(len int, useencoding schemas.SendEncoding) []schemas.KMessageBas
 						Min:    1.0,
 						Max:    10.0,
 						Count:  20 + int64(idx),
-						Tags:   schemas.ToMetricTag(repr.SortingTags([][]string{{"name", "val"}, {"name2", "val2"}})),
+						Tags:   repr.SortingTags([]*repr.Tag{{Name: "name", Value: "val"}, {Name: "name2", Value: "val2"}}),
 					},
 				},
 			}

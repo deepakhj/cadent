@@ -19,12 +19,17 @@ Writers themselves are split into 2 sections "Indexers" and "Metrics"
 
 Indexers: take a metrics "name" which has the form
 
+    Tag{
+        Name string
+        Value string
+    }
+
     StatName{
         Key string
         UniqueId uint64
         UniqueIdString string
-        Tags  [][]string
-        MetaTags [][]string
+        Tags  []Tag
+        MetaTags []Tag
         Resolution uint32
         TTL uint32
     }
@@ -992,8 +997,8 @@ already and consumers can deal with indexing)
     	    path: "my.metric.is.good",
     	    segments: ["my", "metric", "is", "good"],
     	    senttime: [int64 unix Nano second time stamp]
-    	    tags: [][]string //[[key1,value1], [key2,value2]...]
-            meta_tags: [][]string //[[key1,value1], [key2,value2]...]
+    	    tags: []Tag //[{name: xx, value: xx }, {name: xx, value: xx}]
+            meta_tags: []Tag // [{name: xx, value: xx }, {name: xx, value: xx}]
     	}
 
 The "Flat" format is
@@ -1010,9 +1015,9 @@ The "Flat" format is
     	        last: float64,
     	        count: int64,
     	        resolution: float64,
-    	        ttl: int64,
-                tags: [ {tag: [name, val]}, {tag: [name, val]} ...]
-                meta_tags:  [ {tag: [name, val]}, {tag: [name, val]} ...]
+    	        ttl: int64
+                tags: [ {name: xx, value: xx }, {name: xx, value: xx}]
+                meta_tags:  [ {name: xx, value: xx }, {name: xx, value: xx}]
     	    }
     	}
 
@@ -1028,12 +1033,10 @@ The "Blob" format is
     	        encoding: string // the series encoding gorilla, protobuf, etc
     	        resolution: float64,
     	        ttl: int64,
-    	        tags:  [ {tag: [name, val]}, {tag: [name, val]} ...]
-                meta_tags:  [ {tag: [name, val]}, {tag: [name, val]} ...]
+    	        tags:  [ {name: xx, value: xx }, {name: xx, value: xx} ...]
+                meta_tags:  [ {name: xx, value: xx }, {name: xx, value: xx} ...]
             }
     	}
-
-*Note* Tags are encoded this way in order to support mulitple encoding formats, specifically Protobufs
 
 Encoding formats supported are "json", "protobuf" and "msgpack"
 

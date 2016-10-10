@@ -40,7 +40,6 @@ import (
 	"cadent/server/repr"
 	"encoding/json"
 	"sync"
-	"time"
 )
 
 const (
@@ -50,12 +49,12 @@ const (
 
 // sort-hand keys for space purposes
 type jsonStat struct {
-	Time  int64            `json:"t"`
-	Min   repr.JsonFloat64 `json:"n"`
-	Max   repr.JsonFloat64 `json:"m"`
-	Sum   repr.JsonFloat64 `json:"s"`
-	Last  repr.JsonFloat64 `json:"l"`
-	Count int64            `json:"c"`
+	Time  int64   `json:"t"`
+	Min   float64 `json:"n"`
+	Max   float64 `json:"m"`
+	Sum   float64 `json:"s"`
+	Last  float64 `json:"l"`
+	Count int64   `json:"c"`
 }
 
 type JsonStats []jsonStat
@@ -145,10 +144,10 @@ func (s *JsonTimeSeries) AddPoint(t int64, min float64, max float64, last float6
 	defer s.mu.Unlock()
 	s.Stats = append(s.Stats, jsonStat{
 		Time:  t,
-		Min:   repr.JsonFloat64(min),
-		Max:   repr.JsonFloat64(max),
-		Last:  repr.JsonFloat64(last),
-		Sum:   repr.JsonFloat64(sum),
+		Min:   repr.CheckFloat(min),
+		Max:   repr.CheckFloat(max),
+		Last:  repr.CheckFloat(last),
+		Sum:   repr.CheckFloat(sum),
 		Count: count,
 	})
 	if t > s.curTime {
@@ -161,7 +160,7 @@ func (s *JsonTimeSeries) AddPoint(t int64, min float64, max float64, last float6
 }
 
 func (s *JsonTimeSeries) AddStat(stat *repr.StatRepr) error {
-	return s.AddPoint(stat.Time.UnixNano(), float64(stat.Min), float64(stat.Max), float64(stat.Last), float64(stat.Sum), stat.Count)
+	return s.AddPoint(stat.Time, float64(stat.Min), float64(stat.Max), float64(stat.Last), float64(stat.Sum), stat.Count)
 }
 
 // Iter lets you iterate over a series.  It is not concurrency-safe.
@@ -173,10 +172,10 @@ type JsonIter struct {
 	curStat *jsonStat
 
 	curTime int64
-	min     repr.JsonFloat64
-	max     repr.JsonFloat64
-	last    repr.JsonFloat64
-	sum     repr.JsonFloat64
+	min     float64
+	max     float64
+	last    float64
+	sum     float64
 	count   int64
 
 	finished bool
@@ -211,12 +210,12 @@ func (it *JsonIter) Next() bool {
 }
 
 func (it *JsonIter) Values() (int64, float64, float64, float64, float64, int64) {
-	return it.curStat.Time, float64(it.curStat.Min), float64(it.curStat.Max), float64(it.curStat.Last), float64(it.curStat.Sum), it.curStat.Count
+	return it.curStat.Time, it.curStat.Min, it.curStat.Max, it.curStat.Last, it.curStat.Sum, it.curStat.Count
 }
 
 func (it *JsonIter) ReprValue() *repr.StatRepr {
 	return &repr.StatRepr{
-		Time:  time.Unix(0, it.curStat.Time),
+		Time:  it.curStat.Time,
 		Min:   it.curStat.Min,
 		Max:   it.curStat.Max,
 		Last:  it.curStat.Last,

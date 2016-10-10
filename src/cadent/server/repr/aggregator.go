@@ -77,8 +77,9 @@ func (sa *Aggregator) GetAndClear() map[string]*StatRepr {
 
 func (sa *Aggregator) Add(stat *StatRepr) error {
 
-	res_time := sa.ResolutionTime(stat.Time)
-	m_k := sa.MapKey(stat.Name.UniqueIdString(), stat.Time)
+	t_t := stat.ToTime()
+	res_time := sa.ResolutionTime(t_t)
+	m_k := sa.MapKey(stat.Name.UniqueIdString(), t_t)
 	sa.mu.RLock()
 	element, ok := sa.Items[m_k]
 	sa.mu.RUnlock()
@@ -103,7 +104,7 @@ func (sa *Aggregator) Add(stat *StatRepr) error {
 		element.Min = stat.Min
 	}
 	element.Sum += stat.Sum
-	element.Time = res_time
+	element.Time = res_time.UnixNano()
 	element.Name.Resolution = uint32(sa.Resolution.Seconds())
 	/*sa.mu.Lock()
 	sa.Items[m_k] = element

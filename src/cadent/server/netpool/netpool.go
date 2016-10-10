@@ -35,7 +35,7 @@ type Netpool struct {
 	mu                sync.Mutex
 	closeMu           sync.Mutex
 	name              string
-	protocal          string
+	protocol          string
 	conns             int
 	MaxConnections    int
 	RecycleTimeout    time.Duration
@@ -83,10 +83,10 @@ func (n *NetpoolConn) Write(b []byte) (int, error) {
 
 ///***** POOLER ****///
 
-func NewNetpool(protocal string, name string) *Netpool {
+func NewNetpool(protocol string, name string) *Netpool {
 	pool := &Netpool{
 		name:              name,
-		protocal:          protocal,
+		protocol:          protocol,
 		MaxConnections:    MaxConnections,
 		RecycleTimeout:    RecycleTimeoutDuration,
 		newConnectionFunc: NewNetPoolConn,
@@ -126,7 +126,7 @@ func (n *Netpool) ResetConn(net_conn NetpoolConnInterface) error {
 		net_conn.SetConn(nil)
 	}
 
-	conn, err := NewWriterConn(n.protocal, n.name, ConnectionTimeout)
+	conn, err := NewWriterConn(n.protocol, n.name, ConnectionTimeout)
 	if err != nil {
 		log.Error("Connection open error: ", err)
 		return err
@@ -135,7 +135,7 @@ func (n *Netpool) ResetConn(net_conn NetpoolConnInterface) error {
 	net_conn.SetStarted(time.Now())
 
 	// put it back on the queue
-	log.Warning("Reset Connection %s://%s ", n.protocal, n.name)
+	log.Warning("Reset Connection %s://%s ", n.protocol, n.name)
 	// NONONO n.free <- net_conn let "Close" do this only
 
 	return nil
@@ -153,15 +153,15 @@ func (n *Netpool) InitPoolWith(obj NetpoolInterface) error {
 
 	//fill up the channels with our connections
 	for i := 0; i < n.MaxConnections; i++ {
-		conn, err := NewWriterConn(n.protocal, n.name, ConnectionTimeout)
+		conn, err := NewWriterConn(n.protocol, n.name, ConnectionTimeout)
 		if err != nil {
-			log.Warning("Pool Connection open error:  %v %v %v", n.protocal, n.name, err)
+			log.Warning("Pool Connection open error:  %v %v %v", n.protocol, n.name, err)
 			return err
 		}
-		if n.protocal == "tcp" {
+		if n.protocol == "tcp" {
 			conn.(*net.TCPConn).SetNoDelay(true)
 		}
-		log.Info("Pool Connected: %v %v", n.protocal, n.name)
+		log.Info("Pool Connected: %v %v", n.protocol, n.name)
 
 		netcon := n.newConnectionFunc(conn, obj)
 		netcon.SetIndex(i)
@@ -197,7 +197,7 @@ func (n *Netpool) Open() (conn NetpoolConnInterface, err error) {
 		}
 		net_conn.SetConn(nil)
 
-		conn, err := NewWriterConn(n.protocal, n.name, ConnectionTimeout)
+		conn, err := NewWriterConn(n.protocol, n.name, ConnectionTimeout)
 		if err != nil {
 			log.Error("Output Connection open error: %s", err)
 			// we CANNOT return here we need the connections in the queue even if they are "dead"

@@ -25,7 +25,6 @@ import (
 	"cadent/server/repr"
 	"encoding/json"
 	"sync"
-	"time"
 )
 
 const (
@@ -68,7 +67,8 @@ func (s *ReprTimeSeries) UnmarshalBinary(data []byte) error {
 }
 
 func (s *ReprTimeSeries) MarshalBinary() ([]byte, error) {
-	return json.Marshal(s.Stats)
+	b, err := json.Marshal(s.Stats)
+	return b, err
 }
 
 // this does not "finish" the series
@@ -87,7 +87,6 @@ func (s *ReprTimeSeries) Iter() (iter TimeSeriesIter, err error) {
 	d := make(repr.StatReprSlice, len(s.Stats))
 	copy(d, s.Stats)
 	s.mu.Unlock()
-
 	iter, err = NewReprIter(d)
 	return iter, err
 }
@@ -118,11 +117,11 @@ func (s *ReprTimeSeries) AddPoint(t int64, min float64, max float64, last float6
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.Stats = append(s.Stats, &repr.StatRepr{
-		Time:  time.Unix(0, t),
-		Min:   repr.JsonFloat64(min),
-		Max:   repr.JsonFloat64(max),
-		Last:  repr.JsonFloat64(last),
-		Sum:   repr.JsonFloat64(sum),
+		Time:  t,
+		Min:   repr.CheckFloat(min),
+		Max:   repr.CheckFloat(max),
+		Last:  repr.CheckFloat(last),
+		Sum:   repr.CheckFloat(sum),
 		Count: count,
 	})
 	if t > s.curTime {
@@ -135,7 +134,17 @@ func (s *ReprTimeSeries) AddPoint(t int64, min float64, max float64, last float6
 }
 
 func (s *ReprTimeSeries) AddStat(stat *repr.StatRepr) error {
-	return s.AddPoint(stat.Time.UnixNano(), float64(stat.Min), float64(stat.Max), float64(stat.Last), float64(stat.Sum), stat.Count)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.Stats = append(s.Stats, stat.Copy())
+
+	if stat.Time > s.curTime {
+		s.curTime = stat.Time
+	}
+	if stat.Time < s.T0 {
+		s.T0 = stat.Time
+	}
+	return nil
 }
 
 // Iter lets you iterate over a series.  It is not concurrency-safe.
@@ -147,10 +156,10 @@ type ReprIter struct {
 	curStat *repr.StatRepr
 
 	curTime int64
-	min     repr.JsonFloat64
-	max     repr.JsonFloat64
-	last    repr.JsonFloat64
-	sum     repr.JsonFloat64
+	min     float64
+	max     float64
+	last    float64
+	sum     float64
 	count   int64
 
 	finished bool
@@ -185,11 +194,11 @@ func (it *ReprIter) Next() bool {
 }
 
 func (it *ReprIter) Values() (int64, float64, float64, float64, float64, int64) {
-	return it.curStat.Time.UnixNano(),
-		float64(it.curStat.Min),
-		float64(it.curStat.Max),
-		float64(it.curStat.Last),
-		float64(it.curStat.Sum),
+	return it.curStat.Time,
+		it.curStat.Min,
+		it.curStat.Max,
+		it.curStat.Last,
+		it.curStat.Sum,
 		it.curStat.Count
 }
 

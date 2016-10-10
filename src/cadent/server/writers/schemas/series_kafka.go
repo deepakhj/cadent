@@ -185,45 +185,45 @@ func (kp *KMetric) Id() string {
 func (kp *KMetric) Repr() *repr.StatRepr {
 	if kp.Raw != nil {
 		return &repr.StatRepr{
-			Name: repr.StatName{
+			Name: &repr.StatName{
 				Key:      kp.Raw.Metric,
-				Tags:     kp.Raw.TagToSorted(),
-				MetaTags: kp.Raw.MetaTagToSorted(),
+				Tags:     kp.Raw.Tags,
+				MetaTags: kp.Raw.MetaTags,
 			},
-			Time:  ToTime(kp.Raw.Time),
-			Sum:   repr.JsonFloat64(kp.Raw.Value),
+			Time:  kp.Raw.Time,
+			Sum:   kp.Raw.Value,
 			Count: 1,
 		}
 	}
 	if kp.Unprocessed != nil {
 		return &repr.StatRepr{
-			Name: repr.StatName{
+			Name: &repr.StatName{
 				Key:      kp.Unprocessed.Metric,
-				Tags:     kp.Unprocessed.TagToSorted(),
-				MetaTags: kp.Unprocessed.MetaTagToSorted(),
+				Tags:     kp.Unprocessed.Tags,
+				MetaTags: kp.Unprocessed.MetaTags,
 			},
-			Time:  ToTime(kp.Unprocessed.Time),
-			Min:   repr.JsonFloat64(kp.Unprocessed.Min),
-			Max:   repr.JsonFloat64(kp.Unprocessed.Max),
-			Last:  repr.JsonFloat64(kp.Unprocessed.Last),
-			Sum:   repr.JsonFloat64(kp.Unprocessed.Sum),
+			Time:  kp.Unprocessed.Time,
+			Min:   repr.CheckFloat(kp.Unprocessed.Min),
+			Max:   repr.CheckFloat(kp.Unprocessed.Max),
+			Last:  repr.CheckFloat(kp.Unprocessed.Last),
+			Sum:   repr.CheckFloat(kp.Unprocessed.Sum),
 			Count: kp.Unprocessed.Count,
 		}
 	}
 	if kp.Single != nil {
 		return &repr.StatRepr{
-			Name: repr.StatName{
+			Name: &repr.StatName{
 				Key:        kp.Single.Metric,
-				Tags:       kp.Single.TagToSorted(),
-				MetaTags:   kp.Single.MetaTagToSorted(),
+				Tags:       kp.Single.Tags,
+				MetaTags:   kp.Single.MetaTags,
 				Resolution: kp.Single.Resolution,
-				TTL:        kp.Single.Ttl,
+				Ttl:        kp.Single.Ttl,
 			},
-			Time:  ToTime(kp.Single.Time),
-			Min:   repr.JsonFloat64(kp.Single.Min),
-			Max:   repr.JsonFloat64(kp.Single.Max),
-			Last:  repr.JsonFloat64(kp.Single.Last),
-			Sum:   repr.JsonFloat64(kp.Single.Sum),
+			Time:  kp.Single.Time,
+			Min:   repr.CheckFloat(kp.Single.Min),
+			Max:   repr.CheckFloat(kp.Single.Max),
+			Last:  repr.CheckFloat(kp.Single.Last),
+			Sum:   repr.CheckFloat(kp.Single.Sum),
 			Count: kp.Single.Count,
 		}
 	}
@@ -304,17 +304,17 @@ func (kp *SingleMetric) Reprs() *repr.StatReprSlice {
 	// need to convert the mighty
 
 	return &repr.StatRepr{
-		Name: repr.StatName{
+		Name: &repr.StatName{
 			Key:        kp.Metric,
 			Tags:       kp.Tags,
 			MetaTags:   kp.MetaTags,
 			Resolution: kp.Resolution,
-			TTL:        kp.TTL,
+			Ttl:        kp.Ttl,
 		},
-		Min:   repr.JsonFloat64(kp.Min),
-		Max:   repr.JsonFloat64(kp.Max),
-		Last:  repr.JsonFloat64(kp.Last),
-		Sum:   repr.JsonFloat64(kp.Sum),
+		Min:   repr.CheckFloat(kp.Min),
+		Max:   repr.CheckFloat(kp.Max),
+		Last:  repr.CheckFloat(kp.Last),
+		Sum:   repr.CheckFloat(kp.Sum),
 		Count: kp.Count,
 	}
 }*/
@@ -394,18 +394,18 @@ func (kp *KSingleMetric) Id() string {
 func (kp *KSingleMetric) Repr() *repr.StatRepr {
 
 	return &repr.StatRepr{
-		Name: repr.StatName{
+		Name: &repr.StatName{
 			Key:        kp.SingleMetric.Metric,
-			Tags:       kp.SingleMetric.TagToSorted(),
-			MetaTags:   kp.SingleMetric.MetaTagToSorted(),
+			Tags:       kp.SingleMetric.Tags,
+			MetaTags:   kp.SingleMetric.MetaTags,
 			Resolution: kp.SingleMetric.Resolution,
-			TTL:        kp.SingleMetric.Ttl,
+			Ttl:        kp.SingleMetric.Ttl,
 		},
-		Time:  ToTime(kp.SingleMetric.Time),
-		Min:   repr.JsonFloat64(kp.SingleMetric.Min),
-		Max:   repr.JsonFloat64(kp.SingleMetric.Max),
-		Last:  repr.JsonFloat64(kp.SingleMetric.Last),
-		Sum:   repr.JsonFloat64(kp.SingleMetric.Sum),
+		Time:  kp.SingleMetric.Time,
+		Min:   repr.CheckFloat(kp.SingleMetric.Min),
+		Max:   repr.CheckFloat(kp.SingleMetric.Max),
+		Last:  repr.CheckFloat(kp.SingleMetric.Last),
+		Sum:   repr.CheckFloat(kp.SingleMetric.Sum),
 		Count: kp.SingleMetric.Count,
 	}
 }
@@ -470,16 +470,16 @@ func (kp *KUnProcessedMetric) Id() string {
 
 func (kp *KUnProcessedMetric) Repr() *repr.StatRepr {
 	return &repr.StatRepr{
-		Name: repr.StatName{
+		Name: &repr.StatName{
 			Key:      kp.UnProcessedMetric.Metric,
-			Tags:     kp.UnProcessedMetric.TagToSorted(),
-			MetaTags: kp.UnProcessedMetric.MetaTagToSorted(),
+			Tags:     kp.UnProcessedMetric.Tags,
+			MetaTags: kp.UnProcessedMetric.MetaTags,
 		},
-		Time:  ToTime(kp.UnProcessedMetric.Time),
-		Min:   repr.JsonFloat64(kp.UnProcessedMetric.Min),
-		Max:   repr.JsonFloat64(kp.UnProcessedMetric.Max),
-		Last:  repr.JsonFloat64(kp.UnProcessedMetric.Last),
-		Sum:   repr.JsonFloat64(kp.UnProcessedMetric.Sum),
+		Time:  kp.UnProcessedMetric.Time,
+		Min:   repr.CheckFloat(kp.UnProcessedMetric.Min),
+		Max:   repr.CheckFloat(kp.UnProcessedMetric.Max),
+		Last:  repr.CheckFloat(kp.UnProcessedMetric.Last),
+		Sum:   repr.CheckFloat(kp.UnProcessedMetric.Sum),
 		Count: kp.UnProcessedMetric.Count,
 	}
 }
@@ -592,13 +592,13 @@ func (kp *KRawMetric) Decode(b []byte) error {
 
 func (kp *KRawMetric) Repr() *repr.StatRepr {
 	return &repr.StatRepr{
-		Name: repr.StatName{
+		Name: &repr.StatName{
 			Key:      kp.RawMetric.Metric,
-			Tags:     kp.RawMetric.TagToSorted(),
-			MetaTags: kp.RawMetric.MetaTagToSorted(),
+			Tags:     kp.RawMetric.Tags,
+			MetaTags: kp.RawMetric.MetaTags,
 		},
-		Time:  ToTime(kp.RawMetric.Time),
-		Sum:   repr.JsonFloat64(kp.RawMetric.Value),
+		Time:  kp.RawMetric.Time,
+		Sum:   repr.CheckFloat(kp.RawMetric.Value),
 		Count: 1,
 	}
 }

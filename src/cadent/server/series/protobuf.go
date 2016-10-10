@@ -28,7 +28,6 @@ import (
 	"cadent/server/repr"
 	"github.com/golang/protobuf/proto"
 	"sync"
-	"time"
 )
 
 const (
@@ -164,7 +163,7 @@ func (s *ProtobufTimeSeries) AddPoint(t int64, min float64, max float64, last fl
 }
 
 func (s *ProtobufTimeSeries) AddStat(stat *repr.StatRepr) error {
-	return s.AddPoint(stat.Time.UnixNano(), float64(stat.Min), float64(stat.Max), float64(stat.Last), float64(stat.Sum), stat.Count)
+	return s.AddPoint(stat.Time, stat.Min, stat.Max, stat.Last, stat.Sum, stat.Count)
 }
 
 // Iter lets you iterate over a series.  It is not concurrency-safe.
@@ -218,21 +217,21 @@ func (it *ProtobufIter) Next() bool {
 
 func (it *ProtobufIter) Values() (int64, float64, float64, float64, float64, int64) {
 
-	if it.curStat.GetStatType() {
-		t := it.curStat.GetStat().GetTime()
+	if it.curStat.StatType {
+		t := it.curStat.GetStat().Time
 		if !it.fullResolution {
 			t = combineSecNano(uint32(t), 0)
 		}
 		return t,
-			float64(it.curStat.GetStat().GetMin()),
-			float64(it.curStat.GetStat().GetMax()),
-			float64(it.curStat.GetStat().GetLast()),
-			float64(it.curStat.GetStat().GetSum()),
-			it.curStat.GetStat().GetCount()
+			it.curStat.GetStat().Min,
+			it.curStat.GetStat().Max,
+			it.curStat.GetStat().Last,
+			it.curStat.GetStat().Sum,
+			it.curStat.GetStat().Count
 	}
 
-	v := float64(it.curStat.GetSmallStat().GetVal())
-	t := it.curStat.GetSmallStat().GetTime()
+	v := it.curStat.GetSmallStat().Val
+	t := it.curStat.GetSmallStat().Time
 	if !it.fullResolution {
 		t = combineSecNano(uint32(t), 0)
 	}
@@ -245,31 +244,19 @@ func (it *ProtobufIter) Values() (int64, float64, float64, float64, float64, int
 }
 
 func (it *ProtobufIter) ReprValue() *repr.StatRepr {
-	if it.curStat.GetStatType() {
-		var t time.Time
-		if it.fullResolution {
-			t = time.Unix(0, it.curStat.GetStat().GetTime())
-		} else {
-			t = time.Unix(it.curStat.GetStat().GetTime(), 0)
-		}
+	if it.curStat.StatType {
 		return &repr.StatRepr{
-			Time:  t,
-			Min:   repr.JsonFloat64(it.curStat.GetStat().GetMin()),
-			Max:   repr.JsonFloat64(it.curStat.GetStat().GetMax()),
-			Last:  repr.JsonFloat64(it.curStat.GetStat().GetLast()),
-			Sum:   repr.JsonFloat64(it.curStat.GetStat().GetSum()),
-			Count: it.curStat.GetStat().GetCount(),
+			Time:  it.curStat.GetStat().Time,
+			Min:   repr.CheckFloat(it.curStat.GetStat().Min),
+			Max:   repr.CheckFloat(it.curStat.GetStat().Max),
+			Last:  repr.CheckFloat(it.curStat.GetStat().Last),
+			Sum:   repr.CheckFloat(it.curStat.GetStat().Sum),
+			Count: it.curStat.GetStat().Count,
 		}
 	}
-	v := repr.JsonFloat64(it.curStat.GetSmallStat().GetVal())
-	var t time.Time
-	if it.fullResolution {
-		t = time.Unix(0, it.curStat.GetSmallStat().GetTime())
-	} else {
-		t = time.Unix(it.curStat.GetSmallStat().GetTime(), 0)
-	}
+	v := repr.CheckFloat(it.curStat.GetSmallStat().Val)
 	return &repr.StatRepr{
-		Time:  t,
+		Time:  it.curStat.GetStat().Time,
 		Min:   v,
 		Max:   v,
 		Last:  v,

@@ -59,13 +59,13 @@ type GraphiteBaseStatItem struct {
 
 func (s *GraphiteBaseStatItem) Repr() *repr.StatRepr {
 	return &repr.StatRepr{
-		Time:  s.Time,
-		Name:  s.InKey,
-		Min:   repr.CheckFloat(repr.JsonFloat64(s.Min)),
-		Max:   repr.CheckFloat(repr.JsonFloat64(s.Max)),
+		Time:  s.Time.UnixNano(),
+		Name:  &s.InKey,
+		Min:   repr.CheckFloat(s.Min),
+		Max:   repr.CheckFloat(s.Max),
 		Count: s.Count,
-		Sum:   repr.CheckFloat(repr.JsonFloat64(s.Sum)),
-		Last:  repr.CheckFloat(repr.JsonFloat64(s.Last)),
+		Sum:   repr.CheckFloat(s.Sum),
+		Last:  repr.CheckFloat(s.Last),
 	}
 }
 func (s *GraphiteBaseStatItem) StatTime() time.Time { return s.Time }
@@ -114,7 +114,7 @@ func (s *GraphiteBaseStatItem) Merge(stat *repr.StatRepr) error {
 
 	s.Count += stat.Count
 	s.Sum += float64(stat.Sum)
-	if s.Time.Before(stat.Time) || s.Last == GRAPHITE_ACC_MIN_FLAG {
+	if s.Time.Before(stat.ToTime()) || s.Last == GRAPHITE_ACC_MIN_FLAG {
 		s.Last = float64(stat.Last)
 	}
 	return nil
@@ -151,7 +151,7 @@ type GraphiteAccumulate struct {
 	InTags        repr.SortingTags
 	InKeepKeys    bool
 	Resolution    time.Duration
-	TagMode       uint8 // see repr.TAG_MODE
+	TagMode       repr.TagMode // see repr.TAG_MODE
 
 	mu sync.RWMutex
 }
@@ -171,7 +171,7 @@ func (s *GraphiteAccumulate) MapKey(name string, t time.Time) string {
 	return fmt.Sprintf("%s-%d", name, s.ResolutionTime(t).UnixNano())
 }
 
-func (s *GraphiteAccumulate) SetTagMode(mode uint8) error {
+func (s *GraphiteAccumulate) SetTagMode(mode repr.TagMode) error {
 	s.TagMode = mode
 	return nil
 }
@@ -279,7 +279,7 @@ func (a *GraphiteAccumulate) ProcessRepr(stat *repr.StatRepr) error {
 		stat.Name.MetaTags = meta
 	}
 	sort.Sort(tgs)
-	stat_key := a.MapKey(stat.Name.Key+tgs.ToStringSep(repr.DOT_SEPARATOR, repr.DOT_SEPARATOR), stat.Time)
+	stat_key := a.MapKey(stat.Name.Key+tgs.ToStringSep(repr.DOT_SEPARATOR, repr.DOT_SEPARATOR), stat.ToTime())
 	// now the accumlator
 	a.mu.RLock()
 	gots, ok := a.GraphiteStats[stat_key]
@@ -291,20 +291,20 @@ func (a *GraphiteAccumulate) ProcessRepr(stat *repr.StatRepr) error {
 
 		gots = &GraphiteBaseStatItem{
 			InType:     "graphite",
-			Time:       a.ResolutionTime(stat.Time),
-			InKey:      stat.Name,
+			Time:       a.ResolutionTime(stat.ToTime()),
+			InKey:      *stat.Name,
 			Count:      0,
 			Min:        float64(stat.Min),
 			Max:        float64(stat.Max),
 			Last:       float64(stat.Last),
-			ReduceFunc: repr.GuessAggFuncFromName(&stat.Name),
+			ReduceFunc: stat.Name.AggFunc(),
 		}
 	}
 
 	// now for some trickery.  If the count is 1 then we assume not
 	// a "pre-accumulated" repr, but basically a metric/value and need to properly accumulate
 	if stat.Count == 1 {
-		gots.Accumulate(float64(stat.Sum), 1.0, stat.Time)
+		gots.Accumulate(float64(stat.Sum), 1.0, stat.ToTime())
 	} else {
 		gots.(*GraphiteBaseStatItem).Merge(stat)
 	}

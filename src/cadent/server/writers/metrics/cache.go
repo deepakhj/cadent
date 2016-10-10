@@ -336,7 +336,7 @@ func (wc *Cacher) GetOverFlowChan() *broadcast.Listener {
 
 func (wc *Cacher) DumpPoints(pts []*repr.StatRepr) {
 	for idx, pt := range pts {
-		wc.log.Notice("TimerSeries: %d Time: %d Sum: %f", idx, pt.Time.Unix(), pt.Sum)
+		wc.log.Notice("TimerSeries: %d Time: %d Sum: %f", idx, pt.Time, pt.Sum)
 	}
 }
 
@@ -506,8 +506,6 @@ func (wc *Cacher) Add(name *repr.StatName, stat *repr.StatRepr) error {
 					wc.overFlowBroadcast.Send(&TotalTimeSeries{gots.Name, gots.Series})
 					stats.StatsdClientSlow.Incr(wc.statsdPrefix+"write.overflow", 1)
 				}
-				//must recompute the ordering XXX LOCKING ISSUE
-				//wc.updateQueue()
 
 				// break out of this loop and add a new guy
 				goto NEWSTAT
@@ -530,7 +528,7 @@ func (wc *Cacher) Add(name *repr.StatName, stat *repr.StatRepr) error {
 	}
 
 NEWSTAT:
-	tp, err := series.NewTimeSeries(wc.seriesType, stat.Time.UnixNano(), nil)
+	tp, err := series.NewTimeSeries(wc.seriesType, stat.Time, nil)
 	if err != nil {
 		return err
 	}
@@ -562,7 +560,7 @@ func (wc *Cacher) getStatsStream(name *repr.StatName, ts series.TimeSeries) (rep
 		if st == nil {
 			continue
 		}
-		st.Name = *name
+		st.Name = name
 		stats = append(stats, st)
 	}
 	if it.Error() != nil {
@@ -600,8 +598,8 @@ func (wc *Cacher) GetAsRawRenderItem(name *repr.StatName) (*RawRenderItem, error
 	}
 
 	rawd := new(RawRenderItem)
-	rawd.Start = uint32(data[0].Time.Unix())
-	rawd.End = uint32(data[len(data)-1].Time.Unix())
+	rawd.Start = uint32(data[0].ToTime().Unix())
+	rawd.End = uint32(data[len(data)-1].ToTime().Unix())
 	rawd.RealEnd = rawd.End
 	rawd.RealStart = rawd.Start
 	rawd.AggFunc = name.AggType()
@@ -611,7 +609,7 @@ func (wc *Cacher) GetAsRawRenderItem(name *repr.StatName) (*RawRenderItem, error
 
 	rawd.Data = make([]RawDataPoint, len(data), len(data))
 	for idx, pt := range data {
-		on_t := uint32(pt.Time.Unix())
+		on_t := uint32(pt.ToTime().Unix())
 		rawd.Data[idx] = RawDataPoint{
 			Time:  on_t,
 			Count: pt.Count,

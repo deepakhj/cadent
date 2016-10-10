@@ -70,12 +70,12 @@ type StatsdBaseStatItem struct {
 
 func (s *StatsdBaseStatItem) Repr() *repr.StatRepr {
 	return &repr.StatRepr{
-		Name:  s.InKey,
-		Min:   repr.CheckFloat(repr.JsonFloat64(s.Min)),
-		Max:   repr.CheckFloat(repr.JsonFloat64(s.Max)),
+		Name:  &s.InKey,
+		Min:   repr.CheckFloat(s.Min),
+		Max:   repr.CheckFloat(s.Max),
 		Count: s.Count,
-		Sum:   repr.CheckFloat(repr.JsonFloat64(s.Sum)),
-		Last:  repr.CheckFloat(repr.JsonFloat64(s.Last)),
+		Sum:   repr.CheckFloat(s.Sum),
+		Last:  repr.CheckFloat(s.Last),
 	}
 }
 
@@ -246,13 +246,13 @@ type StatsdTimerStatItem struct {
 
 func (s *StatsdTimerStatItem) Repr() *repr.StatRepr {
 	return &repr.StatRepr{
-		Time:  time.Now(),
-		Name:  s.InKey,
-		Min:   repr.CheckFloat(repr.JsonFloat64(s.Min)),
-		Max:   repr.CheckFloat(repr.JsonFloat64(s.Max)),
+		Time:  time.Now().UnixNano(),
+		Name:  &s.InKey,
+		Min:   repr.CheckFloat(s.Min),
+		Max:   repr.CheckFloat(s.Max),
 		Count: s.Count,
-		Sum:   repr.CheckFloat(repr.JsonFloat64(s.Sum)),
-		Last:  repr.CheckFloat(repr.JsonFloat64(s.Last)),
+		Sum:   repr.CheckFloat(s.Sum),
+		Last:  repr.CheckFloat(s.Last),
 	}
 }
 
@@ -496,13 +496,13 @@ func (s *StatsdSetStatItem) Repr() *repr.StatRepr {
 
 	ct := int64(len(s.Values))
 	return &repr.StatRepr{
-		Time:  time.Now(),
-		Name:  s.InKey,
-		Min:   repr.CheckFloat(repr.JsonFloat64(ct)),
-		Max:   repr.CheckFloat(repr.JsonFloat64(ct)),
+		Time:  time.Now().UnixNano(),
+		Name:  &s.InKey,
+		Min:   float64(ct),
+		Max:   float64(ct),
 		Count: ct,
-		Sum:   repr.CheckFloat(repr.JsonFloat64(ct)),
-		Last:  repr.CheckFloat(repr.JsonFloat64(ct)),
+		Sum:   float64(ct),
+		Last:  float64(ct),
 	}
 }
 
@@ -576,7 +576,7 @@ type StatsdAccumulate struct {
 	OutFormat   FormatterItem
 	InTags      repr.SortingTags
 	InKeepKeys  bool
-	TagMode     uint8
+	TagMode     repr.TagMode
 
 	// statsd like options
 	LegacyStatsd  bool
@@ -676,7 +676,7 @@ func (s *StatsdAccumulate) SetResolution(dur time.Duration) error {
 	return nil
 }
 
-func (s *StatsdAccumulate) SetTagMode(mode uint8) error {
+func (s *StatsdAccumulate) SetTagMode(mode repr.TagMode) error {
 	s.TagMode = mode
 	return nil
 }

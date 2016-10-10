@@ -120,7 +120,7 @@ func MergeAndResample(ts1 TimeSeries, ts2 TimeSeries, step uint32) (TimeSeries, 
 				s1 = nil
 			}
 			s_repr := iter1.ReprValue()
-			if s_repr.Time.UnixNano() > t {
+			if s_repr.Time > t {
 				s1 = s_repr
 				break
 			}
@@ -134,14 +134,14 @@ func MergeAndResample(ts1 TimeSeries, ts2 TimeSeries, step uint32) (TimeSeries, 
 				s1 = nil
 			}
 			s_repr := iter2.ReprValue()
-			if s_repr.Time.UnixNano() > t {
+			if s_repr.Time > t {
 				s2 = s_repr
 				break
 			}
 			dp.Merge(s2)
 		}
 
-		if !dp.Time.IsZero() {
+		if dp.Time != 0 {
 			new_s.AddStat(dp)
 		}
 	}

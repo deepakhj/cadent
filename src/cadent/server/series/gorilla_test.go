@@ -34,7 +34,7 @@ func Benchmark_Gorilla______________Put_1Value_LowRes(b *testing.B) {
 	ops := NewOptions(1, false)
 	b.SetBytes(int64(8 * 8)) //8 64bit numbers
 	for i := 0; i < b.N; i++ {
-		ser, err := NewTimeSeries("gorilla", n.UnixNano(), ops)
+		ser, err := NewTimeSeries("gorilla", n, ops)
 		if err != nil {
 			b.Fatalf("ERROR: %v", err)
 		}

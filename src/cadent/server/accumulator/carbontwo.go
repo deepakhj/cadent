@@ -62,13 +62,13 @@ type CarbonTwoBaseStatItem struct {
 
 func (s *CarbonTwoBaseStatItem) Repr() *repr.StatRepr {
 	return &repr.StatRepr{
-		Time:  s.Time,
-		Name:  s.InKey,
-		Min:   repr.CheckFloat(repr.JsonFloat64(s.Min)),
-		Max:   repr.CheckFloat(repr.JsonFloat64(s.Max)),
+		Time:  s.Time.UnixNano(),
+		Name:  &s.InKey,
+		Min:   repr.CheckFloat(s.Min),
+		Max:   repr.CheckFloat(s.Max),
 		Count: s.Count,
-		Sum:   repr.CheckFloat(repr.JsonFloat64(s.Sum)),
-		Last:  repr.CheckFloat(repr.JsonFloat64(s.Last)),
+		Sum:   repr.CheckFloat(s.Sum),
+		Last:  repr.CheckFloat(s.Last),
 	}
 }
 
@@ -87,7 +87,7 @@ func (s *CarbonTwoBaseStatItem) Merge(stat *repr.StatRepr) error {
 
 	s.Count += stat.Count
 	s.Sum += float64(stat.Sum)
-	if s.Time.Before(stat.Time) || s.Last == CARBONTWO_ACC_MIN_FLAG {
+	if s.Time.Before(stat.ToTime()) || s.Last == CARBONTWO_ACC_MIN_FLAG {
 		s.Last = float64(stat.Last)
 	}
 	return nil
@@ -155,7 +155,7 @@ type CarbonTwoAccumulate struct {
 	InTags         repr.SortingTags
 	InKeepKeys     bool
 	Resolution     time.Duration
-	TagMode        uint8
+	TagMode        repr.TagMode
 
 	mu sync.RWMutex
 }
@@ -179,7 +179,7 @@ func (s *CarbonTwoAccumulate) SetResolution(dur time.Duration) error {
 	s.Resolution = dur
 	return nil
 }
-func (s *CarbonTwoAccumulate) SetTagMode(mode uint8) error {
+func (s *CarbonTwoAccumulate) SetTagMode(mode repr.TagMode) error {
 	s.TagMode = mode
 	return nil
 }
@@ -284,7 +284,7 @@ func (a *CarbonTwoAccumulate) ProcessRepr(stat *repr.StatRepr) error {
 
 	sort.Sort(tgs)
 	unique_key := tgs.ToStringSep(repr.IS_SEPARATOR, repr.DOT_SEPARATOR)
-	stat_key := a.MapKey(unique_key, stat.Time)
+	stat_key := a.MapKey(unique_key, stat.ToTime())
 
 	// now the accumlator
 	a.mu.RLock()
@@ -296,8 +296,8 @@ func (a *CarbonTwoAccumulate) ProcessRepr(stat *repr.StatRepr) error {
 		// based on the stat key (if present) figure out the agg
 		gots = &CarbonTwoBaseStatItem{
 			InType:     "carbontwo",
-			Time:       a.ResolutionTime(stat.Time),
-			InKey:      stat.Name,
+			Time:       a.ResolutionTime(stat.ToTime()),
+			InKey:      *stat.Name,
 			Min:        CARBONTWO_ACC_MIN_FLAG,
 			Max:        CARBONTWO_ACC_MIN_FLAG,
 			Last:       CARBONTWO_ACC_MIN_FLAG,
@@ -308,7 +308,7 @@ func (a *CarbonTwoAccumulate) ProcessRepr(stat *repr.StatRepr) error {
 	// now for some trickery.  If the count is 1 then we assume not
 	// a "pre-accumulated" repr, but basically a metric/value and need to properly accumulate
 	if stat.Count == 1 {
-		gots.Accumulate(float64(stat.Sum), 1.0, stat.Time)
+		gots.Accumulate(float64(stat.Sum), 1.0, stat.ToTime())
 	} else {
 		gots.(*CarbonTwoBaseStatItem).Merge(stat)
 	}

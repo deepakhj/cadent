@@ -81,10 +81,10 @@ func TestGraphiteAccumulator(t *testing.T) {
 		b_arr = statter.Flush(buf)
 		for _, item := range b_arr.Stats {
 			So(item.Name.MetaTags, ShouldResemble, repr.SortingTags{
-				[]string{"moo", "house"},
+				&repr.Tag{Name: "moo", Value: "house"},
 			})
 			So(item.Name.Tags, ShouldResemble, repr.SortingTags{
-				[]string{"host", "me"},
+				&repr.Tag{Name: "host", Value: "me"},
 			})
 
 		}
@@ -155,7 +155,7 @@ func TestGraphiteAccumulator(t *testing.T) {
 		So(strs, ShouldContain, "mtype=count unit=jiff what=moo.goo.min 2 123123")
 		So(strs, ShouldContain, "mtype=count unit=jiff what=moo.goo.max 10 123123")
 
-		statter.SetTags(repr.SortingTags{[]string{"moo", "goo"}, []string{"foo", "bar"}})
+		statter.SetTags(repr.SortingTags{&repr.Tag{Name: "moo", Value: "goo"}, &repr.Tag{Name: "foo", Value: "bar"}})
 
 		err = statter.ProcessLine([]byte("stats.counters.goo 2 123123"))
 		err = statter.ProcessLine([]byte("stats.counters.goo 5 123123"))

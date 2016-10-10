@@ -86,7 +86,7 @@ type CheckedServerPool struct {
 
 	ServerActions ServerPoolRunner
 
-	Protocal string
+	Protocol string
 
 	Servers        []ServerPoolServer
 	DroppedServers []ServerPoolServer

@@ -224,8 +224,8 @@
 		{
 			"checksumSHA1": "yaaDAUNxDdhhsLtO7FqEVSgId6Y=",
 			"path": "github.com/gogo/protobuf/protoc-gen-gofast",
-			"revision": "e33835a643a970c11ac74f6333f5f6866387a101",
-			"revisionTime": "2016-07-28T08:53:59Z"
+			"revision": "99cb9b23110011cc45571c901ecae6f6f5e65cd3",
+			"revisionTime": "2016-10-05T20:17:23Z"
 		},
 		{
 			"checksumSHA1": "VvCVRy9q3dA7x8lB/OmIRUit0g8=",
@@ -252,10 +252,10 @@
 			"revisionTime": "2016-07-28T08:53:59Z"
 		},
 		{
-			"checksumSHA1": "D5BKgqAKT7VgQXWdLaOU9d5AkMU=",
+			"checksumSHA1": "rpOhvdujhlPiv6cgrwj/T8JYugg=",
 			"path": "github.com/gogo/protobuf/protoc-gen-gogofaster",
-			"revision": "e33835a643a970c11ac74f6333f5f6866387a101",
-			"revisionTime": "2016-07-28T08:53:59Z"
+			"revision": "99cb9b23110011cc45571c901ecae6f6f5e65cd3",
+			"revisionTime": "2016-10-05T20:17:23Z"
 		},
 		{
 			"checksumSHA1": "JYtlRNrXOQlXAeaWHHpEF16UTI4=",

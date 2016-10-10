@@ -367,7 +367,7 @@ func (ws *WhisperWriter) InsertMulti(metric *repr.StatName, points repr.StatRepr
 	for _, pt := range points {
 		whisp_points = append(whisp_points,
 			&whisper.TimeSeriesPoint{
-				Time: int(pt.Time.Unix()), Value: pt.AggValue(agg_func),
+				Time: int(pt.ToTime().Unix()), Value: pt.AggValue(agg_func),
 			},
 		)
 	}
@@ -412,7 +412,7 @@ func (ws *WhisperWriter) InsertOne(stat repr.StatRepr) (int, error) {
 		return 0, err
 	}
 
-	err = whis.Update(float64(stat.Sum), int(stat.Time.Unix()))
+	err = whis.Update(float64(stat.Sum), int(stat.ToTime().Unix()))
 	if err != nil {
 		stats.StatsdClientSlow.Incr("writer.whisper.metric-writes", 1)
 	}
@@ -428,7 +428,7 @@ func (ws *WhisperWriter) Write(stat repr.StatRepr) error {
 	}
 
 	// add to the writeback cache only
-	ws.cacher.Add(&stat.Name, &stat)
+	ws.cacher.Add(stat.Name, &stat)
 	agg_func := repr.GuessReprValueFromKey(stat.Name.Key)
 	// and now add it to the readcache iff it's been activated
 	r_cache := GetReadCache()
@@ -437,7 +437,7 @@ func (ws *WhisperWriter) Write(stat repr.StatRepr) error {
 		p_val := stat.AggValue(agg_func)
 		t_stat := &repr.StatRepr{
 			Time:  stat.Time,
-			Sum:   repr.JsonFloat64(p_val),
+			Sum:   repr.CheckFloat(p_val),
 			Count: 1,
 			Name:  stat.Name,
 		}
@@ -539,7 +539,7 @@ func (ws *WhisperMetrics) SetCurrentResolution(res int) {
 }
 
 func (ws *WhisperMetrics) Write(stat repr.StatRepr) error {
-	ws.indexer.Write(stat.Name) // write an index for the key
+	ws.indexer.Write(*stat.Name) // write an index for the key
 	err := ws.writer.Write(stat)
 
 	return err
@@ -568,7 +568,7 @@ func (ws *WhisperMetrics) GetFromReadCache(metric string, start int64, end int64
 
 		f_t := uint32(0)
 		for _, stat := range cached_stats {
-			t := uint32(stat.Time.Unix())
+			t := uint32(stat.ToTime().Unix())
 			d_points = append(d_points, RawDataPoint{
 				Sum:   stat.AggValue(rawd.AggFunc),
 				Count: 1,

@@ -20,6 +20,7 @@ package main
 
 import (
 	"cadent/server/netpool"
+	"cadent/server/repr"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -101,11 +102,11 @@ func sprinter(ct int) string {
 	return strings.Join(r_ws, ".")
 }
 
-func sprinterTagList(ct int) [][]string {
-	r_ws := [][]string{}
+func sprinterTagList(ct int) []*repr.Tag {
+	r_ws := make([]*repr.Tag, 0)
 
 	for i := 0; i < ct-4; i++ {
-		r_ws = append(r_ws, []string{RandItem(randTagName), RandItem(randWords)})
+		r_ws = append(r_ws, &repr.Tag{Name: RandItem(randTagName), Value: RandItem(randWords)})
 	}
 	return r_ws
 }

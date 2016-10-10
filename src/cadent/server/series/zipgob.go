@@ -224,7 +224,7 @@ func (s *ZipGobTimeSeries) AddPoint(t int64, min float64, max float64, last floa
 }
 
 func (s *ZipGobTimeSeries) AddStat(stat *repr.StatRepr) error {
-	return s.AddPoint(stat.Time.UnixNano(), float64(stat.Min), float64(stat.Max), float64(stat.Last), float64(stat.Sum), stat.Count)
+	return s.AddPoint(stat.Time, float64(stat.Min), float64(stat.Max), float64(stat.Last), float64(stat.Sum), stat.Count)
 }
 
 ///// ITERATOR

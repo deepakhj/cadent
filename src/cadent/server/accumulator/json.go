@@ -69,13 +69,13 @@ type JsonBaseStatItem struct {
 
 func (s *JsonBaseStatItem) Repr() *repr.StatRepr {
 	return &repr.StatRepr{
-		Time:  s.Time,
-		Name:  s.InKey,
-		Min:   repr.CheckFloat(repr.JsonFloat64(s.Min)),
-		Max:   repr.CheckFloat(repr.JsonFloat64(s.Max)),
+		Time:  s.Time.UnixNano(),
+		Name:  &s.InKey,
+		Min:   repr.CheckFloat(s.Min),
+		Max:   repr.CheckFloat(s.Max),
 		Count: s.Count,
-		Sum:   repr.CheckFloat(repr.JsonFloat64(s.Sum)),
-		Last:  repr.CheckFloat(repr.JsonFloat64(s.Last)),
+		Sum:   repr.CheckFloat(s.Sum),
+		Last:  repr.CheckFloat(s.Last),
 	}
 }
 func (s *JsonBaseStatItem) StatTime() time.Time { return s.Time }
@@ -124,7 +124,7 @@ func (s *JsonBaseStatItem) Merge(stat *repr.StatRepr) error {
 
 	s.Count += stat.Count
 	s.Sum += float64(stat.Sum)
-	if s.Time.Before(stat.Time) || s.Last == JSON_ACC_MIN_FLAG {
+	if s.Time.Before(stat.ToTime()) || s.Last == JSON_ACC_MIN_FLAG {
 		s.Last = float64(stat.Last)
 	}
 	return nil
@@ -161,7 +161,7 @@ type JsonAccumulate struct {
 	InTags     repr.SortingTags
 	InKeepKeys bool
 	Resolution time.Duration
-	TagMode    uint8
+	TagMode    repr.TagMode
 
 	mu sync.RWMutex
 }
@@ -176,7 +176,7 @@ func NewJsonAccumulate() (*JsonAccumulate, error) {
 func (s *JsonAccumulate) ResolutionTime(t time.Time) time.Time {
 	return t.Truncate(s.Resolution)
 }
-func (s *JsonAccumulate) SetTagMode(mode uint8) error {
+func (s *JsonAccumulate) SetTagMode(mode repr.TagMode) error {
 	s.TagMode = mode
 	return nil
 }
@@ -286,7 +286,7 @@ func (a *JsonAccumulate) ProcessRepr(stat *repr.StatRepr) error {
 		stat.Name.MetaTags = meta
 	}
 	sort.Sort(tgs)
-	stat_key := a.MapKey(stat.Name.Key+tgs.ToStringSep(repr.DOT_SEPARATOR, repr.DOT_SEPARATOR), stat.Time)
+	stat_key := a.MapKey(stat.Name.Key+tgs.ToStringSep(repr.DOT_SEPARATOR, repr.DOT_SEPARATOR), stat.ToTime())
 	// now the accumlator
 	a.mu.RLock()
 	gots, ok := a.JsonStats[stat_key]
@@ -298,13 +298,13 @@ func (a *JsonAccumulate) ProcessRepr(stat *repr.StatRepr) error {
 
 		gots = &JsonBaseStatItem{
 			InType:     "graphite",
-			Time:       a.ResolutionTime(stat.Time),
-			InKey:      stat.Name,
+			Time:       a.ResolutionTime(stat.ToTime()),
+			InKey:      *stat.Name,
 			Count:      0,
 			Min:        float64(stat.Min),
 			Max:        float64(stat.Max),
 			Last:       float64(stat.Last),
-			ReduceFunc: repr.GuessAggFuncFromName(&stat.Name),
+			ReduceFunc: stat.Name.AggFunc(),
 		}
 	}
 

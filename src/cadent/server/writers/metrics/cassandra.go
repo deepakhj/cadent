@@ -198,8 +198,8 @@ func NewCassandraWriter(conf *options.Options) (*CassandraWriter, error) {
 func (cass *CassandraWriter) onePerTableInsert(name *repr.StatName, timeseries series.TimeSeries, resolution uint32) (n int, err error) {
 	t_name := cass.db.MetricTable() + fmt.Sprintf("_%d", resolution) + "s"
 	DO_Q := fmt.Sprintf(cass.insQ, t_name)
-	if name.TTL > 0 {
-		DO_Q += fmt.Sprintf(" USING TTL %d", name.TTL)
+	if name.Ttl > 0 {
+		DO_Q += fmt.Sprintf(" USING TTL %d", name.Ttl)
 	}
 
 	blob, err := timeseries.MarshalBinary()
@@ -226,8 +226,8 @@ func (cass *CassandraWriter) onePerTableInsert(name *repr.StatName, timeseries s
 func (cass *CassandraWriter) oneTableInsert(name *repr.StatName, timeseries series.TimeSeries, resolution uint32) (n int, err error) {
 
 	DO_Q := fmt.Sprintf(cass.insQ, cass.db.MetricTable())
-	if name.TTL > 0 {
-		DO_Q += fmt.Sprintf(" USING TTL %d", name.TTL)
+	if name.Ttl > 0 {
+		DO_Q += fmt.Sprintf(" USING TTL %d", name.Ttl)
 	}
 
 	blob, err := timeseries.MarshalBinary()
@@ -589,7 +589,7 @@ func (cass *CassandraMetric) Write(stat repr.StatRepr) error {
 	stat.Name.MergeMetric2Tags(cass.static_tags)
 	// only need to do this if the first resolution
 	if cass.currentResolution == cass.resolutions[0][0] {
-		cass.indexer.Write(stat.Name)
+		cass.indexer.Write(*stat.Name)
 	}
 
 	// not primary writer .. move along
@@ -599,10 +599,10 @@ func (cass *CassandraMetric) Write(stat repr.StatRepr) error {
 
 	if cass.rollupType == "triggered" {
 		if cass.currentResolution == cass.resolutions[0][0] {
-			return cass.cacher.Add(&stat.Name, &stat)
+			return cass.cacher.Add(stat.Name, &stat)
 		}
 	} else {
-		return cass.cacher.Add(&stat.Name, &stat)
+		return cass.cacher.Add(stat.Name, &stat)
 	}
 	return nil
 }
@@ -647,7 +647,7 @@ func (cass *CassandraMetric) GetFromReadCache(metric string, start int64, end in
 
 		f_t := uint32(0)
 		for _, stat := range cached_stats {
-			t := uint32(stat.Time.Unix())
+			t := uint32(stat.ToTime().Unix())
 			d_points = append(d_points, RawDataPoint{
 				Count: 1,
 				Sum:   float64(stat.Sum),

@@ -31,8 +31,8 @@ func TestTagsRepr(t *testing.T) {
 		t_str_2 := "moo=goo,loo=baz"
 		t_str_3 := "moo_is_goo,loo_is_baz"
 		outs := SortingTags{
-			[]string{"moo", "goo"},
-			[]string{"loo", "baz"},
+			&Tag{Name: "moo", Value: "goo"},
+			&Tag{Name: "loo", Value: "baz"},
 		}
 		Convey("spaced tags should parse", func() {
 			tags := SortingTagsFromString(t_str)
@@ -60,19 +60,19 @@ func TestTagsRepr(t *testing.T) {
 
 	Convey("Tags Merging", t, func() {
 		outs := SortingTags{
-			[]string{"moo", "goo"},
-			[]string{"loo", "baz"},
+			&Tag{Name: "moo", Value: "goo"},
+			&Tag{Name: "loo", Value: "baz"},
 		}
 
 		outs_m := SortingTags{
-			[]string{"foo", "bar"},
-			[]string{"loo", "MOOOO"},
+			&Tag{Name: "foo", Value: "bar"},
+			&Tag{Name: "loo", Value: "MOOOO"},
 		}
 
 		outs_ok := SortingTags{
-			[]string{"foo", "bar"},
-			[]string{"loo", "MOOOO"},
-			[]string{"moo", "goo"},
+			&Tag{Name: "foo", Value: "bar"},
+			&Tag{Name: "loo", Value: "MOOOO"},
+			&Tag{Name: "moo", Value: "goo"},
 		}
 
 		Convey("should merge properly", func() {

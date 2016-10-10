@@ -18,6 +18,7 @@ package accumulator
 
 import (
 	"bytes"
+	"cadent/server/repr"
 	. "github.com/smartystreets/goconvey/convey"
 	"strings"
 	"testing"
@@ -33,7 +34,7 @@ func TestCarbontwoAccumulator(t *testing.T) {
 	grp, err := NewFormatterItem("graphite")
 	statter, err := NewAccumulatorItem("carbon2")
 	statter.Init(grp)
-	statter.SetTagMode(1)
+	statter.SetTagMode(repr.TAG_METRICS2)
 	Convey("Given an CarbontwoAcc w/ Carbontwo Formatter", t, func() {
 
 		Convey("Error should be nil", func() {
@@ -110,9 +111,9 @@ func TestCarbontwoAccumulator(t *testing.T) {
 
 		// taggin support
 		for _, item := range b_arr.Stats {
-			So(item.Name.MetaTags.Tags(), ShouldResemble, [][]string{
-				{"moo", "goo"},
-				{"house", "spam"},
+			So(item.Name.MetaTags, ShouldResemble, repr.SortingTags{
+				&repr.Tag{Name: "moo", Value: "goo"},
+				&repr.Tag{Name: "house", Value: "spam"},
 			})
 		}
 
@@ -187,7 +188,7 @@ func TestCarbontwoAccumulator(t *testing.T) {
 
 	grmode, err := NewFormatterItem("statsd")
 	statter.Init(grmode)
-	statter.SetTagMode(2)
+	statter.SetTagMode(repr.TAG_ALLTAGS)
 	Convey("Set the formatter to Graphite Tagmode=all ", t, func() {
 
 		err = statter.ProcessLine([]byte("stat=max unit=B mtype=counter what=house  moo=goo house=spam 2 123123"))

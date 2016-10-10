@@ -48,7 +48,7 @@ type AccumulatorItem interface {
 	Reset() error
 	Tags() repr.SortingTags
 	SetKeepKeys(bool) error
-	SetTagMode(mode uint8) error
+	SetTagMode(mode repr.TagMode) error
 	SetTags(repr.SortingTags)
 	SetResolution(time.Duration) error
 	GetResolution() time.Duration

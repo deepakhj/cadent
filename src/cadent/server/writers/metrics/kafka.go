@@ -263,12 +263,12 @@ func (kf *KafkaMetrics) getResolution(from int64, to int64) uint32 {
 func (kf *KafkaMetrics) Write(stat repr.StatRepr) error {
 	// merge the tags in
 	stat.Name.MergeMetric2Tags(kf.static_tags)
-	kf.indexer.Write(stat.Name) // to the indexer
+	kf.indexer.Write(*stat.Name) // to the indexer
 	// not primary writer .. move along
 	if !kf.is_primary {
 		return nil
 	}
-	kf.cacher.Add(&stat.Name, &stat)
+	kf.cacher.Add(stat.Name, &stat)
 	return nil
 }
 
@@ -291,9 +291,9 @@ func (kf *KafkaMetrics) PushSeries(name *repr.StatName, points series.TimeSeries
 	s_metric.Data = pts
 	s_metric.Encoding = points.Name()
 	s_metric.Resolution = name.Resolution
-	s_metric.Ttl = name.TTL
-	s_metric.Tags = schemas.ToMetricTag(name.SortedTags())
-	s_metric.MetaTags = schemas.ToMetricTag(name.SortedMetaTags())
+	s_metric.Ttl = name.Ttl
+	s_metric.Tags = name.SortedTags()
+	s_metric.MetaTags = name.SortedMetaTags()
 
 	obj := &schemas.KMetric{
 		AnyMetric: schemas.AnyMetric{

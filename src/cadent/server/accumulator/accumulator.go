@@ -68,7 +68,7 @@ type Accumulator struct {
 	FlushTimes        []time.Duration `json:"flush-time"`
 	TTLTimes          []time.Duration `json:"ttl-times"`
 	RandomTickerStart bool            `json:"random-ticker-start"`
-	TagMode           uint8           `json:"tag-mode"` // see repr.TAG_MODE
+	TagMode           repr.TagMode    `json:"tag-mode"` // see repr.TAG_MODE
 
 	Accumulate AccumulatorItem `json:"-"`
 	Formatter  FormatterItem   `json:"-"`
@@ -352,8 +352,8 @@ func (acc *Accumulator) FlushAndPost(attime time.Time) ([]splitter.SplitItem, er
 
 	if acc.Aggregators != nil {
 		for _, stat := range items.Stats {
-			if stat.Time.IsZero() {
-				stat.Time = attime // need to set this as this is the flush time
+			if stat.Time == 0 {
+				stat.Time = attime.UnixNano() // need to set this as this is the flush time
 			}
 			acc.PushStat(stat)
 		}
@@ -426,7 +426,7 @@ func (acc *Accumulator) CurrentStats() *repr.ReprList {
 	for idx, stat := range stats {
 		rr := stat.Repr()
 		rr.Name.Key = idx
-		rr.Time = t
+		rr.Time = t.UnixNano()
 		rr.Name.Resolution = uint32(acc.FlushTimes[0].Seconds())
 		s_rep.Add(*rr)
 	}

@@ -26,7 +26,11 @@ import (
 	"strings"
 )
 
-type SortingTags [][]string
+func (t Tag) Join(sep string) string {
+	return t.Name + sep + t.Value
+}
+
+type SortingTags []*Tag
 
 // make a tag array from a string input inder a few conditions
 // tag=val.tag=val.tag=val
@@ -75,13 +79,13 @@ func SortingTagsFromArray(keys []string) SortingTags {
 
 		}
 
-		outs = append(outs, []string{spls[0], spls[1]})
+		outs = append(outs, &Tag{Name: spls[0], Value: spls[1]})
 	}
 	return outs
 }
 
 func (p SortingTags) Len() int           { return len(p) }
-func (p SortingTags) Less(i, j int) bool { return strings.Compare(p[i][0], p[j][0]) < 0 }
+func (p SortingTags) Less(i, j int) bool { return strings.Compare(p[i].Name, p[j].Name) < 0 }
 func (p SortingTags) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 
 func (s SortingTags) String() string {
@@ -91,11 +95,11 @@ func (s SortingTags) String() string {
 func (s SortingTags) IsEmpty() bool {
 	return len(s) == 0
 }
-func (s SortingTags) Tags() [][]string {
+func (s SortingTags) Tags() []*Tag {
 	return s
 }
 
-func (s SortingTags) SetTags(tgs [][]string) {
+func (s SortingTags) SetTags(tgs []*Tag) {
 	s = SortingTags(tgs)
 }
 
@@ -112,14 +116,14 @@ func (s SortingTags) Merge(tags SortingTags) SortingTags {
 	for _, tag := range tags {
 		got := false
 		for idx, o_tag := range n_tags {
-			if tag[0] == o_tag[0] {
-				n_tags[idx][1] = tag[1]
+			if tag.Name == o_tag.Name {
+				n_tags[idx].Value = tag.Value
 				got = true
 				break
 			}
 		}
 		if !got {
-			n_tags = append(n_tags, []string{tag[0], tag[1]})
+			n_tags = append(n_tags, &Tag{Name: tag.Name, Value: tag.Value})
 		}
 	}
 	return n_tags
@@ -135,7 +139,7 @@ func (s SortingTags) HasAllTags(tags SortingTags) bool {
 	have_ct := 0
 	for _, tag := range tags {
 		for _, o_tag := range s {
-			if tag[0] == o_tag[0] && tag[1] == o_tag[1] {
+			if tag.Name == o_tag.Name && tag.Value == o_tag.Value {
 				have_ct++
 			}
 		}
@@ -146,7 +150,7 @@ func (s SortingTags) HasAllTags(tags SortingTags) bool {
 func (s SortingTags) ToStringSep(wordsep string, tagsep string) string {
 	str := make([]string, len(s))
 	for idx, tag := range s {
-		str[idx] = strings.Join(tag, wordsep)
+		str[idx] = tag.Join(wordsep)
 	}
 	return strings.Join(str, tagsep)
 }
@@ -155,9 +159,9 @@ func (s SortingTags) WriteBytes(buf io.Writer, wordsep []byte, tagsep []byte) {
 
 	l := len(s)
 	for idx, tag := range s {
-		buf.Write([]byte(tag[0]))
+		buf.Write([]byte(tag.Name))
 		buf.Write(wordsep)
-		buf.Write([]byte(tag[1]))
+		buf.Write([]byte(tag.Value))
 		if idx < l-1 {
 			buf.Write(tagsep)
 		}
@@ -166,8 +170,8 @@ func (s SortingTags) WriteBytes(buf io.Writer, wordsep []byte, tagsep []byte) {
 
 func (s SortingTags) Find(name string) string {
 	for _, tag := range s {
-		if tag[0] == name {
-			return tag[1]
+		if tag.Name == name {
+			return tag.Value
 		}
 	}
 	return ""
@@ -175,12 +179,12 @@ func (s SortingTags) Find(name string) string {
 
 func (s SortingTags) Set(name string, val string) SortingTags {
 	for idx, tag := range s {
-		if tag[0] == name {
-			s[idx][1] = val
+		if tag.Name == name {
+			s[idx].Value = val
 			return s
 		}
 	}
-	s = append(s, []string{name, val})
+	s = append(s, &Tag{Name: name, Value: val})
 	return s
 }
 

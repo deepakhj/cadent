@@ -148,8 +148,8 @@ func (n *BufferedNetpoolConn) Flush() (wrote int, err error) {
 
 /*** Pooler ***/
 
-func NewBufferedNetpool(protocal string, name string, buffersize int) *BufferedNetpool {
-	pool := NewNetpool(protocal, name)
+func NewBufferedNetpool(protocol string, name string, buffersize int) *BufferedNetpool {
+	pool := NewNetpool(protocol, name)
 	//override
 	pool.newConnectionFunc = NewBufferedNetpoolConn
 

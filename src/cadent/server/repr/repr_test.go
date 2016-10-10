@@ -21,7 +21,6 @@ import (
 	"fmt"
 	. "github.com/smartystreets/goconvey/convey"
 	"hash/fnv"
-	"math"
 	"strconv"
 	"testing"
 	"time"
@@ -31,22 +30,24 @@ func TestStatAccumulatorRepr(t *testing.T) {
 	// Only pass t into top-level Convey calls
 	moo_nm := StatName{Key: "moo", Resolution: 1}
 	ss := StatRepr{
-		Name:  moo_nm,
+		Name:  &moo_nm,
 		Sum:   5,
 		Min:   1,
-		Max:   JsonFloat64(math.Inf(1)),
+		Max:   88,
 		Count: 4,
-		Time:  time.Now(),
+		Time:  time.Now().UnixNano(),
 	}
 
-	goo_nm := StatName{Key: "goo", Resolution: 2, Tags: [][]string{{"nameZ", "value1"}, {"nameA", "value2"}}}
+	tgs := []*Tag{{Name: "nameZ", Value: "value1"}, {Name: "nameA", Value: "value2"}}
+
+	goo_nm := StatName{Key: "goo", Resolution: 2, Tags: SortingTags(tgs)}
 	ss2 := StatRepr{
-		Name:  goo_nm,
+		Name:  &goo_nm,
 		Sum:   5,
 		Min:   1,
 		Max:   3,
 		Count: 4,
-		Time:  time.Now(),
+		Time:  time.Now().UnixNano(),
 	}
 
 	Convey("Stat Names", t, func() {
@@ -80,7 +81,7 @@ func TestStatAccumulatorRepr(t *testing.T) {
 	STAT_REPR_CACHE.Add(ss)
 	Convey("Global Cacher", t, func() {
 
-		_, err := json.Marshal(ss)
+		_, err := json.Marshal(&ss)
 		ss.Max = 3
 		Convey("Should convert to Json", func() {
 			So(err, ShouldEqual, nil)

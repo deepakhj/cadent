@@ -222,16 +222,16 @@ func (my *ElasticIndexer) WriteTags(inname *repr.StatName, do_main bool, do_meta
 
 	if have_tgs && do_main {
 		for _, t := range inname.Tags {
-			_, got := my.inTagCache(t[0], t[1])
+			_, got := my.inTagCache(t.Name, t.Value)
 			if got {
 				continue
 			}
 			tg := new(ESTag)
-			tg.Name = t[0]
-			tg.Value = t[1]
+			tg.Name = t.Name
+			tg.Value = t.Value
 			tg.IsMeta = false
 			tg_sum := md5.New()
-			tg_sum.Write([]byte(fmt.Sprintf("%s:%s:%v", t[0], t[1], false)))
+			tg_sum.Write([]byte(fmt.Sprintf("%s:%s:%v", t.Name, t.Value, false)))
 			ret, err := my.conn.Index().
 				Index(my.db.TagTable()).
 				Type(my.db.TagType).
@@ -239,26 +239,26 @@ func (my *ElasticIndexer) WriteTags(inname *repr.StatName, do_main bool, do_meta
 				BodyJson(tg).
 				Do()
 			if err != nil {
-				my.log.Error("Could not insert tag %v (%v) :: %v", t[0], t[1], err)
+				my.log.Error("Could not insert tag %v (%v) :: %v", t.Name, t.Value, err)
 				continue
 			}
 			if len(ret.Id) > 0 {
-				my.tagIdCache.Add(t[0], t[1], false, ret.Id)
+				my.tagIdCache.Add(t.Name, t.Value, false, ret.Id)
 			}
 		}
 	}
 	if have_meta && do_meta {
 		for _, t := range inname.Tags {
-			_, got := my.inTagCache(t[0], t[1])
+			_, got := my.inTagCache(t.Name, t.Value)
 			if got {
 				continue
 			}
 			tg := new(ESTag)
-			tg.Name = t[0]
-			tg.Value = t[1]
+			tg.Name = t.Name
+			tg.Value = t.Value
 			tg.IsMeta = true
 			tg_sum := md5.New()
-			tg_sum.Write([]byte(fmt.Sprintf("%s:%s:%v", t[0], t[1], true)))
+			tg_sum.Write([]byte(fmt.Sprintf("%s:%s:%v", t.Name, t.Value, true)))
 			_, err := my.conn.Index().
 				Index(my.db.TagTable()).
 				Type(my.db.TagType).
@@ -266,7 +266,7 @@ func (my *ElasticIndexer) WriteTags(inname *repr.StatName, do_main bool, do_meta
 				BodyJson(tg).
 				Do()
 			if err != nil {
-				my.log.Error("Could not insert tag %v (%v) :: %v", t[0], t[1], err)
+				my.log.Error("Could not insert tag %v (%v) :: %v", t.Name, t.Value, err)
 			}
 		}
 	}
@@ -355,8 +355,8 @@ func (my *ElasticIndexer) WriteOne(inname *repr.StatName) error {
 			if !inname.Tags.IsEmpty() {
 				for _, tg := range inname.Tags {
 					es_obj.Tags = append(es_obj.Tags, ESTag{
-						Name:   tg[0],
-						Value:  tg[1],
+						Name:   tg.Name,
+						Value:  tg.Value,
 						IsMeta: false,
 					})
 				}
@@ -364,8 +364,8 @@ func (my *ElasticIndexer) WriteOne(inname *repr.StatName) error {
 			if !inname.MetaTags.IsEmpty() {
 				for _, tg := range inname.MetaTags {
 					es_obj.Tags = append(es_obj.Tags, ESTag{
-						Name:   tg[0],
-						Value:  tg[1],
+						Name:   tg.Name,
+						Value:  tg.Value,
 						IsMeta: true,
 					})
 				}
@@ -676,7 +676,7 @@ func (my *ElasticIndexer) FindBase(metric string, tags repr.SortingTags, exact b
 
 	// if "tags" we need to find the tag Ids, and do the cross join
 	for _, tag := range tags {
-		t_ids, _ := my.GetTagsByNameValue(tag[0], tag[1], 0)
+		t_ids, _ := my.GetTagsByNameValue(tag.Name, tag.Value, 0)
 		if len(t_ids) > 0 {
 			tag_filter := elastic.NewBoolQuery()
 			for _, tg := range t_ids {
@@ -783,7 +783,7 @@ func (my *ElasticIndexer) FindRoot(tags repr.SortingTags) (MetricFindItems, erro
 
 	// if "tags" we need to find the tag Ids, and do the cross join
 	for _, tag := range tags {
-		t_ids, _ := my.GetTagsByNameValue(tag[0], tag[1], 0)
+		t_ids, _ := my.GetTagsByNameValue(tag.Name, tag.Value, 0)
 		if len(t_ids) > 0 {
 			tag_filter := elastic.NewBoolQuery()
 			for _, tg := range t_ids {

@@ -22,12 +22,15 @@ limitations under the License.
     the default behavior is to have metrics2 "identifier" tags, and all other tags are meta tags
     sometimes this is not desired, so if the StatName.SetTagMode("all") will make all tags
     identifiers
+
+    Note: the basic "structs" come from the Protobuf generator
 */
 
 package repr
 
 import (
 	"cadent/server/utils"
+	//"encoding/json"
 	"fmt"
 	"hash/fnv"
 	"math"
@@ -37,77 +40,32 @@ import (
 	"time"
 )
 
-type JsonFloat64 float64
-
-func CheckFloat(fl JsonFloat64) JsonFloat64 {
-	if math.IsNaN(float64(fl)) || math.IsInf(float64(fl), 0) || float64(fl) == math.MinInt64 {
-		return JsonFloat64(0)
-	}
-	return fl
-}
-
-// needed to handle "Inf" values
-func (s JsonFloat64) MarshalJSON() ([]byte, error) {
-	if math.IsNaN(float64(s)) || math.IsInf(float64(s), 0) || float64(s) == math.MinInt64 {
-		return []byte("0.0"), nil
-	}
-	return []byte(fmt.Sprintf("%v", float64(s))), nil
-}
+type StatId uint64
 
 type NilJsonFloat64 float64
+
+var nullBytes = []byte("null")
 
 // needed to handle "Inf" values
 func (s NilJsonFloat64) MarshalJSON() ([]byte, error) {
 	if math.IsNaN(float64(s)) || math.IsInf(float64(s), 0) || float64(s) == math.MinInt64 {
-		return []byte("null"), nil
+		return nullBytes, nil
 	}
 	return []byte(fmt.Sprintf("%v", float64(s))), nil
 }
 
-// for GC purposes
-const SPACE_SEPARATOR = " "
-const DOUBLE_SPACE_SEPARATOR = "  "
-const DOT_SEPARATOR = "."
-const COMMA_SEPARATOR = ","
-const EQUAL_SEPARATOR = "="
-const COLON_SEPARATOR = ":"
-const IS_SEPARATOR = "_is_"
-const UNDERSCORE_SEPARATOR = "_"
-const DASH_SEPARATOR = "-"
-const NEWLINE_SEPARATOR = "\n"
-const DATAGRAM_SEPARATOR = "|#"
-const SPACES_STRING = "\r\n\t "
+func CheckFloat(fl float64) float64 {
+	if math.IsNaN(fl) || math.IsInf(fl, 0) || fl == math.MinInt64 {
+		return 0
+	}
+	return fl
+}
 
-var SPACE_SEPARATOR_BYTE = []byte(" ")
-var DOUBLE_SPACE_SEPARATOR_BYTE = []byte("  ")
-var DOT_SEPARATOR_BYTE = []byte(".")
-var COLON_SEPARATOR_BYTE = []byte(":")
-var COMMA_SEPARATOR_BYTE = []byte(",")
-var EQUAL_SEPARATOR_BYTE = []byte("=")
-var IS_SEPARATOR_BYTE = []byte("_is_")
-var NEWLINE_SEPARATOR_BYTES = []byte("\n")
-var NEWLINE_SEPARATOR_BYTE = NEWLINE_SEPARATOR_BYTES[0]
-var DASH_SEPARATOR_BYTES = []byte("-")
-var UNDERSCORE_SEPARATOR_BYTES = []byte("_")
-var DATAGRAM_SEPARATOR_BYTES = []byte("|#")
-var SPACES_BYTES = []byte("\r\n\t ")
-
-type StatId uint64
-
-const (
-	TAG_METRICS2 uint8 = iota + 1
-	TAG_ALLTAGS
-)
-
-type StatName struct {
-	Key         string      `json:"key"`
-	Tags        SortingTags `json:"tags,omitempty"`
-	MetaTags    SortingTags `json:"meta_tags,omitempty"`
-	Resolution  uint32      `json:"resolution"`
-	TTL         uint32      `json:"ttl"`
-	TagMode     uint8       `json:"-"`
-	uniqueId    StatId
-	uniqueIdstr string
+func JsonFloat64(fl float64) []byte {
+	if math.IsNaN(fl) || math.IsInf(fl, 0) || fl == math.MinInt64 {
+		return nil
+	}
+	return []byte(fmt.Sprintf("%v", float64(fl)))
 }
 
 func (s *StatName) SetTagMode(mode string) {
@@ -118,10 +76,22 @@ func (s *StatName) SetTagMode(mode string) {
 	}
 }
 
+func (s *StatName) Copy() *StatName {
+	n := new(StatName)
+	n.Resolution = s.Resolution
+	n.TagMode = s.TagMode
+	n.Tags = s.Tags
+	n.MetaTags = s.MetaTags
+	n.Key = s.Key
+	n.XXX_uniqueIdstr = s.XXX_uniqueIdstr
+	n.XXX_uniqueId = s.XXX_uniqueId
+	return n
+}
+
 // take the various "parts" (keys, resolution, tags) and return a basic md5 hash of things
 func (s *StatName) UniqueId() StatId {
-	if s.uniqueId > 0 {
-		return s.uniqueId
+	if s.XXX_uniqueId > 0 {
+		return StatId(s.XXX_uniqueId)
 	}
 	buf := fnv.New64a()
 
@@ -142,8 +112,8 @@ func (s *StatName) UniqueId() StatId {
 		buf.Write(byte_buf.Bytes())
 	}
 
-	s.uniqueId = StatId(buf.Sum64())
-	return s.uniqueId
+	s.XXX_uniqueId = buf.Sum64()
+	return StatId(s.XXX_uniqueId)
 }
 
 // include both meta and tags and key
@@ -163,11 +133,11 @@ func (s *StatName) UniqueIdAllTags() StatId {
 // nice "sqeeuzed" string
 // keep it in the object as the computation can yield many GC things from the Fprintf above
 func (s *StatName) UniqueIdString() string {
-	if s.uniqueIdstr == "" {
+	if s.XXX_uniqueIdstr == "" {
 		id := s.UniqueId()
-		s.uniqueIdstr = strconv.FormatUint(uint64(id), 36)
+		s.XXX_uniqueIdstr = strconv.FormatUint(uint64(id), 36)
 	}
-	return s.uniqueIdstr
+	return s.XXX_uniqueIdstr
 }
 
 func (s *StatName) StringToUniqueId(inid string) StatId {
@@ -195,14 +165,14 @@ func (s *StatName) MergeTags(tags SortingTags) SortingTags {
 	for _, tag := range tags {
 		got := false
 		for _, o_tag := range s.Tags {
-			if tag[0] == o_tag[0] {
-				n_tags = append(n_tags, []string{tag[0], tag[1]})
+			if tag.Name == o_tag.Name {
+				n_tags = append(n_tags, &Tag{tag.Name, tag.Value})
 				got = true
 				break
 			}
 		}
 		if !got {
-			n_tags = append(n_tags, []string{tag[0], tag[1]})
+			n_tags = append(n_tags, &Tag{Name: tag.Name, Value: tag.Value})
 		}
 	}
 	s.Tags = n_tags
@@ -228,7 +198,7 @@ func (s *StatName) Name() string {
 	str := make([]string, 1+len(s_tags))
 	str[0] = s.Key
 	for idx, tg := range s_tags {
-		str[idx+1] = strings.Join(tg, EQUAL_SEPARATOR)
+		str[idx+1] = tg.Join(EQUAL_SEPARATOR)
 	}
 	return strings.Join(str, ".")
 }
@@ -258,19 +228,54 @@ func (s *StatName) MergeMetric2Tags(itgs SortingTags) {
 		s.Tags, s.MetaTags = SplitIntoMetric2Tags(MergeMetric2Tags(itgs, s.Tags, s.MetaTags))
 	}
 	// need to invalidate the unique ids as the tags may have changed
-	s.uniqueId = 0
-	s.uniqueIdstr = ""
+	s.XXX_uniqueId = 0
+	s.XXX_uniqueIdstr = ""
 }
 
-type StatRepr struct {
-	Name StatName
+// need to overload this to get "NANs" to encode properly, we don't want panics on
+// over/under flows errs
+/*
+const jsonTMPL = `{"name":%s,"time":%d,"min":%v,"max":%v,"sum":%v,"last":%v,"count":%v}`
 
-	Time  time.Time   `json:"time_ns"`
-	Min   JsonFloat64 `json:"min"`
-	Max   JsonFloat64 `json:"max"`
-	Sum   JsonFloat64 `json:"sum"`
-	Last  JsonFloat64 `json:"last"`
-	Count int64       `json:"count"`
+func (s StatRepr) MarshalJSON() ([]byte, error) {
+
+	buf := utils.GetBytesBuffer()
+	defer utils.PutBytesBuffer(buf)
+
+	nm, err := json.Marshal(s.Name)
+	if err != nil {
+		return nil, err
+	}
+	fmt.Fprintf(
+		buf,
+		jsonTMPL,
+		nm,
+		s.Time,
+		JsonFloat64(s.Min),
+		JsonFloat64(s.Max),
+		JsonFloat64(s.Sum),
+		JsonFloat64(s.Last),
+		s.Count,
+	)
+	return buf.Bytes(), nil
+}
+*/
+func (s *StatRepr) ToTime() time.Time {
+	// nano or second tstamps
+	if s.Time > 2147483647 {
+		return time.Unix(0, s.Time)
+	}
+
+	return time.Unix(s.Time, 0)
+}
+
+func (s *StatRepr) ToUnix() uint32 {
+	// nano or second tstamps
+	if s.Time > 2147483647 {
+		return uint32(time.Unix(0, s.Time).Unix())
+	}
+
+	return uint32(time.Unix(s.Time, 0).Unix())
 }
 
 // take the various "parts" (keys, resolution, tags) and return a basic fmv64a hash of things
@@ -289,8 +294,17 @@ func (s *StatRepr) ByteSize() int64 {
 }
 
 func (s *StatRepr) Copy() *StatRepr {
-	obj := *s
-	return &obj
+	obj := new(StatRepr)
+	obj.Time = s.Time
+	obj.Min = s.Min
+	obj.Max = s.Max
+	obj.Last = s.Last
+	if s.Name != nil {
+		obj.Name = s.Name.Copy()
+	}
+	obj.Count = s.Count
+	obj.Sum = s.Sum
+	return obj
 
 }
 
@@ -316,7 +330,7 @@ func (s *StatRepr) AggValue(aggfunc AggType) float64 {
 // the "time" is chosen as the most future time
 // and Last according to that order
 func (s *StatRepr) Merge(stat *StatRepr) *StatRepr {
-	if stat.Time.UnixNano() <= s.Time.UnixNano() {
+	if stat.Time <= s.Time {
 		out := s.Copy()
 		if out.Min > stat.Min {
 			out.Min = stat.Min
@@ -343,12 +357,12 @@ func (s *StatRepr) Merge(stat *StatRepr) *StatRepr {
 
 // basically a "uniqueness" key for dedupe attempts in list
 func (s *StatRepr) UniqueKey() string {
-	return fmt.Sprintf("%d:%d", s.Name.UniqueId(), s.Time.UnixNano())
+	return fmt.Sprintf("%d:%d", s.Name.UniqueId(), s.Time)
 }
 
 // will be "true" of the Id + time are the same
 func (s *StatRepr) IsSameStat(stat *StatRepr) bool {
-	return s.Name.UniqueId() == stat.Name.UniqueId() && s.Time.Equal(stat.Time)
+	return s.Name.UniqueId() == stat.Name.UniqueId() && s.Time == stat.Time
 }
 
 // if this stat is in a list
@@ -361,20 +375,22 @@ func (s *StatRepr) ContainsSelf(stats []*StatRepr) bool {
 	return false
 }
 
+/*
 func (s *StatRepr) String() string {
 	m := float64(s.Sum)
 	if s.Count > 0 {
 		m = float64(s.Sum) / float64(s.Count)
 	}
-	return fmt.Sprintf("Stat: Mean: %f @ %s/%d/%d", m, s.Time, s.Name.Resolution, s.Name.TTL)
+	return fmt.Sprintf("Stat: Mean: %f @ %s/%d/%d", m, s.Time, s.Name.Resolution, s.Name.Ttl)
 }
+*/
 
 // time sort
 type StatReprSlice []*StatRepr
 
 func (p StatReprSlice) Len() int { return len(p) }
 func (p StatReprSlice) Less(i, j int) bool {
-	return p[i] != nil && p[j] != nil && p[i].Time.Before(p[j].Time)
+	return p[i] != nil && p[j] != nil && p[i].Time < p[j].Time
 }
 func (p StatReprSlice) Swap(i, j int) { p[i], p[j] = p[j], p[i] }
 
@@ -391,12 +407,13 @@ type ReprList struct {
 
 func (s *ReprList) Add(stat StatRepr) StatRepr {
 	s.Reprs = append(s.Reprs, stat)
-	if stat.Time.Second() > s.MaxTime.Second() {
-		s.MaxTime = stat.Time
+	t_t := stat.ToTime()
+	if t_t.Second() > s.MaxTime.Second() {
+		s.MaxTime = t_t
 	}
 	// first one added is the first time
 	if s.MinTime.Second() == 0 {
-		s.MinTime = stat.Time
+		s.MinTime = t_t
 	}
 	return stat
 }

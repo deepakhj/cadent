@@ -266,7 +266,7 @@ func (rl *RollupMetric) DoRollup(tseries *TotalTimeSeries) (err error) {
 			m_tseries = append(m_tseries, nseries)
 		}
 		new_name := tseries.Name
-		new_name.TTL = uint32(ttl)
+		new_name.Ttl = uint32(ttl)
 		new_name.Resolution = uint32(resolution)
 
 		// We walk through the old data points and see if we need to "update" the rows
@@ -287,7 +287,7 @@ func (rl *RollupMetric) DoRollup(tseries *TotalTimeSeries) (err error) {
 					len(rawd.Data),
 					ts.Count(),
 				)
-				old_data[idx].TTL = new_name.TTL // needed for some DBs
+				old_data[idx].TTL = new_name.Ttl // needed for some DBs
 				err = rl.writer.UpdateDBSeries(old_data[idx], ts)
 				if err != nil {
 					rl.log.Errorf("rollup update err: %v", err)

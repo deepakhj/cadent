@@ -41,14 +41,14 @@ import (
 /** basic data type **/
 
 type KafkaPath struct {
-	Id       repr.StatId `json:"id"`
-	Uid      string      `json:"uid"`
-	Type     string      `json:"type"`
-	Path     string      `json:"path"`
-	Segments []string    `json:"segments"`
-	SentTime int64       `json:"senttime"`
-	Tags     [][]string  `json:"tags,omitempty"`
-	MetaTags [][]string  `json:"meta_tags,omitempty"`
+	Id       repr.StatId      `json:"id"`
+	Uid      string           `json:"uid"`
+	Type     string           `json:"type"`
+	Path     string           `json:"path"`
+	Segments []string         `json:"segments"`
+	SentTime int64            `json:"senttime"`
+	Tags     repr.SortingTags `json:"tags,omitempty"`
+	MetaTags repr.SortingTags `json:"meta_tags,omitempty"`
 
 	encoded []byte
 	err     error

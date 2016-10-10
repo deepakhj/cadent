@@ -428,7 +428,7 @@ func (cass *CassandraFlatWriter) mergeWrite(stat *repr.StatRepr) *repr.StatRepr 
 		return stat
 	}
 
-	time := stat.Time.UnixNano()
+	time := stat.ToTime().UnixNano()
 
 	t_name := cass.db.MetricTable()
 	if cass.tablePerResolution {
@@ -446,11 +446,11 @@ func (cass *CassandraFlatWriter) mergeWrite(stat *repr.StatRepr) *repr.StatRepr 
 		// only one here
 		n_stat := &repr.StatRepr{
 			Time:  stat.Time,
-			Last:  repr.JsonFloat64(last),
+			Last:  repr.CheckFloat(last),
 			Count: count,
-			Sum:   repr.JsonFloat64(sum),
-			Min:   repr.JsonFloat64(min),
-			Max:   repr.JsonFloat64(max),
+			Sum:   repr.CheckFloat(sum),
+			Min:   repr.CheckFloat(min),
+			Max:   repr.CheckFloat(max),
 		}
 		return stat.Merge(n_stat)
 	}
@@ -509,14 +509,14 @@ func (cass *CassandraFlatWriter) InsertMulti(name *repr.StatName, points repr.St
 
 	for _, stat := range points {
 		DO_Q := fmt.Sprintf(cass._insert_query, t_name)
-		if stat.Name.TTL > 0 {
-			DO_Q += fmt.Sprintf(" USING TTL %d", stat.Name.TTL)
+		if stat.Name.Ttl > 0 {
+			DO_Q += fmt.Sprintf(" USING TTL %d", stat.Name.Ttl)
 		}
 		batch.Query(
 			DO_Q,
 			name.UniqueIdString(),
 			int64(stat.Name.Resolution),
-			stat.Time.UnixNano(),
+			stat.ToTime().UnixNano(),
 			float64(stat.Sum),
 			float64(stat.Min),
 			float64(stat.Max),
@@ -541,8 +541,8 @@ func (cass *CassandraFlatWriter) InsertOne(name *repr.StatName, stat *repr.StatR
 	defer stats.StatsdNanoTimeFunc(fmt.Sprintf("writer.cassandraflat.write.metric-time-ns"), time.Now())
 
 	ttl := uint32(0)
-	if stat.Name.TTL > 0 {
-		ttl = stat.Name.TTL
+	if stat.Name.Ttl > 0 {
+		ttl = stat.Name.Ttl
 	}
 
 	t_name := cass.db.MetricTable()
@@ -559,7 +559,7 @@ func (cass *CassandraFlatWriter) InsertOne(name *repr.StatName, stat *repr.StatR
 	err := cass.conn.Query(Q,
 		name.UniqueIdString(),
 		int64(stat.Name.Resolution),
-		stat.Time.UnixNano(),
+		stat.ToTime().UnixNano(),
 		float64(write_stat.Sum),
 		float64(write_stat.Min),
 		float64(write_stat.Max),
@@ -636,7 +636,7 @@ func (cass *CassandraFlatWriter) Write(stat repr.StatRepr) error {
 	//cache keys needs metric + resolution
 	// turning off
 	if !cass.shutitdown {
-		cass.cacher.Add(&stat.Name, &stat)
+		cass.cacher.Add(stat.Name, &stat)
 	}
 
 	return nil
@@ -726,7 +726,7 @@ func (cass *CassandraFlatMetric) Write(stat repr.StatRepr) error {
 	// keep tabs on what it's already indexed for speed sake,
 	// the push "push" of stats will cause things to get pretty slow for a while
 	stat.Name.MergeMetric2Tags(cass.static_tags)
-	cass.indexer.Write(stat.Name)
+	cass.indexer.Write(*stat.Name)
 	return cass.writer.Write(stat)
 }
 

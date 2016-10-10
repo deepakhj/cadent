@@ -28,7 +28,6 @@ import (
 	cdec "github.com/ugorji/go/codec"
 	"io"
 	"sync"
-	"time"
 )
 
 const (
@@ -216,7 +215,7 @@ func (s *CodecTimeSeries) AddPoint(t int64, min float64, max float64, last float
 }
 
 func (s *CodecTimeSeries) AddStat(stat *repr.StatRepr) error {
-	return s.AddPoint(stat.Time.UnixNano(), float64(stat.Min), float64(stat.Max), float64(stat.Last), float64(stat.Sum), stat.Count)
+	return s.AddPoint(stat.Time, stat.Min, stat.Max, stat.Last, stat.Sum, stat.Count)
 }
 
 // Iter lets you iterate over a series.  It is not concurrency-safe.
@@ -308,14 +307,14 @@ func (it *CodecIter) Values() (int64, float64, float64, float64, float64, int64)
 			t = combineSecNano(uint32(t), 0)
 		}
 		return t,
-			float64(it.curStat.Stat.Min),
-			float64(it.curStat.Stat.Max),
-			float64(it.curStat.Stat.Last),
-			float64(it.curStat.Stat.Sum),
+			it.curStat.Stat.Min,
+			it.curStat.Stat.Max,
+			it.curStat.Stat.Last,
+			it.curStat.Stat.Sum,
 			it.curStat.Stat.Count
 	}
 
-	v := float64(it.curStat.SmallStat.Val)
+	v := it.curStat.SmallStat.Val
 	t := it.curStat.SmallStat.Time
 	if !it.fullResolution {
 		t = combineSecNano(uint32(t), 0)
@@ -330,30 +329,18 @@ func (it *CodecIter) Values() (int64, float64, float64, float64, float64, int64)
 
 func (it *CodecIter) ReprValue() *repr.StatRepr {
 	if it.curStat.StatType {
-		var t time.Time
-		if it.fullResolution {
-			t = time.Unix(0, it.curStat.Stat.Time)
-		} else {
-			t = time.Unix(it.curStat.Stat.Time, 0)
-		}
 		return &repr.StatRepr{
-			Time:  t,
-			Min:   repr.JsonFloat64(it.curStat.Stat.Min),
-			Max:   repr.JsonFloat64(it.curStat.Stat.Max),
-			Last:  repr.JsonFloat64(it.curStat.Stat.Last),
-			Sum:   repr.JsonFloat64(it.curStat.Stat.Sum),
+			Time:  it.curStat.Stat.Time,
+			Min:   repr.CheckFloat(it.curStat.Stat.Min),
+			Max:   repr.CheckFloat(it.curStat.Stat.Max),
+			Last:  repr.CheckFloat(it.curStat.Stat.Last),
+			Sum:   repr.CheckFloat(it.curStat.Stat.Sum),
 			Count: it.curStat.Stat.Count,
 		}
 	}
-	v := repr.JsonFloat64(it.curStat.SmallStat.Val)
-	var t time.Time
-	if it.fullResolution {
-		t = time.Unix(0, it.curStat.SmallStat.Time)
-	} else {
-		t = time.Unix(it.curStat.SmallStat.Time, 0)
-	}
+	v := repr.CheckFloat(it.curStat.SmallStat.Val)
 	return &repr.StatRepr{
-		Time:  t,
+		Time:  it.curStat.SmallStat.Time,
 		Min:   v,
 		Max:   v,
 		Last:  v,

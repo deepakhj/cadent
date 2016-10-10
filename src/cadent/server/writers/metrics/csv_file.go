@@ -189,10 +189,10 @@ func (fi *CSVFileMetrics) Write(stat repr.StatRepr) error {
 	line := fmt.Sprintf(
 		"%s\t%s\t%0.6f\t%0.6f\t%0.6f\t%0.6f\t%d\t%d\t%d\t%d\n",
 		stat.Name.Key, stat.Name.UniqueIdString(), stat.Sum, stat.Min, stat.Max, stat.Last, stat.Count,
-		stat.Name.Resolution, stat.Time.UnixNano(), stat.Name.TTL,
+		stat.Name.Resolution, stat.ToTime().UnixNano(), stat.Name.Ttl,
 	)
 
-	fi.indexer.Write(stat.Name) // index me
+	fi.indexer.Write(*stat.Name) // index me
 	_, err := fi.WriteLine(line)
 
 	return err
