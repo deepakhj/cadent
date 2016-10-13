@@ -150,7 +150,7 @@ func GuessReprValueFromKey(metric string) AggType {
 	}
 
 	switch {
-	case strings.HasPrefix(metric, "stats.count") || strings.HasPrefix(metric, "stats.set") || strings.HasPrefix(metric, "stats.sets") || _countReg.MatchString(metric):
+	case strings.HasPrefix(metric, "stats_count") || strings.HasPrefix(metric, "stats.count") || strings.HasPrefix(metric, "stats.set") || strings.HasPrefix(metric, "stats.sets") || _countReg.MatchString(metric):
 		return SUM
 	case strings.HasPrefix(metric, "stats.gauge"):
 		return LAST

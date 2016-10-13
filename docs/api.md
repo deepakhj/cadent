@@ -150,6 +150,7 @@ the default of `mean`.  By "ends with" we mean the last verb in the metric name 
 | ends with: lower_\d+ |  min |
 | ends with: gauge |  last |
 | starts with: stats.gauge |  last |
+| starts with: stats_count |  sum |
 | starts with: stats.set |  sum |
 | ends with: median |  median |
 | ends with: middle |  median |
