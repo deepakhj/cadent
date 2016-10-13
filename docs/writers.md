@@ -762,9 +762,9 @@ For instance a 3 DAY size w/ expireing TTLs of 90 DAYS is good.  Or a 1 DAY size
 
 ### Cassandra + Table Per Resolution
 
-If in the Options for the writres you specify `table_per_resolution` then we adopt the same model that we do for MySQL
+If in the Options for the writes you specify `table_per_resolution` then we adopt the same model that we do for MySQL.
 
-Namly things expect a table names `{metric_table}_{resolution in seconds}s` for each resolution. Like so
+Things expect a table names `{metric_table}_{resolution in seconds}s` for each resolution. Like so
 
     metric_1s
     metric_10s
@@ -792,6 +792,18 @@ Remember you should add your tables to use the proper `compaction_window_size` y
 
         [myaccumulator.accumulator.api.metrics.options]
         table_per_resolution=true
+
+The schema is different as well since we no longer need a "resolution" in the data point
+
+        CREATE TABLE metric.metric_{resolution}s (
+            id ascii,
+            etime bigint,
+            stime bigint,
+            ptype int,
+            points blob,
+            PRIMARY KEY (mid, etime)
+        ) WITH CLUSTERING ORDER BY etime ASC
+        
 
 ### Cassandra + Gotcha's
 
