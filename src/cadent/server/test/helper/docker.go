@@ -238,5 +238,4 @@ func DockerWaitUntilReady(which string) bool {
 			}
 		}
 	}
-	return false
 }

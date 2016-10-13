@@ -31,10 +31,12 @@ import (
 	"time"
 )
 
+// OutMessageWriter interface for output writers
 type OutMessageWriter interface {
 	Write(*OutputMessage) error
 }
 
+/** PoolWriter a writer that does uses a pool of outgoing sockets for sending **/
 type PoolWriter struct{}
 
 func (p *PoolWriter) Write(j *OutputMessage) error {
@@ -58,7 +60,7 @@ func (p *PoolWriter) Write(j *OutputMessage) error {
 			ok = true
 			return 0
 		} else {
-			m_url, err := url.Parse(j.outserver)
+			mURL, err := url.Parse(j.outserver)
 			if err != nil {
 				stats.StatsdClient.Incr("failed.bad-url", 1)
 				j.server.FailSendCount.Up(1)
@@ -70,9 +72,9 @@ func (p *PoolWriter) Write(j *OutputMessage) error {
 
 			}
 			if j.server.SendingConnectionMethod == "bufferedpool" {
-				outsrv = netpool.NewBufferedNetpool(m_url.Scheme, m_url.Host+m_url.Path, j.server.WriteBufferPoolSize)
+				outsrv = netpool.NewBufferedNetpool(mURL.Scheme, mURL.Host+mURL.Path, j.server.WriteBufferPoolSize)
 			} else {
-				outsrv = netpool.NewNetpool(m_url.Scheme, m_url.Host+m_url.Path)
+				outsrv = netpool.NewNetpool(mURL.Scheme, mURL.Host+mURL.Path)
 			}
 			if j.server.NetPoolConnections > 0 {
 				outsrv.SetMaxConnections(j.server.NetPoolConnections)
@@ -87,6 +89,7 @@ func (p *PoolWriter) Write(j *OutputMessage) error {
 			return 0
 		}
 	}
+
 	// keep retrying
 	retcode := make_pool()
 	if retcode == 1 {
@@ -108,8 +111,8 @@ func (p *PoolWriter) Write(j *OutputMessage) error {
 		// Conn.Write will raise a timeout error after 1 seconds
 		netconn.SetWriteDeadline(time.Now().Add(j.server.WriteTimeout))
 		//var wrote int
-		to_send := append(j.param, repr.NEWLINE_SEPARATOR_BYTE)
-		by, err := netconn.Write(to_send)
+		toSend := append(j.param, repr.NEWLINE_SEPARATOR_BYTE)
+		by, err := netconn.Write(toSend)
 
 		//log.Printf("SEND %s %s", wrote, err)
 		if err != nil {
@@ -121,7 +124,7 @@ func (p *PoolWriter) Write(j *OutputMessage) error {
 			j.server.BytesWrittenCount.Up(uint64(by))
 			j.server.SuccessSendCount.Up(1)
 			stats.StatsdClient.Incr("success.send", 1)
-			stats.StatsdClient.Incr("success.sent-bytes", int64(len(to_send)))
+			stats.StatsdClient.Incr("success.sent-bytes", int64(len(toSend)))
 		}
 
 	} else {
@@ -132,7 +135,7 @@ func (p *PoolWriter) Write(j *OutputMessage) error {
 	return nil
 }
 
-/** Single Writer **/
+/** SingleWriter a writer that does not use a buffered pool for sending to sockets **/
 type SingleWriter struct{}
 
 func (p *SingleWriter) Write(j *OutputMessage) error {
@@ -174,7 +177,7 @@ func (p *SingleWriter) Write(j *OutputMessage) error {
 	return nil
 }
 
-/***** Dispatcher Job ****/
+/***** OutputDispatchJob Dispatcher Job work queue ****/
 type OutputDispatchJob struct {
 	Writer  OutMessageWriter
 	Message *OutputMessage
@@ -203,9 +206,9 @@ func (o *OutputDispatchJob) DoWork() error {
 }
 
 func NewOutputDispatcher(workers int) *dispatch.Dispatch {
-	write_queue := make(chan dispatch.IJob, workers*10) // a little buffer
-	dispatch_queue := make(chan chan dispatch.IJob, workers)
-	write_dispatcher := dispatch.NewDispatch(workers, dispatch_queue, write_queue)
-	write_dispatcher.SetRetries(2)
-	return write_dispatcher
+	writeQueue := make(chan dispatch.IJob, workers*10) // a little buffer
+	dispatchQueue := make(chan chan dispatch.IJob, workers)
+	writeDispatcher := dispatch.NewDispatch(workers, dispatchQueue, writeQueue)
+	writeDispatcher.SetRetries(2)
+	return writeDispatcher
 }

@@ -91,9 +91,9 @@ type ConfigAccumulator struct {
 	RandomTickerStart bool                 `toml:"random_ticker_start"  json:"random_ticker_start"` // if true will set the flusher to basically started at "now" time otherwise it will use time % duration
 	TagMode           string               `toml:"tag_mode"  json:"tag_mode"`                       // "all" "metrics2" -- default to metrics2 -- Will set how tags identify a unique metric
 
-	accumulate_time time.Duration   `toml:"-"  json:"-"`
-	durations       []time.Duration `toml:"-"  json:"-"`
-	ttls            []time.Duration `toml:"-"  json:"-"`
+	accumulate_time time.Duration
+	durations       []time.Duration
+	ttls            []time.Duration
 }
 
 func (cf *ConfigAccumulator) ParseDurations() error {

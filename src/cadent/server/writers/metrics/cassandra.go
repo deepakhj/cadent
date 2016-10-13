@@ -650,7 +650,7 @@ func (cass *CassandraMetric) GetFromReadCache(metric string, start int64, end in
 			t := uint32(stat.ToTime().Unix())
 			d_points = append(d_points, RawDataPoint{
 				Count: 1,
-				Sum:   float64(stat.Sum),
+				Sum:   stat.Sum,
 				Time:  t,
 			})
 			if f_t <= 0 {

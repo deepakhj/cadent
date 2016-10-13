@@ -31,22 +31,29 @@ import (
 	"fmt"
 )
 
+// Name <-> Server pair to be stored in the SERVER_BACKENDS
 type Backend struct {
 	Queue *Server
 	Name  string
 }
 
-// basic alias to add a line to a backend's input queue
+// Send is an basic alias to add a line to a backend's input queue
 // where things will start "all over again"
 func (bk *Backend) Send(line splitter.SplitItem) {
 	bk.Queue.InputQueue <- line
 }
 
+// type for the Backend maps
 type Backends map[string]*Backend
 
-// a singleton
-var SERVER_BACKENDS Backends = make(Backends)
+// all the ServerBackends in a singleton
+var ServerBackends Backends
 
+func init() {
+	ServerBackends = make(Backends)
+}
+
+// Get a backend by name
 func (bk Backends) Get(name string) (*Server, error) {
 	srv, ok := bk[name]
 	if !ok {
@@ -55,12 +62,13 @@ func (bk Backends) Get(name string) (*Server, error) {
 	return srv.Queue, nil
 }
 
+// Add a backend by name
 func (bk Backends) Add(name string, server *Server) {
 	toadd := &Backend{Name: name, Queue: server}
 	bk[name] = toadd
 }
 
-// send a line to the backend
+// Send a line to the backend
 func (bk Backends) Send(name string, line splitter.SplitItem) (err error) {
 
 	got, ok := bk[name]

@@ -142,7 +142,7 @@ The main writers are
 
         Good for simplicity, and when you are starting out w/ cassandra to verify things are working as planned
         But, not exactly space efficient nor read/api performant.  But may be usefull (as it was for me)
-        in verifification of the internals.
+        in verifification of the internals. As well as if you are going to have "out-of-order" time series.
 
     - whisper: standard graphite format
 

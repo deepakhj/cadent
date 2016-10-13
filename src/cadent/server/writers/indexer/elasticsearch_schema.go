@@ -240,7 +240,7 @@ func (es *ElasticSearchSchema) AddIndexTables() error {
 				return
 			}
 			if !putresp.Acknowledged {
-				fmt.Errorf("expected put mapping ack; got: %v", putresp.Acknowledged)
+				err = fmt.Errorf("expected put mapping ack; got: %v", putresp.Acknowledged)
 				return
 			}
 		}
@@ -259,7 +259,7 @@ func (es *ElasticSearchSchema) AddIndexTables() error {
 				return
 			}
 			if !putresp.Acknowledged {
-				fmt.Errorf("expected put mapping ack; got: %v", putresp.Acknowledged)
+				err = fmt.Errorf("expected put mapping ack; got: %v", putresp.Acknowledged)
 				return
 			}
 		}

@@ -1102,7 +1102,7 @@ func (server *Server) ProcessSplitItem(splitem splitter.SplitItem, out_queue cha
 		// socket it came from
 		log.Debug("Acc:%v UseBack: %v FromBack: %v Line: %s ", server.PreRegFilter.Accumulator.Name, use_backend, server.Name, splitem.Line())
 		splitem.SetOrigin(splitter.Other)
-		err := SERVER_BACKENDS.Send(use_backend, splitem)
+		err := ServerBackends.Send(use_backend, splitem)
 		if err != nil {
 			server.log.Error("backend send error: %v", err)
 		}
@@ -1490,7 +1490,7 @@ func CreateServer(cfg *config.HasherConfig, hashers []*ConstHasher) (*Server, er
 	//server.TrapExit() //trappers
 
 	// add it to the list of backends available
-	SERVER_BACKENDS.Add(server.Name, server)
+	ServerBackends.Add(server.Name, server)
 
 	return server, err
 }
@@ -1534,7 +1534,7 @@ func (server *Server) StartServer() {
 		if server.PreRegFilter.Accumulator.ToBackend == accumulator.BLACK_HOLE_BACKEND {
 			log.Notice("NOTE: BlackHole for `%s`", server.PreRegFilter.Accumulator.Name)
 		} else {
-			to_srv := SERVER_BACKENDS[server.PreRegFilter.Accumulator.ToBackend]
+			to_srv := ServerBackends[server.PreRegFilter.Accumulator.ToBackend]
 			log.Notice("Assiging OutQueue for `%s` to backend `%s` ", server.PreRegFilter.Accumulator.Name, to_srv.Name)
 			server.PreRegFilter.Accumulator.SetOutputQueue(to_srv.Queue.InputQueue)
 			// fire it up

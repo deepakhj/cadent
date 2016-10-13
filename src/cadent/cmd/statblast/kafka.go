@@ -56,7 +56,7 @@ func UnProcessedMakeKafkaMessage() *schemas.KUnProcessedMetric {
 			Count:  randInt(max),
 			Max:    randFloat(max, div),
 			Min:    randFloat(max, div),
-			Tags:   schemas.ToMetricTag(tgs),
+			Tags:   tgs,
 		},
 	}
 

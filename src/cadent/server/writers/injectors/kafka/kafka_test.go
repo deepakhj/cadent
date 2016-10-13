@@ -239,7 +239,7 @@ func TestKafkaInjector(t *testing.T) {
 						Key:   sarama.StringEncoder(msg.Id()),
 						Value: msg,
 					}
-					t.Logf("Produced: %v : %p", msg.Id(), msg)
+					t.Logf("Produced: %v : %v", msg.Id(), msg)
 				}
 				prod.Close()
 				break

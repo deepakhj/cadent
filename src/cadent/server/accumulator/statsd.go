@@ -139,6 +139,7 @@ func (s *StatsdBaseStatItem) Write(buffer io.Writer, fmatter FormatterItem, acc 
 			if len(sufix) > 0 {
 				rate_pref = rate_pref + sufix + "."
 			}
+			// stats.{thing} count/sec
 			fmatter.Write(
 				buffer,
 				&repr.StatName{Key: f_key + in_key, Tags: s.InKey.Tags, MetaTags: s.InKey.MetaTags},
@@ -147,6 +148,8 @@ func (s *StatsdBaseStatItem) Write(buffer io.Writer, fmatter FormatterItem, acc 
 				c_type,
 				acc.Tags(),
 			)
+
+			//stats_count.{thing} raw count
 			fmatter.Write(buffer,
 
 				&repr.StatName{Key: rate_pref + in_key, Tags: s.InKey.Tags, MetaTags: s.InKey.MetaTags},

@@ -15,16 +15,18 @@ limitations under the License.
 */
 
 /*
-	Interface to TCP/UDP clients
+	Interface to Http/TCP/UDP clients
 */
 
 package cadent
 
 import "cadent/server/splitter"
 
+// Client interface for any incoming client connections to follow
 type Client interface {
-	handleRequest(out_queue chan splitter.SplitItem, close_chan chan bool)
-	handleSend(out_queue chan splitter.SplitItem)
+	handleRequest(outQueue chan splitter.SplitItem, closeChan chan bool)
+	handleSend(outQueue chan splitter.SplitItem)
+
 	Close()
 	SetBufferSize(int)
 	Server() *Server

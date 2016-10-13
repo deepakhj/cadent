@@ -380,7 +380,6 @@ func (it *GobIter) Next() bool {
 		it.max = it.sum
 		it.last = it.sum
 		it.count = 1
-		it.sum = it.sum
 		return true
 	}
 

@@ -35,31 +35,35 @@ import (
 	"time"
 )
 
+// TCP_BUFFER_SIZE Size in bytes of the TCP read buffer
 const TCP_BUFFER_SIZE = 1048576
+
+// TCP_READ_TIMEOUT TCP read timeout
 const TCP_READ_TIMEOUT = 5 * time.Second // second
 
 /************************** TCP Dispatcher Job *******************************/
-type TCPJob struct {
+
+type tcpJob struct {
 	Client  *TCPClient
 	Splitem splitter.SplitItem
 	retry   int
 }
 
-func (j TCPJob) IncRetry() int {
-	j.retry++
-	return j.retry
+func (t tcpJob) IncRetry() int {
+	t.retry++
+	return t.retry
 }
 
-func (j TCPJob) OnRetry() int {
-	return j.retry
+func (t tcpJob) OnRetry() int {
+	return t.retry
 }
 
-func (t TCPJob) DoWork() {
+func (t tcpJob) DoWork() {
 	if t.Splitem == nil {
 		return
 	}
-	l_len := (int64)(len(t.Splitem.Line()))
-	t.Client.server.AddToCurrentTotalBufferSize(l_len)
+	llen := (int64)(len(t.Splitem.Line()))
+	t.Client.server.AddToCurrentTotalBufferSize(llen)
 	if t.Client.server.NeedBackPressure() {
 		t.Client.server.log.Warning(
 			"Error::Max Queue or buffer reached dropping connection (Buffer %v, queue len: %v)",
@@ -68,11 +72,11 @@ func (t TCPJob) DoWork() {
 		t.Client.server.BackPressure()
 	}
 	t.Client.server.ProcessSplitItem(t.Splitem, t.Client.server.ProcessedQueue)
-	t.Client.server.AddToCurrentTotalBufferSize(-l_len)
+	t.Client.server.AddToCurrentTotalBufferSize(-llen)
 }
 
-/************************** TCP CLIENT ******************************
-Should be one per connection (unlike udp/http which is one for all servers, so handling is
+/*
+TCPClient Should be one per connection (unlike udp/http which is one for all servers, so handling is
 treated a bit differently here
 */
 type TCPClient struct {
@@ -89,19 +93,20 @@ type TCPClient struct {
 	writer *bufio.Writer
 	reader *bufio.Reader
 
-	out_queue      chan splitter.SplitItem
-	input_queue    chan splitter.SplitItem
-	dispatch_queue chan dispatch.IJob
-	done           chan Client
-	worker_queue   chan *OutputMessage
-	close          chan bool
-	shutitdown     bool
+	outQueue      chan splitter.SplitItem
+	inputQueue    chan splitter.SplitItem
+	dispatchQueue chan dispatch.IJob
+	done          chan Client
+	workerQueue   chan *OutputMessage
+	close         chan bool
+	shutitdown    bool
 }
 
+// NewTCPClient create a new TCP client
 func NewTCPClient(server *Server,
 	hashers *[]*ConstHasher,
 	conn net.Conn,
-	dispatch_queue chan dispatch.IJob,
+	dispatchQueue chan dispatch.IJob,
 	done chan Client,
 ) *TCPClient {
 
@@ -116,11 +121,11 @@ func NewTCPClient(server *Server,
 	client.SetBufferSize(TCP_BUFFER_SIZE)
 
 	//to deref things
-	client.worker_queue = server.WorkQueue
-	client.input_queue = server.InputQueue
-	client.dispatch_queue = dispatch_queue
+	client.workerQueue = server.WorkQueue
+	client.inputQueue = server.InputQueue
+	client.dispatchQueue = dispatchQueue
 
-	client.out_queue = server.ProcessedQueue
+	client.outQueue = server.ProcessedQueue
 
 	client.done = done
 	client.shutitdown = false
@@ -129,6 +134,7 @@ func NewTCPClient(server *Server,
 	return client
 }
 
+// ShutDown initiate a client shudown
 func (client *TCPClient) ShutDown() {
 	client.shutitdown = true
 	client.close <- true
@@ -138,6 +144,7 @@ func (client *TCPClient) connType() reflect.Type {
 	return reflect.TypeOf(client.Connection)
 }
 
+// SetBufferSize read buffer for TCP conections
 func (client *TCPClient) SetBufferSize(size int) {
 	client.BufferSize = size
 	if client.connType() == reflect.TypeOf(new(net.TCPConn)) {
@@ -147,21 +154,27 @@ func (client *TCPClient) SetBufferSize(size int) {
 	}
 }
 
+// Server of this client
 func (client *TCPClient) Server() (server *Server) {
 	return client.server
 }
 
+// Hashers of this client
 func (client *TCPClient) Hashers() (server *[]*ConstHasher) {
 	return client.hashers
 }
+
+// WorkerQueue chan
 func (client *TCPClient) WorkerQueue() chan *OutputMessage {
-	return client.worker_queue
-}
-func (client *TCPClient) InputQueue() chan splitter.SplitItem {
-	return client.input_queue
+	return client.workerQueue
 }
 
-// close the 2 hooks, channel and connection
+// InputQueue chan
+func (client *TCPClient) InputQueue() chan splitter.SplitItem {
+	return client.inputQueue
+}
+
+// Close the 2 hooks, channel and connection
 func (client *TCPClient) Close() {
 	defer stats.StatsdClient.Incr(fmt.Sprintf("worker.%s.tcp.connection.close", client.server.Name), 1)
 	defer log.Debug("TCP client: Closing conn %v", client.Connection.RemoteAddr())
@@ -175,7 +188,7 @@ func (client *TCPClient) Close() {
 	client.hashers = nil
 }
 
-func (client *TCPClient) handleRequest(outqueue chan splitter.SplitItem, close_client chan bool) {
+func (client *TCPClient) handleRequest(outqueue chan splitter.SplitItem, closeClient chan bool) {
 	//spin up the splitters
 
 	//client.Connection.SetReadDeadline(time.Now().Add(TCP_READ_TIMEOUT))
@@ -184,7 +197,7 @@ func (client *TCPClient) handleRequest(outqueue chan splitter.SplitItem, close_c
 		select {
 		case <-client.close:
 			break
-		case <-close_client:
+		case <-closeClient:
 			client.Connection.Close()
 			return
 		default:
@@ -210,8 +223,8 @@ func (client *TCPClient) handleRequest(outqueue chan splitter.SplitItem, close_c
 			splitem.SetOrigin(splitter.TCP)
 			splitem.SetOriginName(client.server.Name)
 			client.server.ValidLineCount.Up(1)
-			client.input_queue <- splitem
-			//client.dispatch_queue <- TCPJob{Client: client, Splitem: splitem}
+			client.inputQueue <- splitem
+			//client.dispatchQueue <- TCPJob{Client: client, Splitem: splitem}
 			stats.StatsdClient.Incr("incoming.tcp.lines", 1)
 		} else {
 			client.server.InvalidLineCount.Up(1)
