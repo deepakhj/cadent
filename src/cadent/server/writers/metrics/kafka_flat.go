@@ -29,7 +29,6 @@ import (
 	"cadent/server/utils/options"
 	"cadent/server/utils/shutdown"
 	"cadent/server/writers/dbs"
-	"cadent/server/writers/indexer"
 	"cadent/server/writers/schemas"
 	"errors"
 	"fmt"
@@ -73,7 +72,7 @@ func (kf *KafkaFlatMetrics) Config(conf *options.Options) error {
 
 	g_tag := conf.String("tags", "")
 	if len(g_tag) > 0 {
-		kf.static_tags = repr.SortingTagsFromString(g_tag)
+		kf.staticTags = repr.SortingTagsFromString(g_tag)
 	}
 
 	enct := conf.String("encoding", "json")
@@ -107,34 +106,13 @@ func (kf *KafkaFlatMetrics) Stop() {
 	})
 }
 
-func (kf *KafkaFlatMetrics) SetIndexer(idx indexer.Indexer) error {
-	kf.indexer = idx
-	return nil
-}
-
-// Resoltuions should be of the form
-// [BinTime, TTL]
-// we select the BinTime based on the TTL
-func (kf *KafkaFlatMetrics) SetResolutions(res [][]int) int {
-	kf.resolutions = res
-	return len(res) // need as many writers as bins
-}
-
-func (cass *KafkaMetrics) GetResolutions() [][]int {
-	return cass.resolutions
-}
-
-func (kf *KafkaFlatMetrics) SetCurrentResolution(res int) {
-	kf.currentResolution = res
-}
-
 func (kf *KafkaFlatMetrics) Write(stat repr.StatRepr) error {
 
 	if kf.shutitdown {
 		return nil
 	}
 
-	stat.Name.MergeMetric2Tags(kf.static_tags)
+	stat.Name.MergeMetric2Tags(kf.staticTags)
 	kf.indexer.Write(*stat.Name) // to the indexer
 	item := &schemas.KMetric{
 		AnyMetric: schemas.AnyMetric{

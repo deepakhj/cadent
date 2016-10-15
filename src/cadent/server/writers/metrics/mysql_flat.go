@@ -55,7 +55,6 @@ import (
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
 	logging "gopkg.in/op/go-logging.v1"
-	"math"
 	"net/url"
 	"strings"
 	"sync"
@@ -69,11 +68,11 @@ type MySQLFlatMetrics struct {
 	db   *dbs.MySQLDB
 	conn *sql.DB
 
-	write_list     []repr.StatRepr // buffer the writes so as to do "multi" inserts per query
-	max_write_size int             // size of that buffer before a flush
-	max_idle       time.Duration   // either max_write_size will trigger a write or this time passing will
-	write_lock     sync.Mutex
-	renderTimeout  time.Duration
+	writeList     []repr.StatRepr // buffer the writes so as to do "multi" inserts per query
+	maxWriteSize  int             // size of that buffer before a flush
+	maxIdle       time.Duration   // either maxWriteSize will trigger a write or this time passing will
+	writeLock     sync.Mutex
+	renderTimeout time.Duration
 
 	log *logging.Logger
 
@@ -93,8 +92,8 @@ func (my *MySQLFlatMetrics) Config(conf *options.Options) error {
 		return fmt.Errorf("`dsn` (user:pass@tcp(host:port)/db) is needed for mysql config")
 	}
 
-	db_key := dsn + conf.String("table", "metrics")
-	db, err := dbs.NewDB("mysql", db_key, conf)
+	dbKey := dsn + conf.String("table", "metrics")
+	db, err := dbs.NewDB("mysql", dbKey, conf)
 	if err != nil {
 		return err
 	}
@@ -104,23 +103,23 @@ func (my *MySQLFlatMetrics) Config(conf *options.Options) error {
 
 	res, err := conf.Int64Required("resolution")
 	if err != nil {
-		return fmt.Errorf("Resulotuion needed for cassandra writer")
+		return fmt.Errorf("Resolution needed for cassandra writer")
 	}
 
 	//need to hide the usr/pw from things
 	p, _ := url.Parse("mysql://" + dsn)
-	cache_key := fmt.Sprintf("mysqlflat:cache:%s/%s:%v", p.Host, conf.String("table", "metrics"), res)
-	my.cacher, err = GetCacherSingleton(cache_key)
+	cacheKey := fmt.Sprintf("mysqlflat:cache:%s/%s:%v", p.Host, conf.String("table", "metrics"), res)
+	my.cacher, err = GetCacherSingleton(cacheKey)
 
 	if err != nil {
 		return err
 	}
 
-	my.max_write_size = int(conf.Int64("batch_count", 1000))
-	my.max_idle = conf.Duration("periodic_flush", time.Duration(time.Second))
+	my.maxWriteSize = int(conf.Int64("batch_count", 1000))
+	my.maxIdle = conf.Duration("periodic_flush", time.Duration(time.Second))
 	_tgs := conf.String("tags", "")
 	if len(_tgs) > 0 {
-		my.static_tags = repr.SortingTagsFromString(_tgs)
+		my.staticTags = repr.SortingTagsFromString(_tgs)
 	}
 
 	my.shutitdown = false
@@ -159,46 +158,29 @@ func (my *MySQLFlatMetrics) Start() {
 			panic(err)
 		}
 		my.cacher.Start()
-		go my.PeriodFlush()
+		go my.periodFlush()
 	})
 }
 
-func (my *MySQLFlatMetrics) SetIndexer(idx indexer.Indexer) error {
-	my.indexer = idx
-	return nil
-}
-
-// Resoltuions should be of the form
-// [BinTime, TTL]
-// we select the BinTime based on the TTL
-func (my *MySQLFlatMetrics) SetResolutions(res [][]int) int {
-	my.resolutions = res
-	return len(res) // need as many writers as bins
-}
-
-func (my *MySQLFlatMetrics) SetCurrentResolution(res int) {
-	my.currentResolution = res
-}
-
-func (my *MySQLFlatMetrics) PeriodFlush() {
+func (my *MySQLFlatMetrics) periodFlush() {
 	for {
 		select {
 		case <-my.shutdown:
-			my.Flush()
+			my.flush()
 			shutdown.ReleaseFromShutdown()
 			return
 		default:
-			time.Sleep(my.max_idle)
-			my.Flush()
+			time.Sleep(my.maxIdle)
+			my.flush()
 		}
 	}
 }
 
-func (my *MySQLFlatMetrics) Flush() (int, error) {
-	my.write_lock.Lock()
-	defer my.write_lock.Unlock()
+func (my *MySQLFlatMetrics) flush() (int, error) {
+	my.writeLock.Lock()
+	defer my.writeLock.Unlock()
 
-	l := len(my.write_list)
+	l := len(my.writeList)
 	if l == 0 {
 		return 0, nil
 	}
@@ -210,7 +192,7 @@ func (my *MySQLFlatMetrics) Flush() (int, error) {
 
 	vals := []interface{}{}
 
-	for _, stat := range my.write_list {
+	for _, stat := range my.writeList {
 		Q += "(?,?,?,?,?,?,?,?), "
 		vals = append(
 			vals, stat.Name.UniqueIdString(), stat.Name.Key, stat.Sum, stat.Min, stat.Max, stat.Last, stat.Count, stat.ToTime().UnixNano(),
@@ -235,16 +217,16 @@ func (my *MySQLFlatMetrics) Flush() (int, error) {
 		return 0, err
 	}
 
-	my.write_list = nil
-	my.write_list = []repr.StatRepr{}
+	my.writeList = nil
+	my.writeList = []repr.StatRepr{}
 	return l, nil
 }
 
 func (my *MySQLFlatMetrics) Write(stat repr.StatRepr) error {
-	stat.Name.MergeMetric2Tags(my.static_tags)
+	stat.Name.MergeMetric2Tags(my.staticTags)
 
-	if len(my.write_list) > my.max_write_size {
-		_, err := my.Flush()
+	if len(my.writeList) > my.maxWriteSize {
+		_, err := my.flush()
 		if err != nil {
 			return err
 		}
@@ -253,30 +235,13 @@ func (my *MySQLFlatMetrics) Write(stat repr.StatRepr) error {
 	my.indexer.Write(*stat.Name) // to the indexer
 
 	// Flush can cause double locking
-	my.write_lock.Lock()
-	my.write_list = append(my.write_list, stat)
-	my.write_lock.Unlock()
+	my.writeLock.Lock()
+	my.writeList = append(my.writeList, stat)
+	my.writeLock.Unlock()
 	return nil
 }
 
 /**** READER ***/
-
-// based on the from/to in seconds get the best resolution
-// from and to should be SECONDS not nano-seconds
-// from and to needs to be > then the TTL as well
-
-func (my *MySQLFlatMetrics) getResolution(from int64, to int64) uint32 {
-	diff := int(math.Abs(float64(to - from)))
-	n := int(time.Now().Unix())
-	back_f := n - int(from)
-	back_t := n - int(to)
-	for _, res := range my.resolutions {
-		if diff <= res[1] && back_f <= res[1] && back_t <= res[1] {
-			return uint32(res[0])
-		}
-	}
-	return uint32(my.resolutions[len(my.resolutions)-1][0])
-}
 
 func (my *MySQLFlatMetrics) RawRenderOne(metric indexer.MetricFindItem, start int64, end int64, resample uint32) (*RawRenderItem, error) {
 	defer stats.StatsdSlowNanoTimeFunc("reader.mysqlflat.renderraw.get-time-ns", time.Now())
@@ -284,11 +249,11 @@ func (my *MySQLFlatMetrics) RawRenderOne(metric indexer.MetricFindItem, start in
 	rawd := new(RawRenderItem)
 
 	if metric.Leaf == 0 { //data only
-		return rawd, fmt.Errorf("Mysql: RawRenderOne: Not a data node")
+		return rawd, fmt.Errorf("RawRenderOne: Not a data node")
 	}
 
 	//figure out the best res
-	resolution := my.getResolution(start, end)
+	resolution := my.GetResolution(start, end)
 	out_resolution := resolution
 
 	//obey the bigger
@@ -301,20 +266,20 @@ func (my *MySQLFlatMetrics) RawRenderOne(metric indexer.MetricFindItem, start in
 
 	b_len := uint32(end-start) / resolution //just to be safe
 	if b_len <= 0 {
-		return rawd, fmt.Errorf("Mysql: RawRenderOne: time too narrow")
+		return rawd, fmt.Errorf("RawRenderOne: time too narrow")
 	}
 
 	// time in cassandra is in NanoSeconds so we need to pad the times from seconds -> nanos
 	nano := int64(time.Second)
-	nano_end := end * nano
-	nano_start := start * nano
+	nanoEnd := end * nano
+	nanoStart := start * nano
 
-	first_t := uint32(start)
-	last_t := uint32(end)
+	firstT := uint32(start)
+	lastT := uint32(end)
 
 	// try the write inflight cache as nothing is written yet
-	stat_name := metric.StatName()
-	inflight_renderitem, err := my.cacher.GetAsRawRenderItem(stat_name)
+	statName := metric.StatName()
+	inflight_renderitem, err := my.cacher.GetAsRawRenderItem(statName)
 
 	// need at LEAST 2 points to get the proper step size
 	if inflight_renderitem != nil && err == nil {
@@ -323,7 +288,7 @@ func (my *MySQLFlatMetrics) RawRenderOne(metric indexer.MetricFindItem, start in
 		inflight_renderitem.Tags = metric.Tags
 		inflight_renderitem.MetaTags = metric.MetaTags
 		inflight_renderitem.Id = metric.UniqueId
-		inflight_renderitem.AggFunc = stat_name.AggType()
+		inflight_renderitem.AggFunc = statName.AggType()
 		if inflight_renderitem.Start < uint32(start) {
 			inflight_renderitem.RealEnd = uint32(end)
 			inflight_renderitem.RealStart = uint32(start)
@@ -338,7 +303,7 @@ func (my *MySQLFlatMetrics) RawRenderOne(metric indexer.MetricFindItem, start in
 		my.db.RootMetricsTableName(), resolution,
 	)
 
-	iter, err := my.conn.Query(Q, metric.UniqueId, nano_start, nano_end)
+	iter, err := my.conn.Query(Q, metric.UniqueId, nanoStart, nanoEnd)
 
 	if err != nil {
 		return rawd, err
@@ -347,11 +312,11 @@ func (my *MySQLFlatMetrics) RawRenderOne(metric indexer.MetricFindItem, start in
 	var t, count int64
 	var min, max, sum, last float64
 
-	m_key := metric.Id
+	mKey := metric.Id
 
-	t_start := uint32(start)
-	cur_pt := NullRawDataPoint(t_start)
-	// sorting order for the table is time ASC (i.e. first_t == first entry)
+	tStart := uint32(start)
+	curPt := NullRawDataPoint(tStart)
+	// sorting order for the table is time ASC (i.e. firstT == first entry)
 	// on resamples (if >0 ) we simply merge points until we hit the time steps
 	do_resample := resample > 0 && resample > resolution
 
@@ -363,10 +328,10 @@ func (my *MySQLFlatMetrics) RawRenderOne(metric indexer.MetricFindItem, start in
 		}
 		t := uint32(time.Unix(0, t).Unix())
 		if do_resample {
-			if t >= t_start+resample {
-				t_start += resample
-				rawd.Data = append(rawd.Data, cur_pt)
-				cur_pt = RawDataPoint{
+			if t >= tStart+resample {
+				tStart += resample
+				rawd.Data = append(rawd.Data, curPt)
+				curPt = RawDataPoint{
 					Count: count,
 					Sum:   sum,
 					Max:   max,
@@ -375,7 +340,7 @@ func (my *MySQLFlatMetrics) RawRenderOne(metric indexer.MetricFindItem, start in
 					Time:  t,
 				}
 			} else {
-				cur_pt.Merge(&RawDataPoint{
+				curPt.Merge(&RawDataPoint{
 					Count: count,
 					Sum:   sum,
 					Max:   max,
@@ -394,7 +359,7 @@ func (my *MySQLFlatMetrics) RawRenderOne(metric indexer.MetricFindItem, start in
 				Time:  t,
 			})
 		}
-		last_t = t
+		lastT = t
 	}
 
 	if err := iter.Close(); err != nil {
@@ -402,21 +367,21 @@ func (my *MySQLFlatMetrics) RawRenderOne(metric indexer.MetricFindItem, start in
 	}
 
 	if len(rawd.Data) > 0 && rawd.Data[0].Time > 0 {
-		first_t = rawd.Data[0].Time
+		firstT = rawd.Data[0].Time
 	}
 
-	//cass.log.Critical("METR: %s Start: %d END: %d LEN: %d GotLen: %d", metric.Id, first_t, last_t, len(d_points), ct)
+	//cass.log.Critical("METR: %s Start: %d END: %d LEN: %d GotLen: %d", metric.Id, firstT, lastT, len(d_points), ct)
 
-	rawd.RealEnd = uint32(last_t)
-	rawd.RealStart = uint32(first_t)
+	rawd.RealEnd = uint32(lastT)
+	rawd.RealStart = uint32(firstT)
 	rawd.Start = uint32(start)
 	rawd.End = uint32(end)
 	rawd.Step = out_resolution
-	rawd.Metric = m_key
+	rawd.Metric = mKey
 	rawd.Tags = metric.Tags
 	rawd.MetaTags = metric.MetaTags
 	rawd.Id = metric.UniqueId
-	rawd.AggFunc = stat_name.AggType()
+	rawd.AggFunc = statName.AggType()
 
 	// grab the "current inflight" from the cache and merge into the main array
 	if inflight_renderitem != nil && len(inflight_renderitem.Data) > 1 {
@@ -429,7 +394,7 @@ func (my *MySQLFlatMetrics) RawRenderOne(metric indexer.MetricFindItem, start in
 }
 
 func (my *MySQLFlatMetrics) RawRender(path string, from int64, to int64, tags repr.SortingTags, resample uint32) ([]*RawRenderItem, error) {
-	defer stats.StatsdSlowNanoTimeFunc("reader.cassandraflat.rawrender.get-time-ns", time.Now())
+	defer stats.StatsdSlowNanoTimeFunc("reader.mysqlflat.rawrender.get-time-ns", time.Now())
 
 	paths := strings.Split(path, ",")
 	var metrics []indexer.MetricFindItem
@@ -449,7 +414,7 @@ func (my *MySQLFlatMetrics) RawRender(path string, from int64, to int64, tags re
 	jobs := make(chan indexer.MetricFindItem, len(metrics))
 	results := make(chan *RawRenderItem, len(metrics))
 
-	render_one := func(met indexer.MetricFindItem) *RawRenderItem {
+	renderOne := func(met indexer.MetricFindItem) *RawRenderItem {
 		_ri, err := my.RawRenderOne(met, from, to, resample)
 
 		if err != nil {
@@ -460,10 +425,10 @@ func (my *MySQLFlatMetrics) RawRender(path string, from int64, to int64, tags re
 	}
 
 	// ye old fan out technique but not "too many" as to kill the server
-	job_worker := func(jober int, taskqueue <-chan indexer.MetricFindItem, resultqueue chan<- *RawRenderItem) {
+	jobWorker := func(jober int, taskqueue <-chan indexer.MetricFindItem, resultqueue chan<- *RawRenderItem) {
 		rec_chan := make(chan *RawRenderItem, 1)
 		for met := range taskqueue {
-			go func() { rec_chan <- render_one(met) }()
+			go func() { rec_chan <- renderOne(met) }()
 			select {
 			case <-time.After(my.renderTimeout):
 				stats.StatsdClientSlow.Incr("reader.mysqlflat.rawrender.timeouts", 1)
@@ -476,7 +441,7 @@ func (my *MySQLFlatMetrics) RawRender(path string, from int64, to int64, tags re
 	}
 
 	for i := 0; i < procs; i++ {
-		go job_worker(i, jobs, results)
+		go jobWorker(i, jobs, results)
 	}
 
 	for _, metric := range metrics {
@@ -491,6 +456,8 @@ func (my *MySQLFlatMetrics) RawRender(path string, from int64, to int64, tags re
 		}
 	}
 	close(results)
+	stats.StatsdClientSlow.Incr("reader.mysqlflat.rawrender.metrics-per-request", int64(len(metrics)))
+
 	return rawd, nil
 }
 

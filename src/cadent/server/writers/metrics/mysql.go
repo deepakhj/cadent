@@ -105,21 +105,21 @@ var errTimeTooSmall = errors.New("Render: time too narrow")
 /**********  Standard Worker Dispatcher JOB   ***************************/
 /************************************************************************/
 // insert job queue workers
-type MysqlBlobMetricJob struct {
+type mysqlBlobMetricJob struct {
 	My    *MySQLMetrics
 	Ts    *TotalTimeSeries // where the point list live
 	retry int
 }
 
-func (j MysqlBlobMetricJob) IncRetry() int {
+func (j mysqlBlobMetricJob) IncRetry() int {
 	j.retry++
 	return j.retry
 }
-func (j MysqlBlobMetricJob) OnRetry() int {
+func (j mysqlBlobMetricJob) OnRetry() int {
 	return j.retry
 }
 
-func (j MysqlBlobMetricJob) DoWork() error {
+func (j mysqlBlobMetricJob) DoWork() error {
 	err := j.My.doInsert(j.Ts)
 	return err
 }
@@ -159,7 +159,7 @@ type MySQLMetrics struct {
 func NewMySQLMetrics() *MySQLMetrics {
 	my := new(MySQLMetrics)
 	my.driver = "mysql"
-	my.is_primary = false
+	my.isPrimary = false
 	my.log = logging.MustGetLogger("writers.mysql")
 	return my
 }
@@ -167,7 +167,7 @@ func NewMySQLMetrics() *MySQLMetrics {
 func NewMySQLTriggeredMetrics() *MySQLMetrics {
 	my := new(MySQLMetrics)
 	my.driver = "mysql-triggered"
-	my.is_primary = false
+	my.isPrimary = false
 	my.log = logging.MustGetLogger("writers.mysql")
 	return my
 }
@@ -196,7 +196,7 @@ func (my *MySQLMetrics) Config(conf *options.Options) error {
 
 	_tgs := conf.String("tags", "")
 	if len(_tgs) > 0 {
-		my.static_tags = repr.SortingTagsFromString(_tgs)
+		my.staticTags = repr.SortingTagsFromString(_tgs)
 	}
 
 	// rolluptype
@@ -227,8 +227,8 @@ func (my *MySQLMetrics) Config(conf *options.Options) error {
 	// when the accumulator flushes things to the multi wrtiers
 	// The Writer needs to know it's "not" the primary writer and thus will not "add" points to the
 	// cache .. so the cache basically gets "one" primary writer pointed (first come first serve)
-	my.is_primary = my.cacher.SetPrimaryWriter(my)
-	if my.is_primary {
+	my.isPrimary = my.cacher.SetPrimaryWriter(my)
+	if my.isPrimary {
 		my.log.Notice("Mysql series writer is the primary writer to write back cache for %s", my.cacher.Name)
 	}
 
@@ -389,7 +389,7 @@ func (my *MySQLMetrics) overFlowWrite() {
 		}
 		stats.StatsdClientSlow.Incr("writer.mysql.queue.add", 1)
 		my.dispatcher.Add(
-			&MysqlBlobMetricJob{
+			&mysqlBlobMetricJob{
 				My: my,
 				Ts: statitem.(*TotalTimeSeries),
 			},
@@ -439,7 +439,7 @@ func (my *MySQLMetrics) InsertSeries(name *repr.StatName, timeseries series.Time
 
 func (my *MySQLMetrics) Write(stat repr.StatRepr) error {
 
-	stat.Name.MergeMetric2Tags(my.static_tags)
+	stat.Name.MergeMetric2Tags(my.staticTags)
 
 	// only need to do this if the first resolution
 	if my.currentResolution == my.resolutions[0][0] {
@@ -447,7 +447,7 @@ func (my *MySQLMetrics) Write(stat repr.StatRepr) error {
 	}
 
 	// not primary writer .. move along
-	if !my.is_primary {
+	if !my.isPrimary {
 		return nil
 	}
 
@@ -759,13 +759,13 @@ func (my *MySQLMetrics) RawDataRenderOne(metric *indexer.MetricFindItem, start i
 		}
 	}
 	if err != nil {
-		my.log.Errorf("Mysql: Error getting inflight data: %v", err)
+		my.log.Errorf("Error getting inflight data: %v", err)
 	}
 
 	// and now for the mysql Query otherwise
 	mysql_data, err := my.GetFromDatabase(metric, resolution, start, end, resample)
 	if err != nil {
-		my.log.Errorf("Mysql: Error getting from DB: %v", err)
+		my.log.Errorf("Error getting from DB: %v", err)
 		return rawd, err
 	}
 
@@ -868,6 +868,8 @@ func (my *MySQLMetrics) RawRender(path string, from int64, to int64, tags repr.S
 		}
 	}
 	close(results)
+	stats.StatsdClientSlow.Incr("reader.mysql.rawrender.metrics-per-request", int64(len(metrics)))
+
 	return rawd, nil
 }
 
@@ -930,7 +932,7 @@ func (my *MySQLMetrics) CachedSeries(path string, start int64, end int64, tags r
 
 	metric := &repr.StatName{Key: path}
 	metric.MergeMetric2Tags(tags)
-	metric.MergeMetric2Tags(my.static_tags)
+	metric.MergeMetric2Tags(my.staticTags)
 
 	resolution := my.getResolution(start, end)
 	cache_db := fmt.Sprintf("%s:%v", my.cacherPrefix, resolution)

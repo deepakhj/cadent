@@ -57,7 +57,7 @@ limitations under the License.
 		user: ""
 		pass: ""
 		write_workers=32  # dispatch workers to write
-		write_queue_length=102400  # buffered queue size before we start blocking
+		write_queueLength=102400  # buffered queue size before we start blocking
 
 
 	Schema
@@ -96,7 +96,6 @@ import (
 	"cadent/server/utils/options"
 	"cadent/server/utils/shutdown"
 	"cadent/server/writers/indexer"
-	"math"
 	"strings"
 	"sync"
 	"time"
@@ -196,8 +195,8 @@ func NewCassandraWriter(conf *options.Options) (*CassandraWriter, error) {
 }
 
 func (cass *CassandraWriter) onePerTableInsert(name *repr.StatName, timeseries series.TimeSeries, resolution uint32) (n int, err error) {
-	t_name := cass.db.MetricTable() + fmt.Sprintf("_%d", resolution) + "s"
-	DO_Q := fmt.Sprintf(cass.insQ, t_name)
+	tName := cass.db.MetricTable() + fmt.Sprintf("_%d", resolution) + "s"
+	DO_Q := fmt.Sprintf(cass.insQ, tName)
 	if name.Ttl > 0 {
 		DO_Q += fmt.Sprintf(" USING TTL %d", name.Ttl)
 	}
@@ -304,21 +303,21 @@ func (cass *CassandraWriter) Stop() {
 /**********  Standard Worker Dispatcher JOB   ***************************/
 /************************************************************************/
 // insert job queue workers
-type CassandraBlobMetricJob struct {
+type cassandraBlobMetricJob struct {
 	Cass  *CassandraMetric
 	Ts    *TotalTimeSeries // where the point list live
 	retry int
 }
 
-func (j CassandraBlobMetricJob) IncRetry() int {
+func (j cassandraBlobMetricJob) IncRetry() int {
 	j.retry++
 	return j.retry
 }
-func (j CassandraBlobMetricJob) OnRetry() int {
+func (j cassandraBlobMetricJob) OnRetry() int {
 	return j.retry
 }
 
-func (j CassandraBlobMetricJob) DoWork() error {
+func (j cassandraBlobMetricJob) DoWork() error {
 	err := j.Cass.doInsert(j.Ts)
 	return err
 }
@@ -338,15 +337,15 @@ type CassandraMetric struct {
 	rollup     *RollupMetric
 	doRollup   bool
 
-	render_wg     sync.WaitGroup
-	render_mu     sync.Mutex
+	renderWg      sync.WaitGroup
+	renderMu      sync.Mutex
 	renderTimeout time.Duration
 
 	// dispatch writer worker queue
-	num_workers      int
-	queue_len        int
-	dispatch_retries int
-	dispatcher       *dispatch.DispatchQueue
+	numWorkers      int
+	queueLen        int
+	dispatchRetries int
+	dispatcher      *dispatch.DispatchQueue
 
 	tablePerResolution bool   // if this is "true" then rather then "one big table" we assume different tables for each rollup
 	selQ               string //select query
@@ -357,14 +356,14 @@ type CassandraMetric struct {
 func NewCassandraMetrics() *CassandraMetric {
 	cass := new(CassandraMetric)
 	cass.driver = "cassandra"
-	cass.is_primary = false
+	cass.isPrimary = false
 	return cass
 }
 
 func NewCassandraTriggerMetrics() *CassandraMetric {
 	cass := new(CassandraMetric)
 	cass.driver = "cassandra-triggered"
-	cass.is_primary = false
+	cass.isPrimary = false
 	return cass
 }
 
@@ -391,13 +390,13 @@ func (cass *CassandraMetric) Config(conf *options.Options) (err error) {
 
 	_tgs := conf.String("tags", "")
 	if len(_tgs) > 0 {
-		cass.static_tags = repr.SortingTagsFromString(_tgs)
+		cass.staticTags = repr.SortingTagsFromString(_tgs)
 	}
 
 	// tweak queus and worker sizes
-	cass.num_workers = int(conf.Int64("write_workers", CASSANDRA_DEFAULT_METRIC_WORKERS))
-	cass.queue_len = int(conf.Int64("write_queue_length", CASSANDRA_DEFAULT_METRIC_QUEUE_LEN))
-	cass.dispatch_retries = int(conf.Int64("write_queue_retries", CASSANDRA_DEFAULT_METRIC_RETRIES))
+	cass.numWorkers = int(conf.Int64("write_workers", CASSANDRA_DEFAULT_METRIC_WORKERS))
+	cass.queueLen = int(conf.Int64("write_queueLength", CASSANDRA_DEFAULT_METRIC_QUEUE_LEN))
+	cass.dispatchRetries = int(conf.Int64("write_queue_retries", CASSANDRA_DEFAULT_METRIC_RETRIES))
 	cass.tablePerResolution = conf.Bool("table_per_resolution", false)
 
 	rdur, err := time.ParseDuration(CASSANDRA_DEFAULT_RENDER_TIMEOUT)
@@ -407,7 +406,7 @@ func (cass *CassandraMetric) Config(conf *options.Options) (err error) {
 	cass.renderTimeout = rdur
 
 	// rolluptype
-	cass.rollupType = conf.String("rollup_type", CASSANDRA_DEFAULT_ROLLUP_TYPE)
+	cass.rollupType = conf.String("rollupType", CASSANDRA_DEFAULT_ROLLUP_TYPE)
 
 	_cache, err := conf.ObjectRequired("cache")
 	if _cache == nil {
@@ -423,8 +422,8 @@ func (cass *CassandraMetric) Config(conf *options.Options) (err error) {
 	// when the accumulator flushes things to the multi wrtiers
 	// The Writer needs to know it's "not" the primary writer and thus will not "add" points to the
 	// cache .. so the cache basically gets "one" primary writer pointed (first come first serve)
-	cass.is_primary = cass.cacher.SetPrimaryWriter(cass)
-	if cass.is_primary {
+	cass.isPrimary = cass.cacher.SetPrimaryWriter(cass)
+	if cass.isPrimary {
 		cass.writer.log.Notice("Cassandra series writer is the primary writer to write back cache %s", cass.cacher.Name)
 	}
 
@@ -474,9 +473,9 @@ func (cass *CassandraMetric) Start() {
 
 		//start up the dispatcher
 		cass.dispatcher = dispatch.NewDispatchQueue(
-			cass.num_workers,
-			cass.queue_len,
-			cass.dispatch_retries,
+			cass.numWorkers,
+			cass.queueLen,
+			cass.dispatchRetries,
 		)
 		cass.dispatcher.Start()
 	})
@@ -577,7 +576,7 @@ func (cass *CassandraMetric) overFlowWrite() {
 
 		stats.StatsdClientSlow.Incr("writer.cassandra.queue.add", 1)
 
-		cass.dispatcher.Add(&CassandraBlobMetricJob{Cass: cass, Ts: statitem.(*TotalTimeSeries)})
+		cass.dispatcher.Add(&cassandraBlobMetricJob{Cass: cass, Ts: statitem.(*TotalTimeSeries)})
 	}
 }
 
@@ -586,14 +585,14 @@ func (cass *CassandraMetric) Write(stat repr.StatRepr) error {
 	if cass.shutitdown {
 		return nil
 	}
-	stat.Name.MergeMetric2Tags(cass.static_tags)
+	stat.Name.MergeMetric2Tags(cass.staticTags)
 	// only need to do this if the first resolution
 	if cass.currentResolution == cass.resolutions[0][0] {
 		cass.indexer.Write(*stat.Name)
 	}
 
 	// not primary writer .. move along
-	if !cass.is_primary {
+	if !cass.isPrimary {
 		return nil
 	}
 
@@ -609,55 +608,39 @@ func (cass *CassandraMetric) Write(stat repr.StatRepr) error {
 
 /************************ READERS ****************/
 
-// based on the from/to in seconds get the best resolution
-// from and to should be SECONDS not nano-seconds
-// from and to needs to be > then the TTL as well
-func (cass *CassandraMetric) getResolution(from int64, to int64) uint32 {
-	diff := int(math.Abs(float64(to - from)))
-	n := int(time.Now().Unix())
-	back_f := n - int(from)
-	back_t := n - int(to)
-	for _, res := range cass.resolutions {
-		if diff <= res[1] && back_f <= res[1] && back_t <= res[1] {
-			return uint32(res[0])
-		}
-	}
-	return uint32(cass.resolutions[len(cass.resolutions)-1][0])
-}
-
 func (cass *CassandraMetric) GetFromReadCache(metric string, start int64, end int64) (rawd *RawRenderItem, got bool) {
 
 	// check read cache
-	r_cache := GetReadCache()
-	if r_cache == nil {
+	rCache := GetReadCache()
+	if rCache == nil {
 		stats.StatsdClient.Incr("reader.cassandra.render.cache.miss", 1)
 		return rawd, false
 	}
 
-	t_start := time.Unix(int64(start), 0)
+	tStart := time.Unix(int64(start), 0)
 	t_end := time.Unix(int64(end), 0)
-	cached_stats, _, _ := r_cache.Get(metric, t_start, t_end)
+	cachedStats, _, _ := rCache.Get(metric, tStart, t_end)
 	var d_points []RawDataPoint
 	step := uint32(0)
 
 	// the ReadCache will only have the "sum" point in the mix as that's
 	// the designated cached point
-	if cached_stats != nil && len(cached_stats) > 0 {
+	if cachedStats != nil && len(cachedStats) > 0 {
 		stats.StatsdClient.Incr("reader.cassandra.render.cache.hits", 1)
 
-		f_t := uint32(0)
-		for _, stat := range cached_stats {
+		tempT := uint32(0)
+		for _, stat := range cachedStats {
 			t := uint32(stat.ToTime().Unix())
 			d_points = append(d_points, RawDataPoint{
 				Count: 1,
 				Sum:   stat.Sum,
 				Time:  t,
 			})
-			if f_t <= 0 {
-				f_t = t
+			if tempT <= 0 {
+				tempT = t
 			}
-			if step <= 0 && f_t >= 0 {
-				step = t - f_t
+			if step <= 0 && tempT >= 0 {
+				step = t - tempT
 			}
 		}
 		rawd.AggFunc = repr.GuessReprValueFromKey(metric)
@@ -681,69 +664,69 @@ func (cass *CassandraMetric) GetFromDatabase(metric *indexer.MetricFindItem, res
 	defer stats.StatsdSlowNanoTimeFunc("reader.cassandra.database.get-time-ns", time.Now())
 	rawd = new(RawRenderItem)
 
-	t_name := cass.writer.db.MetricTable()
+	tName := cass.writer.db.MetricTable()
 	if cass.tablePerResolution {
-		t_name = fmt.Sprintf("%s_%ds", t_name, resolution)
+		tName = fmt.Sprintf("%s_%ds", tName, resolution)
 	}
 
-	Q := fmt.Sprintf(cass.selQ, t_name)
+	Q := fmt.Sprintf(cass.selQ, tName)
 
 	// times need to be in Nanos, but comming as a epoch
 	// time in cassandra is in NanoSeconds so we need to pad the times from seconds -> nanos
 	nano := int64(time.Second)
-	nano_end := end * nano
-	nano_start := start * nano
+	nanoEnd := end * nano
+	nanoStart := start * nano
 
-	args := []interface{}{metric.UniqueId, resolution, nano_start, nano_end}
+	args := []interface{}{metric.UniqueId, resolution, nanoStart, nanoEnd}
 	if cass.tablePerResolution {
-		args = []interface{}{metric.UniqueId, nano_start, nano_end}
+		args = []interface{}{metric.UniqueId, nanoStart, nanoEnd}
 	}
 
 	iter := cass.writer.conn.Query(Q, args...).Iter()
 
-	// cass.writer.log.Debug("Select Q for %s: %s (%v, %v, %v, %v)", metric.Id, Q, metric.UniqueId, resolution, nano_start, nano_end)
+	// cass.writer.log.Debug("Select Q for %s: %s (%v, %v, %v, %v)", metric.Id, Q, metric.UniqueId, resolution, nanoStart, nanoEnd)
 
 	// for each "series" we get make a list of points
-	stat_name := metric.StatName()
+	statName := metric.StatName()
 
-	u_start := uint32(start)
-	u_end := uint32(end)
-	rawd.Start = u_start
-	rawd.End = u_end
+	uStart := uint32(start)
+	uEnd := uint32(end)
+	rawd.Start = uStart
+	rawd.End = uEnd
 	rawd.Id = metric.UniqueId
 	rawd.Metric = metric.Path
-	rawd.AggFunc = stat_name.AggType()
+	rawd.AggFunc = statName.AggType()
 
-	var p_type uint8
-	var p_bytes []byte
+	var pType uint8
+	var pBytes []byte
 
-	t_start := uint32(start)
-	cur_pt := NullRawDataPoint(t_start)
+	tStart := uint32(start)
+	curPt := NullRawDataPoint(tStart)
 	// on resamples (if >0 ) we simply merge points until we hit the steps
 	do_resample := resample > 0 && resample > resolution
 
-	for iter.Scan(&p_type, &p_bytes) {
-		s_name := series.NameFromId(p_type)
-		s_iter, err := series.NewIter(s_name, p_bytes)
+	for iter.Scan(&pType, &pBytes) {
+		s_name := series.NameFromId(pType)
+		sIter, err := series.NewIter(s_name, pBytes)
 		if err != nil {
 			return rawd, err
 		}
 
-		for s_iter.Next() {
-			to, mi, mx, ls, su, ct := s_iter.Values()
+		for sIter.Next() {
+			to, mi, mx, ls, su, ct := sIter.Values()
 
 			t := uint32(time.Unix(0, to).Unix())
 
 			// skip if not in range
-			if t > u_end || t < u_start {
+			if t > uEnd || t < uStart {
 				continue
 			}
 
 			if do_resample {
-				if t >= t_start+resample {
-					t_start += resample
-					rawd.Data = append(rawd.Data, cur_pt)
-					cur_pt = RawDataPoint{
+				if t >= tStart+resample {
+					tStart += resample
+					rawd.Data = append(rawd.Data, curPt)
+					curPt = RawDataPoint{
 						Count: ct,
 						Sum:   su,
 						Max:   mx,
@@ -752,7 +735,7 @@ func (cass *CassandraMetric) GetFromDatabase(metric *indexer.MetricFindItem, res
 						Time:  t,
 					}
 				} else {
-					cur_pt.Merge(&RawDataPoint{
+					curPt.Merge(&RawDataPoint{
 						Count: ct,
 						Sum:   su,
 						Max:   mx,
@@ -779,11 +762,11 @@ func (cass *CassandraMetric) GetFromDatabase(metric *indexer.MetricFindItem, res
 				rawd.RealStart = t
 			}
 		}
-		if !cur_pt.IsNull() {
-			rawd.Data = append(rawd.Data, cur_pt)
+		if !curPt.IsNull() {
+			rawd.Data = append(rawd.Data, curPt)
 		}
-		if s_iter.Error() != nil {
-			return rawd, s_iter.Error()
+		if sIter.Error() != nil {
+			return rawd, sIter.Error()
 		}
 	}
 
@@ -810,8 +793,8 @@ func (cass *CassandraMetric) GetFromWriteCache(metric *indexer.MetricFindItem, s
 	if use_cache == nil {
 		use_cache = cass.cacher
 	}
-	stat_name := metric.StatName()
-	inflight, err := use_cache.GetAsRawRenderItem(stat_name)
+	statName := metric.StatName()
+	inflight, err := use_cache.GetAsRawRenderItem(statName)
 
 	if err != nil {
 		return nil, err
@@ -826,7 +809,7 @@ func (cass *CassandraMetric) GetFromWriteCache(metric *indexer.MetricFindItem, s
 	inflight.End = end
 	inflight.Tags = metric.Tags
 	inflight.MetaTags = metric.MetaTags
-	inflight.AggFunc = stat_name.AggType()
+	inflight.AggFunc = statName.AggType()
 	return inflight, nil
 }
 
@@ -837,53 +820,53 @@ func (cass *CassandraMetric) RawDataRenderOne(metric *indexer.MetricFindItem, st
 	rawd := new(RawRenderItem)
 
 	//figure out the best res
-	resolution := cass.getResolution(start, end)
-	out_resolution := resolution
+	resolution := cass.GetResolution(start, end)
+	outResolution := resolution
 
 	//obey the bigger
 	if resample > resolution {
-		out_resolution = resample
+		outResolution = resample
 	}
 
 	start = TruncateTimeTo(start, int(resolution))
 	end = TruncateTimeTo(end, int(resolution))
 
-	u_start := uint32(start)
-	u_end := uint32(end)
+	uStart := uint32(start)
+	uEnd := uint32(end)
 
-	stat_name := metric.StatName()
+	statName := metric.StatName()
 
-	rawd.Step = out_resolution
+	rawd.Step = outResolution
 	rawd.Metric = metric.Path
 	rawd.Id = metric.UniqueId
-	rawd.RealEnd = u_end
-	rawd.RealStart = u_start
+	rawd.RealEnd = uEnd
+	rawd.RealStart = uStart
 	rawd.Start = rawd.RealStart
 	rawd.End = rawd.RealEnd
 	rawd.Tags = metric.Tags
 	rawd.MetaTags = metric.MetaTags
-	rawd.AggFunc = stat_name.AggType()
+	rawd.AggFunc = statName.AggType()
 
 	if metric.Leaf == 0 {
 		//data only but return a "blank" data set otherwise graphite no likey
 		return rawd, errNotADataNode
 	}
 
-	b_len := (u_end - u_start) / resolution //just to be safe
+	b_len := (uEnd - uStart) / resolution //just to be safe
 	if b_len <= 0 {
 		return rawd, errTimeTooSmall
 	}
 
-	inflight, err := cass.GetFromWriteCache(metric, u_start, u_end, resolution)
+	inflight, err := cass.GetFromWriteCache(metric, uStart, uEnd, resolution)
 
 	// need at LEAST 2 points to get the proper step size
 	if inflight != nil && err == nil && len(inflight.Data) > 1 {
 		// all the data we need is in the inflight
 		// if all the data is in this list we don't need to go any further
-		if inflight.RealStart <= u_start {
+		if inflight.RealStart <= uStart {
 			// move the times to the "requested" ones and quantize the list
-			if inflight.Step != out_resolution {
-				inflight.Resample(out_resolution)
+			if inflight.Step != outResolution {
+				inflight.Resample(outResolution)
 			}
 			return inflight, err
 		}
@@ -893,28 +876,28 @@ func (cass *CassandraMetric) RawDataRenderOne(metric *indexer.MetricFindItem, st
 	}
 
 	// and now for the mysql Query otherwise
-	cass_data, err := cass.GetFromDatabase(metric, resolution, start, end, resample)
+	cassData, err := cass.GetFromDatabase(metric, resolution, start, end, resample)
 	if err != nil {
 		cass.writer.log.Error("Cassandra: Error getting from DB: %v", err)
 		return rawd, err
 	}
 
-	cass_data.Step = out_resolution
-	cass_data.Start = u_start
-	cass_data.End = u_end
-	cass_data.Tags = metric.Tags
-	cass_data.MetaTags = metric.MetaTags
+	cassData.Step = outResolution
+	cassData.Start = uStart
+	cassData.End = uEnd
+	cassData.Tags = metric.Tags
+	cassData.MetaTags = metric.MetaTags
 
 	if inflight == nil || len(inflight.Data) == 0 {
-		return cass_data, nil
+		return cassData, nil
 	}
 
-	if len(cass_data.Data) > 0 && len(inflight.Data) > 0 {
-		inflight.MergeWithResample(cass_data, out_resolution)
+	if len(cassData.Data) > 0 && len(inflight.Data) > 0 {
+		inflight.MergeWithResample(cassData, outResolution)
 		return inflight, nil
 	}
-	if inflight.Step != out_resolution {
-		inflight.Resample(out_resolution)
+	if inflight.Step != outResolution {
+		inflight.Resample(outResolution)
 	}
 	return inflight, nil
 }
@@ -926,8 +909,8 @@ func (cass *CassandraMetric) RawRender(path string, start int64, end int64, tags
 	paths := strings.Split(path, ",")
 	var metrics []indexer.MetricFindItem
 
-	render_wg := utils.GetWaitGroup()
-	defer utils.PutWaitGroup(render_wg)
+	renderWg := utils.GetWaitGroup()
+	defer utils.PutWaitGroup(renderWg)
 
 	for _, pth := range paths {
 		mets, err := cass.indexer.Find(pth, tags)
@@ -945,7 +928,7 @@ func (cass *CassandraMetric) RawRender(path string, start int64, end int64, tags
 	jobs := make(chan indexer.MetricFindItem, len(metrics))
 	results := make(chan *RawRenderItem, len(metrics))
 
-	render_one := func(met indexer.MetricFindItem) *RawRenderItem {
+	renderOne := func(met indexer.MetricFindItem) *RawRenderItem {
 		_ri, err := cass.RawDataRenderOne(&met, start, end, resample)
 
 		if err != nil {
@@ -956,10 +939,10 @@ func (cass *CassandraMetric) RawRender(path string, start int64, end int64, tags
 	}
 
 	// ye old fan out technique but not "too many" as to kill the server
-	job_worker := func(jober int, taskqueue <-chan indexer.MetricFindItem, resultqueue chan<- *RawRenderItem) {
+	jobWorker := func(jober int, taskqueue <-chan indexer.MetricFindItem, resultqueue chan<- *RawRenderItem) {
 		rec_chan := make(chan *RawRenderItem, 1)
 		for met := range taskqueue {
-			go func() { rec_chan <- render_one(met) }()
+			go func() { rec_chan <- renderOne(met) }()
 			select {
 			case <-time.After(cass.renderTimeout):
 				stats.StatsdClientSlow.Incr("reader.cassandra.rawrender.timeouts", 1)
@@ -972,7 +955,7 @@ func (cass *CassandraMetric) RawRender(path string, start int64, end int64, tags
 	}
 
 	for i := 0; i < procs; i++ {
-		go job_worker(i, jobs, results)
+		go jobWorker(i, jobs, results)
 	}
 
 	for _, metric := range metrics {
@@ -987,6 +970,7 @@ func (cass *CassandraMetric) RawRender(path string, start int64, end int64, tags
 		}
 	}
 	close(results)
+	stats.StatsdClientSlow.Incr("reader.cassandra.rawrender.metrics-per-request", int64(len(metrics)))
 
 	return rawd, nil
 }
@@ -996,7 +980,7 @@ func (cass *CassandraMetric) CacheRender(path string, start int64, end int64, ta
 	defer stats.StatsdSlowNanoTimeFunc("reader.cassandra.cacherender.get-time-ns", time.Now())
 
 	//figure out the best res
-	resolution := cass.getResolution(start, end)
+	resolution := cass.GetResolution(start, end)
 
 	start = TruncateTimeTo(start, int(resolution))
 	end = TruncateTimeTo(end, int(resolution))
@@ -1004,8 +988,8 @@ func (cass *CassandraMetric) CacheRender(path string, start int64, end int64, ta
 	paths := strings.Split(path, ",")
 	var metrics []indexer.MetricFindItem
 
-	render_wg := utils.GetWaitGroup()
-	defer utils.PutWaitGroup(render_wg)
+	renderWg := utils.GetWaitGroup()
+	defer utils.PutWaitGroup(renderWg)
 
 	for _, pth := range paths {
 		mets, err := cass.indexer.Find(pth, tags)
@@ -1018,8 +1002,8 @@ func (cass *CassandraMetric) CacheRender(path string, start int64, end int64, ta
 	rawd = make([]*RawRenderItem, len(metrics), len(metrics))
 
 	// ye old fan out technique
-	render_one := func(metric *indexer.MetricFindItem, idx int) {
-		defer render_wg.Done()
+	renderOne := func(metric *indexer.MetricFindItem, idx int) {
+		defer renderWg.Done()
 		_ri, err := cass.GetFromWriteCache(metric, uint32(start), uint32(end), resolution)
 
 		if err != nil {
@@ -1031,10 +1015,10 @@ func (cass *CassandraMetric) CacheRender(path string, start int64, end int64, ta
 	}
 
 	for idx, metric := range metrics {
-		render_wg.Add(1)
-		go render_one(&metric, idx)
+		renderWg.Add(1)
+		go renderOne(&metric, idx)
 	}
-	render_wg.Wait()
+	renderWg.Wait()
 	return rawd, nil
 }
 
@@ -1049,9 +1033,9 @@ func (cass *CassandraMetric) CachedSeries(path string, start int64, end int64, t
 
 	metric := &repr.StatName{Key: path}
 	metric.MergeMetric2Tags(tags)
-	metric.MergeMetric2Tags(cass.static_tags)
+	metric.MergeMetric2Tags(cass.staticTags)
 
-	resolution := cass.getResolution(start, end)
+	resolution := cass.GetResolution(start, end)
 	cache_db := fmt.Sprintf("%s:%v", cass.cacherPrefix, resolution)
 	use_cache := GetCacherByName(cache_db)
 	if use_cache == nil {
@@ -1063,9 +1047,9 @@ func (cass *CassandraMetric) CachedSeries(path string, start int64, end int64, t
 	}
 	if inflight == nil {
 		// try the the path as unique ID
-		gots_int := metric.StringToUniqueId(path)
-		if gots_int != 0 {
-			name, inflight, err = use_cache.GetSeriesById(gots_int)
+		gotsInt := metric.StringToUniqueId(path)
+		if gotsInt != 0 {
+			name, inflight, err = use_cache.GetSeriesById(gotsInt)
 			if err != nil {
 				return nil, err
 			}
@@ -1095,18 +1079,18 @@ func (cass *CassandraMetric) GetLatestFromDB(name *repr.StatName, resolution uin
 	defer iter.Close()
 
 	rawd := make(DBSeriesList, 0)
-	var p_type uint8
-	var p_bytes []byte
+	var pType uint8
+	var pBytes []byte
 	var uid string
 	var start, end int64
 
-	for iter.Scan(&uid, &start, &end, &p_type, &p_bytes) {
+	for iter.Scan(&uid, &start, &end, &pType, &pBytes) {
 		dataums := &DBSeries{
 			Uid:        uid,
 			Start:      start,
 			End:        end,
-			Ptype:      p_type,
-			Pbytes:     p_bytes,
+			Ptype:      pType,
+			Pbytes:     pBytes,
 			Resolution: resolution,
 		}
 		rawd = append(rawd, dataums)
@@ -1128,27 +1112,27 @@ func (cass *CassandraMetric) GetRangeFromDB(name *repr.StatName, start uint32, e
 	)
 	// need to convert second time to nan time
 	nano := int64(time.Second)
-	nano_end := int64(end) * nano
-	nano_start := int64(start) * nano
+	nanoEnd := int64(end) * nano
+	nanoStart := int64(start) * nano
 
 	iter := cass.writer.conn.Query(
 		Q,
-		name.UniqueIdString(), resolution, nano_start, nano_end,
+		name.UniqueIdString(), resolution, nanoStart, nanoEnd,
 	).Iter()
 
 	rawd := make(DBSeriesList, 0)
-	var p_type uint8
-	var p_bytes []byte
+	var pType uint8
+	var pBytes []byte
 	var uid string
 	var tstart, tend int64
 
-	for iter.Scan(&uid, &tstart, &tend, &p_type, &p_bytes) {
+	for iter.Scan(&uid, &tstart, &tend, &pType, &pBytes) {
 		dataums := &DBSeries{
 			Uid:        uid,
 			Start:      tstart,
 			End:        tend,
-			Ptype:      p_type,
-			Pbytes:     p_bytes,
+			Ptype:      pType,
+			Pbytes:     pBytes,
 			Resolution: resolution,
 		}
 		rawd = append(rawd, dataums)
@@ -1179,42 +1163,42 @@ func (cass *CassandraMetric) UpdateDBSeries(dbs *DBSeries, ts series.TimeSeries)
 
 	ptype := series.IdFromName(ts.Name())
 
-	t_name := cass.writer.db.MetricTable()
+	tName := cass.writer.db.MetricTable()
 	delQ := fmt.Sprintf(
 		"DELETE FROM %s WHERE mid={id: ?, res:?} AND stime=? AND etime=?",
-		t_name,
+		tName,
 	)
 	InsQ := fmt.Sprintf(
 		"INSERT INTO %s (mid, stime, etime, ptype, points) VALUES ({id: ?, res:?}, ?, ?, ?, ?)",
-		t_name,
+		tName,
 	)
 
-	del_args := []interface{}{dbs.Uid, dbs.Resolution, dbs.Start, dbs.End}
-	ins_args := []interface{}{dbs.Uid, dbs.Resolution, ts.StartTime(), ts.LastTime(), ptype, points}
+	delArgs := []interface{}{dbs.Uid, dbs.Resolution, dbs.Start, dbs.End}
+	insArgs := []interface{}{dbs.Uid, dbs.Resolution, ts.StartTime(), ts.LastTime(), ptype, points}
 	if cass.tablePerResolution {
-		t_name = fmt.Sprintf("%s_%ds", t_name, dbs.Resolution)
+		tName = fmt.Sprintf("%s_%ds", tName, dbs.Resolution)
 		delQ = fmt.Sprintf(
 			"DELETE FROM %s WHERE id AND stime=? AND etime=?",
-			t_name,
+			tName,
 		)
-		del_args = []interface{}{dbs.Uid, dbs.Start, dbs.End}
+		delArgs = []interface{}{dbs.Uid, dbs.Start, dbs.End}
 
 		InsQ = fmt.Sprintf(
 			"INSERT INTO %s (id, stime, etime, ptype, points) VALUES (?, ?, ?, ?, ?)",
-			t_name,
+			tName,
 		)
 
-		ins_args = []interface{}{dbs.Uid, ts.StartTime(), ts.LastTime(), ptype, points}
+		insArgs = []interface{}{dbs.Uid, ts.StartTime(), ts.LastTime(), ptype, points}
 
 	}
 
-	batch.Query(delQ, del_args...)
+	batch.Query(delQ, delArgs...)
 
 	if dbs.TTL > 0 {
 		InsQ += fmt.Sprintf(" USING TTL %d", dbs.TTL)
 	}
 
-	batch.Query(InsQ, ins_args...)
+	batch.Query(InsQ, insArgs...)
 	err = cass.writer.conn.ExecuteBatch(batch)
 
 	return err

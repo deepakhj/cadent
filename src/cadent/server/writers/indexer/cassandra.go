@@ -661,9 +661,7 @@ func (cass *CassandraIndexer) Find(metric string, tags repr.SortingTags) (Metric
 		"SELECT segment FROM %s WHERE pos=?",
 		cass.db.SegmentTable(),
 	)
-	iter := cass.conn.Query(cass_Q,
-		m_len-1,
-	).Iter()
+	iter := cass.conn.Query(cass_Q, m_len-1).PageSize(MAX_PER_PAGE).Iter()
 
 	var mt MetricFindItems
 

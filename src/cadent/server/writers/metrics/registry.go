@@ -53,6 +53,8 @@ func NewWriterMetrics(name string) (Metrics, error) {
 		return NewCassandraTriggerMetrics(), nil
 	case name == "cassandra-flat":
 		return NewCassandraFlatMetrics(), nil
+	case name == "elasticsearch-flat" || name == "elastic-flat":
+		return NewElasticSearchFlatMetrics(), nil
 	case name == "whisper" || name == "carbon" || name == "graphite":
 		return NewWhisperMetrics(), nil
 	case name == "kafka":
@@ -75,6 +77,8 @@ func ResolutionsNeeded(name string) (WritersNeeded, error) {
 	case name == "cassandra":
 		return AllResolutions, nil
 	case name == "cassandra-flat":
+		return AllResolutions, nil
+	case name == "elasticsearch-flat" || name == "elastic-flat":
 		return AllResolutions, nil
 	case name == "kafka" || name == "kafka-flat":
 		return AllResolutions, nil

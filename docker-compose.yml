@@ -1,7 +1,5 @@
 version: '2'
-volumes:
-    cadent-data:
-        driver: local
+
 
 services:
     graphite:
@@ -12,13 +10,13 @@ services:
 
         environment:
             CADENT_URL: http://cadent-dev:8083/graphite
-            # GRAPHITE_STORAGE_DIR: /tmp/graphite/
+            GRAPHITE_STORAGE_DIR: /tmp/graphite/
 
         ports:
             - "0.0.0.0:8080:8080"
 
         volumes:
-            - cadent-data:/data
+            - $PWD/docker/data:/data
 
     grafana:
         image:  grafana/grafana
@@ -43,7 +41,7 @@ services:
 
         volumes:
             - ./:/go/src
-            - cadent-data:/data
+            - $PWD/docker/data:/data
 
         links:
             - graphite
@@ -61,6 +59,10 @@ services:
       ports:
           - "0.0.0.0:9200:9200"
           - "9300:9300"
+      volumes:
+          - $PWD/docker/elasticsearch:/usr/share/elasticsearch/config
+          - $PWD/docker/data:/usr/share/elasticsearch/data
+
 
     kibana:
       image: kibana:latest

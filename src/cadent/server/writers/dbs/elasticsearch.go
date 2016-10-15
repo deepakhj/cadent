@@ -38,15 +38,16 @@ func (el *ElasticSearchLog) Printf(str string, args ...interface{}) {
 
 /****************** Interfaces *********************/
 type ElasticSearch struct {
-	Client        *elastic.Client
-	metric_index  string
-	path_index    string
-	segment_index string
-	tag_index     string
+	Client       *elastic.Client
+	metricIndex  string
+	pathIndex    string
+	segmentIndex string
+	tagIndex     string
 
 	PathType    string
 	TagType     string
 	SegmentType string
+	MetricType  string
 	log         *logging.Logger
 }
 
@@ -56,6 +57,7 @@ func NewElasticSearch() *ElasticSearch {
 	my.PathType = "path"
 	my.TagType = "tag"
 	my.SegmentType = "segment"
+	my.MetricType = "metric"
 
 	return my
 }
@@ -69,7 +71,7 @@ func (my *ElasticSearch) Config(conf *options.Options) (err error) {
 	ops_funcs := make([]elastic.ClientOptionFunc, 0)
 	ops_funcs = append(ops_funcs, elastic.SetURL(strings.Split(dsn, ",")...))
 	ops_funcs = append(ops_funcs, elastic.SetMaxRetries(10))
-	ops_funcs = append(ops_funcs, elastic.SetSniff(conf.Bool("sniff", true)))
+	ops_funcs = append(ops_funcs, elastic.SetSniff(conf.Bool("sniff", false)))
 
 	user := conf.String("user", "")
 	pass := conf.String("password", "")
@@ -89,28 +91,28 @@ func (my *ElasticSearch) Config(conf *options.Options) (err error) {
 		}
 		return err
 	}
-	my.metric_index = conf.String("metric_index", "metrics")
-	my.path_index = conf.String("path_index", "metric_path")
-	my.segment_index = conf.String("segment_index", "metric_segment")
-	my.tag_index = conf.String("tag_index", "metric_tag")
+	my.metricIndex = conf.String("metric_index", "metrics")
+	my.pathIndex = conf.String("path_index", "metric_path")
+	my.segmentIndex = conf.String("segment_index", "metric_segment")
+	my.tagIndex = conf.String("tag_index", "metric_tag")
 
 	return nil
 }
 
 func (my *ElasticSearch) Tablename() string {
-	return my.metric_index
+	return my.metricIndex
 }
 
 func (my *ElasticSearch) PathTable() string {
-	return my.path_index
+	return my.pathIndex
 }
 
 func (my *ElasticSearch) SegmentTable() string {
-	return my.segment_index
+	return my.segmentIndex
 }
 
 func (my *ElasticSearch) TagTable() string {
-	return my.tag_index
+	return my.tagIndex
 }
 
 func (my *ElasticSearch) Connection() DBConn {

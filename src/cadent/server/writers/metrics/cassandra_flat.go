@@ -121,24 +121,19 @@ limitations under the License.
 package metrics
 
 import (
+	"cadent/server/broadcast"
+	"cadent/server/dispatch"
 	"cadent/server/repr"
 	"cadent/server/stats"
+	"cadent/server/utils"
+	"cadent/server/utils/options"
+	"cadent/server/utils/shutdown"
 	"cadent/server/writers/dbs"
+	"cadent/server/writers/indexer"
 	"errors"
 	"fmt"
 	"github.com/gocql/gocql"
 	logging "gopkg.in/op/go-logging.v1"
-	"os"
-	"os/signal"
-	"syscall"
-
-	"cadent/server/broadcast"
-	"cadent/server/dispatch"
-	"cadent/server/utils"
-	"cadent/server/utils/options"
-	"cadent/server/utils/shutdown"
-	"cadent/server/writers/indexer"
-	"math"
 	"strings"
 	"sync"
 	"time"
@@ -249,22 +244,22 @@ func _get_flat_signelton(conf *options.Options) (*CassandraFlatWriter, error) {
 /**********  Standard Worker Dispatcher JOB   ***************************/
 /************************************************************************/
 // insert job queue workers
-type CassandraFlatMetricJob struct {
+type cassandraFlatMetricJob struct {
 	Cass  *CassandraFlatWriter
 	Name  *repr.StatName
 	Stats repr.StatReprSlice // where the point list live
 	Retry int
 }
 
-func (j *CassandraFlatMetricJob) IncRetry() int {
+func (j *cassandraFlatMetricJob) IncRetry() int {
 	j.Retry++
 	return j.Retry
 }
-func (j *CassandraFlatMetricJob) OnRetry() int {
+func (j *cassandraFlatMetricJob) OnRetry() int {
 	return j.Retry
 }
 
-func (j *CassandraFlatMetricJob) DoWork() error {
+func (j *cassandraFlatMetricJob) DoWork() error {
 	_, err := j.Cass.InsertMulti(j.Name, j.Stats)
 	return err
 }
@@ -396,30 +391,6 @@ func (cass *CassandraFlatWriter) Start() {
 		cass.cacher.Start()
 		go cass.sendToWriters() // the dispatcher
 	})
-}
-
-func (cass *CassandraFlatWriter) TrapExit() {
-	//trap kills to flush queues and close connections
-	sc := make(chan os.Signal, 1)
-	signal.Notify(sc,
-		syscall.SIGINT,
-		syscall.SIGTERM,
-		syscall.SIGQUIT)
-
-	go func(ins *CassandraFlatWriter) {
-		s := <-sc
-		cass.log.Warning("Caught %s: Flushing remaining points out before quit ", s)
-
-		cass.Stop()
-		signal.Stop(sc)
-		close(sc)
-
-		// re-raise it
-		process, _ := os.FindProcess(os.Getpid())
-		process.Signal(s)
-		return
-	}(cass)
-	return
 }
 
 // is not doing a straight upsert, we need to select then update
@@ -601,7 +572,7 @@ func (cass *CassandraFlatWriter) sendToWriters() error {
 				time.Sleep(time.Second)
 			default:
 				stats.StatsdClient.Incr(fmt.Sprintf("writer.cassandraflat.write.send-to-writers"), 1)
-				cass.dispatcher.Add(&CassandraFlatMetricJob{Cass: cass, Stats: points, Name: name})
+				cass.dispatcher.Add(&cassandraFlatMetricJob{Cass: cass, Stats: points, Name: name})
 			}
 		}
 	} else {
@@ -623,7 +594,7 @@ func (cass *CassandraFlatWriter) sendToWriters() error {
 			default:
 
 				stats.StatsdClient.Incr(fmt.Sprintf("writer.cassandraflat.write.send-to-writers"), 1)
-				cass.dispatcher.Add(&CassandraFlatMetricJob{Cass: cass, Stats: points, Name: name})
+				cass.dispatcher.Add(&cassandraFlatMetricJob{Cass: cass, Stats: points, Name: name})
 				time.Sleep(dur)
 			}
 
@@ -649,7 +620,7 @@ type CassandraFlatMetric struct {
 
 	writer *CassandraFlatWriter
 
-	render_timeout time.Duration
+	renderTimeout time.Duration
 }
 
 func NewCassandraFlatMetrics() *CassandraFlatMetric {
@@ -692,11 +663,11 @@ func (cass *CassandraFlatMetric) Config(conf *options.Options) (err error) {
 	if err != nil {
 		return err
 	}
-	cass.render_timeout = rdur
+	cass.renderTimeout = rdur
 
 	g_tag := conf.String("tags", "")
 	if len(g_tag) > 0 {
-		cass.static_tags = repr.SortingTagsFromString(g_tag)
+		cass.staticTags = repr.SortingTagsFromString(g_tag)
 	}
 
 	// prevent a reader from squshing this cacher
@@ -725,28 +696,12 @@ func (cass *CassandraFlatMetric) Write(stat repr.StatRepr) error {
 	// keep note of this, when things are not yet "warm" (the indexer should
 	// keep tabs on what it's already indexed for speed sake,
 	// the push "push" of stats will cause things to get pretty slow for a while
-	stat.Name.MergeMetric2Tags(cass.static_tags)
+	stat.Name.MergeMetric2Tags(cass.staticTags)
 	cass.indexer.Write(*stat.Name)
 	return cass.writer.Write(stat)
 }
 
 /************************ READERS ****************/
-
-// based on the from/to in seconds get the best resolution
-// from and to should be SECONDS not nano-seconds
-// from and to needs to be > then the TTL as well
-func (cass *CassandraFlatMetric) getResolution(from int64, to int64) uint32 {
-	diff := int(math.Abs(float64(to - from)))
-	n := int(time.Now().Unix())
-	back_f := n - int(from)
-	back_t := n - int(to)
-	for _, res := range cass.resolutions {
-		if diff <= res[1] && back_f <= res[1] && back_t <= res[1] {
-			return uint32(res[0])
-		}
-	}
-	return uint32(cass.resolutions[len(cass.resolutions)-1][0])
-}
 
 func (cass *CassandraFlatMetric) RawRenderOne(metric indexer.MetricFindItem, start int64, end int64, resample uint32) (*RawRenderItem, error) {
 	defer stats.StatsdSlowNanoTimeFunc("reader.cassandraflat.renderraw.get-time-ns", time.Now())
@@ -758,7 +713,7 @@ func (cass *CassandraFlatMetric) RawRenderOne(metric indexer.MetricFindItem, sta
 	}
 
 	//figure out the best res
-	resolution := cass.getResolution(start, end)
+	resolution := cass.GetResolution(start, end)
 	out_resolution := resolution
 
 	//obey the bigger
@@ -900,6 +855,9 @@ func (cass *CassandraFlatMetric) RawRender(path string, from int64, to int64, ta
 	paths := strings.Split(path, ",")
 	var metrics []indexer.MetricFindItem
 
+	render_wg := utils.GetWaitGroup()
+	defer utils.PutWaitGroup(render_wg)
+
 	for _, pth := range paths {
 		mets, err := cass.indexer.Find(pth, tags)
 		if err != nil {
@@ -908,27 +866,58 @@ func (cass *CassandraFlatMetric) RawRender(path string, from int64, to int64, ta
 		metrics = append(metrics, mets...)
 	}
 
-	rawd := make([]*RawRenderItem, len(metrics), len(metrics))
+	rawd := make([]*RawRenderItem, 0, len(metrics))
 
-	render_wg := utils.GetWaitGroup()
-	defer utils.PutWaitGroup(render_wg)
+	procs := CASSANDRA_DEFAULT_METRIC_RENDER_WORKERS
 
-	// ye old fan out technique
-	render_one := func(metric indexer.MetricFindItem, idx int) {
-		defer render_wg.Done()
-		_ri, err := cass.RawRenderOne(metric, from, to, resample)
+	jobs := make(chan indexer.MetricFindItem, len(metrics))
+	results := make(chan *RawRenderItem, len(metrics))
+
+	render_one := func(met indexer.MetricFindItem) *RawRenderItem {
+		_ri, err := cass.RawRenderOne(met, from, to, resample)
+
 		if err != nil {
-			return
+			stats.StatsdClientSlow.Incr("reader.cassandraflat.rawrender.errors", 1)
+			cass.writer.log.Error("Read Error for %s (%d->%d) : %v", path, from, to, err)
 		}
-		rawd[idx] = _ri
-		return
+		return _ri
 	}
 
-	for idx, metric := range metrics {
-		render_wg.Add(1)
-		go render_one(metric, idx)
+	// ye old fan out technique but not "too many" as to kill the server
+	job_worker := func(jober int, taskqueue <-chan indexer.MetricFindItem, resultqueue chan<- *RawRenderItem) {
+		rec_chan := make(chan *RawRenderItem, 1)
+		for met := range taskqueue {
+			go func() { rec_chan <- render_one(met) }()
+			select {
+			case <-time.After(cass.renderTimeout):
+				stats.StatsdClientSlow.Incr("reader.cassandraflat.rawrender.timeouts", 1)
+				cass.writer.log.Errorf("Render Timeout for %s (%d->%d)", path, from, to)
+				resultqueue <- nil
+			case res := <-rec_chan:
+				resultqueue <- res
+			}
+		}
 	}
-	render_wg.Wait()
+
+	for i := 0; i < procs; i++ {
+		go job_worker(i, jobs, results)
+	}
+
+	for _, metric := range metrics {
+		jobs <- metric
+	}
+	close(jobs)
+
+	for i := 0; i < len(metrics); i++ {
+		res := <-results
+		if res != nil {
+			rawd = append(rawd, res)
+		}
+	}
+	close(results)
+
+	stats.StatsdClientSlow.Incr("reader.cassandraflat.rawrender.metrics-per-request", int64(len(metrics)))
+
 	return rawd, nil
 }
 

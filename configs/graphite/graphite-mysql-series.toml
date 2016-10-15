@@ -58,8 +58,7 @@ default_backend="graphite-proxy"  # failing a match go here
     [graphite-proxy-map.accumulator.writer.indexer]
         driver = "mysql"
         dsn = "$ENV{MYSQL_USER:admin}:$ENV{MYSQL_PASS:}@tcp(localhost:3306)/cadent"
-        #driver = "elasticsearch"
-        #dsn = "http://127.0.0.1:9200"
+
 
 
         [graphite-proxy-map.accumulator.writer.indexer.options]

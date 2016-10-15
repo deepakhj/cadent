@@ -37,7 +37,6 @@ import (
 	"fmt"
 	"github.com/Shopify/sarama"
 	logging "gopkg.in/op/go-logging.v1"
-	"math"
 	"strings"
 	"sync"
 	"time"
@@ -67,7 +66,7 @@ func NewKafkaMetrics() *KafkaMetrics {
 	kf.log = logging.MustGetLogger("writers.kafka.metrics")
 
 	kf.shutitdown = false
-	kf.is_primary = false
+	kf.isPrimary = false
 	return kf
 }
 
@@ -94,7 +93,7 @@ func (kf *KafkaMetrics) Config(conf *options.Options) error {
 
 	g_tag := conf.String("tags", "")
 	if len(g_tag) > 0 {
-		kf.static_tags = repr.SortingTagsFromString(g_tag)
+		kf.staticTags = repr.SortingTagsFromString(g_tag)
 	}
 
 	enct := conf.String("encoding", "json")
@@ -116,8 +115,8 @@ func (kf *KafkaMetrics) Config(conf *options.Options) error {
 	// when the accumulator flushes things to the multi wrtiers
 	// The Writer needs to know it's "not" the primary writer and thus will not "add" points to the
 	// cache .. so the cache basically gets "one" primary writer pointed (first come first serve)
-	kf.is_primary = kf.cacher.SetPrimaryWriter(kf)
-	if kf.is_primary {
+	kf.isPrimary = kf.cacher.SetPrimaryWriter(kf)
+	if kf.isPrimary {
 		kf.log.Notice("Kafka series writer is the primary writer to write back cache %s", kf.cacher.Name)
 	}
 	return nil
@@ -244,28 +243,12 @@ func (kf *KafkaMetrics) overFlowWrite() {
 	}
 }
 
-// based on the from/to in seconds get the best resolution
-// from and to should be SECONDS not nano-seconds
-// from and to needs to be > then the TTL as well
-func (kf *KafkaMetrics) getResolution(from int64, to int64) uint32 {
-	diff := int(math.Abs(float64(to - from)))
-	n := int(time.Now().Unix())
-	back_f := n - int(from)
-	back_t := n - int(to)
-	for _, res := range kf.resolutions {
-		if diff < res[1] && back_f < res[1] && back_t < res[1] {
-			return uint32(res[0])
-		}
-	}
-	return uint32(kf.resolutions[len(kf.resolutions)-1][0])
-}
-
 func (kf *KafkaMetrics) Write(stat repr.StatRepr) error {
 	// merge the tags in
-	stat.Name.MergeMetric2Tags(kf.static_tags)
+	stat.Name.MergeMetric2Tags(kf.staticTags)
 	kf.indexer.Write(*stat.Name) // to the indexer
 	// not primary writer .. move along
-	if !kf.is_primary {
+	if !kf.isPrimary {
 		return nil
 	}
 	kf.cacher.Add(stat.Name, &stat)
@@ -352,7 +335,7 @@ func (kf *KafkaMetrics) CacheRender(path string, start int64, end int64, tags re
 	defer stats.StatsdSlowNanoTimeFunc("reader.cassandra.cacherender.get-time-ns", time.Now())
 
 	//figure out the best res
-	resolution := kf.getResolution(start, end)
+	resolution := kf.GetResolution(start, end)
 
 	start = TruncateTimeTo(start, int(resolution))
 	end = TruncateTimeTo(end, int(resolution))
@@ -368,7 +351,7 @@ func (kf *KafkaMetrics) CacheRender(path string, start int64, end int64, tags re
 			Key: pth,
 		}
 		// need to merge in static tags to get UniqueIDs proper
-		nm.MergeMetric2Tags(kf.static_tags)
+		nm.MergeMetric2Tags(kf.staticTags)
 		nm.MergeMetric2Tags(tags)
 		metrics = append(metrics, nm)
 	}
@@ -408,9 +391,9 @@ func (kf *KafkaMetrics) CachedSeries(path string, start int64, end int64, tags r
 
 	metric := &repr.StatName{Key: path}
 	metric.MergeMetric2Tags(tags)
-	metric.MergeMetric2Tags(kf.static_tags)
+	metric.MergeMetric2Tags(kf.staticTags)
 
-	resolution := kf.getResolution(start, end)
+	resolution := kf.GetResolution(start, end)
 	cache_db := fmt.Sprintf("%s:%v", kf.cacherPrefix, resolution)
 	use_cache := GetCacherByName(cache_db)
 	if use_cache == nil {

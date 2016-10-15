@@ -771,9 +771,9 @@ Things expect a table names `{metric_table}_{resolution in seconds}s` for each r
     metric_60s
     etc
 
-This is acctually a good way to handle cassandra effectively.  Since in a trigger rollup world, we must "delete and are-add"
+This is acctually a good way to handle cassandra effectively.  Since in a trigger rollup world, we must "delete and re-insert"
 the row for the rollup rows (or in this case tables).  Those tables will have many tombstones and need more compaction,
-but since their resolution is smaller there will mcuh less data to rollup.  This also lets you use the
+but since their resolution is smaller there will much less data to rollup.  This also lets you use the
 `TimeWindowCompactionStrategy` more effecively in Cassandra 3, in that you can specifiy `compaction_window_size` more
 appropriate for your TTL on the data.  It also keeps the write/read volume for the "quick (highest resolution)" data
 out of the picture for doing rollups (if using triggered rollups), thus making things more effcient there.
@@ -803,7 +803,7 @@ The schema is different as well since we no longer need a "resolution" in the da
             points blob,
             PRIMARY KEY (mid, etime)
         ) WITH CLUSTERING ORDER BY etime ASC
-        
+
 
 ### Cassandra + Gotcha's
 

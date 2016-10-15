@@ -443,7 +443,7 @@ func (ws *WhisperWriter) Write(stat repr.StatRepr) error {
 		}
 		r_cache.InsertQueue <- t_stat
 	}
-	//ws.write_queue <- WhisperMetricsJob{Stat: stat, Whis: ws}
+	//ws.write_queue <- whisperMetricsJob{Stat: stat, Whis: ws}
 	return nil
 }
 
@@ -461,7 +461,7 @@ func (ws *WhisperWriter) sendToWriters() error {
 		case <-ticker.C:
 			if ws.write_queue != nil {
 				stats.StatsdClient.Incr("writer.whisper.write.send-to-writers", 1)
-				ws.write_queue <- &WhisperMetricsJob{Whis: ws}
+				ws.write_queue <- &whisperMetricsJob{Whis: ws}
 			}
 		case <-ws.shutdown:
 			ws.log.Warning("Whisper shutdown received, stopping write loop")
@@ -766,6 +766,8 @@ func (ws *WhisperMetrics) RawRender(path string, from int64, to int64, tags repr
 		go render_one(metric, idx)
 	}
 	render_wg.Wait()
+	stats.StatsdClientSlow.Incr("reader.whisper.rawrender.metrics-per-request", int64(len(metrics)))
+
 	return rawd, nil
 }
 
@@ -780,20 +782,20 @@ func (ws *WhisperMetrics) CachedSeries(path string, from int64, to int64, tags r
 /**********  Standard Worker Dispatcher JOB   ***************************/
 /************************************************************************/
 // insert job queue workers
-type WhisperMetricsJob struct {
+type whisperMetricsJob struct {
 	Whis  *WhisperWriter
 	Retry int
 }
 
-func (j *WhisperMetricsJob) IncRetry() int {
+func (j *whisperMetricsJob) IncRetry() int {
 	j.Retry++
 	return j.Retry
 }
-func (j *WhisperMetricsJob) OnRetry() int {
+func (j *whisperMetricsJob) OnRetry() int {
 	return j.Retry
 }
 
-func (j *WhisperMetricsJob) DoWork() error {
+func (j *whisperMetricsJob) DoWork() error {
 	_, err := j.Whis.InsertNext()
 	if err != nil {
 		j.Whis.log.Error("Insert failed for Metric: %v retrying ...", err)

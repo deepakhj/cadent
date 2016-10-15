@@ -63,16 +63,16 @@ type ElasticIndexer struct {
 	conn      *elastic.Client
 	indexerId string
 
-	write_lock sync.Mutex
+	writeLock sync.Mutex
 
-	num_workers int
-	queue_len   int
-	_accept     bool //shtdown notice
+	numWorkers int
+	queueLen   int
+	accept     bool //shtdown notice
 
 	dispatcher *dispatch.DispatchQueue
 
-	cache             *Cacher // simple cache to rate limit and buffer writes
-	writes_per_second int     // rate limit writer
+	cache           *Cacher // simple cache to rate limit and buffer writes
+	writesPerSecond int     // rate limit writer
 
 	shutitdown uint32
 	shutdown   chan bool
@@ -86,14 +86,14 @@ type ElasticIndexer struct {
 }
 
 func NewElasticIndexer() *ElasticIndexer {
-	my := new(ElasticIndexer)
-	my.log = logging.MustGetLogger("indexer.elastic")
-	my.indexCache = NewIndexCache(10000)
-	my.tagIdCache = NewTagCache()
-	return my
+	es := new(ElasticIndexer)
+	es.log = logging.MustGetLogger("indexer.elastic")
+	es.indexCache = NewIndexCache(10000)
+	es.tagIdCache = NewTagCache()
+	return es
 }
 
-func (my *ElasticIndexer) Config(conf *options.Options) (err error) {
+func (es *ElasticIndexer) Config(conf *options.Options) (err error) {
 	dsn, err := conf.StringRequired("dsn")
 	if err != nil {
 		return fmt.Errorf("`dsn` host:9200/index_name is needed for elasticsearch config")
@@ -104,103 +104,103 @@ func (my *ElasticIndexer) Config(conf *options.Options) (err error) {
 		return err
 	}
 
-	my.db = db.(*dbs.ElasticSearch)
-	my.conn = my.db.Client
+	es.db = db.(*dbs.ElasticSearch)
+	es.conn = es.db.Client
 
 	// tweak queues and worker sizes
-	my.num_workers = int(conf.Int64("write_workers", ES_INDEXER_WORKERS))
-	my.queue_len = int(conf.Int64("write_queue_length", ES_INDEXER_QUEUE_LEN))
+	es.numWorkers = int(conf.Int64("write_workers", ES_INDEXER_WORKERS))
+	es.queueLen = int(conf.Int64("write_queueLength", ES_INDEXER_QUEUE_LEN))
 
 	// url parse so that the password is not in the name
 	parsed, _ := url.Parse(dsn)
 	host := parsed.Host + parsed.Path
 
-	my.indexerId = "indexer:elastic:" + host
-	my.cache, err = getCacherSingleton(my.indexerId)
+	es.indexerId = "indexer:elastic:" + host
+	es.cache, err = getCacherSingleton(es.indexerId)
 	if err != nil {
 		return err
 	}
 
-	my.writes_per_second = int(conf.Int64("writes_per_second", ES_WRITES_PER_SECOND))
-	my.cache.maxKeys = int(conf.Int64("cache_index_size", CACHER_METRICS_KEYS))
+	es.writesPerSecond = int(conf.Int64("writesPerSecond", ES_WRITES_PER_SECOND))
+	es.cache.maxKeys = int(conf.Int64("cache_index_size", CACHER_METRICS_KEYS))
 
-	atomic.StoreUint32(&my.shutitdown, 1)
-	my.shutdown = make(chan bool)
+	atomic.StoreUint32(&es.shutitdown, 1)
+	es.shutdown = make(chan bool)
 
 	return nil
 }
-func (my *ElasticIndexer) Name() string { return my.indexerId }
+func (es *ElasticIndexer) Name() string { return es.indexerId }
 
-func (my *ElasticIndexer) Start() {
-	my.startstop.Start(func() {
-		my.log.Notice("starting elastic indexer: %s/%s/%s", my.db.PathTable(), my.db.TagTable())
-		err := NewElasticSearchSchema(my.conn, my.db.SegmentTable(), my.db.PathTable(), my.db.TagTable()).AddIndexTables()
+func (es *ElasticIndexer) Start() {
+	es.startstop.Start(func() {
+		es.log.Notice("starting elastic indexer: %s/%s", es.db.PathTable(), es.db.TagTable())
+		err := NewElasticSearchSchema(es.conn, es.db.SegmentTable(), es.db.PathTable(), es.db.TagTable()).AddIndexTables()
 		if err != nil {
 			panic(err)
 		}
 		retries := 2
-		my.dispatcher = dispatch.NewDispatchQueue(my.num_workers, my.queue_len, retries)
-		my.dispatcher.Start()
-		my.cache.Start() //start cacher
-		my.shutitdown = 0
+		es.dispatcher = dispatch.NewDispatchQueue(es.numWorkers, es.queueLen, retries)
+		es.dispatcher.Start()
+		es.cache.Start() //start cacher
+		es.shutitdown = 0
 
-		go my.sendToWriters() // the dispatcher
+		go es.sendToWriters() // the dispatcher
 	})
 }
 
-func (my *ElasticIndexer) Stop() {
-	my.startstop.Stop(func() {
+func (es *ElasticIndexer) Stop() {
+	es.startstop.Stop(func() {
 		shutdown.AddToShutdown()
 		defer shutdown.ReleaseFromShutdown()
 
-		my.log.Notice("shutting down elasticsearcg indexer: %s/%s", my.db.PathTable(), my.db.TagTable())
-		my.cache.Stop()
-		my.shutitdown = 1
+		es.log.Notice("shutting down elasticsearcg indexer: %s/%s", es.db.PathTable(), es.db.TagTable())
+		es.cache.Stop()
+		es.shutitdown = 1
 	})
 }
 
 // this fills up the tag cache on startup
-func (my *ElasticIndexer) fillTagCache() {
+func (es *ElasticIndexer) fillTagCache() {
 	//ToDo
 
 }
 
 // pop from the cache and send to actual writers
-func (my *ElasticIndexer) sendToWriters() error {
+func (es *ElasticIndexer) sendToWriters() error {
 	// this may not be the "greatest" ratelimiter of all time,
 	// as "high frequency tickers" can be costly .. but should the workers get backedup
 	// it will block on the write_queue stage
 
-	if my.writes_per_second <= 0 {
-		my.log.Notice("Starting indexer writer: No rate limiting enabled")
+	if es.writesPerSecond <= 0 {
+		es.log.Notice("Starting indexer writer: No rate limiting enabled")
 		for {
-			if my.shutitdown == 1 {
+			if es.shutitdown == 1 {
 				return nil
 			}
-			skey := my.cache.Pop()
+			skey := es.cache.Pop()
 			switch skey.IsBlank() {
 			case true:
 				time.Sleep(time.Second)
 			default:
 				stats.StatsdClient.Incr(fmt.Sprintf("indexer.elastic.write.send-to-writers"), 1)
-				my.dispatcher.Add(&ElasticIndexerJob{ES: my, Stat: skey})
+				es.dispatcher.Add(&elasticIndexerJob{ES: es, Stat: skey})
 			}
 		}
 	} else {
-		sleep_t := float64(time.Second) * (time.Second.Seconds() / float64(my.writes_per_second))
-		my.log.Notice("Starting indexer writer: limiter every %f nanoseconds (%d writes per second)", sleep_t, my.writes_per_second)
+		sleep_t := float64(time.Second) * (time.Second.Seconds() / float64(es.writesPerSecond))
+		es.log.Notice("Starting indexer writer: limiter every %f nanoseconds (%d writes per second)", sleep_t, es.writesPerSecond)
 		dur := time.Duration(int(sleep_t))
 		for {
-			if my.shutitdown == 1 {
+			if es.shutitdown == 1 {
 				return nil
 			}
-			skey := my.cache.Pop()
+			skey := es.cache.Pop()
 			switch skey.IsBlank() {
 			case true:
 				time.Sleep(time.Second)
 			default:
 				stats.StatsdClient.Incr(fmt.Sprintf("indexer.elastic.write.send-to-writers"), 1)
-				my.dispatcher.Add(&ElasticIndexerJob{ES: my, Stat: skey})
+				es.dispatcher.Add(&elasticIndexerJob{ES: es, Stat: skey})
 				time.Sleep(dur)
 			}
 		}
@@ -208,11 +208,11 @@ func (my *ElasticIndexer) sendToWriters() error {
 }
 
 // keep an index of the stat keys and their fragments so we can look up
-func (my *ElasticIndexer) Write(skey repr.StatName) error {
-	return my.cache.Add(skey)
+func (es *ElasticIndexer) Write(skey repr.StatName) error {
+	return es.cache.Add(skey)
 }
 
-func (my *ElasticIndexer) WriteTags(inname *repr.StatName, do_main bool, do_meta bool) error {
+func (es *ElasticIndexer) WriteTags(inname *repr.StatName, do_main bool, do_meta bool) error {
 
 	have_meta := !inname.MetaTags.IsEmpty()
 	have_tgs := !inname.Tags.IsEmpty()
@@ -222,7 +222,7 @@ func (my *ElasticIndexer) WriteTags(inname *repr.StatName, do_main bool, do_meta
 
 	if have_tgs && do_main {
 		for _, t := range inname.Tags {
-			_, got := my.inTagCache(t.Name, t.Value)
+			_, got := es.inTagCache(t.Name, t.Value)
 			if got {
 				continue
 			}
@@ -232,24 +232,24 @@ func (my *ElasticIndexer) WriteTags(inname *repr.StatName, do_main bool, do_meta
 			tg.IsMeta = false
 			tg_sum := md5.New()
 			tg_sum.Write([]byte(fmt.Sprintf("%s:%s:%v", t.Name, t.Value, false)))
-			ret, err := my.conn.Index().
-				Index(my.db.TagTable()).
-				Type(my.db.TagType).
+			ret, err := es.conn.Index().
+				Index(es.db.TagTable()).
+				Type(es.db.TagType).
 				Id(hex.EncodeToString(tg_sum.Sum(nil))).
 				BodyJson(tg).
 				Do()
 			if err != nil {
-				my.log.Error("Could not insert tag %v (%v) :: %v", t.Name, t.Value, err)
+				es.log.Error("Could not insert tag %v (%v) :: %v", t.Name, t.Value, err)
 				continue
 			}
 			if len(ret.Id) > 0 {
-				my.tagIdCache.Add(t.Name, t.Value, false, ret.Id)
+				es.tagIdCache.Add(t.Name, t.Value, false, ret.Id)
 			}
 		}
 	}
 	if have_meta && do_meta {
 		for _, t := range inname.Tags {
-			_, got := my.inTagCache(t.Name, t.Value)
+			_, got := es.inTagCache(t.Name, t.Value)
 			if got {
 				continue
 			}
@@ -259,14 +259,14 @@ func (my *ElasticIndexer) WriteTags(inname *repr.StatName, do_main bool, do_meta
 			tg.IsMeta = true
 			tg_sum := md5.New()
 			tg_sum.Write([]byte(fmt.Sprintf("%s:%s:%v", t.Name, t.Value, true)))
-			_, err := my.conn.Index().
-				Index(my.db.TagTable()).
-				Type(my.db.TagType).
+			_, err := es.conn.Index().
+				Index(es.db.TagTable()).
+				Type(es.db.TagType).
 				Id(hex.EncodeToString(tg_sum.Sum(nil))).
 				BodyJson(tg).
 				Do()
 			if err != nil {
-				my.log.Error("Could not insert tag %v (%v) :: %v", t.Name, t.Value, err)
+				es.log.Error("Could not insert tag %v (%v) :: %v", t.Name, t.Value, err)
 			}
 		}
 	}
@@ -274,7 +274,7 @@ func (my *ElasticIndexer) WriteTags(inname *repr.StatName, do_main bool, do_meta
 }
 
 // a basic clone of the cassandra indexer
-func (my *ElasticIndexer) WriteOne(inname *repr.StatName) error {
+func (es *ElasticIndexer) WriteOne(inname *repr.StatName) error {
 	defer stats.StatsdSlowNanoTimeFunc(fmt.Sprintf("indexer.elastic.write.path-time-ns"), time.Now())
 	stats.StatsdClientSlow.Incr("indexer.elastic.noncached-writes-path", 1)
 
@@ -283,9 +283,9 @@ func (my *ElasticIndexer) WriteOne(inname *repr.StatName) error {
 
 	// we are going to assume that if the path is already in the system, we've indexed it and therefore
 	// do not need to do the super loop (which is very expensive)
-	got_already, err := my.conn.Get().Index(my.db.PathTable()).Id(unique_ID).Do()
+	got_already, err := es.conn.Get().Index(es.db.PathTable()).Id(unique_ID).Do()
 	if err == nil && got_already != nil && got_already.Found {
-		return my.WriteTags(inname, false, true)
+		return es.WriteTags(inname, false, true)
 	}
 
 	pth := NewParsedPath(skey, unique_ID)
@@ -293,7 +293,7 @@ func (my *ElasticIndexer) WriteOne(inname *repr.StatName) error {
 	// do the segments
 	last_path := pth.Last()
 
-	bulk := my.conn.Bulk()
+	bulk := es.conn.Bulk()
 
 	// now to upsert them all (inserts in cass are upserts)
 	for idx, seg := range pth.Segments {
@@ -328,8 +328,8 @@ func (my *ElasticIndexer) WriteOne(inname *repr.StatName) error {
 		seg_md := md5.New()
 		seg_md.Write([]byte(es_obj.Segment))
 		bulk.Add(elastic.NewBulkIndexRequest().
-			Index(my.db.SegmentTable()).
-			Type(my.db.SegmentType).
+			Index(es.db.SegmentTable()).
+			Type(es.db.SegmentType).
 			Id(hex.EncodeToString(seg_md.Sum(nil))).
 			Doc(es_seg))
 
@@ -340,8 +340,8 @@ func (my *ElasticIndexer) WriteOne(inname *repr.StatName) error {
 			pth_md := md5.New()
 			pth_md.Write([]byte(es_obj.Path))
 			bulk.Add(elastic.NewBulkIndexRequest().
-				Index(my.db.PathTable()).
-				Type(my.db.PathType).
+				Index(es.db.PathTable()).
+				Type(es.db.PathType).
 				Id(hex.EncodeToString(pth_md.Sum(nil))).
 				Doc(es_obj))
 
@@ -371,8 +371,8 @@ func (my *ElasticIndexer) WriteOne(inname *repr.StatName) error {
 				}
 			}
 			bulk.Add(elastic.NewBulkIndexRequest().
-				Index(my.db.PathTable()).
-				Type(my.db.PathType).
+				Index(es.db.PathTable()).
+				Type(es.db.PathType).
 				Id(unique_ID).
 				Doc(es_obj))
 		}
@@ -382,27 +382,27 @@ func (my *ElasticIndexer) WriteOne(inname *repr.StatName) error {
 	_, err = bulk.Do()
 
 	if err != nil {
-		my.log.Error("Could not insert path %v (%v) :: %v", last_path, unique_ID, err)
+		es.log.Error("Could not insert path %v (%v) :: %v", last_path, unique_ID, err)
 		stats.StatsdClientSlow.Incr("indexer.elastic.path-failures", 1)
 	} else {
 		stats.StatsdClientSlow.Incr("indexer.elastic.path-writes", 1)
 	}
 
-	err = my.WriteTags(inname, true, true)
+	err = es.WriteTags(inname, true, true)
 	if err != nil {
-		my.log.Error("Could not write tag index", err)
+		es.log.Error("Could not write tag index", err)
 		return err
 	}
 
 	return err
 }
 
-func (my *ElasticIndexer) Delete(name *repr.StatName) error {
+func (es *ElasticIndexer) Delete(name *repr.StatName) error {
 
 	uid := name.UniqueIdString()
-	_, err := my.conn.Delete().Index(my.db.PathTable()).Type(my.db.PathType).Id(uid).Do()
+	_, err := es.conn.Delete().Index(es.db.PathTable()).Type(es.db.PathType).Id(uid).Do()
 	if err != nil {
-		my.log.Error("Elastic Driver: Delete Path failed, %v", err)
+		es.log.Error("Elastic Driver: Delete Path failed, %v", err)
 		return err
 	}
 
@@ -412,12 +412,12 @@ func (my *ElasticIndexer) Delete(name *repr.StatName) error {
 /**** READER ***/
 
 // Expand simply pulls out any regexes into full form
-func (my *ElasticIndexer) Expand(metric string) (MetricExpandItem, error) {
+func (es *ElasticIndexer) Expand(metric string) (MetricExpandItem, error) {
 
 	defer stats.StatsdSlowNanoTimeFunc("indexer.elastic.expand.get-time-ns", time.Now())
 
 	m_len := len(strings.Split(metric, ".")) - 1
-	base_q := my.conn.Search().Index(my.db.SegmentTable()).Type(my.db.SegmentType)
+	base_q := es.conn.Search().Index(es.db.SegmentTable()).Type(es.db.SegmentType)
 
 	need_reg := needRegex(metric)
 	and_filter := elastic.NewBoolQuery()
@@ -454,7 +454,7 @@ func (my *ElasticIndexer) Expand(metric string) (MetricExpandItem, error) {
 			var item ESSegment
 			err := json.Unmarshal(*h.Source, &item)
 			if err != nil {
-				my.log.Error("Elastic Driver: json error, %v", err)
+				es.log.Error("Elastic Driver: json error, %v", err)
 				continue
 			}
 			me.Results = append(me.Results, item.Segment)
@@ -470,14 +470,14 @@ func (my *ElasticIndexer) Expand(metric string) (MetricExpandItem, error) {
 }
 
 /******************* TAG METHODS **********************************/
-func (my *ElasticIndexer) inTagCache(name string, value string) (tag_id string, ismeta bool) {
+func (es *ElasticIndexer) inTagCache(name string, value string) (tag_id string, ismeta bool) {
 
-	got := my.tagIdCache.Get(name, value, false)
+	got := es.tagIdCache.Get(name, value, false)
 
 	if got != nil {
 		return got.(string), false
 	}
-	got = my.tagIdCache.Get(name, value, true)
+	got = es.tagIdCache.Get(name, value, true)
 	if got != nil {
 		return got.(string), true
 	}
@@ -485,10 +485,10 @@ func (my *ElasticIndexer) inTagCache(name string, value string) (tag_id string, 
 	return "", false
 }
 
-func (my *ElasticIndexer) FindTagId(name string, value string, ismeta bool) (string, error) {
+func (es *ElasticIndexer) FindTagId(name string, value string, ismeta bool) (string, error) {
 
 	// see if in the writer tag cache
-	c_id, c_meta := my.inTagCache(name, value)
+	c_id, c_meta := es.inTagCache(name, value)
 	if ismeta == c_meta && c_id == "" {
 		return c_id, nil
 	}
@@ -497,9 +497,9 @@ func (my *ElasticIndexer) FindTagId(name string, value string, ismeta bool) (str
 	and_filter = and_filter.Must(elastic.NewTermQuery("value", value))
 	and_filter = and_filter.Must(elastic.NewTermQuery("is_meta", ismeta))
 
-	items, err := my.conn.Search().Index(my.db.PathTable()).Type(my.db.PathType).Query(and_filter).From(0).Size(1).Do()
+	items, err := es.conn.Search().Index(es.db.PathTable()).Type(es.db.PathType).Query(and_filter).From(0).Size(1).Do()
 	if err != nil {
-		my.log.Error("Elastic Driver: Tag find error, %v", err)
+		es.log.Error("Elastic Driver: Tag find error, %v", err)
 		return "", err
 
 	}
@@ -510,9 +510,9 @@ func (my *ElasticIndexer) FindTagId(name string, value string, ismeta bool) (str
 	return "", err
 }
 
-func (my *ElasticIndexer) GetTagsByUid(unique_id string) (tags repr.SortingTags, metatags repr.SortingTags, err error) {
+func (es *ElasticIndexer) GetTagsByUid(unique_id string) (tags repr.SortingTags, metatags repr.SortingTags, err error) {
 
-	base_q := my.conn.Search().Index(my.db.PathTable()).Type(my.db.PathType)
+	base_q := es.conn.Search().Index(es.db.PathTable()).Type(es.db.PathType)
 	items, err := base_q.Query(elastic.NewTermQuery("uid", unique_id)).Do()
 	if err != nil {
 		return tags, metatags, err
@@ -523,7 +523,7 @@ func (my *ElasticIndexer) GetTagsByUid(unique_id string) (tags repr.SortingTags,
 		err := json.Unmarshal(*h.Source, &tg)
 
 		if err != nil {
-			my.log.Error("Error Getting Tags Iterator : %v", err)
+			es.log.Error("Error Getting Tags Iterator : %v", err)
 			continue
 		}
 		tags, metatags := tg.ToSortedTags()
@@ -533,10 +533,10 @@ func (my *ElasticIndexer) GetTagsByUid(unique_id string) (tags repr.SortingTags,
 	return tags, metatags, err
 }
 
-func (my *ElasticIndexer) GetTagsByName(name string, page int) (tags MetricTagItems, err error) {
+func (es *ElasticIndexer) GetTagsByName(name string, page int) (tags MetricTagItems, err error) {
 
 	var items *elastic.SearchResult
-	base_q := my.conn.Search().Index(my.db.TagTable()).Type(my.db.TagType)
+	base_q := es.conn.Search().Index(es.db.TagTable()).Type(es.db.TagType)
 
 	if needRegex(name) {
 		use_name := regifyKeyString(name)
@@ -550,7 +550,7 @@ func (my *ElasticIndexer) GetTagsByName(name string, page int) (tags MetricTagIt
 	items, err = base_q.From(page * MAX_PER_PAGE).Size(MAX_PER_PAGE).Do()
 
 	if err != nil {
-		my.log.Error("Elastic Driver: Tag find error, %v", err)
+		es.log.Error("Elastic Driver: Tag find error, %v", err)
 		return tags, err
 	}
 
@@ -561,19 +561,19 @@ func (my *ElasticIndexer) GetTagsByName(name string, page int) (tags MetricTagIt
 		err = json.Unmarshal(*h.Source, &tg)
 
 		if err != nil {
-			my.log.Error("Error Getting Tags Iterator : %v", err)
+			es.log.Error("Error Getting Tags Iterator : %v", err)
 			continue
 		}
 		tags = append(tags, MetricTagItem{Name: tg.Name, Value: tg.Value, Id: h.Id, IsMeta: tg.IsMeta})
-		my.tagIdCache.Add(tg.Name, tg.Value, tg.IsMeta, h.Id)
+		es.tagIdCache.Add(tg.Name, tg.Value, tg.IsMeta, h.Id)
 	}
 	return
 }
 
-func (my *ElasticIndexer) GetTagsByNameValue(name string, value string, page int) (tags MetricTagItems, err error) {
+func (es *ElasticIndexer) GetTagsByNameValue(name string, value string, page int) (tags MetricTagItems, err error) {
 	var items *elastic.SearchResult
 
-	base_q := my.conn.Search().Index(my.db.TagTable()).Type(my.db.TagType)
+	base_q := es.conn.Search().Index(es.db.TagTable()).Type(es.db.TagType)
 	and_filter := elastic.NewBoolQuery()
 
 	if needRegex(name) {
@@ -589,7 +589,7 @@ func (my *ElasticIndexer) GetTagsByNameValue(name string, value string, page int
 
 	items, err = base_q.Query(and_filter).From(page * MAX_PER_PAGE).Size(MAX_PER_PAGE).Do()
 	if err != nil {
-		my.log.Error("Elastic Driver: Tag find error, %v", err)
+		es.log.Error("Elastic Driver: Tag find error, %v", err)
 		return tags, err
 	}
 
@@ -599,17 +599,17 @@ func (my *ElasticIndexer) GetTagsByNameValue(name string, value string, page int
 		err = json.Unmarshal(*h.Source, &tg)
 
 		if err != nil {
-			my.log.Error("Error Getting Tags Iterator : %v", err)
+			es.log.Error("Error Getting Tags Iterator : %v", err)
 			continue
 		}
 		tags = append(tags, MetricTagItem{Name: tg.Name, Value: tg.Value, Id: h.Id, IsMeta: tg.IsMeta})
-		my.tagIdCache.Add(tg.Name, tg.Value, tg.IsMeta, h.Id)
+		es.tagIdCache.Add(tg.Name, tg.Value, tg.IsMeta, h.Id)
 	}
 
 	return
 }
 
-func (my *ElasticIndexer) GetUidsByTags(key string, tags repr.SortingTags, page int) (uids []string, err error) {
+func (es *ElasticIndexer) GetUidsByTags(key string, tags repr.SortingTags, page int) (uids []string, err error) {
 	//TODO
 	return
 }
@@ -617,7 +617,7 @@ func (my *ElasticIndexer) GetUidsByTags(key string, tags repr.SortingTags, page 
 /********************* UID metric finders ***********************/
 
 // List all paths w/ data
-func (my *ElasticIndexer) List(has_data bool, page int) (MetricFindItems, error) {
+func (es *ElasticIndexer) List(has_data bool, page int) (MetricFindItems, error) {
 
 	defer stats.StatsdSlowNanoTimeFunc("indexer.elastic.list.get-time-ns", time.Now())
 
@@ -625,7 +625,7 @@ func (my *ElasticIndexer) List(has_data bool, page int) (MetricFindItems, error)
 	var ms MetricFindItem
 
 	filter := elastic.NewTermQuery("has_data", true)
-	items, err := my.conn.Search().Index(my.db.PathTable()).Type(my.db.PathType).Query(filter).Sort("path", true).From(page * MAX_PER_PAGE).Size(MAX_PER_PAGE).Do()
+	items, err := es.conn.Search().Index(es.db.PathTable()).Type(es.db.PathType).Query(filter).Sort("path", true).From(page * MAX_PER_PAGE).Size(MAX_PER_PAGE).Do()
 
 	if err != nil {
 		return mt, err
@@ -636,7 +636,7 @@ func (my *ElasticIndexer) List(has_data bool, page int) (MetricFindItems, error)
 		err := json.Unmarshal(*h.Source, &tg)
 
 		if err != nil {
-			my.log.Error("Error Getting Tags Iterator : %v", err)
+			es.log.Error("Error Getting Tags Iterator : %v", err)
 			continue
 		}
 		spl := strings.Split(tg.Path, ".")
@@ -658,25 +658,25 @@ func (my *ElasticIndexer) List(has_data bool, page int) (MetricFindItems, error)
 }
 
 // basic find for non-regex items
-func (my *ElasticIndexer) FindBase(metric string, tags repr.SortingTags, exact bool) (MetricFindItems, error) {
+func (es *ElasticIndexer) FindBase(metric string, tags repr.SortingTags, exact bool) (MetricFindItems, error) {
 
 	defer stats.StatsdSlowNanoTimeFunc("indexer.elastic.findbase.get-time-ns", time.Now())
 
 	// check cache
-	items := my.indexCache.Get(metric, tags)
+	items := es.indexCache.Get(metric, tags)
 	if items != nil {
 		stats.StatsdClientSlow.Incr("indexer.elastic.findbase.cached", 1)
 		return *items, nil
 	}
 
-	base_q := my.conn.Search().Index(my.db.PathTable()).Type(my.db.PathType)
+	base_q := es.conn.Search().Index(es.db.PathTable()).Type(es.db.PathType)
 	and_filter := elastic.NewBoolQuery()
 	var all_tag_filter *elastic.BoolQuery
 	var mt MetricFindItems
 
 	// if "tags" we need to find the tag Ids, and do the cross join
 	for _, tag := range tags {
-		t_ids, _ := my.GetTagsByNameValue(tag.Name, tag.Value, 0)
+		t_ids, _ := es.GetTagsByNameValue(tag.Name, tag.Value, 0)
 		if len(t_ids) > 0 {
 			tag_filter := elastic.NewBoolQuery()
 			for _, tg := range t_ids {
@@ -741,7 +741,7 @@ func (my *ElasticIndexer) FindBase(metric string, tags repr.SortingTags, exact b
 			err := json.Unmarshal(*h.Source, &tg)
 
 			if err != nil {
-				my.log.Error("Error in json: %v", err)
+				es.log.Error("Error in json: %v", err)
 				continue
 			}
 			spl := strings.Split(tg.Segment, ".")
@@ -765,25 +765,25 @@ func (my *ElasticIndexer) FindBase(metric string, tags repr.SortingTags, exact b
 	}
 
 	// set it
-	my.indexCache.Add(metric, tags, &mt)
+	es.indexCache.Add(metric, tags, &mt)
 
 	return mt, nil
 }
 
 // special case for "root" == "*" finder
-func (my *ElasticIndexer) FindRoot(tags repr.SortingTags) (MetricFindItems, error) {
+func (es *ElasticIndexer) FindRoot(tags repr.SortingTags) (MetricFindItems, error) {
 	defer stats.StatsdSlowNanoTimeFunc("indexer.elastic.findroot.get-time-ns", time.Now())
 
 	var mt MetricFindItems
 
-	base_q := my.conn.Search().Index(my.db.SegmentTable()).Type(my.db.SegmentType)
+	base_q := es.conn.Search().Index(es.db.SegmentTable()).Type(es.db.SegmentType)
 	and_filter := elastic.NewBoolQuery()
 	and_filter = and_filter.Must(elastic.NewTermQuery("pos", 0))
 	var all_tag_filter *elastic.BoolQuery
 
 	// if "tags" we need to find the tag Ids, and do the cross join
 	for _, tag := range tags {
-		t_ids, _ := my.GetTagsByNameValue(tag.Name, tag.Value, 0)
+		t_ids, _ := es.GetTagsByNameValue(tag.Name, tag.Value, 0)
 		if len(t_ids) > 0 {
 			tag_filter := elastic.NewBoolQuery()
 			for _, tg := range t_ids {
@@ -818,7 +818,7 @@ func (my *ElasticIndexer) FindRoot(tags repr.SortingTags) (MetricFindItems, erro
 		err := json.Unmarshal(*h.Source, &tg)
 
 		if err != nil {
-			my.log.Error("Error in json: %v", err)
+			es.log.Error("Error in json: %v", err)
 			continue
 		}
 		ms.Text = tg.Segment
@@ -835,7 +835,7 @@ func (my *ElasticIndexer) FindRoot(tags repr.SortingTags) (MetricFindItems, erro
 }
 
 // to allow for multiple targets
-func (my *ElasticIndexer) Find(metric string, tags repr.SortingTags) (MetricFindItems, error) {
+func (es *ElasticIndexer) Find(metric string, tags repr.SortingTags) (MetricFindItems, error) {
 	// the regex case is a bit more complicated as we need to grab ALL the segments of a given length.
 	// see if the match the regex, and then add them to the lists since cassandra does not provide regex abilities
 	// on the server side
@@ -845,22 +845,22 @@ func (my *ElasticIndexer) Find(metric string, tags repr.SortingTags) (MetricFind
 	// special case for "root" == "*"
 
 	// check cache
-	items := my.indexCache.Get(metric, tags)
+	items := es.indexCache.Get(metric, tags)
 	if items != nil {
 		stats.StatsdClientSlow.Incr("indexer.elastic.find.cached", 1)
 		return *items, nil
 	}
 
 	if metric == "*" {
-		return my.FindRoot(tags)
+		return es.FindRoot(tags)
 	}
 
-	mt, err := my.FindBase(metric, tags, true)
+	mt, err := es.FindBase(metric, tags, true)
 	if err != nil {
 		return mt, err
 	}
 	// set it
-	my.indexCache.Add(metric, tags, &mt)
+	es.indexCache.Add(metric, tags, &mt)
 
 	return mt, nil
 }
@@ -869,21 +869,21 @@ func (my *ElasticIndexer) Find(metric string, tags repr.SortingTags) (MetricFind
 /**********  Standard Worker Dispatcher JOB   ***************************/
 /************************************************************************/
 // insert job queue workers
-type ElasticIndexerJob struct {
+type elasticIndexerJob struct {
 	ES    *ElasticIndexer
 	Stat  repr.StatName
 	retry int
 }
 
-func (j *ElasticIndexerJob) IncRetry() int {
+func (j *elasticIndexerJob) IncRetry() int {
 	j.retry++
 	return j.retry
 }
-func (j *ElasticIndexerJob) OnRetry() int {
+func (j *elasticIndexerJob) OnRetry() int {
 	return j.retry
 }
 
-func (j *ElasticIndexerJob) DoWork() error {
+func (j *elasticIndexerJob) DoWork() error {
 	err := j.ES.WriteOne(&j.Stat)
 	if err != nil {
 		j.ES.log.Error("Insert failed for Index: %v retrying ...", j.Stat)

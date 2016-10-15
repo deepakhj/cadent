@@ -51,8 +51,20 @@ import (
 )
 
 var ELASTIC_PATH_TYPE string = `{
-    "properties":{
-        "uid":{
+    "dynamic_templates": [{
+        	"notanalyze": {
+         		"mapping": {
+            			"index": "not_analyzed"
+         		},
+          		"match_mapping_type": "string",
+          		"match": "*"
+       		}
+   }],
+   "_all": {
+	"enabled": false
+   },
+   "properties":{
+	"uid":{
             "type": "string",
             "index": "not_analyzed"
         },
@@ -98,8 +110,20 @@ var ELASTIC_PATH_TYPE string = `{
 `
 
 var ELASTIC_SEGMENT_TYPE string = `{
-    "properties":{
-       "segment":{
+    "dynamic_templates": [{
+        	"notanalyze": {
+         		"mapping": {
+            			"index": "not_analyzed"
+         		},
+          		"match_mapping_type": "string",
+          		"match": "*"
+       		}
+   }],
+   "_all": {
+   	"enabled": false
+   },
+   "properties":{
+	"segment":{
             "type": "string",
             "index": "not_analyzed"
         },
@@ -112,8 +136,21 @@ var ELASTIC_SEGMENT_TYPE string = `{
 `
 
 var ELASTIC_TAG_TYPE string = `{
-    "properties": {
-        "name":{
+    "dynamic_templates": [{
+        	"notanalyze": {
+
+         		"mapping": {
+            			"index": "not_analyzed"
+         		},
+          		"match_mapping_type": "string",
+          		"match": "*"
+       		}
+   }],
+   "_all": {
+	"enabled": false
+   },
+   "properties": {
+   	 "name":{
             "type": "string",
             "index": "not_analyzed"
         },
@@ -182,20 +219,20 @@ func NewElasticSearchSchema(conn *elastic.Client, segment string, path string, t
 	return my
 }
 
-func (es *ElasticSearchSchema) AddIndexTables() error {
-	var err error
+func (es *ElasticSearchSchema) AddIndexTables() (err error) {
 	es.startstop.Start(func() {
 		es.log.Notice("Adding ElasticSearch index indexes `%s` `%s` `%s`", es.pathIndex, es.tagIndex, es.segmentIndex)
 		indexes := []string{es.pathIndex, es.tagIndex, es.segmentIndex}
 		for _, q := range indexes {
 
 			// Use the IndexExists service to check if a specified index exists.
-			exists, err := es.conn.IndexExists(q).Do()
-			if err != nil {
+			exists, terr := es.conn.IndexExists(q).Do()
+			if terr != nil {
+				err = terr
 				return
 			}
 			if !exists {
-				_, err := es.conn.CreateIndex(q).Do()
+				_, err = es.conn.CreateIndex(q).Do()
 				if err != nil {
 					return
 				}
@@ -207,7 +244,11 @@ func (es *ElasticSearchSchema) AddIndexTables() error {
 		}
 
 		// see if it's there already
-		got, err := es.conn.GetMapping().Index(es.pathIndex).Type("path").Do()
+		got, terr := es.conn.GetMapping().Index(es.pathIndex).Type("path").Do()
+		if terr != nil {
+			err = terr
+			return
+		}
 		es.log.Notice("ElasticSearch Schema Driver: have path mapping %v", err)
 		var putresp *elastic.PutMappingResponse
 		if len(got) == 0 || err != nil {
@@ -227,6 +268,9 @@ func (es *ElasticSearchSchema) AddIndexTables() error {
 			}
 		}
 		got, err = es.conn.GetMapping().Index(es.tagIndex).Type("tag").Do()
+		if err != nil {
+			return
+		}
 		es.log.Notice("ElasticSearch Schema Driver: have tag mapping, %v", err)
 		if len(got) == 0 || err != nil {
 			putresp, err = es.conn.PutMapping().Index(es.tagIndex).Type("tag").BodyString(ELASTIC_TAG_TYPE).Do()
@@ -246,6 +290,9 @@ func (es *ElasticSearchSchema) AddIndexTables() error {
 		}
 
 		got, err = es.conn.GetMapping().Index(es.segmentIndex).Type("segment").Do()
+		if err != nil {
+			return
+		}
 		es.log.Notice("ElasticSearch Schema Driver: have segment mapping %v", err)
 		if len(got) == 0 || err != nil {
 			putresp, err = es.conn.PutMapping().Index(es.segmentIndex).Type("segment").BodyString(ELASTIC_SEGMENT_TYPE).Do()

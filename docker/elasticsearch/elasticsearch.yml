@@ -1,0 +1,12 @@
+network.host: 0.0.0.0
+
+threadpool:
+    generic:
+        keep_alive: 2m
+    index:
+        size: 30
+        queue_size: 1000
+
+    bulk:
+        queue_size: 5000
+
