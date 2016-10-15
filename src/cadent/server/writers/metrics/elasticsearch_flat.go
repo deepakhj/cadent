@@ -318,10 +318,11 @@ func (es *ElasticSearchFlatMetrics) RawRenderOne(metric indexer.MetricFindItem, 
 		return rawd, fmt.Errorf("time too narrow")
 	}
 
-	// time in ElasticSearhc need "proper time"
-
-	qtEnd := time.Unix(end, 0)
-	qtStart := time.Unix(start, 0)
+	// time in ES is max millis BUT only 13 chars for searches
+	// so it's not really  "millis" but 1000ths
+	milli := int64(1000)
+	qtEnd := end * milli
+	qtStart := start * milli
 
 	firstT := uint32(start)
 	lastT := uint32(end)
@@ -349,19 +350,17 @@ func (es *ElasticSearchFlatMetrics) RawRenderOne(metric indexer.MetricFindItem, 
 
 	on_time := time.Unix(start, 0)
 	use_index := es.indexName(resolution, on_time)
-	baseQ := es.conn.Search().Index(use_index).Type(es.db.SegmentType)
+	baseQ := es.conn.Search().Index(use_index).Type(es.db.MetricType)
 
-	and_filter := elastic.NewBoolQuery().DisableCoord(true)
+	and_filter := elastic.NewBoolQuery()
 	and_filter = and_filter.Must(elastic.NewTermQuery("uid", metric.UniqueId))
-	and_filter = and_filter.Must(elastic.NewRangeQuery("time").From(qtStart).To(qtEnd).Format("strict_date_optional_time"))
+	and_filter = and_filter.Must(elastic.NewRangeQuery("time").From(qtStart).To(qtEnd).Format("epoch_millis"))
 	esItems, err := baseQ.Query(and_filter).Sort("time", true).Do()
-	ss, _ := elastic.NewSearchSource().Query(and_filter).Sort("time", true).Source()
-	data, _ := json.Marshal(ss)
-	es.log.Error("Query failed: %v (QUERY :: %s)", err, data)
+
 	if err != nil {
 		ss, _ := elastic.NewSearchSource().Query(and_filter).Sort("time", true).Source()
 		data, _ := json.Marshal(ss)
-		es.log.Error("Query failed: %v (QUERY :: %s)", err, data)
+		es.log.Error("Query failed: Index %s: %v (QUERY :: %s)", use_index, err, data)
 		return rawd, err
 	}
 
