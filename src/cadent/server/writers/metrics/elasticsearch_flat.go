@@ -373,7 +373,6 @@ func (es *ElasticSearchFlatMetrics) RawRenderOne(metric indexer.MetricFindItem, 
 	do_resample := resample > 0 && resample > resolution
 
 	for _, h := range esItems.Hits.Hits {
-		es.log.Critical("HITS: %v", h.Source)
 		// just grab the "n+1" length ones
 		item := getESMetric()
 		defer putESMetric(item)
