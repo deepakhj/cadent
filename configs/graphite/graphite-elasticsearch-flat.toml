@@ -22,6 +22,7 @@ default_backend="graphite-proxy"  # failing a match go here
     times = ["5s:1h", "1m:168h"]
 
     # cache objects to be shared (or not) across the writer backends
+    # note: for ES this is not yet used, but needed for any future things
     [[graphite-proxy-map.accumulator.writer.caches]]
     name="gob"
     series_encoding="gob"
@@ -30,8 +31,7 @@ default_backend="graphite-proxy"  # failing a match go here
     low_fruit_rate= 0.25
 
 
-    # AND write things to the cassandra DB
-    # cassandra api, metrics writer and path indexer
+    # write to elastic search in 1000 metric batches
     [graphite-proxy-map.accumulator.writer.metrics]
         driver = "elasticsearch-flat"
         dsn = "http://127.0.0.1:9200"
