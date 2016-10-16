@@ -38,7 +38,7 @@ default_backend="graphite-proxy"  # failing a match go here
         cache = "gob"
 
         [graphite-proxy-map.accumulator.writer.metrics.options]
-        batch_count=100
+        batch_count=1000
         metric_index = "metrics_flat"
 
 
