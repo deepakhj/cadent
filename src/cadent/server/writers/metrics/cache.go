@@ -602,15 +602,15 @@ func (wc *Cacher) GetAsRawRenderItem(name *repr.StatName) (*RawRenderItem, error
 	rawd.End = uint32(data[len(data)-1].ToTime().Unix())
 	rawd.RealEnd = rawd.End
 	rawd.RealStart = rawd.Start
-	rawd.AggFunc = name.AggType()
+	rawd.AggFunc = uint32(name.AggType())
 
 	f_t := uint32(0)
 	step_t := uint32(0)
 
-	rawd.Data = make([]RawDataPoint, len(data), len(data))
+	rawd.Data = make([]*RawDataPoint, len(data), len(data))
 	for idx, pt := range data {
 		on_t := uint32(pt.ToTime().Unix())
-		rawd.Data[idx] = RawDataPoint{
+		rawd.Data[idx] = &RawDataPoint{
 			Time:  on_t,
 			Count: pt.Count,
 			Min:   float64(pt.Min),

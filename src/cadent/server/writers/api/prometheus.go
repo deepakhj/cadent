@@ -162,12 +162,12 @@ func (p *PrometheusAPI) QueryRange(w http.ResponseWriter, r *http.Request) {
 			data.Resample(resample)
 		}
 
-		if !data.Tags.IsEmpty() {
+		if !repr.SortingTags(data.Tags).IsEmpty() {
 			for _, tg := range data.Tags {
 				p_data.Metric[tg.Name] = tg.Value
 			}
 		}
-		if !data.MetaTags.IsEmpty() {
+		if !repr.SortingTags(data.MetaTags).IsEmpty() {
 			for _, tg := range data.MetaTags {
 				p_data.Metric[tg.Name] = tg.Value
 			}

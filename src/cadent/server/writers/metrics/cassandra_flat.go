@@ -714,17 +714,17 @@ func (cass *CassandraFlatMetric) RawRenderOne(metric indexer.MetricFindItem, sta
 
 	//figure out the best res
 	resolution := cass.GetResolution(start, end)
-	out_resolution := resolution
+	outResolution := resolution
 
 	//obey the bigger
 	if resample > resolution {
-		out_resolution = resample
+		outResolution = resample
 	}
 
 	start = TruncateTimeTo(start, int(resolution))
 	end = TruncateTimeTo(end, int(resolution))
 
-	b_len := uint32(end-start) / out_resolution //just to be safe
+	b_len := uint32(end-start) / outResolution //just to be safe
 	if b_len <= 0 {
 		return rawd, fmt.Errorf("Cassandra: RawRenderOne: time too narrow")
 	}
@@ -775,7 +775,7 @@ func (cass *CassandraFlatMetric) RawRenderOne(metric indexer.MetricFindItem, sta
 	// sorting order for the table is time ASC (i.e. first_t == first entry)
 
 	t_start := uint32(start)
-	cur_pt := NullRawDataPoint(t_start)
+	curPt := NullRawDataPoint(t_start)
 
 	// on resamples (if >0 ) we simply merge points until we hit the time steps
 	do_resample := resample > 0 && resample > resolution
@@ -785,8 +785,8 @@ func (cass *CassandraFlatMetric) RawRenderOne(metric indexer.MetricFindItem, sta
 		if do_resample {
 			if t >= t_start+resample {
 				t_start += resample
-				rawd.Data = append(rawd.Data, cur_pt)
-				cur_pt = RawDataPoint{
+				rawd.Data = append(rawd.Data, curPt)
+				curPt = &RawDataPoint{
 					Count: count,
 					Sum:   sum,
 					Max:   max,
@@ -795,7 +795,7 @@ func (cass *CassandraFlatMetric) RawRenderOne(metric indexer.MetricFindItem, sta
 					Time:  t,
 				}
 			} else {
-				cur_pt.Merge(&RawDataPoint{
+				curPt.Merge(&RawDataPoint{
 					Count: count,
 					Sum:   sum,
 					Max:   max,
@@ -805,7 +805,7 @@ func (cass *CassandraFlatMetric) RawRenderOne(metric indexer.MetricFindItem, sta
 				})
 			}
 		} else {
-			rawd.Data = append(rawd.Data, RawDataPoint{
+			rawd.Data = append(rawd.Data, &RawDataPoint{
 				Count: count,
 				Sum:   sum,
 				Max:   max,
@@ -815,6 +815,9 @@ func (cass *CassandraFlatMetric) RawRenderOne(metric indexer.MetricFindItem, sta
 			})
 		}
 		last_t = t
+	}
+	if !curPt.IsNull() {
+		rawd.Data = append(rawd.Data, curPt)
 	}
 
 	if err := iter.Close(); err != nil {
@@ -831,7 +834,7 @@ func (cass *CassandraFlatMetric) RawRenderOne(metric indexer.MetricFindItem, sta
 	rawd.RealStart = uint32(first_t)
 	rawd.Start = uint32(start)
 	rawd.End = uint32(end)
-	rawd.Step = out_resolution
+	rawd.Step = outResolution
 	rawd.Metric = m_key
 	rawd.Id = metric.UniqueId
 	rawd.Tags = metric.Tags
@@ -841,7 +844,7 @@ func (cass *CassandraFlatMetric) RawRenderOne(metric indexer.MetricFindItem, sta
 	// grab the "current inflight" from the cache and merge into the main array
 	if inflight_renderitem != nil && len(inflight_renderitem.Data) > 1 {
 		//merge with any inflight bits (inflight has higher precedence over the file)
-		inflight_renderitem.MergeWithResample(rawd, out_resolution)
+		inflight_renderitem.MergeWithResample(rawd, outResolution)
 		return inflight_renderitem, nil
 	}
 

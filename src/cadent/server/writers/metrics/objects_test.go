@@ -28,16 +28,16 @@ func TestWriterObjects(t *testing.T) {
 
 	n_sts1 := 20
 	n_sts2 := 8
-	t_list1 := make([]RawDataPoint, n_sts1)
-	t_list2 := make([]RawDataPoint, n_sts2)
-	t_list3 := make([]RawDataPoint, n_sts2)
-	t_list4 := make([]RawDataPoint, n_sts2)
+	t_list1 := make([]*RawDataPoint, n_sts1)
+	t_list2 := make([]*RawDataPoint, n_sts2)
+	t_list3 := make([]*RawDataPoint, n_sts2)
+	t_list4 := make([]*RawDataPoint, n_sts2)
 
 	step_1 := uint32(10)
 	t_start := uint32(time.Now().Unix())
 
 	for idx := range t_list1 {
-		t_list1[idx] = RawDataPoint{
+		t_list1[idx] = &RawDataPoint{
 			Time: t_start + uint32(idx)*step_1,
 			Sum:  rand.Float64(),
 		}
@@ -46,7 +46,7 @@ func TestWriterObjects(t *testing.T) {
 	t_end1 := t_list1[len(t_list1)-1].Time + step_1
 
 	for idx := range t_list2 {
-		t_list2[idx] = RawDataPoint{
+		t_list2[idx] = &RawDataPoint{
 			Time: t_start + uint32(idx)*step_1,
 			Sum:  rand.Float64(),
 		}
@@ -55,7 +55,7 @@ func TestWriterObjects(t *testing.T) {
 
 	// random steps
 	for idx := range t_list3 {
-		t_list3[idx] = RawDataPoint{
+		t_list3[idx] = &RawDataPoint{
 			Time: t_start + uint32(idx),
 			Sum:  float64(rand.Int63n(100)),
 			Min:  float64(idx),
@@ -66,7 +66,7 @@ func TestWriterObjects(t *testing.T) {
 
 	// random steps
 	for idx := range t_list4 {
-		t_list4[idx] = RawDataPoint{
+		t_list4[idx] = &RawDataPoint{
 			Time: t_start + 10*uint32(idx) + uint32(rand.Int63n(2)+1.0),
 			Sum:  float64(rand.Int63n(100)),
 			Min:  float64(idx),
@@ -195,57 +195,63 @@ func TestWriterObjects(t *testing.T) {
 	Convey("Raw Data Resample Merge Agg tests", t, func() {
 
 		t_size := 4
-		smalldelta_list := make([]RawDataPoint, t_size)
-		largedelta_list := make([]RawDataPoint, t_size)
+		smalldelta_list := make([]*RawDataPoint, t_size)
+		largedelta_list := make([]*RawDataPoint, t_size)
 		sm_step := uint32(5)
 		lr_step := uint32(60)
 		start_t := uint32(1000000)
 
-		raw_d := RawDataPoint{
+		raw_d := &RawDataPoint{
 			Time:  start_t,
 			Sum:   10,
 			Count: 2,
 		}
 		for i := 0; i < t_size; i++ {
-			smalldelta_list[i] = raw_d
+			deref := *raw_d
+			smalldelta_list[i] = &deref
 			raw_d.Time += sm_step
 		}
 
-		raw_lr := RawDataPoint{
+		raw_lr := &RawDataPoint{
 			Time:  start_t,
 			Sum:   10,
 			Count: 5,
 		}
 
 		for i := 0; i < t_size; i++ {
-			largedelta_list[i] = raw_lr
+			deref := *raw_lr
+			largedelta_list[i] = &deref
 			raw_lr.Time += lr_step
 		}
 
 		sm_list := &RawRenderItem{
 			Data:  smalldelta_list,
 			Start: start_t,
+			RealStart: start_t,
 			Step:  sm_step,
 			End:   smalldelta_list[t_size-1].Time,
+			RealEnd:   smalldelta_list[t_size-1].Time,
 		}
 
 		lr_list := &RawRenderItem{
 			Data:  largedelta_list,
 			Start: start_t,
+			RealStart: start_t,
 			Step:  lr_step,
 			End:   largedelta_list[t_size-1].Time,
+			RealEnd:   largedelta_list[t_size-1].Time,
 		}
 		for idx, d := range sm_list.Data {
 			t.Logf("orig %d : %d %f -- largeStep: %d %f", idx, d.Time, d.Sum, lr_list.Data[idx].Time, lr_list.Data[idx].Sum)
 		}
-
 		sm_list.Resample(lr_step)
 		for idx, d := range sm_list.Data {
-			t.Logf("resample %d : %d %f", idx, d.Time, d.Sum)
+			t.Logf("Resample %d : %d %f", idx, d.Time, d.Sum)
 		}
+
 		sm_list.MergeAndAggregate(lr_list)
 		for idx, d := range sm_list.Data {
-			t.Logf("merges %d : %d %f", idx, d.Time, d.Sum)
+			t.Logf("MergeAndAggregate %d : %d %f", idx, d.Time, d.Sum)
 		}
 		So(sm_list.Data[0].Sum, ShouldEqual, 50)
 		So(sm_list.Data[1].Sum, ShouldEqual, 10)
@@ -255,13 +261,13 @@ func TestWriterObjects(t *testing.T) {
 	Convey("Raw Data Merge With Resample tests", t, func() {
 
 		t_size := 4
-		smalldelta_list := make([]RawDataPoint, t_size)
-		largedelta_list := make([]RawDataPoint, t_size)
+		smalldelta_list := make([]*RawDataPoint, t_size)
+		largedelta_list := make([]*RawDataPoint, t_size)
 		sm_step := uint32(5)
 		lr_step := uint32(60)
 		start_t := uint32(1000000)
 
-		raw_d := RawDataPoint{
+		raw_d := &RawDataPoint{
 			Time:  start_t,
 			Sum:   10,
 			Count: 2,
@@ -271,9 +277,9 @@ func TestWriterObjects(t *testing.T) {
 			raw_d.Time += sm_step
 		}
 
-		raw_lr := RawDataPoint{
+		raw_lr := &RawDataPoint{
 			Time:  start_t,
-			Sum:   10,
+			Sum:   20,
 			Count: 5,
 		}
 
@@ -285,15 +291,19 @@ func TestWriterObjects(t *testing.T) {
 		sm_list := &RawRenderItem{
 			Data:  smalldelta_list,
 			Start: start_t,
+			RealStart: start_t,
 			Step:  sm_step,
 			End:   smalldelta_list[t_size-1].Time,
+			RealEnd:   smalldelta_list[t_size-1].Time,
 		}
 
 		lr_list := &RawRenderItem{
 			Data:  largedelta_list,
 			Start: start_t,
+			RealStart: start_t,
 			Step:  lr_step,
 			End:   largedelta_list[t_size-1].Time,
+			RealEnd:   largedelta_list[t_size-1].Time,
 		}
 		for idx, d := range sm_list.Data {
 			t.Logf("MergeWithResample orig %d : %d %f -- largeStep: %d %f", idx, d.Time, d.Sum, lr_list.Data[idx].Time, lr_list.Data[idx].Sum)
@@ -303,9 +313,9 @@ func TestWriterObjects(t *testing.T) {
 		for idx, d := range sm_list.Data {
 			t.Logf("MergeWithResample merges %d : %d %f", idx, d.Time, d.Sum)
 		}
-		So(sm_list.Data[0].Sum, ShouldEqual, 50)
-		So(sm_list.Data[1].Sum, ShouldEqual, 10)
-		So(len(sm_list.Data), ShouldEqual, 4)
+		So(sm_list.Data[0].Sum, ShouldEqual, 40)
+		So(sm_list.Data[1].Sum, ShouldEqual, 80)
+		So(len(sm_list.Data), ShouldEqual, 2)
 
 	})
 

@@ -620,7 +620,7 @@ func (cass *CassandraMetric) GetFromReadCache(metric string, start int64, end in
 	tStart := time.Unix(int64(start), 0)
 	t_end := time.Unix(int64(end), 0)
 	cachedStats, _, _ := rCache.Get(metric, tStart, t_end)
-	var d_points []RawDataPoint
+	var d_points []*RawDataPoint
 	step := uint32(0)
 
 	// the ReadCache will only have the "sum" point in the mix as that's
@@ -631,7 +631,7 @@ func (cass *CassandraMetric) GetFromReadCache(metric string, start int64, end in
 		tempT := uint32(0)
 		for _, stat := range cachedStats {
 			t := uint32(stat.ToTime().Unix())
-			d_points = append(d_points, RawDataPoint{
+			d_points = append(d_points, &RawDataPoint{
 				Count: 1,
 				Sum:   stat.Sum,
 				Time:  t,
@@ -703,7 +703,7 @@ func (cass *CassandraMetric) GetFromDatabase(metric *indexer.MetricFindItem, res
 	tStart := uint32(start)
 	curPt := NullRawDataPoint(tStart)
 	// on resamples (if >0 ) we simply merge points until we hit the steps
-	do_resample := resample > 0 && resample > resolution
+	doResample := resample > 0 && resample > resolution
 
 	for iter.Scan(&pType, &pBytes) {
 		s_name := series.NameFromId(pType)
@@ -722,11 +722,11 @@ func (cass *CassandraMetric) GetFromDatabase(metric *indexer.MetricFindItem, res
 				continue
 			}
 
-			if do_resample {
+			if doResample {
 				if t >= tStart+resample {
 					tStart += resample
 					rawd.Data = append(rawd.Data, curPt)
-					curPt = RawDataPoint{
+					curPt = &RawDataPoint{
 						Count: ct,
 						Sum:   su,
 						Max:   mx,
@@ -745,7 +745,7 @@ func (cass *CassandraMetric) GetFromDatabase(metric *indexer.MetricFindItem, res
 					})
 				}
 			} else {
-				rawd.Data = append(rawd.Data, RawDataPoint{
+				rawd.Data = append(rawd.Data, &RawDataPoint{
 					Count: ct,
 					Sum:   su,
 					Max:   mx,

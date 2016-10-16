@@ -391,7 +391,7 @@ func (es *ElasticSearchFlatMetrics) RawRenderOne(metric indexer.MetricFindItem, 
 			if t >= tStart+resample {
 				tStart += resample
 				rawd.Data = append(rawd.Data, curPt)
-				curPt = RawDataPoint{
+				curPt = &RawDataPoint{
 					Count: item.Count,
 					Sum:   item.Sum,
 					Max:   item.Max,
@@ -410,7 +410,7 @@ func (es *ElasticSearchFlatMetrics) RawRenderOne(metric indexer.MetricFindItem, 
 				})
 			}
 		} else {
-			rawd.Data = append(rawd.Data, RawDataPoint{
+			rawd.Data = append(rawd.Data, &RawDataPoint{
 				Count: item.Count,
 				Sum:   item.Sum,
 				Max:   item.Max,
@@ -422,7 +422,9 @@ func (es *ElasticSearchFlatMetrics) RawRenderOne(metric indexer.MetricFindItem, 
 		lastT = t
 
 	}
-
+	if !curPt.IsNull() {
+		rawd.Data = append(rawd.Data, curPt)
+	}
 	if len(rawd.Data) > 0 && rawd.Data[0].Time > 0 {
 		firstT = rawd.Data[0].Time
 	}

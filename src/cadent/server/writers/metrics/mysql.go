@@ -500,7 +500,7 @@ func (my *MySQLMetrics) GetFromReadCache(metric string, start int64, end int64) 
 	t_start := time.Unix(int64(start), 0)
 	t_end := time.Unix(int64(end), 0)
 	cached_stats, _, _ := r_cache.Get(metric, t_start, t_end)
-	var d_points []RawDataPoint
+	var d_points []*RawDataPoint
 	step := uint32(0)
 
 	// the ReadCache will only have the "sum" point in the mix as that's
@@ -511,7 +511,7 @@ func (my *MySQLMetrics) GetFromReadCache(metric string, start int64, end int64) 
 		f_t := uint32(0)
 		for _, stat := range cached_stats {
 			t := uint32(stat.ToTime().Unix())
-			d_points = append(d_points, RawDataPoint{
+			d_points = append(d_points, &RawDataPoint{
 				Count: 1,
 				Sum:   stat.Sum,
 				Time:  t,
@@ -585,7 +585,7 @@ func (my *MySQLMetrics) GetFromDatabase(metric *indexer.MetricFindItem, resoluti
 	rawd.MetaTags = metric.MetaTags
 
 	t_start := uint32(start)
-	cur_pt := NullRawDataPoint(t_start)
+	curPt := NullRawDataPoint(t_start)
 
 	for rows.Next() {
 		var p_type uint8
@@ -613,8 +613,8 @@ func (my *MySQLMetrics) GetFromDatabase(metric *indexer.MetricFindItem, resoluti
 			if do_resample {
 				if t >= t_start+resample {
 					t_start += resample
-					rawd.Data = append(rawd.Data, cur_pt)
-					cur_pt = RawDataPoint{
+					rawd.Data = append(rawd.Data, curPt)
+					curPt = &RawDataPoint{
 						Count: ct,
 						Sum:   su,
 						Max:   mx,
@@ -623,7 +623,7 @@ func (my *MySQLMetrics) GetFromDatabase(metric *indexer.MetricFindItem, resoluti
 						Time:  t,
 					}
 				} else {
-					cur_pt.Merge(&RawDataPoint{
+					curPt.Merge(&RawDataPoint{
 						Count: ct,
 						Sum:   su,
 						Max:   mx,
@@ -633,7 +633,7 @@ func (my *MySQLMetrics) GetFromDatabase(metric *indexer.MetricFindItem, resoluti
 					})
 				}
 			} else {
-				rawd.Data = append(rawd.Data, RawDataPoint{
+				rawd.Data = append(rawd.Data, &RawDataPoint{
 					Count: ct,
 					Sum:   su,
 					Max:   mx,
@@ -650,8 +650,8 @@ func (my *MySQLMetrics) GetFromDatabase(metric *indexer.MetricFindItem, resoluti
 				rawd.RealStart = t
 			}
 		}
-		if !cur_pt.IsNull() {
-			rawd.Data = append(rawd.Data, cur_pt)
+		if !curPt.IsNull() {
+			rawd.Data = append(rawd.Data, curPt)
 		}
 
 		if s_iter.Error() != nil {

@@ -24,6 +24,7 @@ import (
 	"os"
 	"testing"
 	"time"
+	"cadent/server/utils/options"
 )
 
 func TestFileWriterAccumulator(t *testing.T) {
@@ -35,18 +36,18 @@ func TestFileWriterAccumulator(t *testing.T) {
 		fw, _ := NewWriterMetrics("file")
 
 		idx, _ := indexer.NewIndexer("noop")
-		conf := make(map[string]interface{})
-		conf["max_file_size"] = int64(200)
+		conf := options.New()
+		conf.Set("max_file_size", int64(200))
 
-		ok := fw.Config(conf)
+		ok := fw.Config(&conf)
 
 		Convey("Config Should config fail", func() {
 			So(ok, ShouldNotEqual, nil)
 		})
 
-		conf["dsn"] = f_name
-		conf["rotate_every"] = time.Duration(time.Second)
-		ok = fw.Config(conf)
+		conf.Set("dsn", f_name)
+		conf.Set("rotate_every",  time.Duration(time.Second))
+		ok = fw.Config(&conf)
 		fw.SetIndexer(idx)
 
 		Convey("Config Should not fail", func() {
@@ -54,8 +55,8 @@ func TestFileWriterAccumulator(t *testing.T) {
 		})
 
 		st := repr.StatRepr{
-			Time:  time.Now(),
-			Name:  repr.StatName{Key: "goo", Resolution: 2},
+			Time:  time.Now().UnixNano(),
+			Name:  &repr.StatName{Key: "goo", Resolution: 2},
 			Sum:   5,
 			Min:   1,
 			Max:   3,

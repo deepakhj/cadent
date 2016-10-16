@@ -256,7 +256,7 @@ func (it *ProtobufIter) ReprValue() *repr.StatRepr {
 	}
 	v := repr.CheckFloat(it.curStat.GetSmallStat().Val)
 	return &repr.StatRepr{
-		Time:  it.curStat.GetStat().Time,
+		Time:  it.curStat.GetSmallStat().Time,
 		Min:   v,
 		Max:   v,
 		Last:  v,

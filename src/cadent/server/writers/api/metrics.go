@@ -60,11 +60,22 @@ func (re *MetricsAPI) GetMetrics(args MetricQuery) ([]*metrics.RawRenderItem, er
 	return re.Metrics.RawRender(args.Target, args.Start, args.End, args.Tags, stp)
 }
 
+// WhisperRenderItem object for whisper/graphite outs
+type WhisperRenderItem struct {
+	RealStart uint32                          `json:"realStart,omitempty"`
+	RealEnd   uint32                          `json:"realEnd,omitempty"`
+	Start     uint32                          `json:"start,omitempty"`
+	End       uint32                          `json:"end,omitempty"`
+	Step      uint32                          `json:"step,omitempty"`
+	Series    map[string][]*metrics.DataPoint `json:"series,omitempty"`
+}
+
 // take a rawrender and make it a graphite api json format
 // meant for PyCadent hooked into the graphite-api backend storage item
-func (re *MetricsAPI) ToGraphiteRender(raw_data []*metrics.RawRenderItem) *metrics.WhisperRenderItem {
-	whis := new(metrics.WhisperRenderItem)
-	whis.Series = make(map[string][]metrics.DataPoint)
+func (re *MetricsAPI) ToGraphiteRender(raw_data []*metrics.RawRenderItem) *WhisperRenderItem {
+	whis := new(WhisperRenderItem)
+	whis.Series = make(map[string][]*metrics.DataPoint)
+
 	if raw_data == nil {
 		return nil
 	}
@@ -72,7 +83,7 @@ func (re *MetricsAPI) ToGraphiteRender(raw_data []*metrics.RawRenderItem) *metri
 		if data == nil {
 			continue
 		}
-		d_points := make([]metrics.DataPoint, data.Len(), data.Len())
+		d_points := make([]*metrics.DataPoint, data.Len(), data.Len())
 		whis.End = data.End
 		whis.Start = data.Start
 		whis.Step = data.Step
@@ -81,7 +92,7 @@ func (re *MetricsAPI) ToGraphiteRender(raw_data []*metrics.RawRenderItem) *metri
 
 		for idx, d := range data.Data {
 			v := d.AggValue(data.AggFunc)
-			d_points[idx] = metrics.DataPoint{Time: d.Time, Value: &v}
+			d_points[idx] = &metrics.DataPoint{Time: d.Time, Value: v}
 		}
 		whis.Series[data.Metric] = d_points
 	}
@@ -113,7 +124,7 @@ func (re *MetricsAPI) ToGraphiteApiRender(raw_data []*metrics.RawRenderItem) Gra
 
 		for idx, d := range data.Data {
 			v := d.AggValue(data.AggFunc)
-			d_points[idx] = metrics.DataPoint{Time: d.Time, Value: &v}
+			d_points[idx] = metrics.DataPoint{Time: d.Time, Value: v}
 		}
 		g_item.Datapoints = d_points
 		graphite = append(graphite, g_item)

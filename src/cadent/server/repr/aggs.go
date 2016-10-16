@@ -35,7 +35,7 @@ var _lowerMinReg *regexp.Regexp
 var _medianReg *regexp.Regexp
 var _countReg *regexp.Regexp
 var _stdReg *regexp.Regexp
-var aggMap map[string]AggType
+var aggMap map[string]uint32
 
 func init() {
 	_upperReg = regexp.MustCompile(".*upper_[0-9]+$")
@@ -46,7 +46,7 @@ func init() {
 	_countReg = regexp.MustCompile(".*count_[0-9]+$")
 	_stdReg = regexp.MustCompile(".*std_[0-9]+$")
 
-	aggMap = make(map[string]AggType, 0)
+	aggMap = make(map[string]uint32, 0)
 
 	aggMap["min"] = MIN
 	aggMap["lower"] = MIN
@@ -93,10 +93,8 @@ func init() {
 
 }
 
-type AggType uint8
-
 const (
-	MEAN AggType = iota + 1
+	MEAN uint32 = iota + 1
 	SUM
 	FIRST
 	LAST
@@ -108,7 +106,7 @@ const (
 )
 
 // if there is a tag that has the agg func in it
-func AggTypeFromTag(stat string) AggType {
+func AggTypeFromTag(stat string) uint32 {
 	stat = strings.ToLower(stat)
 
 	got, ok := aggMap[stat]
@@ -139,7 +137,7 @@ func AggFuncFromTag(stat string) AGG_FUNC {
 // guess the agg func from the my.metric.is.good string
 // (there is certainly a better way to do this)
 
-func GuessReprValueFromKey(metric string) AggType {
+func GuessReprValueFromKey(metric string) uint32 {
 	spl := strings.Split(metric, ".")
 	last_path := strings.ToLower(spl[len(spl)-1])
 
@@ -186,7 +184,7 @@ func (a AggFloat64) Less(i, j int) bool { return (a[i] - a[j]) < 0 } //this is t
 
 type AGG_FUNC func(AggFloat64) float64
 
-var ACCUMULATE_FUNC = map[AggType]AGG_FUNC{
+var ACCUMULATE_FUNC = map[uint32]AGG_FUNC{
 	SUM: func(vals AggFloat64) float64 {
 		val := 0.0
 		for _, item := range vals {

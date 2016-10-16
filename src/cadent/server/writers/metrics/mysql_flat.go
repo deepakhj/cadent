@@ -331,7 +331,7 @@ func (my *MySQLFlatMetrics) RawRenderOne(metric indexer.MetricFindItem, start in
 			if t >= tStart+resample {
 				tStart += resample
 				rawd.Data = append(rawd.Data, curPt)
-				curPt = RawDataPoint{
+				curPt = &RawDataPoint{
 					Count: count,
 					Sum:   sum,
 					Max:   max,
@@ -350,7 +350,7 @@ func (my *MySQLFlatMetrics) RawRenderOne(metric indexer.MetricFindItem, start in
 				})
 			}
 		} else {
-			rawd.Data = append(rawd.Data, RawDataPoint{
+			rawd.Data = append(rawd.Data, &RawDataPoint{
 				Count: count,
 				Sum:   sum,
 				Max:   max,
@@ -362,6 +362,9 @@ func (my *MySQLFlatMetrics) RawRenderOne(metric indexer.MetricFindItem, start in
 		lastT = t
 	}
 
+	if !curPt.IsNull() {
+		rawd.Data = append(rawd.Data, curPt)
+	}
 	if err := iter.Close(); err != nil {
 		my.log.Error("RawRender: Failure closing iterator: %v", err)
 	}

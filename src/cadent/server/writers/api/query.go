@@ -45,7 +45,7 @@ type MetricQuery struct {
 	End       int64
 	Step      uint32
 	MaxPoints uint32
-	Agg       repr.AggType //sum, count, min, max, last, mean
+	Agg       uint32 //sum, count, min, max, last, mean
 }
 
 type MetricQueryParsed struct {
@@ -98,7 +98,7 @@ func ParseMetricQuery(r *http.Request) (mq MetricQuery, err error) {
 	var target string
 	var from string
 	var to string
-	var agg repr.AggType
+	var agg uint32
 	var _tags string
 	var tags repr.SortingTags
 

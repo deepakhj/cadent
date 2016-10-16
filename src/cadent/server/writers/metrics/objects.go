@@ -97,7 +97,7 @@ func (mb DBSeriesList) ToRawRenderItem() (*RawRenderItem, error) {
 			to, mi, mx, ls, su, ct := iter.Values()
 			t := uint32(time.Unix(0, to).Unix())
 
-			rawd.Data = append(rawd.Data, RawDataPoint{
+			rawd.Data = append(rawd.Data, &RawDataPoint{
 				Count: ct,
 				Sum:   su,
 				Max:   mx,
@@ -107,7 +107,7 @@ func (mb DBSeriesList) ToRawRenderItem() (*RawRenderItem, error) {
 			})
 		}
 	}
-	sort.Sort(rawd.Data)
+	sort.Sort(RawDataPointList(rawd.Data))
 	if len(rawd.Data) > 0 {
 		rawd.RealStart = rawd.Data[0].Time
 		rawd.Start = rawd.RealStart
@@ -122,59 +122,30 @@ func (mb DBSeriesList) ToRawRenderItem() (*RawRenderItem, error) {
 
 /****************** Output structs for the graphite API*********************/
 
-type DataPoint struct {
-	Time  uint32
-	Value *float64 // need nils for proper "json none"
-}
-
-func NewDataPoint(time uint32, val float64) DataPoint {
-	d := DataPoint{Time: time, Value: new(float64)}
-	d.SetValue(&val)
+func NewDataPoint(time uint32, val float64) *DataPoint {
+	d := &DataPoint{Time: time, Value: val}
 	return d
 }
 
 func (d DataPoint) MarshalJSON() ([]byte, error) {
-	if d.Value == nil || math.IsNaN(*d.Value) {
+	if math.IsNaN(d.Value) {
 		return []byte(fmt.Sprintf("[null, %d]", d.Time)), nil
 	}
 
-	return []byte(fmt.Sprintf("[%f, %d]", *d.Value, d.Time)), nil
+	return []byte(fmt.Sprintf("[%f, %d]", d.Value, d.Time)), nil
 }
+
 func (d DataPoint) SetValue(val *float64) {
-	d.Value = val
+	d.Value = *val
 }
 
-// the basic metric json blob for find
-type RenderItem struct {
-	Target     string      `json:"target"`
-	Datapoints []DataPoint `json:"datapoints"`
-}
-
-type RenderItems []RenderItem
+type RenderItems []*RenderItem
 
 // the basic whisper metric json blob for find
 
-type WhisperRenderItem struct {
-	RealStart uint32                 `json:"data_from"`
-	RealEnd   uint32                 `json:"data_end"`
-	Start     uint32                 `json:"from"`
-	End       uint32                 `json:"to"`
-	Step      uint32                 `json:"step"`
-	Series    map[string][]DataPoint `json:"series"`
-}
-
 /****************** Output structs for the internal API*********************/
 
-type RawDataPoint struct {
-	Time  uint32  `json:"time"`
-	Sum   float64 `json:"sum"`
-	Min   float64 `json:"min"`
-	Max   float64 `json:"max"`
-	Last  float64 `json:"last"`
-	Count int64   `json:"count"`
-}
-
-func (d RawDataPoint) floatToJson(buf *bytes.Buffer, name string, end string, val float64) {
+func (d *RawDataPoint) floatToJson(buf *bytes.Buffer, name string, end string, val float64) {
 	if math.IsNaN(val) {
 		fmt.Fprintf(buf, name+":null"+end)
 		return
@@ -195,8 +166,8 @@ func (d RawDataPoint) MarshalJSON() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func NullRawDataPoint(time uint32) RawDataPoint {
-	return RawDataPoint{
+func NullRawDataPoint(time uint32) *RawDataPoint {
+	return &RawDataPoint{
 		Time:  time,
 		Sum:   math.NaN(),
 		Min:   math.NaN(),
@@ -210,11 +181,7 @@ func (r *RawDataPoint) IsNull() bool {
 	return math.IsNaN(r.Sum) && math.IsNaN(r.Last) && math.IsNaN(r.Min) && math.IsNaN(r.Max)
 }
 
-func (r *RawDataPoint) String() string {
-	return fmt.Sprintf("RawDataPoint: T: %d Mean: %f", r.Time, r.AggValue(repr.MEAN))
-}
-
-func (r *RawDataPoint) AggValue(aggfunc repr.AggType) float64 {
+func (r *RawDataPoint) AggValue(aggfunc uint32) float64 {
 
 	// if the count is 1 there is only but one real value
 	if r.Count == 1 {
@@ -278,25 +245,11 @@ func (r *RawDataPoint) Merge(d *RawDataPoint) {
 
 }
 
-type RawDataPointList []RawDataPoint
+type RawDataPointList []*RawDataPoint
 
 func (v RawDataPointList) Len() int           { return len(v) }
 func (v RawDataPointList) Swap(i, j int)      { v[i], v[j] = v[j], v[i] }
 func (v RawDataPointList) Less(i, j int) bool { return v[i].Time < v[j].Time }
-
-type RawRenderItem struct {
-	Metric    string           `json:"metric"`
-	Id        string           `json:"id"`
-	Tags      repr.SortingTags `json:"tags"`
-	MetaTags  repr.SortingTags `json:"meta_tags"`
-	RealStart uint32           `json:"data_from"`
-	RealEnd   uint32           `json:"data_end"`
-	Start     uint32           `json:"from"`
-	End       uint32           `json:"to"`
-	Step      uint32           `json:"step"`
-	AggFunc   repr.AggType     `json:"aggfunc"`
-	Data      RawDataPointList `json:"data"`
-}
 
 func NewRawRenderItemFromSeriesIter(iter series.TimeSeriesIter) (*RawRenderItem, error) {
 	rawd := new(RawRenderItem)
@@ -304,7 +257,7 @@ func NewRawRenderItemFromSeriesIter(iter series.TimeSeriesIter) (*RawRenderItem,
 		to, mi, mx, ls, su, ct := iter.Values()
 		t := uint32(time.Unix(0, to).Unix())
 
-		rawd.Data = append(rawd.Data, RawDataPoint{
+		rawd.Data = append(rawd.Data, &RawDataPoint{
 			Count: ct,
 			Sum:   su,
 			Max:   mx,
@@ -314,7 +267,7 @@ func NewRawRenderItemFromSeriesIter(iter series.TimeSeriesIter) (*RawRenderItem,
 		})
 	}
 	if len(rawd.Data) > 0 {
-		sort.Sort(rawd.Data)
+		sort.Sort(RawDataPointList(rawd.Data))
 
 		rawd.RealStart = rawd.Data[0].Time
 		rawd.Start = rawd.RealStart
@@ -349,10 +302,6 @@ func (r *RawRenderItem) Len() int {
 	return len(r.Data)
 }
 
-func (r *RawRenderItem) String() string {
-	return fmt.Sprintf("RawRenderItem: Start: %d End: %d, Points: %d", r.Start, r.End, r.Len())
-}
-
 func (r *RawRenderItem) PrintPoints() {
 	fmt.Printf("RawRenderItem: %s (%s) Start: %d End: %d, Points: %d\n", r.Metric, r.Id, r.Start, r.End, r.Len())
 	for idx, d := range r.Data {
@@ -383,7 +332,7 @@ func (r *RawRenderItem) StartInRange(start uint32) bool {
 
 // trim the data array so that it fit's w/i the start and end times
 func (r *RawRenderItem) TrunctateTo(start uint32, end uint32) int {
-	data := make([]RawDataPoint, 0)
+	data := make([]*RawDataPoint, 0)
 	for _, d := range r.Data {
 		if d.Time >= start && d.Time <= end {
 			data = append(data, d)
@@ -428,10 +377,10 @@ func (r *RawRenderItem) ResampleAndQuantize(step uint32) {
 		// basically the resampling makes "one" data point so we merge all the
 		// incoming points into this one
 		endTime = start + step
-		data := make([]RawDataPoint, 1)
+		data := make([]*RawDataPoint, 1)
 		data[0] = NullRawDataPoint(start)
 		for _, d := range r.Data {
-			data[0].Merge(&d)
+			data[0].Merge(d)
 		}
 		r.Start = start
 		r.RealStart = start
@@ -443,7 +392,7 @@ func (r *RawRenderItem) ResampleAndQuantize(step uint32) {
 	}
 
 	// data length of the new data array
-	data := make([]RawDataPoint, (endTime-start)/step+1)
+	data := make([]*RawDataPoint, (endTime-start)/step+1)
 
 	//log.Error("RESAMPLE\n\n")
 	// 'i' iterates Original Data.
@@ -453,7 +402,7 @@ func (r *RawRenderItem) ResampleAndQuantize(step uint32) {
 		o++
 
 		// start at null
-		if !data[o].IsNull() {
+		if data[o] == nil || !data[o].IsNull() {
 			data[o] = NullRawDataPoint(t)
 		}
 
@@ -474,7 +423,7 @@ func (r *RawRenderItem) ResampleAndQuantize(step uint32) {
 			if data[o].IsNull() {
 				data[o] = p
 			} else {
-				data[o].Merge(&p)
+				data[o].Merge(p)
 			}
 			data[o].Time = t
 			i++
@@ -489,7 +438,7 @@ func (r *RawRenderItem) ResampleAndQuantize(step uint32) {
 			if data[o].IsNull() {
 				data[o] = p
 			} else {
-				data[o].Merge(&p)
+				data[o].Merge(p)
 			}
 
 			//log.Errorf("Start Merge FP: cur T: %d to T: %d -- DataP: %v", t, (t + step), p)
@@ -503,7 +452,7 @@ func (r *RawRenderItem) ResampleAndQuantize(step uint32) {
 					break
 				}
 				//log.Errorf("Merging: cur T: %d to T: %d -- DataP: %v", t, (t + step), np)
-				data[o].Merge(&np)
+				data[o].Merge(np)
 			}
 			data[o].Time = t
 		}
@@ -542,7 +491,7 @@ func (r *RawRenderItem) Resample(step uint32) error {
 	endTime := (end - 1) - ((end - 1) % step) + step
 
 	// make sure in time order
-	sort.Sort(r.Data)
+	sort.Sort(RawDataPointList(r.Data))
 
 	// 'i' iterates Original Data.
 	// 'o' iterates Incoming Data.
@@ -552,16 +501,19 @@ func (r *RawRenderItem) Resample(step uint32) error {
 	var i, n int
 
 	i_len := len(r.Data)
-	data := make([]RawDataPoint, 0)
+	data := make([]*RawDataPoint, 0)
 
 	for t, i, n = start, 0, -1; t <= endTime; t += step {
 		dp := NullRawDataPoint(t)
 		// loop through the orig data until we hit a time > then the current one
 		for ; i < i_len; i++ {
+			if r.Data[i] == nil{
+				continue
+			}
 			if r.Data[i].Time > t {
 				break
 			}
-			dp.Merge(&r.Data[i])
+			dp.Merge(r.Data[i])
 		}
 
 		if !dp.IsNull() {
@@ -605,11 +557,12 @@ func (r *RawRenderItem) QuantizeToStep(step uint32) error {
 	endTime := (r.End - 1) - ((r.End - 1) % step) + step
 
 	// make sure in time order
-	sort.Sort(r.Data)
+	rData := RawDataPointList(r.Data)
+	sort.Sort(rData)
 
 	// basically all the data fits into one point
 	if endTime < start {
-		data := make([]RawDataPoint, 1)
+		data := make([]*RawDataPoint, 1)
 		r.Step = step
 		r.Start = start
 		r.End = start + step
@@ -617,7 +570,7 @@ func (r *RawRenderItem) QuantizeToStep(step uint32) error {
 		r.RealStart = start
 		data[0] = NullRawDataPoint(start)
 		for _, d := range r.Data {
-			data[0].Merge(&d)
+			data[0].Merge(d)
 
 		}
 		r.Data = data
@@ -631,7 +584,7 @@ func (r *RawRenderItem) QuantizeToStep(step uint32) error {
 	}
 
 	// data length of the new data array
-	data := make([]RawDataPoint, num_pts)
+	data := make([]*RawDataPoint, num_pts)
 	cur_len := uint32(len(r.Data))
 
 	// 'i' iterates Original Data.
@@ -648,7 +601,7 @@ func (r *RawRenderItem) QuantizeToStep(step uint32) error {
 			continue
 		}
 
-		p := r.Data[i]
+		p := rData[i]
 		if p.Time == t {
 			// perfect match
 			data[o] = p
@@ -656,12 +609,12 @@ func (r *RawRenderItem) QuantizeToStep(step uint32) error {
 		} else if p.Time > t {
 			// data is too recent, so we need to "skip" the slot and move on
 			// unless it as merged already
-			if data[o].Time == 0 {
+			if data[o] == nil || data[o].Time == 0 {
 				data[o] = NullRawDataPoint(t)
 			}
 
 			if p.Time >= endTime {
-				data[o].Merge(&p)
+				data[o].Merge(p)
 			}
 
 		} else if p.Time > t-step && p.Time < t {
@@ -669,8 +622,8 @@ func (r *RawRenderItem) QuantizeToStep(step uint32) error {
 			// but may need a merge w/ another point(s) in the parent list
 			// so we advance "i"
 			p.Time = t
-			if data[o].Time != 0 && !data[0].IsNull() {
-				data[o].Merge(&p)
+			if data[o]!= nil && data[o].Time != 0 && !data[0].IsNull() {
+				data[o].Merge(p)
 			} else {
 				data[o] = p
 			}
@@ -744,13 +697,13 @@ func (r *RawRenderItem) Merge(m *RawRenderItem) error {
 	// find the "longest" one
 	cur_len := len(m.Data)
 	for i := 0; i < cur_len; i++ {
-		if r.Data[i].IsNull() {
+		if r.Data[i] == nil || r.Data[i].IsNull() {
 			r.Data[i] = m.Data[i]
 		}
 	}
 
-	r.Tags = r.Tags.Merge(m.Tags)
-	r.MetaTags = r.MetaTags.Merge(m.MetaTags)
+	r.Tags = repr.SortingTags(r.Tags).Merge(m.Tags)
+	r.MetaTags = repr.SortingTags(r.MetaTags).Merge(m.MetaTags)
 	return nil
 }
 
@@ -797,14 +750,14 @@ func (r *RawRenderItem) MergeAndAggregate(m *RawRenderItem) error {
 	// find the "longest" one
 	cur_len := len(m.Data)
 	for i := 0; i < cur_len; i++ {
-		if r.Data[i].IsNull() {
+		if r.Data[i] == nil || r.Data[i].IsNull() {
 			r.Data[i] = m.Data[i]
 		} else {
-			r.Data[i].Merge(&m.Data[i])
+			r.Data[i].Merge(m.Data[i])
 		}
 	}
-	r.Tags = r.Tags.Merge(m.Tags)
-	r.MetaTags = r.MetaTags.Merge(m.MetaTags)
+	r.Tags = repr.SortingTags(r.Tags).Merge(m.Tags)
+	r.MetaTags = repr.SortingTags(r.MetaTags).Merge(m.MetaTags)
 
 	return nil
 }
@@ -841,8 +794,8 @@ func (r *RawRenderItem) MergeWithResample(d *RawRenderItem, step uint32) error {
 	endTime := (end - 1) - ((end - 1) % step) + step
 
 	// make sure in time order
-	sort.Sort(r.Data)
-	sort.Sort(d.Data)
+	sort.Sort(RawDataPointList(r.Data))
+	sort.Sort(RawDataPointList(d.Data))
 
 	// 'i' iterates Original Data.
 	// 'o' iterates Incoming Data.
@@ -853,26 +806,30 @@ func (r *RawRenderItem) MergeWithResample(d *RawRenderItem, step uint32) error {
 
 	i_len := len(r.Data)
 	o_len := len(d.Data)
-	data := make([]RawDataPoint, 0)
+	data := make([]*RawDataPoint, 0)
 
 	for t, i, o, n = start, 0, 0, -1; t <= endTime; t += step {
 		dp := NullRawDataPoint(t)
 		// loop through the orig data until we hit a time > then the current one
 		for ; i < i_len; i++ {
-
+			if r.Data[i] == nil{
+				continue
+			}
 			if r.Data[i].Time > t {
 				break
 			}
-			dp.Merge(&r.Data[i])
+			dp.Merge(r.Data[i])
 		}
 
 		// loop through the incoming data until we hit a time > then the current one
 		for ; o < o_len; o++ {
-
+			if d.Data[o] == nil{
+				continue
+			}
 			if d.Data[o].Time > t {
 				break
 			}
-			dp.Merge(&d.Data[o])
+			dp.Merge(d.Data[o])
 		}
 		if !dp.IsNull() {
 			data = append(data, dp)
@@ -886,8 +843,8 @@ func (r *RawRenderItem) MergeWithResample(d *RawRenderItem, step uint32) error {
 	r.End = endTime
 	r.RealEnd = endTime
 	r.Data = data
-	r.Tags = r.Tags.Merge(d.Tags)
-	r.MetaTags = r.MetaTags.Merge(d.MetaTags)
+	r.Tags = repr.SortingTags(r.Tags).Merge(d.Tags)
+	r.MetaTags = repr.SortingTags(r.MetaTags).Merge(d.MetaTags)
 
 	return nil
 

@@ -24,6 +24,7 @@ import (
 	"cadent/server/repr"
 	"encoding/json"
 	"testing"
+	"cadent/server/utils/options"
 )
 
 func TestCassandraReader(t *testing.T) {
@@ -36,15 +37,15 @@ func TestCassandraReader(t *testing.T) {
 	}
 
 	//some tester strings
-	t_config := make(map[string]interface{})
-	t_config["dsn"] = "192.168.99.100"
+	t_config := options.New()
+	t_config.Set("dsn", "192.168.99.100")
 
 	reader := NewCassandraMetrics()
-	reader.Config(t_config)
+	reader.Config(&t_config)
 
 	t_start, _ := ParseTime("-1h")
 	t_end, _ := ParseTime("now")
-	samples := 10
+	samples := uint32(10)
 	tags := repr.SortingTags{}
 
 	rdata, err := reader.RawRender("consthash.zipperwork.local.[a-z]tatsd*", t_start, t_end, tags, samples)

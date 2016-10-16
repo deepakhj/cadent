@@ -1,0 +1,63 @@
+//go:generate  protoc --proto_path=../../../../cadent/vendor/:./:../../../../ --gogofaster_out=.  objects.proto
+
+// note this is not a gogofaster as we need maps properly
+
+// also need to generate the msgpack from the rendered result
+// msgp -o objects_msgp.go --file objects.pb.go
+
+syntax = 'proto3';
+
+package metrics;
+
+import "cadent/server/repr/repr.proto";
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+
+option (gogoproto.goproto_getters_all) = false;
+option (gogoproto.benchgen_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.sizer_all) = true;
+option (gogoproto.populate_all) = true;
+
+message DataPoint {
+	uint32 time = 1;
+	double value = 2;
+}
+
+message DataPoints {
+	repeated DataPoint points  = 1;
+}
+
+message RawDataPoint {
+	uint32 time = 1;
+	double sum = 3;
+	double min = 4;
+	double max = 5;
+	double last = 6;
+	int64 count = 7;
+}
+
+// the basic metric json blob for find
+message RenderItem {
+	string  target = 1;
+	repeated DataPoint dataPoints = 2;
+}
+
+
+message RawRenderItem{
+	string metric = 1;
+	string id = 2;
+	uint32 realStart = 3;
+	uint32 realEnd = 4;
+	uint32 start = 5;
+	uint32 end = 6;
+	uint32 step = 7;
+
+	uint32 aggFunc = 8;
+
+	repeated repr.Tag tags = 9;
+	repeated repr.Tag meta_tags = 10;
+
+	repeated RawDataPoint data = 11;
+}
+

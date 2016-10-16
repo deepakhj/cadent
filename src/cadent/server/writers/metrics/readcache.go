@@ -126,7 +126,7 @@ func (rc *ReadCacheItem) PutSeries(stats repr.StatReprSlice) {
 //out a "render" item
 
 // put a chunk o data
-func (rc *ReadCacheItem) PutRenderedSeries(data []RawDataPoint) {
+func (rc *ReadCacheItem) PutRenderedSeries(data []*RawDataPoint) {
 	for _, s := range data {
 		if s.Count < 1 {
 			s.Count = 1
@@ -307,7 +307,7 @@ func (rc *ReadCache) PutSeries(metric string, stats []*repr.StatRepr) bool {
 	return true
 }
 
-func (rc *ReadCache) PutRenderedSeries(metric string, data []RawDataPoint) bool {
+func (rc *ReadCache) PutRenderedSeries(metric string, data []*RawDataPoint) bool {
 	item, ok := rc.lru.Get(metric)
 	if !ok {
 		return false
@@ -395,7 +395,7 @@ func Put(metric string, stat *repr.StatRepr) bool {
 	return false
 }
 
-func PutRenderedSeries(metric string, data []RawDataPoint) bool {
+func PutRenderedSeries(metric string, data []*RawDataPoint) bool {
 	if _READ_CACHE_SINGLETON != nil {
 		return _READ_CACHE_SINGLETON.PutRenderedSeries(metric, data)
 	}

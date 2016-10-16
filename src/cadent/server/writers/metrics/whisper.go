@@ -560,7 +560,7 @@ func (ws *WhisperMetrics) GetFromReadCache(metric string, start int64, end int64
 	t_start := time.Unix(int64(start), 0)
 	t_end := time.Unix(int64(end), 0)
 	cached_stats, _, _ := r_cache.Get(metric, t_start, t_end)
-	var d_points []RawDataPoint
+	var d_points []*RawDataPoint
 	step := uint32(0)
 	if cached_stats != nil && len(cached_stats) > 0 {
 		stats.StatsdClient.Incr("reader.whisper.render.cache.hits", 1)
@@ -569,7 +569,7 @@ func (ws *WhisperMetrics) GetFromReadCache(metric string, start int64, end int64
 		f_t := uint32(0)
 		for _, stat := range cached_stats {
 			t := uint32(stat.ToTime().Unix())
-			d_points = append(d_points, RawDataPoint{
+			d_points = append(d_points, &RawDataPoint{
 				Sum:   stat.AggValue(rawd.AggFunc),
 				Count: 1,
 				Time:  t,
@@ -684,13 +684,13 @@ func (ws *WhisperMetrics) RawDataRenderOne(metric indexer.MetricFindItem, start 
 	}
 
 	points := series.Points()
-	rawd.Data = make([]RawDataPoint, len(points), len(points))
+	rawd.Data = make([]*RawDataPoint, len(points), len(points))
 
 	f_t := uint32(0)
 	step_t := uint32(0)
 
 	for idx, point := range points {
-		rawd.Data[idx] = RawDataPoint{
+		rawd.Data[idx] = &RawDataPoint{
 			Count: 1,
 			Sum:   point.Value,
 			Last:  point.Value,

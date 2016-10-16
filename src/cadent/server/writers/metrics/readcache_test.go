@@ -26,7 +26,7 @@ import (
 
 func TestWriterReadCache(t *testing.T) {
 	stat := repr.StatRepr{
-		Name:  repr.StatName{Key: "goo", Resolution: 2},
+		Name:  &repr.StatName{Key: "goo", Resolution: 2},
 		Sum:   5,
 		Min:   1,
 		Max:   3,
@@ -44,9 +44,9 @@ func TestWriterReadCache(t *testing.T) {
 
 		for i := 0; i < 1000; i++ {
 			s := stat.Copy()
-			s.Sum = repr.JsonFloat64(rand.Float64())
+			s.Sum = rand.Float64()
 			// a random time testing the sorts
-			s.Time = t_start.Add(time.Duration(time.Second * time.Duration(rand.Int63n(1000))))
+			s.Time = t_start.UnixNano() + int64(time.Duration(time.Second * time.Duration(rand.Int63n(1000))))
 			c_item.Add(s)
 		}
 		Convey("ReadCacheItems have proper time order", func() {
@@ -62,9 +62,9 @@ func TestWriterReadCache(t *testing.T) {
 			small_cache := NewReadCacheItem(m_bytes)
 			for i := 0; i < 5; i++ {
 				s := stat.Copy()
-				s.Sum = repr.JsonFloat64(rand.Float64())
+				s.Sum = rand.Float64()
 				// a random time testing the sorts
-				s.Time = t_start.Add(time.Duration(time.Second * time.Duration(rand.Int63n(1000))))
+				s.Time = t_start.UnixNano() + int64(time.Duration(time.Second * time.Duration(rand.Int63n(1000))))
 				small_cache.Add(s)
 			}
 			So(len(small_cache.GetAll()), ShouldEqual, 5)
@@ -88,9 +88,9 @@ func TestWriterReadCache(t *testing.T) {
 			m_idx := i % len(r_list)
 			r_prefix := r_list[m_idx]
 			s.Name.Key = s.Name.Key + "." + r_prefix
-			s.Sum = repr.JsonFloat64(rand.Float64())
+			s.Sum = rand.Float64()
 			// a random time testing the sorts
-			s.Time = t_start.Add(time.Duration(time.Second * time.Duration(rand.Int63n(1000))))
+			s.Time = t_start.UnixNano() + int64(time.Duration(time.Second * time.Duration(rand.Int63n(1000))))
 			c_item.ActivateMetric(s.Name.Key, nil)
 			c_item.Put(s.Name.Key, s)
 		}
@@ -131,15 +131,15 @@ func TestWriterReadCache(t *testing.T) {
 			m_idx := i % len(r_list)
 			r_prefix := r_list[m_idx]
 			s.Name.Key = s.Name.Key + "." + r_prefix
-			s.Sum = repr.JsonFloat64(rand.Float64())
+			s.Sum = rand.Float64()
 			// a random time testing the sorts
-			s.Time = t_start.Add(time.Duration(time.Second * time.Duration(rand.Int63n(1000))))
+			s.Time = t_start.UnixNano() + int64(time.Duration(time.Second * time.Duration(rand.Int63n(1000))))
 			GetReadCache().ActivateMetric(s.Name.Key, nil)
 			GetReadCache().Put(s.Name.Key, s)
 
 			s2 := s.Copy()
 			s.Name.Key = raw_nm
-			t_series.Data = append(t_series.Data, RawDataPoint{Sum: float64(s2.Sum), Time: uint32(s2.Time.Unix())})
+			t_series.Data = append(t_series.Data, &RawDataPoint{Sum: float64(s2.Sum), Time: uint32(s2.Time)})
 		}
 		t.Logf("ReadCache Singleton: Size: %d, Keys: %d Capacity: %d", GetReadCache().Size(), GetReadCache().NumKeys(), GetReadCache().lru.GetCapacity())
 		//t.Logf("ReadCache Singleton: %v", GetReadCache().lru.Items())
@@ -164,7 +164,7 @@ func TestWriterReadCache(t *testing.T) {
 			t.Logf("Orig Data: %d .. Cached Data: %d", len(t_series.Data), len(dd))
 			o_data := t_series.Data[len(t_series.Data)-len(dd):]
 			for idx, stat := range dd {
-				So(o_data[idx].Time, ShouldEqual, stat.Time.Unix())
+				So(o_data[idx].Time, ShouldEqual, stat.Time)
 				So(o_data[idx].Sum, ShouldEqual, float64(stat.Sum)/float64(stat.Count))
 				//t.Logf("Orig Data: %v:%v", o_data[idx].Time, o_data[idx].Sum)
 				//t.Logf("Cache Data: %v:%v", stat.Time.Unix(), float64(stat.Sum)/float64(stat.Count))

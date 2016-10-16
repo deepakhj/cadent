@@ -43,7 +43,7 @@ type MetricFindItem struct {
 }
 
 // attempt to pick the "correct" metric based on the stats name
-func (m *MetricFindItem) SelectValue() repr.AggType {
+func (m *MetricFindItem) SelectValue() uint32 {
 	if m.Leaf == 0 {
 		return repr.SUM // not data
 	}

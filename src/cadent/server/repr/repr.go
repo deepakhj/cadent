@@ -203,7 +203,7 @@ func (s *StatName) Name() string {
 	return strings.Join(str, ".")
 }
 
-func (s *StatName) AggType() AggType {
+func (s *StatName) AggType() uint32 {
 	h_stat := s.Tags.Find("stat")
 	if h_stat != "" {
 		return AggTypeFromTag(h_stat)
@@ -308,7 +308,7 @@ func (s *StatRepr) Copy() *StatRepr {
 
 }
 
-func (s *StatRepr) AggValue(aggfunc AggType) float64 {
+func (s *StatRepr) AggValue(aggfunc uint32) float64 {
 	switch aggfunc {
 	case SUM:
 		return float64(s.Sum)
