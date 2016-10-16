@@ -70,22 +70,22 @@ func NewParsedPath(name string, uid string) *ParsedPath {
 	p.Parts = strings.Split(name, ".")
 	p.Len = len(p.Parts)
 
-	cur_part := ""
+	curPart := ""
 
 	for idx, part := range p.Parts {
-		if len(cur_part) > 1 {
-			cur_part += "."
+		if len(curPart) > 1 {
+			curPart += "."
 		}
-		cur_part += part
-		on_segment := PathSegment{
-			Segment: cur_part,
+		curPart += part
+		onSegment := PathSegment{
+			Segment: curPart,
 			Pos:     idx,
 		}
-		p.Segments = append(p.Segments, on_segment)
+		p.Segments = append(p.Segments, onSegment)
 
 		on_path := PathPart{
 			Id:      uid,
-			Segment: on_segment,
+			Segment: onSegment,
 			Path:    name,
 			Length:  p.Len - 1, // starts at 0
 		}

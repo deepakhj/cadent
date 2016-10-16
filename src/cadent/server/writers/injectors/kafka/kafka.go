@@ -252,7 +252,7 @@ func (kf *Kafka) onConsume() {
 				kf.log.Notice("Consumer stopped")
 				return
 			}
-			kf.log.Debug("Got message from %s: partition: %d, offset: %d", msg.Topic, msg.Partition, msg.Offset)
+			//kf.log.Debug("Got message from %s: partition: %d, offset: %d", msg.Topic, msg.Partition, msg.Offset)
 			new_obj := schemas.KMetricObjectFromType(kf.MessageType)
 			new_obj.SetSendEncoding(kf.EncodingType)
 
@@ -293,7 +293,7 @@ func (kf *Kafka) onMark() {
 				kf.log.Notice("Mark offset Consumer stopped")
 				return
 			}
-			kf.log.Debug("Marking offset: %s: %d", msg.Topic, msg.Offset)
+			//kf.log.Debug("Marking offset: %s: %d", msg.Topic, msg.Offset)
 			kf.consumer.MarkOffset(msg, "")
 		}
 	}

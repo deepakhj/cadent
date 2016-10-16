@@ -33,14 +33,17 @@ import (
 	"time"
 )
 
-var topic string = "cadent"
 var kport string = "9092"
 
 var enctypes []string = []string{"json", "msgpack", "protobuf"}
 
-type TestWorker struct {
-	Name string
+func NoOpLog(format string, args ...interface{}) {
 
+}
+
+type TestWorker struct {
+	Name   string
+	logger func(format string, args ...interface{})
 	all_ct int
 	raw_ct int
 	up_ct  int
@@ -65,42 +68,42 @@ func (w *TestWorker) DoWork(metric schemas.KMessageBase) error {
 	case *schemas.KMetric:
 		m := metric.(*schemas.KMetric)
 		r := m.Repr()
-		fmt.Println("AnyMatric")
+		w.logger("AnyMatric")
 		if m.Raw != nil {
 			w.raw_ct++
-			fmt.Println(r)
+			w.logger("%s", r)
 		}
 		if m.Single != nil {
 			w.sin_ct++
-			fmt.Println(r)
+			w.logger("%s", r)
 		}
 		if m.Unprocessed != nil {
 			w.up_ct++
-			fmt.Println(r)
+			w.logger("%s", r)
 		}
 		if m.Series != nil {
 			w.ser_ct++
-			fmt.Println(r)
+			w.logger("%s", r)
 		}
 		return nil
 	case *schemas.KRawMetric:
-		fmt.Println("RawMetric")
-		fmt.Println(metric.(*schemas.KRawMetric).Repr())
+		w.logger("RawMetric")
+		w.logger("%s", metric.(*schemas.KRawMetric).Repr())
 		w.raw_ct++
 		return nil
 	case *schemas.KUnProcessedMetric:
-		fmt.Println("Unprocessed")
-		fmt.Println(metric.(*schemas.KUnProcessedMetric).Repr())
+		w.logger("Unprocessed")
+		w.logger("%s", metric.(*schemas.KUnProcessedMetric).Repr())
 		w.up_ct++
 		return nil
 	case *schemas.KSingleMetric:
-		fmt.Println("Single")
-		fmt.Println(metric.(*schemas.KSingleMetric).Repr())
+		w.logger("Single")
+		w.logger("%s", metric.(*schemas.KSingleMetric).Repr())
 		w.sin_ct++
 		return nil
 	case *schemas.KSeriesMetric:
-		fmt.Println("Series")
-		fmt.Println("metric series: " + metric.(*schemas.KSeriesMetric).Metric)
+		w.logger("Series")
+		w.logger("metric series: " + metric.(*schemas.KSeriesMetric).Metric)
 		w.ser_ct++
 		return nil
 	default:
@@ -108,13 +111,12 @@ func (w *TestWorker) DoWork(metric schemas.KMessageBase) error {
 	}
 }
 
-func getConsumer(enctype string) (*Kafka, error) {
+func getConsumer(enctype string, cgroup string, topic string, t func(format string, args ...interface{})) (*Kafka, error) {
 	on_ip := helper.DockerIp()
-
 	config_opts := options.Options{}
 	config_opts.Set("dsn", fmt.Sprintf("%s:%s", on_ip, kport))
 	config_opts.Set("topic", topic)
-	config_opts.Set("consumer_group", "cadent-test")
+	config_opts.Set("consumer_group", cgroup)
 	config_opts.Set("starting_offset", "oldest")
 	config_opts.Set("encoding", enctype)
 	config_opts.Set("message_type", "any")
@@ -126,7 +128,9 @@ func getConsumer(enctype string) (*Kafka, error) {
 	}
 
 	// set the work to the echo type
-	kf.KafkaWorker = new(TestWorker)
+	wk := new(TestWorker)
+	wk.logger = t
+	kf.KafkaWorker = wk
 
 	return kf, nil
 }
@@ -205,11 +209,11 @@ func TestKafkaInjector(t *testing.T) {
 	if !ok {
 		t.Fatalf("Could not start the docker container for kafka")
 	}
-
+	use_topic := "cadent-test"
 	for _, enctype := range enctypes {
 		var useencoding schemas.SendEncoding = schemas.SendEncodingFromString(enctype)
 
-		kf, err := getConsumer(enctype)
+		kf, err := getConsumer(enctype, "cadent-test", use_topic, t.Logf)
 		if err != nil {
 			t.Fatalf("Failed to get consumer: %v", err)
 		}
@@ -235,7 +239,7 @@ func TestKafkaInjector(t *testing.T) {
 
 				for _, msg := range msgs {
 					prod.Input() <- &sarama.ProducerMessage{
-						Topic: topic,
+						Topic: use_topic,
 						Key:   sarama.StringEncoder(msg.Id()),
 						Value: msg,
 					}
@@ -267,6 +271,9 @@ func TestKafkaInjector(t *testing.T) {
 
 }
 
+// Note after running the benchmarks you should probably remove the topic and
+// start over as the "tests" above assume a
+
 func Benchmark__Kafka_Encoding_JSON(b *testing.B) {
 	// fire up the docker test helper
 	helper.DockerUp("kafka")
@@ -274,8 +281,8 @@ func Benchmark__Kafka_Encoding_JSON(b *testing.B) {
 	if !ok {
 		b.Fatalf("Could not start the docker container for kafka")
 	}
-
-	kf, err := getConsumer("json")
+	use_topic := "cadent-json"
+	kf, err := getConsumer("json", "json-bench", use_topic, NoOpLog)
 	if err != nil {
 		b.Fatalf("Failed to get consumer: %v", err)
 	}
@@ -305,7 +312,109 @@ func Benchmark__Kafka_Encoding_JSON(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		for _, msg := range msgs {
 			prod.Input() <- &sarama.ProducerMessage{
-				Topic: topic,
+				Topic: use_topic,
+				Key:   sarama.StringEncoder(msg.Id()),
+				Value: msg,
+			}
+		}
+	}
+	b.StopTimer()
+	prod.Close()
+
+	err = kf.Stop()
+
+}
+
+func Benchmark__Kafka_Encoding_MSGP(b *testing.B) {
+	// fire up the docker test helper
+	helper.DockerUp("kafka")
+	ok := helper.DockerWaitUntilReady("kafka")
+	if !ok {
+		b.Fatalf("Could not start the docker container for kafka")
+	}
+	use_topic := "cadent-msgp"
+	kf, err := getConsumer("msgpack", "msgp-bench", use_topic, NoOpLog)
+	if err != nil {
+		b.Fatalf("Failed to get consumer: %v", err)
+	}
+	err = kf.Start()
+	if err != nil {
+		b.Fatalf("Failed to start: %v", err)
+	}
+
+	// some raw messages
+	NumMessages := 1000
+	msgs := getMetrics(NumMessages, schemas.ENCODE_MSGP)
+	prod, err := getProducer()
+	if err != nil {
+		b.Fatalf("%v", err)
+	}
+	//wait till we are good to go
+	for {
+		if kf.IsReady {
+			break
+		}
+		time.Sleep(time.Second)
+
+	}
+	b.ResetTimer()
+	b.ReportAllocs()
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		for _, msg := range msgs {
+			prod.Input() <- &sarama.ProducerMessage{
+				Topic: use_topic,
+				Key:   sarama.StringEncoder(msg.Id()),
+				Value: msg,
+			}
+		}
+	}
+	b.StopTimer()
+	prod.Close()
+
+	err = kf.Stop()
+
+}
+
+func Benchmark__Kafka_Encoding_ProtoBuf(b *testing.B) {
+	// fire up the docker test helper
+	helper.DockerUp("kafka")
+	ok := helper.DockerWaitUntilReady("kafka")
+	if !ok {
+		b.Fatalf("Could not start the docker container for kafka")
+	}
+	use_topic := "cadent-proto"
+	kf, err := getConsumer("protobuf", "proto-bench", use_topic, NoOpLog)
+	if err != nil {
+		b.Fatalf("Failed to get consumer: %v", err)
+	}
+	err = kf.Start()
+	if err != nil {
+		b.Fatalf("Failed to start: %v", err)
+	}
+
+	// some raw messages
+	NumMessages := 1000
+	msgs := getMetrics(NumMessages, schemas.ENCODE_PROTOBUF)
+	prod, err := getProducer()
+	if err != nil {
+		b.Fatalf("%v", err)
+	}
+	//wait till we are good to go
+	for {
+		if kf.IsReady {
+			break
+		}
+		time.Sleep(time.Second)
+
+	}
+	b.ResetTimer()
+	b.ReportAllocs()
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		for _, msg := range msgs {
+			prod.Input() <- &sarama.ProducerMessage{
+				Topic: use_topic,
 				Key:   sarama.StringEncoder(msg.Id()),
 				Value: msg,
 			}

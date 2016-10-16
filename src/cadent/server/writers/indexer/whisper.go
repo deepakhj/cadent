@@ -36,8 +36,8 @@ import (
 
 /****************** Interfaces *********************/
 type WhisperIndexer struct {
-	base_path string
-	log       *logging.Logger
+	basePath string
+	log      *logging.Logger
 }
 
 func NewWhisperIndexer() *WhisperIndexer {
@@ -52,11 +52,11 @@ func (ws *WhisperIndexer) Config(conf *options.Options) (err error) {
 		return fmt.Errorf("`dsn` /root/path/of/data is needed for whisper config")
 	}
 
-	ws.base_path = dsn
+	ws.basePath = dsn
 
 	// remove trialing "/"
 	if strings.HasSuffix(dsn, "/") {
-		ws.base_path = dsn[0 : len(dsn)-1]
+		ws.basePath = dsn[0 : len(dsn)-1]
 	}
 	return nil
 }
@@ -84,14 +84,14 @@ func (ws *WhisperIndexer) Write(skey repr.StatName) error {
 // and so we turn it into a regex post
 func (ws *WhisperIndexer) toGlob(metric string) (string, string, []string) {
 
-	base_reg, out_strs := toGlob(metric)
+	baseReg, outStrs := toGlob(metric)
 
 	// need to include our base paths as we really are globing the file system
-	glob_str := filepath.Join(ws.base_path, strings.Replace(base_reg, ".", "/", -1))
-	reg_str := filepath.Join(ws.base_path, strings.Replace(base_reg, ".", "/", -1))
-	reg_str = strings.Replace(base_reg, "/", "\\/", -1) + "(.*|.wsp)"
+	globStr := filepath.Join(ws.basePath, strings.Replace(baseReg, ".", "/", -1))
+	regStr := filepath.Join(ws.basePath, strings.Replace(baseReg, ".", "/", -1))
+	regStr = strings.Replace(baseReg, "/", "\\/", -1) + "(.*|.wsp)"
 
-	return glob_str, reg_str, out_strs
+	return globStr, regStr, outStrs
 }
 
 /**** READER ***/
@@ -101,17 +101,17 @@ func (ws *WhisperIndexer) Find(metric string, tags repr.SortingTags) (MetricFind
 
 	// golangs globber does not handle "{a,b}" things, so we need to basically do a "*" then
 	// perform a regex of the form (a|b) on the result ..
-	glob_path, reg_str, _ := ws.toGlob(metric)
+	globPath, regStr, _ := ws.toGlob(metric)
 
 	var reger *regexp.Regexp
 	var err error
 	var mt MetricFindItems
-	reger, err = regexp.Compile(reg_str)
+	reger, err = regexp.Compile(regStr)
 	if err != nil {
 		return mt, err
 	}
 
-	paths, err := filepath.Glob(glob_path)
+	paths, err := filepath.Glob(globPath)
 
 	if err != nil {
 		return mt, err
@@ -126,11 +126,11 @@ func (ws *WhisperIndexer) Find(metric string, tags repr.SortingTags) (MetricFind
 		var ms MetricFindItem
 
 		// convert to the "." scheme again
-		t := strings.Replace(p, ws.base_path+"/", "", 1)
+		t := strings.Replace(p, ws.basePath+"/", "", 1)
 
-		is_data := filepath.Ext(p) == ".wsp"
+		isData := filepath.Ext(p) == ".wsp"
 		t = strings.Replace(t, ".wsp", "", -1)
-		//ws.log.Critical("REG: %s, %s, %s", glob_path, reg_str, p)
+		//ws.log.Critical("REG: %s, %s, %s", globPath, regStr, p)
 
 		if !reger.MatchString(p) {
 			continue
@@ -145,7 +145,7 @@ func (ws *WhisperIndexer) Find(metric string, tags repr.SortingTags) (MetricFind
 		ms.Path = t // "path" is what our interface expects to be the "moo.goo.blaa" thing
 
 		stat_name := repr.StatName{Key: p}
-		if is_data {
+		if isData {
 			uid := stat_name.UniqueIdString()
 			ms.Expandable = 0
 			ms.Leaf = 1
@@ -158,7 +158,7 @@ func (ws *WhisperIndexer) Find(metric string, tags repr.SortingTags) (MetricFind
 		}
 
 		// exact match special case
-		if is_data && t == metric {
+		if isData && t == metric {
 			mt_ext := make(MetricFindItems, 1)
 			mt_ext[0] = ms
 			return mt_ext, nil
@@ -171,27 +171,27 @@ func (ws *WhisperIndexer) Find(metric string, tags repr.SortingTags) (MetricFind
 
 func (ws *WhisperIndexer) Expand(metric string) (MetricExpandItem, error) {
 	// a basic "Dir" operation
-	glob_path := filepath.Join(ws.base_path, strings.Replace(metric, ".", "/", -1))
+	globPath := filepath.Join(ws.basePath, strings.Replace(metric, ".", "/", -1))
 
 	// golang's globber does not handle "{a,b}" things, so we need to basically do a "*" then
 	// perform a regex of the form (a|b) on the result
 	// TODO
 
 	var mt MetricExpandItem
-	paths, err := filepath.Glob(glob_path)
+	paths, err := filepath.Glob(globPath)
 	if err != nil {
 		return mt, err
 	}
 
 	for _, p := range paths {
 		// convert to the "." scheme again
-		t := strings.Replace(p, ws.base_path+"/", "", 1)
+		t := strings.Replace(p, ws.basePath+"/", "", 1)
 		t = strings.Replace(t, "/", ".", -1)
 
-		is_data := filepath.Ext(p) == "wsp"
+		isData := filepath.Ext(p) == "wsp"
 		t = strings.Replace(t, ".wsp", "", -1)
 
-		if is_data {
+		if isData {
 			mt.Results = append(mt.Results, p)
 		}
 

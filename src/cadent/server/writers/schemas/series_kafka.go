@@ -167,23 +167,25 @@ type KMetric struct {
 }
 
 func (kp *KMetric) Id() string {
-	if kp.Raw != nil {
+	switch {
+	case kp.Raw != nil:
 		return kp.Raw.Metric
-	}
-	if kp.Unprocessed != nil {
+	case kp.Unprocessed != nil:
 		return kp.Unprocessed.Metric
-	}
-	if kp.Single != nil {
+	case kp.Single != nil:
 		return kp.Single.Uid
-	}
-	if kp.Series != nil {
+	case kp.Series != nil:
 		return kp.Series.Uid
+	default:
+		return ""
 	}
-	return ""
 }
 
 func (kp *KMetric) Repr() *repr.StatRepr {
-	if kp.Raw != nil {
+
+	switch {
+	case kp.Raw != nil:
+
 		return &repr.StatRepr{
 			Name: &repr.StatName{
 				Key:      kp.Raw.Metric,
@@ -194,8 +196,7 @@ func (kp *KMetric) Repr() *repr.StatRepr {
 			Sum:   kp.Raw.Value,
 			Count: 1,
 		}
-	}
-	if kp.Unprocessed != nil {
+	case kp.Unprocessed != nil:
 		return &repr.StatRepr{
 			Name: &repr.StatName{
 				Key:      kp.Unprocessed.Metric,
@@ -209,8 +210,8 @@ func (kp *KMetric) Repr() *repr.StatRepr {
 			Sum:   repr.CheckFloat(kp.Unprocessed.Sum),
 			Count: kp.Unprocessed.Count,
 		}
-	}
-	if kp.Single != nil {
+
+	case kp.Single != nil:
 		return &repr.StatRepr{
 			Name: &repr.StatName{
 				Key:        kp.Single.Metric,
@@ -226,8 +227,8 @@ func (kp *KMetric) Repr() *repr.StatRepr {
 			Sum:   repr.CheckFloat(kp.Single.Sum),
 			Count: kp.Single.Count,
 		}
-	}
-	if kp.Series != nil {
+	case kp.Series != nil:
+	default:
 		return nil
 	}
 	return nil

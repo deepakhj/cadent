@@ -28,10 +28,11 @@ import (
 )
 
 const (
-	TAG_CACHE_MAX_TIME_IN_CACHE = time.Minute * time.Duration(60) // an hour, just incase
+	// max time to store in tag cache before purge
+	TAG_CACHE_MAX_TIME_IN_CACHE = int64(time.Minute * time.Duration(60)) // an hour, just incase
 )
 
-// basic cached item treat it kinda like a round-robin array
+// TagCacheItem cached item
 type TagCacheItem struct {
 	Added  int64
 	Name   string
@@ -51,7 +52,7 @@ func NewTagCacheItem(name string, value string, ismeta bool, id interface{}) *Ta
 	}
 }
 
-// LRU read cache
+// TagCache simple map read cache
 type TagCache struct {
 	mu    *sync.RWMutex
 	cache map[string]*TagCacheItem
@@ -70,10 +71,10 @@ func (rc *TagCache) periodPurge() {
 	tick := time.NewTicker(time.Minute * time.Duration(60))
 	for {
 		<-tick.C
-		max_back := time.Now().Unix() - int64(TAG_CACHE_MAX_TIME_IN_CACHE)
+		maxBack := time.Now().Unix() - TAG_CACHE_MAX_TIME_IN_CACHE
 		rc.mu.Lock()
 		for k, v := range rc.cache {
-			if v.Added < max_back {
+			if v.Added < maxBack {
 				delete(rc.cache, k)
 			}
 		}
@@ -81,28 +82,29 @@ func (rc *TagCache) periodPurge() {
 	}
 }
 
+// Key of a given tag for the intneral map
 func (rc *TagCache) Key(name, value string, ismeta bool) string {
 	return name + value + fmt.Sprintf("%v", ismeta)
 }
 
-// add a series to the cache .. this should only be called by a reader api
-// or some 'pre-seed' mechanism
+// Add a tag to the cache
 func (rc *TagCache) Add(name, value string, is_meta bool, id interface{}) bool {
 
-	m_key := rc.Key(name, value, is_meta)
+	mKey := rc.Key(name, value, is_meta)
 	rc.mu.RLock()
-	_, ok := rc.cache[m_key]
+	_, ok := rc.cache[mKey]
 	rc.mu.RUnlock()
 	if !ok {
 		rc_item := NewTagCacheItem(name, value, is_meta, id)
 		rc.mu.Lock()
-		rc.cache[m_key] = rc_item
+		rc.cache[mKey] = rc_item
 		rc.mu.Unlock()
 		return true
 	}
 	return false // already activated
 }
 
+// Get a tag id from the cache
 func (rc *TagCache) Get(name, value string, is_meta bool) interface{} {
 	key := rc.Key(name, value, is_meta)
 
@@ -112,8 +114,8 @@ func (rc *TagCache) Get(name, value string, is_meta bool) interface{} {
 	if !ok {
 		return nil
 	}
-	max_back := time.Now().Unix() - int64(TAG_CACHE_MAX_TIME_IN_CACHE)
-	if gots.Added < max_back {
+	maxBack := time.Now().Unix() - TAG_CACHE_MAX_TIME_IN_CACHE
+	if gots.Added < maxBack {
 		rc.mu.Lock()
 		delete(rc.cache, key)
 		rc.mu.Unlock()
@@ -122,6 +124,7 @@ func (rc *TagCache) Get(name, value string, is_meta bool) interface{} {
 	return gots.Id
 }
 
+// Len of the cache
 func (rc *TagCache) Len() int {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()

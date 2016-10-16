@@ -55,14 +55,14 @@ func regifyMysqlKeyString(name string) string {
 // in a path like moo.goo.* .. we find the initial "segment" that does not have a regex
 func findFirstNonRegexSegment(name string) string {
 	spl := strings.Split(name, ".")
-	out_str := []string{}
+	outStr := []string{}
 	for _, s := range spl {
 		if needRegex(s) {
-			return strings.Join(out_str, ".")
+			return strings.Join(outStr, ".")
 		}
-		out_str = append(out_str, s)
+		outStr = append(outStr, s)
 	}
-	return strings.Join(out_str, ".")
+	return strings.Join(outStr, ".")
 }
 
 func fullRegString(name string) string {
@@ -90,46 +90,46 @@ func regifyKey(name string) (*regexp.Regexp, error) {
 func toGlob(metric string) (string, []string) {
 
 	outgs := []string{}
-	got_first := false
-	p_glob := ""
-	out_str := ""
-	reg_str := ""
+	gotFirst := false
+	pGlob := ""
+	outStr := ""
+	regStr := ""
 	for _, _c := range metric {
 		c := string(_c)
 		switch c {
 		case "{":
-			got_first = true
-			reg_str += "("
+			gotFirst = true
+			regStr += "("
 		case "}":
-			if got_first && len(p_glob) > 0 {
-				outgs = append(outgs, p_glob)
-				reg_str += ")" //end regex
-				out_str += "*" //glob
-				got_first = false
+			if gotFirst && len(pGlob) > 0 {
+				outgs = append(outgs, pGlob)
+				regStr += ")" //end regex
+				outStr += "*" //glob
+				gotFirst = false
 			}
 		case ",":
-			if got_first {
-				reg_str += "|" // glob , -> regex |
+			if gotFirst {
+				regStr += "|" // glob , -> regex |
 			} else {
-				out_str += c
+				outStr += c
 			}
 		default:
-			if !got_first {
-				out_str += c
+			if !gotFirst {
+				outStr += c
 			} else {
-				p_glob += c
+				pGlob += c
 			}
-			reg_str += c
+			regStr += c
 
 		}
 	}
 	// make a proper regex
-	reg_str = strings.Replace(reg_str, "*", ".*", -1)
-	if !strings.HasSuffix(out_str, "*") {
-		out_str += "*"
+	regStr = strings.Replace(regStr, "*", ".*", -1)
+	if !strings.HasSuffix(outStr, "*") {
+		outStr += "*"
 	}
 
-	return reg_str, outgs
+	return regStr, outgs
 }
 
 // parse a tag query of the form key{name=val, name=val...}
@@ -138,19 +138,19 @@ func ParseOpenTSDBTags(query string) (key string, tags repr.SortingTags, err err
 
 	inner := ""
 	collecting := false
-	key_collecting := true
+	keyCollecting := true
 	for _, char := range query {
 		switch char {
 		case '{':
 			collecting = true
-			key_collecting = false
+			keyCollecting = false
 		case '}':
 			collecting = false
 		default:
 			if collecting {
 				inner += string(char)
 			}
-			if key_collecting {
+			if keyCollecting {
 				key += string(char)
 			}
 		}

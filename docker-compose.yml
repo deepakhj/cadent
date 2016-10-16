@@ -61,7 +61,7 @@ services:
           - "9300:9300"
       volumes:
           - $PWD/docker/elasticsearch:/usr/share/elasticsearch/config
-          - $PWD/docker/data:/usr/share/elasticsearch/data
+          - $PWD/docker/data/elasticsearch:/usr/share/elasticsearch/data
 
 
     kibana:
@@ -83,13 +83,14 @@ services:
       links:
         - zookeeper:zk
       environment:
-        KAFKA_CREATE_TOPICS: "cadent:1:1"
+        KAFKA_CREATE_TOPICS: "cadent:1:1,cadent-json:1:1,cadent-msgp:1:1,cadent-proto:1:1,cadent-test:1:1"
         KAFKA_ADVERTISED_PORT: 9092
         KAFKA_PORT: 9092
         KAFKA_ADVERTISED_HOST_NAME: 0.0.0.0
         KAFKA_ZOOKEEPER_CONNECT: "zookeeper:2181"
       volumes:
         - /var/run/docker.sock:/var/run/docker.sock
+        - $PWD/docker/data/kafka:/kafka
 
     cassandra:
       image: cassandra:3.0.9
