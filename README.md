@@ -51,7 +51,8 @@ Has a pipeline feel but optimized for what we really need
  - metric filter and router
  - relay replication
  - accumulation and aggregation
- - time series DB writing
+ - time series writing
+ - metric indexing
  - api endpoints
 
 Yes "each" of the above can be handled by a standalone app (and many do exist in the echo system) .. however at the volume
@@ -89,7 +90,7 @@ Installation
 Well, first you need to install go .. https://golang.org  >= 1.5.1
 And a kernel that supports SO_REUSEPORT (linux 3.9 or higher and bsd like kernels)
 And make sure to use VENDOR support (in golang 1.6, this is the default),
-go 1.7 is perfered as it's faster.
+go 1.7.x is perfered as it's better, faster, stronger.
 
 
     git clone {path to repo}
@@ -101,20 +102,28 @@ go 1.7 is perfered as it's faster.
 Examples Configs
 ----------------
 
-Look to the "example-config.toml" for all the options you can set and their meaning
-and config directory for more examples.
+Look to the [config directory](./config/README.md) for all the options you can set and their meaning
 
 to start
 
-    cadent --config=example-config.toml
+    cadent --config=configs/graphite/graphite-config.toml
 
-There is also the "PreReg" options files as well, this lets one pre-route lines to various backends, that can then
-be consitently hashed, or "rejected" if so desired, as well as "accumulated" (ala statsd or carbon-aggrigate)
+There is also the "PreReg" config files as well.
 
-    cadent --config=example-config.toml --prereg=example-prereg.toml
+This does many things optionally
 
+    1. Lets one pre-route lines to various backends (as defined in the --config file)
+    2. Reject incoming lines based on the key name
+    3. Accumulates stats into time buckets (i.e. like statsd, but for any metric)
+    4. Fowards those accumulated lines back into other backends and/or
+    5. Writes index to indexer backends
+    6. Writes metrics to metric backends
+    7. Defines API endpoints
 
-Look to `config/*` for many more example configs.
+    cadent  --config=configs/graphite/graphite-config.toml --prereg=configs/graphite/graphite-cassandra-series.toml
+
+To get started there is a docker-compose.yml prepared to fire up any writer backend you wish.
+
 
 What Cadent does
 ----------------
