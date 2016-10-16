@@ -102,7 +102,7 @@ go 1.7.x is perfered as it's better, faster, stronger.
 Examples Configs
 ----------------
 
-Look to the [configs directory](./configs/README.md) for all the options you can set and their meaning
+Look to the [configs directory](./configs/) for all the options you can set and their meaning
 
 to start
 
