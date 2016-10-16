@@ -57,6 +57,8 @@ const (
 	ELASTIC_FLUSH_TIME_SECONDS            = 1
 )
 
+var esFlatsourceList = []string{"time", "min", "max", "last", "count", "sum"}
+
 // ESmetric pool
 
 var esMetricPool sync.Pool
@@ -211,6 +213,7 @@ func (es *ElasticSearchFlatMetrics) flush() (int, error) {
 		es_m.Min = stat.Min
 		es_m.Max = stat.Max
 		es_m.Sum = stat.Sum
+		es_m.Last = stat.Last
 		es_m.Count = stat.Count
 		es_m.Path = stat.Name.Key
 		es_m.Uid = stat.Name.UniqueIdString()
@@ -348,6 +351,10 @@ func (es *ElasticSearchFlatMetrics) RawRenderOne(metric indexer.MetricFindItem, 
 		}
 	}
 
+	// sorting order for the table is time ASC (i.e. firstT == first entry)
+	// on resamples (if >0 ) we simply merge points until we hit the time steps
+	do_resample := resample > 0 && resample > resolution
+
 	on_time := time.Unix(start, 0)
 	use_index := es.indexName(resolution, on_time)
 	baseQ := es.conn.Search().Index(use_index).Type(es.db.MetricType)
@@ -368,9 +375,6 @@ func (es *ElasticSearchFlatMetrics) RawRenderOne(metric indexer.MetricFindItem, 
 
 	tStart := uint32(start)
 	curPt := NullRawDataPoint(tStart)
-	// sorting order for the table is time ASC (i.e. firstT == first entry)
-	// on resamples (if >0 ) we simply merge points until we hit the time steps
-	do_resample := resample > 0 && resample > resolution
 
 	for _, h := range esItems.Hits.Hits {
 		// just grab the "n+1" length ones
