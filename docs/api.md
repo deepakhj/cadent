@@ -52,6 +52,10 @@ Readers are an attempt to imitate the Graphite API bits and include 3 main endpo
 	                    ?page=N
 
 
+### Info
+
+    /{root}/info  -- A big old json blob that is how this server the configured, and gossip members
+
 ### WebSockets (Reeeaaalllyy experimental)
 
     /ws/metric  -- Attach to a websocket, as stats get flushed, pop you get a new one
@@ -93,7 +97,8 @@ Not everything can implement the APIs due to their nature. Below is a table of w
 |---|---|---|---|
 | cassandra | Yes | Yes | No |
 | cassandra-flat | Yes  | n/a| No |
-| mysql | Yes  | Yes  |  Yes (alpha) |
+| mysql | Yes  | Yes  |  Yes  |
+| elasticsearch-flat | Yes  | No  |  Yes  |
 | mysql-flat | Yes  | n/a | No |
 | kafka | n/a  | Yes | n/a |
 | kafka-flat | n/a  | n/a | n/a |
@@ -108,6 +113,7 @@ Not everything can implement the APIs due to their nature. Below is a table of w
 |---|---|---|---|---|---|
 | cassandra | Yes | Yes | No |
 | mysql | Yes  | Yes  |  Yes (alpha) |
+| elasticsearch | Yes  | Yes  |  Yes  |
 | kafka | n/a  | n/a | n/a |
 | levelDB | Yes  | Yes | No |
 | whisper | yes | yes | n/a |

@@ -3,16 +3,25 @@
 ### just the render API and nothing else
 ##
 
+#############################
+## logging
+#############################
 [log]
 # format = ""%{color}%{time:2006-01-02 15:04:05.000} [%{module}] (%{shortfile}) ▶ %{level:.4s} %{color:reset} %{message}""
 level = "DEBUG"
 file="stdout"
 
 
+#############################
+## System things
+#############################
 [system]
 pid_file="/opt/cadent/api.pid"
 num_procs=4
 
+#############################
+## CPU profile
+#############################
 [profile]
 ## Turn on CPU/Mem profiling
 ##  there will be a http server set up to yank pprof data on :6065
@@ -21,7 +30,9 @@ listen="0.0.0.0:6065"
 rate=100000
 block_profile=false # this is very expensive
 
-## fire out some internal to statsd if desired
+#############################
+## Statsd
+#############################
 [statsd]
 server="127.0.0.1:8125"
 prefix="cadent"
@@ -37,6 +48,9 @@ interval=1  # send to statd every second (buffered)
 timer_sample_rate=0.01
 sample_rate=0.1
 
+#############################
+## API
+#############################
 
 [api]
 base_path = "/graphite/"

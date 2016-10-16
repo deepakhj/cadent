@@ -18,6 +18,8 @@ limitations under the License.
    This is the "standalone" API server, which will interface to the main
    Data store as well as use a "seed" to grab any members in a cluster of writers
 
+   //TODO: Still a work in progress .. need to build in some "get from cache" mechanisms
+
    metrics/indexer interfaces
 
    example config
