@@ -47,8 +47,8 @@ This can cause a little confusion as to what the unique ID is.  For instance in 
 
     FNV64a("name1_is_value1.name2_is_value2..." + ":" + "name1=value1 name2=value2 ..")
 
-So it's a bit of doulbing up on the key + tags set, but for systems that do both a "key" and tags (influx, etc) then
-this method provides some resolution for differeing injection systems.
+So it's a bit of doubling up on the key + tags set, but for systems that do both a "key" and tags then
+this method provides some resolution for differeing writer backend systems.
 
 MetaTags are no concidered part of the unique metric, as they are subject to change.  An example of a MetaTag is the
 sender of the metrics (statsd, cadent, diamond, collectd, etc).  Where the metric itself is the same, but the sender
@@ -105,7 +105,7 @@ Not everything is "done" .. as there are many things to write and verify, this i
 | cassandra | write+read  | No  | write+read | write+read | Yes | Index: "cassandra", Line: "cassandra-flat", Series: "cassandra", Series Triggered: "cassandra-triggered" |
 | mysql  | write+read  | write+read  | write+read  | write+read  | Yes | Index: "mysql", Line: "mysql-flat", Series: "mysql",  Series Triggered: "cassandra-triggered" |
 | kafka  |  write | write | write  | write  | n/a | Index: "kafka", Line: "kafka-flat", Series: "kafka" |
-| elasticsearch |  read+write | read+write | No | No | No | Index: "elasticsearch", Line: "n/a", Series: "n/a" |
+| elasticsearch |  read+write | read+write | No | read+write | No | Index: "elasticsearch", Line: "elasticsearch-flat", Series: "n/a" |
 | whisper|  read | n/a | n/a  | write+read |  n/a | Index: "whisper", Line: "whisper", Series: "n/a" |
 | leveldb |  write+read | No | No  | No |  n/a | Index: "leveldb", Line: "n/a", Series: "n/a" |
 | file |  n/a | n/a | n/a  | write |  n/a | Index: "n/a", Line: "file", Series: "n/a" |
@@ -168,9 +168,24 @@ The main writers are
 
         Toss stats into a kafka topic (no readers/render api for this mode) for processing by some other entity
 
-    - elasticsearch:
+    - elasticsearch-flat:
 
-       Currently just for Indexing both Tags and Metric keys.
+       For indexing, this is a good option especially if your cardinality of keys/tags is very high (where things
+       benifit from a standard "text" indexer and not a scan of lists).
+
+       ElasticSearch is not really efficient for huge volumes of time series data (unless you have a monster
+       cluster).  MySQL acctually performs better for that, however it is of course not horizonally scaleable like ES.
+
+
+Some basic performance things:
+
+Cassandra is by far the best option for large metric volumes.
+MySQL is good for local developement or relatively small volumes of metrics.
+ElasticSearch is good for indexing, and though it does have built in "aggrigation" query forms, it does not
+handle huge inputs effectively unless your cluster if very large.
+
+If storage space is a concern, you should use the "series" writers, but you risk lossing data on the event of a crash (i.e.
+data that is stillin ram and not yet written)
 
 
 ## Indexing
@@ -262,18 +277,11 @@ resolution items which get written to the the DB.  This can slove 2 issues,
     - Peristence delay: the Low resolutions can stay in ram for a long time before they are written.  This can be problematic if things crash/fail as
     those data points are never written.  With the triggered method, they are written once the highest resolution is written.
 
-To enable this, simply add
-
-    rollup_type="triggered"
-
-to the `writer.metrics` options (it will be ignored for anything other then the mysql and cassandra blob writers)
-
-However it is better to use the `-triggered` driver names as that will tell the accumulators to only accumulate
-the lowest res (otherwise, the accumulator does not know things are in rollup mode, and will continue to aggregate
-the lower-res elements, but they will just take up unessesary RAM and process cycles.)
+To enable this, simply use the writer drivers of
 
     cassandra-triggered or mysql-triggered
 
+to the `writer.metrics` options (it will be ignored for anything other then the mysql and cassandra blob writers)
 
 
 #### Max time in Cache
@@ -407,9 +415,11 @@ series method is used.
          dsn = "/vol/graphite/storage/ldb/"
 
 
-### Writer Schemas
+## Writer Schemas
 
-#### MYSQL-Flat
+## MySQL
+
+### MYSQL-Flat + Index
 
 Slap stuff in a MySQL DB .. not recommended for huge throughput, but maybe useful for some stuff ..
 You should make Schemas like so (`datetime(6)` is microsecond resolution, if you only have second resolution on the
@@ -500,7 +510,7 @@ Config Options
         periodic_flush= "1s" # regardless if batch_count met, always flush things at this interval (default 1s)
 
 
-#### MYSQL - blob
+### MYSQL - blob
 
 The index table the same if using mysql for that.  The Blob table is different of course.  Unlike the flat writer
 which may have to contend with many thousands of writes/sec, this one does not have a write cache buffer as writes
@@ -545,7 +555,7 @@ Config Options
 
 
 
-#### File
+## File
 
 Good for just testing stuff or, well, other random inputs not yet supported
 This will dump a TAB delimited file per `times` item of
@@ -573,7 +583,7 @@ Config Options
         [mypregename.accumulator.writer.options]
         max_file_size = "104857600"  # max size in bytes of the before rotated (default 100Mb = 104857600)
 
-#### Cassandra
+## Cassandra
 
 NOTE: there are 2 cassandra "modes" .. Flat and Blob
 
@@ -612,7 +622,7 @@ If you want to allow 24h windows, simply raise `max_sstable_age_days` to â€˜1.0â
         'base_time_seconds': '50'
     }
 
-##### Cassandra Flat Schema
+### Cassandra Flat Schema
 
     CREATE KEYSPACE metric WITH replication = {'class': 'SimpleStrategy', 'replication_factor': '3'}  AND durable_writes = true;
 
@@ -675,7 +685,7 @@ If you want to allow 24h windows, simply raise `max_sstable_age_days` to â€˜1.0â
             AND compaction = {'class': 'org.apache.cassandra.db.compaction.SizeTieredCompactionStrategy'}
             AND compression = {'sstable_compression': 'org.apache.cassandra.io.compress.LZ4Compressor'};
 
-##### Blob Schema
+### Blob Schema
 
 Much the same, but instead we store the bytes blob of the series.  `ptype` is the encoding of the blob itself.
 Since different resolutions in cassandra are stored in one super table, we need to disinguish the id+resolution
@@ -704,9 +714,6 @@ Since different resolutions in cassandra are stored in one super table, we need 
 
 There's a better compaction method for the metrics that have pretty much constant time inputs (i.e. server metrics)
 so i recommend doing below.
-
-If, however, the data you injest is "sparse" and/or out of order it's better to use the Date compaction method above.
-As it will lead to better behavior for large time spans.
 
 
         CREATE TABLE metric.metric (
@@ -843,10 +850,12 @@ To further make Cassandra data points and timers align, FLUSH times should all b
 
     [graphite-cassandra.accumulator.writer.metrics]
 
-#### ElasticSearch
+## ElasticSearch
 
 Probably makes the most sence for Indexing data efficently, however, the metrics can also be passed to this backend store
-The drivers have not been written yet.
+
+### Indexing
+
 
 This is the Index schema for elastic search
 
@@ -929,9 +938,135 @@ This is the Index schema for elastic search
         }
     }
 
+### Metrics - Flat
 
 
-#### Whisper
+The `_id` for these entries is {uid}-{nanosecond-timestamp} of the incoming metric, so it is possible to overwrite
+metrics here.
+
+Also note, that instead of a write-back cache, we instead do Batch inserts.  The default is 1000 metrics per batch.
+Given there can be many batches for "high" volumes you may wish to tweak the thread/queue size for elastic search
+in the .yml config file, otherwise inserts can fail.  If some in a batch to fail to get inserted they will be re-added
+to the batch queue to be attempted again.
+
+    threadpool:
+        bulk:
+            queue_size: 5000
+
+
+Below is the basic schema for the indexed metrics.  Please note that I would only use ES for metrics storage if
+you have out-of-order incoming metrics per key and their relative volume is "small" (small is subjective, but
+since the system may need to inject many thousands of metric points per second, performance matters).  The storage
+format for ES is also not the most efficient and takes up alot of disk space for a relatively small volme of metrics.
+
+    {
+       "dynamic_templates": [{
+                "notanalyze": {
+                    "mapping": {
+                            "index": "not_analyzed",
+                            "omit_norms": true
+                    },
+                    "match_mapping_type": "*",
+                    "match": "*"
+                }
+       }],
+       "_all": {
+        "enabled": false
+       },
+       "properties":{
+            "uid":{
+                "type": "string",
+                "index": "not_analyzed"
+            },
+            "path":{
+                "type": "string",
+                "index": "not_analyzed"
+            },
+            "time":{
+                "type": "date",
+                "index": "not_analyzed",
+                "format": "strict_date_optional_time||epoch_millis"
+            },
+            "min":{
+                "type": "double",
+                "index": "not_analyzed"
+            },
+            "max":{
+                "type": "double",
+                "index": "not_analyzed"
+            },
+            "sum":{
+                "type": "double",
+                "index": "not_analyzed"
+            },
+            "last":{
+                "type": "double",
+                "index": "not_analyzed"
+            },
+            "count":{
+                "type": "long",
+                "index": "not_analyzed"
+            },
+            "tags":{
+                "type": "nested",
+                "properties":{
+                    "name": {
+                        "type": "string",
+                        "index": "not_analyzed"
+                    },
+                    "value": {
+                        "type": "string",
+                        "index": "not_analyzed"
+                    },
+                    "is_meta":{
+                        "type":"boolean",
+                        "index": "not_analyzed"
+                    }
+                }
+            }
+       }
+    }
+
+An example config is below
+
+
+    # cache objects to be shared (or not) across the writer backends
+    # even though it is not used (yet) for ES one is still required.
+    [[graphite-proxy-map.accumulator.writer.caches]]
+    name="dummy"
+    series_encoding="gob"
+
+    [graphite-proxy-map.accumulator.writer.metrics]
+        driver = "elasticsearch-flat"
+        dsn = "http://127.0.0.1:9200"
+        cache = "dummy"
+
+        [graphite-proxy-map.accumulator.writer.metrics.options]
+        batch_count=1000  # batch size for inserts
+        metric_index = "metrics_flat"
+
+
+    [graphite-proxy-map.accumulator.writer.indexer]
+        driver = "elasticsearch"
+        dsn = "http://127.0.0.1:9200"
+        [graphite-proxy-map.accumulator.writer.indexer.options]
+        writes_per_second=100
+
+    [graphite-proxy-map.accumulator.api]
+            base_path = "/graphite/"
+            listen = "0.0.0.0:8083"
+
+            [graphite-proxy-map.accumulator.api.metrics]
+                driver = "elasticsearch-flat"
+                dsn = "http://127.0.0.1:9200"
+                cache = "gob"
+                [graphite-proxy-map.accumulator.api.metrics.options]
+                metric_index="metrics_flat"
+
+            [graphite-proxy-map.accumulator.api.indexer]
+                driver = "elasticsearch"
+                dsn = "http://127.0.0.1:9200"
+## Whisper
 
 Yep, we can even act like good old carbon-cache.py (not exactly, but close).  If you want to write some whisper files
 that can be used choose the whisper writer driver.  Unlink the carbon-cache, here only "one set" of aggregate timers
@@ -993,7 +1128,7 @@ An example config below
         dsn="/root/metrics/path"
 
 
-### KAFKA + Kafka-Flat
+## KAFKA + Kafka-Flat
 
 I mean why not.  There is no "reader" API available for this mode, as kafka it's not designed to be that.  But you can
 shuffle your stats to the kafka bus if needed.  There are 2 message types "index" and "metrics".  They can be
