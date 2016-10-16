@@ -269,8 +269,8 @@ Just some example output from the render apis
         {
             metric: "graphitetest.there.now.there",
             id: "3w5dnlrj3clw3",
-            tags: [["env", "prod"], ...],
-            meta_tags: [["foo", "baz"], ...],
+            tags: [{ name:"env", value: "prod"}, ...],
+            meta_tags: [{ name:"env", value: "prod"}, ...],
             data_from: 1471359695,
             data_end: 1471359810,
             from: 1471359220,
@@ -327,11 +327,11 @@ You can also request a base64 encoded version by including `&base64=1` in the GE
     X-Cadentseries-Encoding:gorilla
     X-Cadentseries-End:1471386630000000000
     X-Cadentseries-Key:graphitetest.there.now.there
-    X-Cadentseries-Metatags:[["env", "prod"], ...] | null
+    X-Cadentseries-Metatags:[{ name:"env", value: "prod"}, ...] | null
     X-Cadentseries-Points:11
     X-Cadentseries-Resolution:5
     X-Cadentseries-Start:1471386590000000000
-    X-Cadentseries-Tags:[["moo", "goo"], ...] | null
+    X-Cadentseries-Tags:[{ name:"env", value: "prod"}, ...] | null
     X-Cadentseries-Ttl:3600
     X-Cadentseries-Uniqueid:3w5dnlrj3clw3
 
@@ -350,8 +350,8 @@ You can also request a base64 encoded version by including `&base64=1` in the GE
         path: "graphitetest.there.now.there",
         allowChildren: 0,
         uniqueid: "3w5dnlrj3clw3",
-        tags: [["env", "prod"], ...],
-        meta_tags: [["foo", "baz"], ...]
+        tags: [{ name:"env", value: "prod"}, ...],
+        meta_tags: [{ name:"env", value: "prod"}, ...]
     },
     {
         text: "there",
@@ -361,8 +361,8 @@ You can also request a base64 encoded version by including `&base64=1` in the GE
         path: "graphitetest.there.now.now",
         allowChildren: 0,
         uniqueid: "3w5dnlrj3clw3",
-        tags: [["env", "prod"], ...],
-        meta_tags: [["foo", "baz"], ...]
+        tags: [{ name:"env", value: "prod"}, ...],
+        meta_tags: [{ name:"env", value: "prod"}, ...]
     },
     ...
     ]

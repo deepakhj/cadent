@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 /*
-   A Helper to basically list the Tags that are concidered "Id worthy"
+   A Helper to basically list the Tags that are considered "Id worthy"
    and those that are not
 */
 
