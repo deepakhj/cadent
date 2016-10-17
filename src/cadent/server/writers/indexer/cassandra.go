@@ -246,7 +246,7 @@ func (cass *CassandraIndexer) WriteOne(inname repr.StatName) error {
 	// now to upsert them all (inserts in cass are upserts)
 	for idx, seg := range pth.Segments {
 		Q := fmt.Sprintf(
-			"UPDATE %s (pos, segment) VALUES  (?, ?) ",
+			"INSERT INTO %s (pos, segment) VALUES  (?, ?) ",
 			cass.db.SegmentTable(),
 		)
 		err := cass.conn.Query(Q,
@@ -281,7 +281,7 @@ func (cass *CassandraIndexer) WriteOne(inname repr.StatName) error {
 
 		*/
 		Q = fmt.Sprintf(
-			"UPDATE %s (segment, path, id, length, has_data) VALUES  ({pos: ?, segment: ?}, ?, ?, ?, ?)",
+			"INSERT INTO %s (segment, path, id, length, has_data) VALUES  ({pos: ?, segment: ?}, ?, ?, ?, ?)",
 			cass.db.PathTable(),
 		)
 
