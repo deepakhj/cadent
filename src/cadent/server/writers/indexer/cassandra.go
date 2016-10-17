@@ -254,7 +254,7 @@ func (cass *CassandraIndexer) WriteOne(inname repr.StatName) error {
 		).Exec()
 
 		if err != nil {
-			cass.log.Error("Could not insert segment %v (%s)", seg, skey)
+			cass.log.Error("Could not insert segment %v (%s) : %v", seg, skey, err)
 			stats.StatsdClientSlow.Incr("indexer.cassandra.segment-failures", 1)
 		} else {
 			stats.StatsdClientSlow.Incr("indexer.cassandra.segment-writes", 1)
