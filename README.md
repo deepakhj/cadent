@@ -413,7 +413,7 @@ If you have some checker (say nagios) and you want to get the helath status of t
 
     localhost:6061/ops/status
     
-IF you want a specific exerver set
+IF you want a specific server set
 
     localhost:6061/echo-example/ops/status
 
