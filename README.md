@@ -399,7 +399,7 @@ We can make a fancy status page when necessary
     
     localhost:6061/echo-example/stats
 
-It will also emit it's owns stats to statsd as well using a buffered internal statsd client (https://gitlab.mfpaws.com/goutil/statsd).
+It will also emit it's owns stats to statsd as well using a buffered internal statsd client.
 
 
 #### Handy "what are the URL" reference (because i always forget myself)
