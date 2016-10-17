@@ -507,7 +507,7 @@ func (r *RawRenderItem) Resample(step uint32) error {
 		dp := NullRawDataPoint(t)
 		// loop through the orig data until we hit a time > then the current one
 		for ; i < i_len; i++ {
-			if r.Data[i] == nil{
+			if r.Data[i] == nil {
 				continue
 			}
 			if r.Data[i].Time > t {
@@ -622,7 +622,7 @@ func (r *RawRenderItem) QuantizeToStep(step uint32) error {
 			// but may need a merge w/ another point(s) in the parent list
 			// so we advance "i"
 			p.Time = t
-			if data[o]!= nil && data[o].Time != 0 && !data[0].IsNull() {
+			if data[o] != nil && data[o].Time != 0 && !data[0].IsNull() {
 				data[o].Merge(p)
 			} else {
 				data[o] = p
@@ -812,7 +812,7 @@ func (r *RawRenderItem) MergeWithResample(d *RawRenderItem, step uint32) error {
 		dp := NullRawDataPoint(t)
 		// loop through the orig data until we hit a time > then the current one
 		for ; i < i_len; i++ {
-			if r.Data[i] == nil{
+			if r.Data[i] == nil {
 				continue
 			}
 			if r.Data[i].Time > t {
@@ -823,7 +823,7 @@ func (r *RawRenderItem) MergeWithResample(d *RawRenderItem, step uint32) error {
 
 		// loop through the incoming data until we hit a time > then the current one
 		for ; o < o_len; o++ {
-			if d.Data[o] == nil{
+			if d.Data[o] == nil {
 				continue
 			}
 			if d.Data[o].Time > t {

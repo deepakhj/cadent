@@ -18,13 +18,13 @@ package metrics
 
 import (
 	"cadent/server/repr"
+	"cadent/server/utils/options"
 	"cadent/server/writers/indexer"
 	. "github.com/smartystreets/goconvey/convey"
 	"io/ioutil"
 	"os"
 	"testing"
 	"time"
-	"cadent/server/utils/options"
 )
 
 func TestFileWriterAccumulator(t *testing.T) {
@@ -46,7 +46,7 @@ func TestFileWriterAccumulator(t *testing.T) {
 		})
 
 		conf.Set("dsn", f_name)
-		conf.Set("rotate_every",  time.Duration(time.Second))
+		conf.Set("rotate_every", time.Duration(time.Second))
 		ok = fw.Config(&conf)
 		fw.SetIndexer(idx)
 

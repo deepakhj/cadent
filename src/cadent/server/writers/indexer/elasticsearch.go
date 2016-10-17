@@ -52,10 +52,31 @@ import (
 )
 
 const (
+	// how big the backlog can get for writes
 	ES_INDEXER_QUEUE_LEN = 1024 * 1024
-	ES_INDEXER_WORKERS   = 8
+	// number of parallel writers
+	ES_INDEXER_WORKERS = 8
+	// writers per second to the index
 	ES_WRITES_PER_SECOND = 200
+	// default max number of results that we give back
+	ES_INDEXER_MAX_RESULTS = 1024
 )
+
+// ESPath pool for less ram pressure under load
+
+var esPathPool sync.Pool
+
+func getESPath() *ESPath {
+	x := esPathPool.Get()
+	if x == nil {
+		return new(ESPath)
+	}
+	return x.(*ESPath)
+}
+
+func putESPath(spl *ESPath) {
+	esPathPool.Put(spl)
+}
 
 /****************** Interfaces *********************/
 type ElasticIndexer struct {
@@ -73,6 +94,7 @@ type ElasticIndexer struct {
 
 	cache           *Cacher // simple cache to rate limit and buffer writes
 	writesPerSecond int     // rate limit writer
+	maxResults      int
 
 	shutitdown uint32
 	shutdown   chan bool
@@ -120,7 +142,7 @@ func (es *ElasticIndexer) Config(conf *options.Options) (err error) {
 	if err != nil {
 		return err
 	}
-
+	es.maxResults = int(conf.Int64("max_results", ES_INDEXER_MAX_RESULTS))
 	es.writesPerSecond = int(conf.Int64("writesPerSecond", ES_WRITES_PER_SECOND))
 	es.cache.maxKeys = int(conf.Int64("cache_index_size", CACHER_METRICS_KEYS))
 
@@ -314,7 +336,8 @@ func (es *ElasticIndexer) WriteOne(inname *repr.StatName) error {
 		as data-less nodes
 
 		*/
-		es_obj := new(ESPath)
+		es_obj := getESPath()
+		defer putESPath(es_obj)
 		es_obj.Segment = seg.Segment
 		es_obj.Pos = seg.Pos
 		es_obj.HasData = false
@@ -519,8 +542,9 @@ func (es *ElasticIndexer) GetTagsByUid(unique_id string) (tags repr.SortingTags,
 	}
 
 	for _, h := range items.Hits.Hits {
-		var tg ESPath
-		err := json.Unmarshal(*h.Source, &tg)
+		tg := getESPath()
+		defer putESPath(tg)
+		err := json.Unmarshal(*h.Source, tg)
 
 		if err != nil {
 			es.log.Error("Error Getting Tags Iterator : %v", err)
@@ -632,8 +656,9 @@ func (es *ElasticIndexer) List(has_data bool, page int) (MetricFindItems, error)
 	}
 	for _, h := range items.Hits.Hits {
 
-		var tg ESPath
-		err := json.Unmarshal(*h.Source, &tg)
+		tg := getESPath()
+		defer putESPath(tg)
+		err := json.Unmarshal(*h.Source, tg)
 
 		if err != nil {
 			es.log.Error("Error Getting Tags Iterator : %v", err)
@@ -657,7 +682,7 @@ func (es *ElasticIndexer) List(has_data bool, page int) (MetricFindItems, error)
 	return mt, nil
 }
 
-// basic find for non-regex items
+// FindBase basic find for all paths
 func (es *ElasticIndexer) FindBase(metric string, tags repr.SortingTags, exact bool) (MetricFindItems, error) {
 
 	defer stats.StatsdSlowNanoTimeFunc("indexer.elastic.findbase.get-time-ns", time.Now())
@@ -701,8 +726,8 @@ func (es *ElasticIndexer) FindBase(metric string, tags repr.SortingTags, exact b
 		if need_reg {
 			and_filter = and_filter.Must(elastic.NewTermQuery("pos", len(strings.Split(metric, "."))-1))
 			and_filter = and_filter.Must(elastic.NewRegexpQuery("segment", regifyKeyString(metric)))
-			agg := elastic.NewTermsAggregation().Field("segment")
-			base_q = base_q.Aggregation("seg_count", agg)
+			agg := elastic.NewTermsAggregation().Field("segment").Size(es.maxResults)
+			base_q = base_q.Aggregation("seg_count", agg).Size(es.maxResults)
 		} else {
 			and_filter = and_filter.Must(elastic.NewTermQuery("pos", len(strings.Split(metric, "."))-1))
 			and_filter = and_filter.Must(elastic.NewTermQuery("segment", metric))
@@ -715,11 +740,16 @@ func (es *ElasticIndexer) FindBase(metric string, tags repr.SortingTags, exact b
 	es_items, err := base_q.Query(and_filter).Sort("segment", true).Do()
 
 	if err != nil {
-		return mt, err
+		agg := elastic.NewTermsAggregation().Field("segment").Size(es.maxResults)
+		ss, _ := elastic.NewSearchSource().Aggregation("seg_count", agg).Query(and_filter).Sort("segment", true).Source()
+		data, _ := json.Marshal(ss)
+		es.log.Error("Query failed: Index %s: %v (QUERY :: %s)", es.db.PathTable(), err, data)
+		//return mt, err
 	}
 
 	// if we get a grouped item, we know we're on segment not data lands
 	terms, ok := es_items.Aggregations.Terms("seg_count")
+
 	if ok && len(terms.Buckets) < len(es_items.Hits.Hits) {
 		for _, h := range terms.Buckets {
 			str := h.Key.(string)
@@ -737,8 +767,9 @@ func (es *ElasticIndexer) FindBase(metric string, tags repr.SortingTags, exact b
 
 		for _, h := range es_items.Hits.Hits {
 
-			var tg ESPath
-			err := json.Unmarshal(*h.Source, &tg)
+			tg := getESPath()
+			defer putESPath(tg)
+			err := json.Unmarshal(*h.Source, tg)
 
 			if err != nil {
 				es.log.Error("Error in json: %v", err)

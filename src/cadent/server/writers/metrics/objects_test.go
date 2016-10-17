@@ -225,20 +225,20 @@ func TestWriterObjects(t *testing.T) {
 		}
 
 		sm_list := &RawRenderItem{
-			Data:  smalldelta_list,
-			Start: start_t,
+			Data:      smalldelta_list,
+			Start:     start_t,
 			RealStart: start_t,
-			Step:  sm_step,
-			End:   smalldelta_list[t_size-1].Time,
+			Step:      sm_step,
+			End:       smalldelta_list[t_size-1].Time,
 			RealEnd:   smalldelta_list[t_size-1].Time,
 		}
 
 		lr_list := &RawRenderItem{
-			Data:  largedelta_list,
-			Start: start_t,
+			Data:      largedelta_list,
+			Start:     start_t,
 			RealStart: start_t,
-			Step:  lr_step,
-			End:   largedelta_list[t_size-1].Time,
+			Step:      lr_step,
+			End:       largedelta_list[t_size-1].Time,
 			RealEnd:   largedelta_list[t_size-1].Time,
 		}
 		for idx, d := range sm_list.Data {
@@ -289,20 +289,20 @@ func TestWriterObjects(t *testing.T) {
 		}
 
 		sm_list := &RawRenderItem{
-			Data:  smalldelta_list,
-			Start: start_t,
+			Data:      smalldelta_list,
+			Start:     start_t,
 			RealStart: start_t,
-			Step:  sm_step,
-			End:   smalldelta_list[t_size-1].Time,
+			Step:      sm_step,
+			End:       smalldelta_list[t_size-1].Time,
 			RealEnd:   smalldelta_list[t_size-1].Time,
 		}
 
 		lr_list := &RawRenderItem{
-			Data:  largedelta_list,
-			Start: start_t,
+			Data:      largedelta_list,
+			Start:     start_t,
 			RealStart: start_t,
-			Step:  lr_step,
-			End:   largedelta_list[t_size-1].Time,
+			Step:      lr_step,
+			End:       largedelta_list[t_size-1].Time,
 			RealEnd:   largedelta_list[t_size-1].Time,
 		}
 		for idx, d := range sm_list.Data {

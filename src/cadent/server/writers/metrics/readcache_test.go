@@ -46,7 +46,7 @@ func TestWriterReadCache(t *testing.T) {
 			s := stat.Copy()
 			s.Sum = rand.Float64()
 			// a random time testing the sorts
-			s.Time = t_start.UnixNano() + int64(time.Duration(time.Second * time.Duration(rand.Int63n(1000))))
+			s.Time = t_start.UnixNano() + int64(time.Duration(time.Second*time.Duration(rand.Int63n(1000))))
 			c_item.Add(s)
 		}
 		Convey("ReadCacheItems have proper time order", func() {
@@ -64,7 +64,7 @@ func TestWriterReadCache(t *testing.T) {
 				s := stat.Copy()
 				s.Sum = rand.Float64()
 				// a random time testing the sorts
-				s.Time = t_start.UnixNano() + int64(time.Duration(time.Second * time.Duration(rand.Int63n(1000))))
+				s.Time = t_start.UnixNano() + int64(time.Duration(time.Second*time.Duration(rand.Int63n(1000))))
 				small_cache.Add(s)
 			}
 			So(len(small_cache.GetAll()), ShouldEqual, 5)
@@ -90,7 +90,7 @@ func TestWriterReadCache(t *testing.T) {
 			s.Name.Key = s.Name.Key + "." + r_prefix
 			s.Sum = rand.Float64()
 			// a random time testing the sorts
-			s.Time = t_start.UnixNano() + int64(time.Duration(time.Second * time.Duration(rand.Int63n(1000))))
+			s.Time = t_start.UnixNano() + int64(time.Duration(time.Second*time.Duration(rand.Int63n(1000))))
 			c_item.ActivateMetric(s.Name.Key, nil)
 			c_item.Put(s.Name.Key, s)
 		}
@@ -133,7 +133,7 @@ func TestWriterReadCache(t *testing.T) {
 			s.Name.Key = s.Name.Key + "." + r_prefix
 			s.Sum = rand.Float64()
 			// a random time testing the sorts
-			s.Time = t_start.UnixNano() + int64(time.Duration(time.Second * time.Duration(rand.Int63n(1000))))
+			s.Time = t_start.UnixNano() + int64(time.Duration(time.Second*time.Duration(rand.Int63n(1000))))
 			GetReadCache().ActivateMetric(s.Name.Key, nil)
 			GetReadCache().Put(s.Name.Key, s)
 
