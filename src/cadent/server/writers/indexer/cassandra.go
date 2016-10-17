@@ -226,21 +226,21 @@ func (cass *CassandraIndexer) WriteOne(inname repr.StatName) error {
 	pth := NewParsedPath(skey, uid)
 
 	/* Skip this for now
-		SelQ := fmt.Sprintf(
-			"SELECT path, length, has_data FROM %s WHERE segment={pos: ?, segment: ?}",
-			cass.db.PathTable(),
-		)
-		var _pth string
-		var _len int
-		var _dd bool
-		gerr := cass.conn.Query(SelQ, pth.Len-1, skey).Scan(&_pth, &_len, &_dd)
+	SelQ := fmt.Sprintf(
+		"SELECT path, length, has_data FROM %s WHERE segment={pos: ?, segment: ?}",
+		cass.db.PathTable(),
+	)
+	var _pth string
+	var _len int
+	var _dd bool
+	gerr := cass.conn.Query(SelQ, pth.Len-1, skey).Scan(&_pth, &_len, &_dd)
 
-		// got it
-		if gerr == nil {
-			if _pth == skey && _dd && _len == pth.Len-1 {
-				return nil
-			}
-		}*/
+	// got it
+	if gerr == nil {
+		if _pth == skey && _dd && _len == pth.Len-1 {
+			return nil
+		}
+	}*/
 
 	last_path := pth.Last()
 	// now to upsert them all (inserts in cass are upserts)

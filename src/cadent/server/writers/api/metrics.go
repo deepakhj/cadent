@@ -88,8 +88,8 @@ func (re *MetricsAPI) ToGraphiteRender(raw_data []*metrics.RawRenderItem) *Whisp
 		d_points := make([]*metrics.DataPoint, data.Len(), data.Len())
 		whis.End = data.End
 		whis.Start = data.Start
-		whis.From = data.End
-		whis.To = data.Start
+		whis.From = data.Start
+		whis.To = data.End
 		whis.Step = data.Step
 		whis.RealEnd = data.RealEnd
 		whis.RealStart = data.RealStart
