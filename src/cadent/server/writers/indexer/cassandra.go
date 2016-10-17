@@ -221,14 +221,15 @@ func (cass *CassandraIndexer) WriteOne(inname repr.StatName) error {
 
 	// we are going to assume that if the path is already in the system, we've indexed it and therefore
 	// do not need to do the super loop (which is very expensive)
-	SelQ := fmt.Sprintf(
-		"SELECT path, length, has_data FROM %s WHERE segment={pos: ?, segment: ?}",
-		cass.db.PathTable(),
-	)
+
 	uid := inname.UniqueIdString()
 	pth := NewParsedPath(skey, uid)
 
-	/*
+	/* Skip this for now
+		SelQ := fmt.Sprintf(
+			"SELECT path, length, has_data FROM %s WHERE segment={pos: ?, segment: ?}",
+			cass.db.PathTable(),
+		)
 		var _pth string
 		var _len int
 		var _dd bool
