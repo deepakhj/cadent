@@ -143,7 +143,7 @@ func (es *ElasticIndexer) Config(conf *options.Options) (err error) {
 		return err
 	}
 	es.maxResults = int(conf.Int64("max_results", ES_INDEXER_MAX_RESULTS))
-	es.writesPerSecond = int(conf.Int64("writesPerSecond", ES_WRITES_PER_SECOND))
+	es.writesPerSecond = int(conf.Int64("writes_per_second", ES_WRITES_PER_SECOND))
 	es.cache.maxKeys = int(conf.Int64("cache_index_size", CACHER_METRICS_KEYS))
 
 	atomic.StoreUint32(&es.shutitdown, 1)

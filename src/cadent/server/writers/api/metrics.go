@@ -62,10 +62,12 @@ func (re *MetricsAPI) GetMetrics(args MetricQuery) ([]*metrics.RawRenderItem, er
 
 // WhisperRenderItem object for whisper/graphite outs
 type WhisperRenderItem struct {
-	RealStart uint32                          `json:"realStart,omitempty"`
-	RealEnd   uint32                          `json:"realEnd,omitempty"`
+	RealStart uint32                          `json:"real_start,omitempty"`
+	RealEnd   uint32                          `json:"real_end,omitempty"`
 	Start     uint32                          `json:"start,omitempty"`
 	End       uint32                          `json:"end,omitempty"`
+	From      uint32                          `json:"from,omitempty"`
+	To        uint32                          `json:"to,omitempty"`
 	Step      uint32                          `json:"step,omitempty"`
 	Series    map[string][]*metrics.DataPoint `json:"series,omitempty"`
 }
@@ -86,6 +88,8 @@ func (re *MetricsAPI) ToGraphiteRender(raw_data []*metrics.RawRenderItem) *Whisp
 		d_points := make([]*metrics.DataPoint, data.Len(), data.Len())
 		whis.End = data.End
 		whis.Start = data.Start
+		whis.From = data.End
+		whis.To = data.Start
 		whis.Step = data.Step
 		whis.RealEnd = data.RealEnd
 		whis.RealStart = data.RealStart
