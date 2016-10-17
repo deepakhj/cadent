@@ -228,25 +228,24 @@ func (cass *CassandraIndexer) WriteOne(inname repr.StatName) error {
 	uid := inname.UniqueIdString()
 	pth := NewParsedPath(skey, uid)
 
-	var _pth string
-	var _len int
-	var _dd bool
-	gerr := cass.conn.Query(SelQ,
-		pth.Len-1, skey,
-	).Scan(&_pth, &_len, &_dd)
+	/*
+		var _pth string
+		var _len int
+		var _dd bool
+		gerr := cass.conn.Query(SelQ, pth.Len-1, skey).Scan(&_pth, &_len, &_dd)
 
-	// got it
-	if gerr == nil {
-		if _pth == skey && _dd && _len == pth.Len-1 {
-			return nil
-		}
-	}
+		// got it
+		if gerr == nil {
+			if _pth == skey && _dd && _len == pth.Len-1 {
+				return nil
+			}
+		}*/
 
 	last_path := pth.Last()
 	// now to upsert them all (inserts in cass are upserts)
 	for idx, seg := range pth.Segments {
 		Q := fmt.Sprintf(
-			"INSERT INTO %s (pos, segment) VALUES  (?, ?) ",
+			"UPDATE %s (pos, segment) VALUES  (?, ?) ",
 			cass.db.SegmentTable(),
 		)
 		err := cass.conn.Query(Q,
@@ -281,7 +280,7 @@ func (cass *CassandraIndexer) WriteOne(inname repr.StatName) error {
 
 		*/
 		Q = fmt.Sprintf(
-			"INSERT INTO %s (segment, path, id, length, has_data) VALUES  ({pos: ?, segment: ?}, ?, ?, ?, ?)",
+			"UPDATE %s (segment, path, id, length, has_data) VALUES  ({pos: ?, segment: ?}, ?, ?, ?, ?)",
 			cass.db.PathTable(),
 		)
 
