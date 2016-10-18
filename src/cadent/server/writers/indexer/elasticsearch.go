@@ -493,16 +493,16 @@ func (es *ElasticIndexer) Expand(metric string) (MetricExpandItem, error) {
 }
 
 /******************* TAG METHODS **********************************/
-func (es *ElasticIndexer) inTagCache(name string, value string) (tag_id string, ismeta bool) {
+func (es *ElasticIndexer) inTagCache(name string, value string) (string, bool) {
 
 	got := es.tagIdCache.Get(name, value, false)
 
-	if got != nil {
-		return got.(string), false
+	if got != "" {
+		return got, false
 	}
 	got = es.tagIdCache.Get(name, value, true)
-	if got != nil {
-		return got.(string), true
+	if got != "" {
+		return got, true
 	}
 
 	return "", false

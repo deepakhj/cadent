@@ -1,0 +1,45 @@
+//go:generate  protoc --proto_path=../../../../cadent/vendor/:./:../../../../ --gogofaster_out=.  objects.proto
+
+// note this is not a gogofaster as we need maps properly
+
+// also need to generate the msgpack from the rendered result
+// msgp -o objects_msgp.go --file objects.pb.go
+
+syntax = 'proto3';
+
+package indexer;
+
+import "cadent/server/repr/repr.proto";
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+
+option (gogoproto.goproto_getters_all) = false;
+option (gogoproto.benchgen_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.sizer_all) = true;
+option (gogoproto.populate_all) = true;
+
+// the basic metric json blob for find
+message MetricFindItem {
+	string text  = 1 [ json_name = "text" ];
+	uint32 expandable = 2 [ json_name = "expandable" ];
+	uint32 leaf = 3 [ json_name = "leaf" ];
+	string path = 4 [ json_name = "path" ];
+	uint32 allowChildren = 5 [ json_name = "allowChildren" ];
+	string id = 6 [ json_name = "id" ];
+	string uniqueId = 7 [ json_name = "uniqueid" ];
+	repeated repr.Tag tags = 13 [ json_name = "tags" ];
+	repeated repr.Tag metaTags = 14 [ json_name = "meta_tags" ];
+}
+
+message MetricExpandItem {
+	repeated string results = 2;
+}
+
+message MetricTagItem {
+	string id = 2; // string here as it's not known realy what the "xref type" key might be for a backend
+	string name = 3;
+	string value = 4;
+	bool isMeta = 5 [ json_name = "is_meta" ];
+}
+

@@ -16,7 +16,7 @@ limitations under the License.
 
 /*
   Indexer Reader/Writer to match the GraphiteAPI .. but contains other things that may be useful for other API
-  things
+  things, base objects in Protobuf file
 */
 
 package indexer
@@ -29,26 +29,13 @@ import (
 var errWillNotBeImplimented = errors.New("CANNOT BE IMPLIMENTED")
 var errNotYetImplimented = errors.New("Not yet implimented")
 
-// the basic metric json blob for find
-type MetricFindItem struct {
-	Text          string           `json:"text" `
-	Expandable    int              `json:"expandable"`
-	Leaf          int              `json:"leaf"`
-	Id            string           `json:"id"`
-	Path          string           `json:"path"`
-	AllowChildren int              `json:"allowChildren"`
-	UniqueId      string           `json:"uniqueid"` // can be nil
-	Tags          repr.SortingTags `json:"tags"`
-	MetaTags      repr.SortingTags `json:"meta_tags"`
-}
-
 // attempt to pick the "correct" metric based on the stats name
 func (m *MetricFindItem) SelectValue() uint32 {
 	if m.Leaf == 0 {
 		return repr.SUM // not data
 	}
 	// stat wins
-	tg := m.Tags.Stat()
+	tg := repr.SortingTags(m.Tags).Stat()
 	if tg != "" {
 		return repr.AggTypeFromTag(tg)
 	}
@@ -59,18 +46,5 @@ func (m *MetricFindItem) StatName() *repr.StatName {
 }
 
 type MetricFindItems []MetricFindItem
-
-// the basic metric json blob for find
-type MetricExpandItem struct {
-	Results []string `json:"results"`
-}
-
-// Tag finder objects
-type MetricTagItem struct {
-	Id     interface{} `json:"id"`
-	Name   string      `json:"name"`
-	Value  string      `json:"value"`
-	IsMeta bool        `json:"is_meta"`
-}
 
 type MetricTagItems []MetricTagItem

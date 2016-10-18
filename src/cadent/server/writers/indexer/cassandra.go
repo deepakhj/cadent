@@ -108,21 +108,21 @@ type CassandraIndexer struct {
 	conn      *gocql.Session
 	indexerId string
 
-	write_list     []repr.StatRepr // buffer the writes so as to do "multi" inserts per query
-	max_write_size int             // size of that buffer before a flush
-	max_idle       time.Duration   // either max_write_size will trigger a write or this time passing will
-	write_lock     sync.Mutex
-	num_workers    int
-	queue_len      int
-	shutitdown     uint32 //shtdown notice
-	startstop      utils.StartStop
+	writeList    []repr.StatRepr // buffer the writes so as to do "multi" inserts per query
+	maxWriteSize int             // size of that buffer before a flush
+	maxIdle      time.Duration   // either maxWriteSize will trigger a write or this time passing will
+	writeLock    sync.Mutex
+	numWorkers   int
+	queueLen     int
+	shutitdown   uint32 //shtdown notice
+	startstop    utils.StartStop
 
-	write_queue      chan dispatch.IJob
-	dispatch_queue   chan chan dispatch.IJob
-	write_dispatcher *dispatch.Dispatch
+	writeQueue      chan dispatch.IJob
+	dispatchQueue   chan chan dispatch.IJob
+	writeDispatcher *dispatch.Dispatch
 
-	cache             *Cacher // simple cache to rate limit and buffer writes
-	writes_per_second int     // rate limit writer
+	cache           *Cacher // simple cache to rate limit and buffer writes
+	writesPerSecond int     // rate limit writer
 
 	log *logging.Logger
 
@@ -142,12 +142,12 @@ func NewCassandraIndexer() *CassandraIndexer {
 func (cass *CassandraIndexer) Start() {
 	cass.startstop.Start(func() {
 		cass.log.Notice("starting up cassandra indexer: %s", cass.Name())
-		workers := cass.num_workers
-		cass.write_queue = make(chan dispatch.IJob, cass.queue_len)
-		cass.dispatch_queue = make(chan chan dispatch.IJob, workers)
-		cass.write_dispatcher = dispatch.NewDispatch(workers, cass.dispatch_queue, cass.write_queue)
-		cass.write_dispatcher.SetRetries(2)
-		cass.write_dispatcher.Run()
+		workers := cass.numWorkers
+		cass.writeQueue = make(chan dispatch.IJob, cass.queueLen)
+		cass.dispatchQueue = make(chan chan dispatch.IJob, workers)
+		cass.writeDispatcher = dispatch.NewDispatch(workers, cass.dispatchQueue, cass.writeQueue)
+		cass.writeDispatcher.SetRetries(2)
+		cass.writeDispatcher.Run()
 
 		cass.cache.Start() //start cacher
 
@@ -166,8 +166,8 @@ func (cass *CassandraIndexer) Stop() {
 		cass.log.Notice("shutting down cassandra indexer: %s", cass.Name())
 
 		cass.cache.Stop()
-		if cass.write_queue != nil {
-			cass.write_dispatcher.Shutdown()
+		if cass.writeQueue != nil {
+			cass.writeDispatcher.Shutdown()
 		}
 	})
 }
@@ -195,8 +195,8 @@ func (cass *CassandraIndexer) Config(conf *options.Options) (err error) {
 	cass.conn = db.Connection().(*gocql.Session)
 
 	// tweak queues and worker sizes
-	cass.num_workers = int(conf.Int64("write_workers", CASSANDRA_INDEXER_WORKERS))
-	cass.queue_len = int(conf.Int64("write_queue_length", CASSANDRA_INDEXER_QUEUE_LEN))
+	cass.numWorkers = int(conf.Int64("write_workers", CASSANDRA_INDEXER_WORKERS))
+	cass.queueLen = int(conf.Int64("writeQueueLength", CASSANDRA_INDEXER_QUEUE_LEN))
 
 	c_key := "indexer:cassandra:" + cass.indexerId
 	cass.cache, err = getCacherSingleton(c_key)
@@ -204,7 +204,7 @@ func (cass *CassandraIndexer) Config(conf *options.Options) (err error) {
 		return err
 	}
 	cass.cache.maxKeys = int(conf.Int64("cache_index_size", CACHER_METRICS_KEYS))
-	cass.writes_per_second = int(conf.Int64("writes_per_second", CASSANDRA_WRITES_PER_SECOND))
+	cass.writesPerSecond = int(conf.Int64("writesPerSecond", CASSANDRA_WRITES_PER_SECOND))
 
 	return nil
 }
@@ -312,9 +312,9 @@ func (cass *CassandraIndexer) WriteOne(inname repr.StatName) error {
 func (cass *CassandraIndexer) sendToWriters() error {
 	// this may not be the "greatest" ratelimiter of all time,
 	// as "high frequency tickers" can be costly .. but should the workers get backedup
-	// it will block on the write_queue stage
+	// it will block on the writeQueue stage
 
-	if cass.writes_per_second <= 0 {
+	if cass.writesPerSecond <= 0 {
 		cass.log.Notice("Starting indexer writer: No rate limiting enabled")
 		for {
 			if cass.shutitdown == 1 {
@@ -326,12 +326,12 @@ func (cass *CassandraIndexer) sendToWriters() error {
 				time.Sleep(time.Second)
 			default:
 				stats.StatsdClient.Incr(fmt.Sprintf("indexer.cassandra.write.send-to-writers"), 1)
-				cass.write_queue <- &CassandraIndexerJob{Cass: cass, Stat: skey}
+				cass.writeQueue <- &cassandraIndexerJob{Cass: cass, Stat: skey}
 			}
 		}
 	} else {
-		sleep_t := float64(time.Second) * (time.Second.Seconds() / float64(cass.writes_per_second))
-		cass.log.Notice("Starting indexer writer: limiter every %f nanoseconds (%d writes per second)", sleep_t, cass.writes_per_second)
+		sleep_t := float64(time.Second) * (time.Second.Seconds() / float64(cass.writesPerSecond))
+		cass.log.Notice("Starting indexer writer: limiter every %f nanoseconds (%d writes per second)", sleep_t, cass.writesPerSecond)
 		dur := time.Duration(int(sleep_t))
 		for {
 			if cass.shutitdown == 1 {
@@ -343,7 +343,7 @@ func (cass *CassandraIndexer) sendToWriters() error {
 				time.Sleep(time.Second)
 			default:
 				stats.StatsdClient.Incr(fmt.Sprintf("indexer.cassandra.write.send-to-writers"), 1)
-				cass.write_queue <- &CassandraIndexerJob{Cass: cass, Stat: skey}
+				cass.writeQueue <- &cassandraIndexerJob{Cass: cass, Stat: skey}
 				time.Sleep(dur)
 			}
 		}
@@ -731,21 +731,21 @@ func (my *CassandraIndexer) GetUidsByTags(key string, tags repr.SortingTags, pag
 /**********  Standard Worker Dispatcher JOB   ***************************/
 /************************************************************************/
 // insert job queue workers
-type CassandraIndexerJob struct {
+type cassandraIndexerJob struct {
 	Cass  *CassandraIndexer
 	Stat  repr.StatName
 	retry int
 }
 
-func (j *CassandraIndexerJob) IncRetry() int {
+func (j *cassandraIndexerJob) IncRetry() int {
 	j.retry++
 	return j.retry
 }
-func (j *CassandraIndexerJob) OnRetry() int {
+func (j *cassandraIndexerJob) OnRetry() int {
 	return j.retry
 }
 
-func (j *CassandraIndexerJob) DoWork() error {
+func (j *cassandraIndexerJob) DoWork() error {
 	err := j.Cass.WriteOne(j.Stat)
 	if err != nil {
 		j.Cass.log.Error("Insert failed for Index: %v retrying ...", j.Stat)

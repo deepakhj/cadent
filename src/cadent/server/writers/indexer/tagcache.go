@@ -38,10 +38,10 @@ type TagCacheItem struct {
 	Name   string
 	Value  string
 	IsMeta bool
-	Id     interface{}
+	Id     string
 }
 
-func NewTagCacheItem(name string, value string, ismeta bool, id interface{}) *TagCacheItem {
+func NewTagCacheItem(name string, value string, ismeta bool, id string) *TagCacheItem {
 
 	return &TagCacheItem{
 		Name:   name,
@@ -88,7 +88,7 @@ func (rc *TagCache) Key(name, value string, ismeta bool) string {
 }
 
 // Add a tag to the cache
-func (rc *TagCache) Add(name, value string, is_meta bool, id interface{}) bool {
+func (rc *TagCache) Add(name, value string, is_meta bool, id string) bool {
 
 	mKey := rc.Key(name, value, is_meta)
 	rc.mu.RLock()
@@ -105,21 +105,21 @@ func (rc *TagCache) Add(name, value string, is_meta bool, id interface{}) bool {
 }
 
 // Get a tag id from the cache
-func (rc *TagCache) Get(name, value string, is_meta bool) interface{} {
+func (rc *TagCache) Get(name, value string, is_meta bool) string {
 	key := rc.Key(name, value, is_meta)
 
 	rc.mu.RLock()
 	gots, ok := rc.cache[key]
 	rc.mu.RUnlock()
 	if !ok {
-		return nil
+		return ""
 	}
 	maxBack := time.Now().Unix() - TAG_CACHE_MAX_TIME_IN_CACHE
 	if gots.Added < maxBack {
 		rc.mu.Lock()
 		delete(rc.cache, key)
 		rc.mu.Unlock()
-		return nil
+		return ""
 	}
 	return gots.Id
 }
