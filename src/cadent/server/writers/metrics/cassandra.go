@@ -355,6 +355,7 @@ type CassandraMetric struct {
 func NewCassandraMetrics() *CassandraMetric {
 	cass := new(CassandraMetric)
 	cass.driver = "cassandra"
+	cass.rollupType = "cached"
 	cass.isPrimary = false
 	return cass
 }
@@ -362,6 +363,7 @@ func NewCassandraMetrics() *CassandraMetric {
 func NewCassandraTriggerMetrics() *CassandraMetric {
 	cass := new(CassandraMetric)
 	cass.driver = "cassandra-triggered"
+	cass.rollupType = "triggered"
 	cass.isPrimary = false
 	return cass
 }
@@ -405,7 +407,9 @@ func (cass *CassandraMetric) Config(conf *options.Options) (err error) {
 	cass.renderTimeout = rdur
 
 	// rolluptype
-	cass.rollupType = conf.String("rollupType", CASSANDRA_DEFAULT_ROLLUP_TYPE)
+	if cass.rollupType != "" {
+		cass.rollupType = conf.String("rollupType", CASSANDRA_DEFAULT_ROLLUP_TYPE)
+	}
 
 	_cache, err := conf.ObjectRequired("cache")
 	if _cache == nil {
@@ -461,9 +465,11 @@ func (cass *CassandraMetric) Start() {
 		if len(cass.resolutions) == 1 {
 			cass.rollupType = "cached"
 		}
+		cass.writer.log.Notice("Rollup Type: %s on resolution: %d (min resolution: %d)", cass.rollupType, cass.currentResolution, cass.resolutions[0][0])
 		cass.doRollup = cass.rollupType == "triggered" && cass.currentResolution == cass.resolutions[0][0]
 		// start the rollupper if needed
 		if cass.doRollup {
+			cass.writer.log.Notice("Starting rollup machine")
 			// all but the lowest one
 			cass.rollup.blobMaxBytes = cass.cacher.maxBytes
 			cass.rollup.SetResolutions(cass.resolutions[1:])
@@ -852,12 +858,12 @@ func (cass *CassandraMetric) RawDataRenderOne(metric *indexer.MetricFindItem, st
 
 	if metric.Leaf == 0 {
 		//data only but return a "blank" data set otherwise graphite no likey
-		return rawd, errNotADataNode
+		return rawd, ErrorNotADataNode
 	}
 
 	b_len := (uEnd - uStart) / resolution //just to be safe
 	if b_len <= 0 {
-		return rawd, errTimeTooSmall
+		return rawd, ErrorTimeTooSmall
 	}
 
 	inflight, err := cass.GetFromWriteCache(metric, uStart, uEnd, resolution)

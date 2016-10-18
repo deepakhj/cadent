@@ -33,7 +33,7 @@ CREATE TABLE `{path_table}` (
   `uid` varchar(50) NOT NULL,
   `path` varchar(255) NOT NULL DEFAULT '',
   `length` int NOT NULL,
-  `hasData` bool DEFAULT 0,
+  `has_data` bool DEFAULT 0,
   PRIMARY KEY (`id`),
   KEY `seg_pos` (`segment`, `pos`),
   KEY `uid` (`uid`),
@@ -44,10 +44,10 @@ CREATE TABLE `{tagTable}` (
   `id` BIGINT unsigned NOT NULL AUTO_INCREMENT,
   `name` varchar(255) NOT NULL,
   `value` varchar(255) NOT NULL,
-  `isMeta` tinyint(1) NOT NULL DEFAULT 0,
+  `is_meta` tinyint(1) NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
   KEY `name` (`name`),
-  UNIQUE KEY `uid` (`value`, `name`, `isMeta`)
+  UNIQUE KEY `uid` (`value`, `name`, `is_meta`)
 );
 
 CREATE TABLE `{tagTable}_xref` (
@@ -256,7 +256,7 @@ func (my *MySQLIndexer) WriteTags(inname *repr.StatName, do_main bool, do_meta b
 
 	// Tag Time
 	tagQ := fmt.Sprintf(
-		"INSERT INTO %s (name, value, isMeta) VALUES (?, ?, ?)",
+		"INSERT INTO %s (name, value, is_meta) VALUES (?, ?, ?)",
 		my.db.TagTable(),
 	)
 
@@ -361,7 +361,7 @@ func (my *MySQLIndexer) WriteOne(inname *repr.StatName) error {
 	// we are going to assume that if the path is already in the system, we've indexed it and therefore
 	// do not need to do the super loop (which is very expensive)
 	SelQ := fmt.Sprintf(
-		"SELECT uid FROM %s WHERE hasData=? AND segment=? AND path=? LIMIT 1",
+		"SELECT uid FROM %s WHERE has_data=? AND segment=? AND path=? LIMIT 1",
 		my.db.PathTable(),
 	)
 
@@ -416,7 +416,7 @@ func (my *MySQLIndexer) WriteOne(inname *repr.StatName) error {
 
 		*/
 		Q = fmt.Sprintf(
-			"INSERT IGNORE INTO %s (segment, pos, path, uid, length, hasData) VALUES  (?, ?, ?, ?, ?, ?)",
+			"INSERT IGNORE INTO %s (segment, pos, path, uid, length, has_data) VALUES  (?, ?, ?, ?, ?, ?)",
 			my.db.PathTable(),
 		)
 
@@ -598,7 +598,7 @@ func (my *MySQLIndexer) FindTagId(name string, value string, ismeta bool) (strin
 	}
 
 	selTagQ := fmt.Sprintf(
-		"SELECT id FROM %s WHERE name=? AND value=? AND isMeta=?",
+		"SELECT id FROM %s WHERE name=? AND value=? AND is_meta=?",
 		my.db.TagTable(),
 	)
 
@@ -629,7 +629,7 @@ func (my *MySQLIndexer) GetTagsByUid(unique_id string) (tags repr.SortingTags, m
 	tagXrTable := my.db.TagTableXref()
 
 	tgsQ := fmt.Sprintf(
-		"SELECT name,value,isMeta FROM %s WHERE id IN ( SELECT tag_id FROM %s WHERE uid = ? )",
+		"SELECT name,value,is_meta FROM %s WHERE id IN ( SELECT tag_id FROM %s WHERE uid = ? )",
 		tagTable, tagXrTable,
 	)
 
@@ -659,14 +659,14 @@ func (my *MySQLIndexer) GetTagsByUid(unique_id string) (tags repr.SortingTags, m
 
 func (my *MySQLIndexer) GetTagsByName(name string, page int) (tags MetricTagItems, err error) {
 	sel_tagQ := fmt.Sprintf(
-		"SELECT id, name, value, isMeta FROM %s WHERE name=? LIMIT ?, ?",
+		"SELECT id, name, value, is_meta FROM %s WHERE name=? LIMIT ?, ?",
 		my.db.TagTable(),
 	)
 	use_name := name
 
 	if needRegex(name) {
 		sel_tagQ = fmt.Sprintf(
-			"SELECT id, name, value, isMeta FROM %s WHERE name REGEXP ? LIMIT ?, ?",
+			"SELECT id, name, value, is_meta FROM %s WHERE name REGEXP ? LIMIT ?, ?",
 			my.db.TagTable(),
 		)
 		use_name = regifyMysqlKeyString(name)
@@ -697,7 +697,7 @@ func (my *MySQLIndexer) GetTagsByName(name string, page int) (tags MetricTagItem
 
 func (my *MySQLIndexer) GetTagsByNameValue(name string, value string, page int) (tags MetricTagItems, err error) {
 	selTagQ := fmt.Sprintf(
-		"SELECT id, name, value, isMeta FROM %s WHERE name=? AND value=? LIMIT ?, ?",
+		"SELECT id, name, value, is_meta FROM %s WHERE name=? AND value=? LIMIT ?, ?",
 		my.db.TagTable(),
 	)
 	useName := name
@@ -709,7 +709,7 @@ func (my *MySQLIndexer) GetTagsByNameValue(name string, value string, page int) 
 
 	if needRegex(value) {
 		selTagQ = fmt.Sprintf(
-			"SELECT id, name, value, isMeta FROM %s WHERE name=? AND value REGEXP ? LIMIT ?, ?",
+			"SELECT id, name, value, is_meta FROM %s WHERE name=? AND value REGEXP ? LIMIT ?, ?",
 			my.db.TagTable(),
 		)
 		useVal = regifyMysqlKeyString(value)
@@ -771,7 +771,7 @@ func (my *MySQLIndexer) GetUidsByTags(key string, tags repr.SortingTags, page in
 	key_q := ""
 	if len(key) > 0 {
 		key_q = fmt.Sprintf(
-			"SELECT DISTINCT uid FROM %s WHERE segment=? AND hasData=1 AND uid IN ",
+			"SELECT DISTINCT uid FROM %s WHERE segment=? AND has_data=1 AND uid IN ",
 			my.db.PathTable(),
 		)
 		q_params = append(q_params, key)
@@ -840,7 +840,7 @@ func (my *MySQLIndexer) List(hasData bool, page int) (MetricFindItems, error) {
 	// grab all the paths that match this length if there is no regex needed
 	// these are the "data/leaf" nodes .. alow or uid lookups too
 	pathQ := fmt.Sprintf(
-		"SELECT uid,path FROM %s WHERE hasData=? AND segment=path LIMIT ?,?",
+		"SELECT uid,path FROM %s WHERE has_data=? AND segment=path LIMIT ?,?",
 		my.db.PathTable(),
 	)
 
@@ -900,7 +900,7 @@ func (my *MySQLIndexer) FindNonRegex(metric string, tags repr.SortingTags, exact
 	// grab all the paths that match this length if there is no regex needed
 	// these are the "data/leaf" nodes .. allow or uid lookups too
 	pathQ := fmt.Sprintf(
-		"SELECT uid,path,length,hasData FROM %s WHERE (pos=? AND segment=?) OR (uid = ? AND segment = path AND hasData=1)",
+		"SELECT uid,path,length,has_data FROM %s WHERE (pos=? AND segment=?) OR (uid = ? AND segment = path AND has_data=1)",
 		my.db.PathTable(),
 	)
 
@@ -927,8 +927,8 @@ func (my *MySQLIndexer) FindNonRegex(metric string, tags repr.SortingTags, exact
 		if len(metric) == 0 {
 
 			pathQ = fmt.Sprintf(
-				"SELECT uid,path,length,hasData FROM %s "+
-					" WHERE hasData=1 AND segment = path AND "+
+				"SELECT uid,path,length,has_data FROM %s "+
+					" WHERE has_data=1 AND segment = path AND "+
 					" uid IN (SELECT DISTINCT uid FROM %s WHERE %s.tag_id IN ",
 				my.db.PathTable(), my.db.TagTableXref(), my.db.TagTableXref(),
 			)
@@ -941,8 +941,8 @@ func (my *MySQLIndexer) FindNonRegex(metric string, tags repr.SortingTags, exact
 		} else {
 
 			pathQ = fmt.Sprintf(
-				"SELECT uid,path,length,hasData FROM %s "+
-					" WHERE ((pos=? AND segment=?) OR (uid = ? AND segment = path AND hasData=1)) AND"+
+				"SELECT uid,path,length,has_data FROM %s "+
+					" WHERE ((pos=? AND segment=?) OR (uid = ? AND segment = path AND has_data=1)) AND"+
 					" uid IN (SELECT DISTINCT uid FROM %s WHERE %s.tag_id IN ",
 				my.db.PathTable(), my.db.TagTableXref(), my.db.TagTableXref(),
 			)

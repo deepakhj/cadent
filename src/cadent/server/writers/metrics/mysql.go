@@ -97,8 +97,8 @@ const (
 )
 
 // common errors to avoid GC pressure
-var errNotADataNode = errors.New("Render: Not a data node")
-var errTimeTooSmall = errors.New("Render: time too narrow")
+var ErrorNotADataNode = errors.New("Render: Not a data node")
+var ErrorTimeTooSmall = errors.New("Render: time too narrow")
 
 /************************************************************************/
 /**********  Standard Worker Dispatcher JOB   ***************************/
@@ -166,6 +166,7 @@ func NewMySQLMetrics() *MySQLMetrics {
 func NewMySQLTriggeredMetrics() *MySQLMetrics {
 	my := new(MySQLMetrics)
 	my.driver = "mysql-triggered"
+	my.rollupType = "triggered"
 	my.isPrimary = false
 	my.log = logging.MustGetLogger("writers.mysql")
 	return my
@@ -199,7 +200,9 @@ func (my *MySQLMetrics) Config(conf *options.Options) error {
 	}
 
 	// rolluptype
-	my.rollupType = conf.String("rollup_type", MYSQL_DEFAULT_ROLLUP_TYPE)
+	if my.rollupType == "" {
+		my.rollupType = conf.String("rollup_type", MYSQL_DEFAULT_ROLLUP_TYPE)
+	}
 
 	// tweak queues and worker sizes
 	my.num_workers = int(conf.Int64("write_workers", MYSQL_DEFAULT_METRIC_WORKERS))
@@ -271,9 +274,12 @@ func (my *MySQLMetrics) Start() {
 		if len(my.resolutions) == 1 {
 			my.rollupType = "cached"
 		}
+		my.log.Notice("Rollup Type: %s on resolution: %d (min resolution: %d)", my.rollupType, my.currentResolution, my.resolutions[0][0])
+
 		my.doRollup = my.rollupType == "triggered" && my.currentResolution == my.resolutions[0][0]
 		// start the rolluper if needed
 		if my.doRollup {
+			my.log.Notice("Starting rollup machine")
 			// all but the lowest one
 			my.rollup.blobMaxBytes = my.cacher.maxBytes
 			my.rollup.SetResolutions(my.resolutions[1:])
@@ -718,12 +724,12 @@ func (my *MySQLMetrics) RawDataRenderOne(metric *indexer.MetricFindItem, start i
 
 	if metric.Leaf == 0 {
 		//data only but return a "blank" data set otherwise graphite no likey
-		return rawd, errNotADataNode
+		return rawd, ErrorNotADataNode
 	}
 
 	b_len := (u_end - u_start) / resolution //just to be safe
 	if b_len <= 0 {
-		return rawd, errTimeTooSmall
+		return rawd, ErrorTimeTooSmall
 	}
 
 	//cache check
