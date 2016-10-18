@@ -81,7 +81,6 @@ import (
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
 	logging "gopkg.in/op/go-logging.v1"
-	"math"
 	"strings"
 	"sync"
 	"time"
@@ -471,22 +470,6 @@ func (my *MySQLMetrics) Write(stat repr.StatRepr) error {
 
 /************** READING ********************/
 
-// based on the from/to in seconds get the best resolution
-// from and to should be SECONDS not nano-seconds
-// from and to needs to be > then the TTL as well
-func (my *MySQLMetrics) getResolution(from int64, to int64) uint32 {
-	diff := int(math.Abs(float64(to - from)))
-	n := int(time.Now().Unix())
-	back_f := n - int(from)
-	back_t := n - int(to)
-	for _, res := range my.resolutions {
-		if diff <= res[1] && back_f <= res[1] && back_t <= res[1] {
-			return uint32(res[0])
-		}
-	}
-	return uint32(my.resolutions[len(my.resolutions)-1][0])
-}
-
 func (my *MySQLMetrics) GetFromReadCache(metric string, start int64, end int64) (rawd *RawRenderItem, got bool) {
 	rawd = new(RawRenderItem)
 
@@ -710,7 +693,7 @@ func (my *MySQLMetrics) RawDataRenderOne(metric *indexer.MetricFindItem, start i
 	defer stats.StatsdSlowNanoTimeFunc("reader.mysql.renderraw.get-time-ns", time.Now())
 	rawd := new(RawRenderItem)
 
-	resolution := my.getResolution(start, end)
+	resolution := my.GetResolution(start, end)
 	out_resolution := resolution
 	//obey the bigger
 	if resample > resolution {
@@ -878,7 +861,7 @@ func (my *MySQLMetrics) CacheRender(path string, start int64, end int64, tags re
 	defer stats.StatsdSlowNanoTimeFunc("reader.cassandra.cacherender.get-time-ns", time.Now())
 
 	//figure out the best res
-	resolution := my.getResolution(start, end)
+	resolution := my.GetResolution(start, end)
 
 	start = TruncateTimeTo(start, int(resolution))
 	end = TruncateTimeTo(end, int(resolution))
@@ -934,7 +917,7 @@ func (my *MySQLMetrics) CachedSeries(path string, start int64, end int64, tags r
 	metric.MergeMetric2Tags(tags)
 	metric.MergeMetric2Tags(my.staticTags)
 
-	resolution := my.getResolution(start, end)
+	resolution := my.GetResolution(start, end)
 	cache_db := fmt.Sprintf("%s:%v", my.cacherPrefix, resolution)
 	use_cache := GetCacherByName(cache_db)
 	if use_cache == nil {

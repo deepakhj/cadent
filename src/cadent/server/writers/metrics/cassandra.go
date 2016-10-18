@@ -144,7 +144,6 @@ func _get_cass_singleton(conf *options.Options) (*CassandraWriter, error) {
 	return writer, nil
 }
 
-// special onload init
 func init() {
 	_CASS_WRITER_SINGLETON = make(map[string]*CassandraWriter)
 }
@@ -576,7 +575,11 @@ func (cass *CassandraMetric) overFlowWrite() {
 
 		stats.StatsdClientSlow.Incr("writer.cassandra.queue.add", 1)
 
-		cass.dispatcher.Add(&cassandraBlobMetricJob{Cass: cass, Ts: statitem.(*TotalTimeSeries)})
+		ts := statitem.(*TotalTimeSeries)
+		cass.dispatcher.Add(&cassandraBlobMetricJob{Cass: cass, Ts: ts})
+		if cass.doRollup {
+			cass.rollup.Add(ts)
+		}
 	}
 }
 
