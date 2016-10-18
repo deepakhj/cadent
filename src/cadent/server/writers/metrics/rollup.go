@@ -229,7 +229,7 @@ func (rl *RollupMetric) DoRollup(tseries *TotalTimeSeries) (err error) {
 
 	rl.log.Debug("Rollup Triggered for %s (%s) in %s", tseries.Name.Key, tseries.Name.UniqueIdString(), rl.writer.Driver())
 	writeOne := func(rawd *RawRenderItem, old_data DBSeriesList, resolution int, ttl int) error {
-		defer stats.StatsdSlowNanoTimeFunc("reader.rollup.write-time-ns", time.Now())
+		defer stats.StatsdSlowNanoTimeFunc("writer.rollup.write-time-ns", time.Now())
 		// make the new series
 		n_opts := series.NewDefaultOptions()
 		n_opts.HighTimeResolution = tseries.Series.HighResolution()
