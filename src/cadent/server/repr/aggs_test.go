@@ -23,7 +23,7 @@ import (
 
 func TestAggsRepr(t *testing.T) {
 
-	test_list := make(map[string]AggType, 0)
+	test_list := make(map[string]uint32, 0)
 
 	test_list["stats.gauges.moo.go"] = LAST
 	test_list["stats.moo.moo.gauge"] = LAST
@@ -65,7 +65,7 @@ func TestAggsRepr(t *testing.T) {
 
 	})
 
-	tag_list := make(map[string]AggType, 0)
+	tag_list := make(map[string]uint32, 0)
 
 	tag_list["go"] = MEAN
 	tag_list["gauge"] = LAST

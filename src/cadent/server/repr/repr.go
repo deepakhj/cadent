@@ -38,6 +38,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"sync"
+	"hash"
 )
 
 type StatId uint64
@@ -45,6 +47,27 @@ type StatId uint64
 type NilJsonFloat64 float64
 
 var nullBytes = []byte("null")
+
+
+// a little hash pool for GC pressure easing
+
+var fn64avPool sync.Pool
+
+func GetFnv64a() hash.Hash64 {
+	x := fn64avPool.Get()
+	if x == nil {
+		return fnv.New64a()
+	}
+	out := x.(hash.Hash64)
+	out.Reset()
+	return out
+}
+
+func PutFnv64a(spl hash.Hash64) {
+	fn64avPool.Put(spl)
+}
+
+
 
 // needed to handle "Inf" values
 func (s NilJsonFloat64) MarshalJSON() ([]byte, error) {
@@ -77,15 +100,8 @@ func (s *StatName) SetTagMode(mode string) {
 }
 
 func (s *StatName) Copy() *StatName {
-	n := new(StatName)
-	n.Resolution = s.Resolution
-	n.TagMode = s.TagMode
-	n.Tags = s.Tags
-	n.MetaTags = s.MetaTags
-	n.Key = s.Key
-	n.XXX_uniqueIdstr = s.XXX_uniqueIdstr
-	n.XXX_uniqueId = s.XXX_uniqueId
-	return n
+	cp := *s
+	return &cp
 }
 
 // take the various "parts" (keys, resolution, tags) and return a basic md5 hash of things
@@ -93,7 +109,8 @@ func (s *StatName) UniqueId() StatId {
 	if s.XXX_uniqueId > 0 {
 		return StatId(s.XXX_uniqueId)
 	}
-	buf := fnv.New64a()
+	buf := GetFnv64a()
+	defer PutFnv64a(buf)
 
 	byte_buf := utils.GetBytesBuffer()
 	defer utils.PutBytesBuffer(byte_buf)
@@ -120,7 +137,8 @@ func (s *StatName) UniqueId() StatId {
 // usefull for "indexers" that don't want to re-index things, but if the meta
 // tags change we need to add those to the xref
 func (s *StatName) UniqueIdAllTags() StatId {
-	buf := fnv.New64a()
+	buf := GetFnv64a()
+	defer PutFnv64a(buf)
 
 	byte_buf := utils.GetBytesBuffer()
 	defer utils.PutBytesBuffer(byte_buf)
@@ -280,7 +298,9 @@ func (s *StatRepr) ToUnix() uint32 {
 
 // take the various "parts" (keys, resolution, tags) and return a basic fmv64a hash of things
 func (s *StatRepr) UniqueId() uint64 {
-	buf := fnv.New64a()
+	buf := GetFnv64a()
+	defer PutFnv64a(buf)
+
 	fmt.Fprintf(buf, "%s:%d:%v", s.Name.Key, s.Name.Resolution, s.Name.SortedTags())
 	return buf.Sum64()
 }
@@ -294,17 +314,8 @@ func (s *StatRepr) ByteSize() int64 {
 }
 
 func (s *StatRepr) Copy() *StatRepr {
-	obj := new(StatRepr)
-	obj.Time = s.Time
-	obj.Min = s.Min
-	obj.Max = s.Max
-	obj.Last = s.Last
-	if s.Name != nil {
-		obj.Name = s.Name.Copy()
-	}
-	obj.Count = s.Count
-	obj.Sum = s.Sum
-	return obj
+	cp := *s
+	return &cp
 
 }
 
