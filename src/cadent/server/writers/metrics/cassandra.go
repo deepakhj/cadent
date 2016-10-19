@@ -1173,7 +1173,7 @@ func (cass *CassandraMetric) UpdateDBSeries(dbs *DBSeries, ts series.TimeSeries)
 
 	tName := cass.writer.db.MetricTable()
 	delQ := fmt.Sprintf(
-		"DELETE FROM %s WHERE mid={id: ?, res:?} AND stime=? AND etime=?",
+		"DELETE FROM %s WHERE mid={id: ?, res:?} AND etime=?",
 		tName,
 	)
 	InsQ := fmt.Sprintf(
@@ -1186,7 +1186,7 @@ func (cass *CassandraMetric) UpdateDBSeries(dbs *DBSeries, ts series.TimeSeries)
 	if cass.tablePerResolution {
 		tName = fmt.Sprintf("%s_%ds", tName, dbs.Resolution)
 		delQ = fmt.Sprintf(
-			"DELETE FROM %s WHERE id AND stime=? AND etime=?",
+			"DELETE FROM %s WHERE id = ? AND etime=?",
 			tName,
 		)
 		delArgs = []interface{}{dbs.Uid, dbs.Start, dbs.End}
