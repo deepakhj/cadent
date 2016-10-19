@@ -1181,8 +1181,8 @@ func (cass *CassandraMetric) UpdateDBSeries(dbs *DBSeries, ts series.TimeSeries)
 		tName,
 	)
 
-	delArgs := []interface{}{dbs.Uid, dbs.Resolution, dbs.Start, dbs.End}
-	insArgs := []interface{}{dbs.Uid, dbs.Resolution, ts.StartTime(), ts.LastTime(), ptype, points}
+	delArgs := []interface{}{dbs.Uid, dbs.Resolution, dbs.End}
+	insArgs := []interface{}{dbs.Uid, dbs.Resolution, ts.LastTime(), ptype, points}
 	if cass.tablePerResolution {
 		tName = fmt.Sprintf("%s_%ds", tName, dbs.Resolution)
 		delQ = fmt.Sprintf(
