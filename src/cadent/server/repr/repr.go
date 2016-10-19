@@ -32,14 +32,14 @@ import (
 	"cadent/server/utils"
 	//"encoding/json"
 	"fmt"
+	"hash"
 	"hash/fnv"
 	"math"
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 	"sync"
-	"hash"
+	"time"
 )
 
 type StatId uint64
@@ -47,7 +47,6 @@ type StatId uint64
 type NilJsonFloat64 float64
 
 var nullBytes = []byte("null")
-
 
 // a little hash pool for GC pressure easing
 
@@ -66,8 +65,6 @@ func GetFnv64a() hash.Hash64 {
 func PutFnv64a(spl hash.Hash64) {
 	fn64avPool.Put(spl)
 }
-
-
 
 // needed to handle "Inf" values
 func (s NilJsonFloat64) MarshalJSON() ([]byte, error) {
