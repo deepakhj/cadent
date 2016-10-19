@@ -161,6 +161,22 @@ func (wqi *CacheQueueItem) ToString() string {
 	return fmt.Sprintf("Metric Id: %v Count: %d", wqi.metric, wqi.count)
 }
 
+// sync.Pool to reduce the "new" CacheQueueItem allocs as we do this alot
+
+var cacheQueueItemPool sync.Pool
+
+func getCacheQueueItem() *CacheQueueItem {
+	x := cacheQueueItemPool.Get()
+	if x == nil {
+		return new(CacheQueueItem)
+	}
+	return x.(*CacheQueueItem)
+}
+
+func putCacheQueueItem(spl *CacheQueueItem) {
+	cacheQueueItemPool.Put(spl)
+}
+
 // we pop the "most" populated item
 type CacheQueue []*CacheQueueItem
 
@@ -424,9 +440,18 @@ func (wc *Cacher) updateQueue() {
 	idx := 0
 	wc.mu.RLock()
 	newQueue := make(CacheQueue, len(wc.Cache))
+
+	for _, putback := range wc.Queue {
+		putCacheQueueItem(putback)
+	}
+
 	for key, values := range wc.Cache {
 		num_points := values.Series.Count()
-		newQueue[idx] = &CacheQueueItem{key, num_points, values.Series.Len()}
+		cQItem := getCacheQueueItem()
+		cQItem.metric = key
+		cQItem.count = num_points
+		cQItem.bytes = values.Series.Len()
+		newQueue[idx] = cQItem
 		idx++
 		f_len += num_points
 	}

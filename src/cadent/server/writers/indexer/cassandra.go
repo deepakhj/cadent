@@ -128,6 +128,11 @@ type CassandraIndexer struct {
 
 	tagCache   *TagCache
 	indexCache *IndexReadCache
+
+	// general fix queries strings
+	selectPathQ    string
+	insertPathQ    string
+	selectSegmentQ string
 }
 
 func NewCassandraIndexer() *CassandraIndexer {
@@ -150,6 +155,22 @@ func (cass *CassandraIndexer) Start() {
 		cass.writeDispatcher.Run()
 
 		cass.cache.Start() //start cacher
+
+		// make the nice query strings
+		cass.selectPathQ = fmt.Sprintf(
+			"SELECT id,path,length,has_data FROM %s WHERE segment={pos: ?, segment: ?} ",
+			cass.db.PathTable(),
+		)
+
+		cass.insertPathQ = fmt.Sprintf(
+			"INSERT INTO %s (segment, path, id, length, has_data) VALUES  ({pos: ?, segment: ?}, ?, ?, ?, ?)",
+			cass.db.PathTable(),
+		)
+
+		cass.selectSegmentQ = fmt.Sprintf(
+			"SELECT segment FROM %s WHERE pos=? AND segment=?",
+			cass.db.SegmentTable(),
+		)
 
 		go cass.sendToWriters() // the dispatcher
 	})
@@ -280,18 +301,16 @@ func (cass *CassandraIndexer) WriteOne(inname repr.StatName) error {
 		as "data'ed" nodes
 
 		*/
-		Q = fmt.Sprintf(
-			"INSERT INTO %s (segment, path, id, length, has_data) VALUES  ({pos: ?, segment: ?}, ?, ?, ?, ?)",
-			cass.db.PathTable(),
-		)
 
 		if skey != seg.Segment && idx < pth.Len-1 {
-			err = cass.conn.Query(Q,
+			err = cass.conn.Query(
+				cass.insertPathQ,
 				seg.Pos, seg.Segment, seg.Segment+"."+pth.Parts[idx+1], "", seg.Pos+1, false,
 			).Exec()
 		} else {
 			//the "raw data" path
-			err = cass.conn.Query(Q,
+			err = cass.conn.Query(
+				cass.insertPathQ,
 				seg.Pos, seg.Segment, skey, uid, pth.Len-1, true,
 			).Exec()
 		}
@@ -360,13 +379,8 @@ func (cass *CassandraIndexer) Write(skey repr.StatName) error {
 func (cass *CassandraIndexer) ExpandNonRegex(metric string) (MetricExpandItem, error) {
 	paths := strings.Split(metric, ".")
 	m_len := len(paths)
-	cass_Q := fmt.Sprintf(
-		"SELECT segment FROM %s WHERE pos=? AND segment=?",
-		cass.db.SegmentTable(),
-	)
-	iter := cass.conn.Query(cass_Q,
-		m_len-1, metric,
-	).Iter()
+
+	iter := cass.conn.Query(cass.selectSegmentQ, m_len-1, metric).Iter()
 
 	var on_pth string
 
