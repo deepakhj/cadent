@@ -46,7 +46,7 @@ func TestFileWriterAccumulator(t *testing.T) {
 		})
 
 		conf.Set("dsn", f_name)
-		conf.Set("rotate_every", time.Duration(time.Second))
+		conf.Set("rotate_every", "1s")
 		ok = fw.Config(&conf)
 		fw.SetIndexer(idx)
 
