@@ -213,9 +213,7 @@ func (s *GorillaTimeSeries) Bytes() []byte {
 }
 
 func (s *GorillaTimeSeries) Len() int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return len(s.bw.Bytes())
+	return s.bw.Len()
 }
 
 func (s *GorillaTimeSeries) StartTime() int64 {

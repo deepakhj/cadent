@@ -37,16 +37,16 @@ type BitStream struct {
 	// how many bits are valid in current byte
 	count uint8
 
-	bitsWritten int64
+	bitsWritten int
 	bitsRead    int64
 }
 
 func NewBReader(b []byte) *BitStream {
-	return &BitStream{stream: b, count: 8}
+	return &BitStream{stream: b, count: 8, bitsWritten: 0}
 }
 
 func NewBWriter(size int) *BitStream {
-	return &BitStream{stream: make([]byte, 0, size), count: 0}
+	return &BitStream{stream: make([]byte, 0, size), count: 0, bitsWritten: 0}
 }
 
 func (b *BitStream) SetStream(bs []byte) {
@@ -56,10 +56,14 @@ func (b *BitStream) SetCount(c uint8) {
 	b.count = 8
 }
 
+func (b *BitStream) Len() int {
+	return int(b.bitsWritten / 8)
+}
+
 func (b *BitStream) Clone() *BitStream {
 	d := make([]byte, len(b.stream))
 	copy(d, b.stream)
-	return &BitStream{stream: d, count: b.count}
+	return &BitStream{stream: d, count: b.count, bitsWritten: len(d)}
 }
 
 func (b *BitStream) Bytes() []byte {
@@ -124,7 +128,7 @@ func (b *BitStream) WriteBits(u uint64, nbits int) {
 		u <<= 1
 		nbits--
 	}
-	b.bitsWritten += int64(nbits)
+	b.bitsWritten += nbits
 }
 
 func (b *BitStream) ReadBit() (Bit, error) {

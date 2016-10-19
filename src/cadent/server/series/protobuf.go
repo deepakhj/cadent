@@ -43,6 +43,7 @@ type ProtobufTimeSeries struct {
 	T0      int64
 	curTime int64
 	Stats   *ProtStats
+	len     int
 }
 
 func NewProtobufTimeSeries(t0 int64, options *Options) *ProtobufTimeSeries {
@@ -81,7 +82,7 @@ func (s *ProtobufTimeSeries) Bytes() []byte {
 }
 
 func (s *ProtobufTimeSeries) Len() int {
-	return s.Stats.Size()
+	return s.len
 }
 
 func (s *ProtobufTimeSeries) Iter() (iter TimeSeriesIter, err error) {
@@ -136,6 +137,7 @@ func (s *ProtobufTimeSeries) AddPoint(t int64, min float64, max float64, last fl
 			SmallStat: tmp,
 		}
 		s.Stats.Stats = append(s.Stats.Stats, p_stat)
+		s.len += p_stat.Size()
 
 	} else {
 
@@ -152,6 +154,8 @@ func (s *ProtobufTimeSeries) AddPoint(t int64, min float64, max float64, last fl
 			Stat:     tmp,
 		}
 		s.Stats.Stats = append(s.Stats.Stats, p_stat)
+		s.len += p_stat.Size()
+
 	}
 	if t > s.curTime {
 		s.curTime = t

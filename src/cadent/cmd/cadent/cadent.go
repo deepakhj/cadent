@@ -305,7 +305,7 @@ func main() {
 			return
 		}()
 	}
-	//go freeOsMem()
+	go freeOsMem()
 	go TrapExit()
 
 	wg := sync.WaitGroup{}

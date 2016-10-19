@@ -53,7 +53,7 @@ func dummyStat() (*repr.StatRepr, int64) {
 	}
 	n := time.Now().UnixNano()
 	stat.Time = n
-	return stat, n
+	return stat.Copy(), n
 }
 
 func dummyStatSingleVal() (*repr.StatRepr, int64) {
@@ -63,7 +63,7 @@ func dummyStatSingleVal() (*repr.StatRepr, int64) {
 	}
 	n := time.Now().UnixNano()
 	stat.Time = n
-	return stat, n
+	return stat.Copy(), n
 }
 
 func dummyStatInt() (*repr.StatRepr, int64) {
@@ -76,7 +76,7 @@ func dummyStatInt() (*repr.StatRepr, int64) {
 	}
 	n := time.Now().UnixNano()
 	stat.Time = n
-	return stat, n
+	return stat.Copy(), n
 }
 
 func getSeries(stat *repr.StatRepr, num_s int, randomize bool) ([]int64, []*repr.StatRepr, error) {
