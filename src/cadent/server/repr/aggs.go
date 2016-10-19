@@ -22,10 +22,24 @@ limitations under the License.
 package repr
 
 import (
+	"cadent/server/lrucache"
+	"fmt"
 	"math"
 	"regexp"
 	"sort"
 	"strings"
+)
+
+const (
+	MEAN uint32 = iota + 1
+	SUM
+	FIRST
+	LAST
+	MIN
+	MAX
+	STD
+	MEDIAN
+	COUNT
 )
 
 var _upperReg *regexp.Regexp
@@ -37,7 +51,23 @@ var _countReg *regexp.Regexp
 var _stdReg *regexp.Regexp
 var aggMap map[string]uint32
 
+//a little lru cache for GuessReprValueFromKey as it can be expensive (especially for flat writers)
+var lruGuessReprValueFromKeyCache *lrucache.LRUCache
+
+type aggItem uint32
+
+func (a aggItem) Size() int {
+	return 32
+}
+
+func (a aggItem) ToString() string {
+	return fmt.Sprintf("%d", a)
+}
+
 func init() {
+
+	lruGuessReprValueFromKeyCache = lrucache.NewLRUCache(10485760) // 10Mb
+
 	_upperReg = regexp.MustCompile(".*upper_[0-9]+$")
 	_upperMaxReg = regexp.MustCompile(".*max_[0-9]+$")
 	_lowerReg = regexp.MustCompile(".*lower_[0-9]+$")
@@ -93,41 +123,37 @@ func init() {
 
 }
 
-const (
-	MEAN uint32 = iota + 1
-	SUM
-	FIRST
-	LAST
-	MIN
-	MAX
-	STD
-	MEDIAN
-	COUNT
-)
-
 // if there is a tag that has the agg func in it
 func AggTypeFromTag(stat string) uint32 {
 	stat = strings.ToLower(stat)
 
-	got, ok := aggMap[stat]
+	cached, ok := aggMap[stat]
 	if ok {
-		return got
+		return cached
 	}
 
+	v, ok := lruGuessReprValueFromKeyCache.Get(stat)
+	if ok {
+		return uint32(v.(aggItem))
+	}
+
+	var gots uint32
 	switch {
 	case _lowerMinReg.MatchString(stat) || _lowerReg.MatchString(stat):
-		return MIN
+		gots = MIN
 	case _upperReg.MatchString(stat) || _upperMaxReg.MatchString(stat):
-		return MAX
+		gots = MAX
 	case _countReg.MatchString(stat):
-		return SUM
+		gots = SUM
 	case _stdReg.MatchString(stat):
-		return STD
+		gots = STD
 	case _medianReg.MatchString(stat):
-		return MEDIAN
+		gots = MEDIAN
 	default:
-		return MEAN
+		gots = MEAN
 	}
+	lruGuessReprValueFromKeyCache.Set(stat, aggItem(gots))
+	return gots
 }
 
 func AggFuncFromTag(stat string) AGG_FUNC {
@@ -138,29 +164,38 @@ func AggFuncFromTag(stat string) AGG_FUNC {
 // (there is certainly a better way to do this)
 
 func GuessReprValueFromKey(metric string) uint32 {
+
+	v, ok := lruGuessReprValueFromKeyCache.Get(metric)
+	if ok {
+		return uint32(v.(aggItem))
+	}
+
 	spl := strings.Split(metric, ".")
 	last_path := strings.ToLower(spl[len(spl)-1])
 
 	// statsd like things are "mean_XX", "upper_XX", "lower_XX", "count_XX"
 	got, ok := aggMap[last_path]
 	if ok {
+		lruGuessReprValueFromKeyCache.Set(metric, aggItem(got))
 		return got
 	}
 
 	switch {
 	case strings.HasPrefix(metric, "stats_count") || strings.HasPrefix(metric, "stats.count") || strings.HasPrefix(metric, "stats.set") || strings.HasPrefix(metric, "stats.sets") || _countReg.MatchString(metric):
-		return SUM
+		got = SUM
 	case strings.HasPrefix(metric, "stats.gauge"):
-		return LAST
+		got = LAST
 	case _upperMaxReg.MatchString(last_path) || _upperReg.MatchString(last_path):
-		return MAX
+		got = MAX
 	case _lowerMinReg.MatchString(last_path) || _lowerReg.MatchString(last_path):
-		return MIN
+		got = MIN
 	case strings.HasPrefix(metric, "stats.median") || _medianReg.MatchString(last_path):
-		return MEDIAN
+		got = MEDIAN
 	default:
-		return MEAN
+		got = MEAN
 	}
+	lruGuessReprValueFromKeyCache.Set(metric, aggItem(got))
+	return got
 }
 
 func GuessAggFuncFromKey(stat string) AGG_FUNC {
