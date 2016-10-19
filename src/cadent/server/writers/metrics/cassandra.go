@@ -355,7 +355,6 @@ type CassandraMetric struct {
 func NewCassandraMetrics() *CassandraMetric {
 	cass := new(CassandraMetric)
 	cass.driver = "cassandra"
-	cass.rollupType = "cached"
 	cass.isPrimary = false
 	return cass
 }
@@ -407,7 +406,7 @@ func (cass *CassandraMetric) Config(conf *options.Options) (err error) {
 	cass.renderTimeout = rdur
 
 	// rolluptype
-	if cass.rollupType != "" {
+	if cass.rollupType == "" {
 		cass.rollupType = conf.String("rollupType", CASSANDRA_DEFAULT_ROLLUP_TYPE)
 	}
 
