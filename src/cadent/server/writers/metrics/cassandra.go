@@ -1182,14 +1182,14 @@ func (cass *CassandraMetric) UpdateDBSeries(dbs *DBSeries, ts series.TimeSeries)
 	)
 
 	delArgs := []interface{}{dbs.Uid, dbs.Resolution, dbs.End}
-	insArgs := []interface{}{dbs.Uid, dbs.Resolution, ts.LastTime(), ptype, points}
+	insArgs := []interface{}{dbs.Uid, dbs.Resolution, ts.StartTime(), ts.LastTime(), ptype, points}
 	if cass.tablePerResolution {
 		tName = fmt.Sprintf("%s_%ds", tName, dbs.Resolution)
 		delQ = fmt.Sprintf(
 			"DELETE FROM %s WHERE id = ? AND etime=?",
 			tName,
 		)
-		delArgs = []interface{}{dbs.Uid, dbs.Start, dbs.End}
+		delArgs = []interface{}{dbs.Uid, dbs.End}
 
 		InsQ = fmt.Sprintf(
 			"INSERT INTO %s (id, stime, etime, ptype, points) VALUES (?, ?, ?, ?, ?)",
