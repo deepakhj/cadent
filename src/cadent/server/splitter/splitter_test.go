@@ -79,8 +79,8 @@ func TestGraphiteRunner(t *testing.T) {
 		So(spl.OriginName(), ShouldEqual, "moo")
 	})
 
-	conf["key_index"] = 10
 	Convey("Graphite Runner should not parser this with a bad key index", t, func() {
+		conf["key_index"] = 10
 
 		gr, _ := NewGraphiteSplitter(conf)
 		spl, err := gr.ProcessLine(good_line)

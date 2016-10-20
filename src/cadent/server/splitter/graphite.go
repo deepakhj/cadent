@@ -23,6 +23,7 @@ limitations under the License.
 package splitter
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"strconv"
@@ -36,9 +37,9 @@ const GRAPHITE_NAME = "graphite"
 
 var errBadGraphiteLine = errors.New("Invalid Graphite/Space line")
 
-var GRAHITE_REPLACER *strings.Replacer
-var GRAHITE_REPLACER_BYTES = [][][]byte{
-	{[]byte("/"), []byte("")},
+var GRAPHITE_REPLACER *strings.Replacer
+var GRAPHITE_REPLACER_BYTES = [][][]byte{
+	{[]byte("/"), []byte(".")},
 	{[]byte(".."), []byte(".")},
 	{[]byte("=="), []byte("=")},
 	{[]byte(","), []byte("_")},
@@ -50,8 +51,10 @@ var GRAHITE_REPLACER_BYTES = [][][]byte{
 	{[]byte("  "), []byte(" ")},
 }
 
+var GRAPHITE_REPLACER_BYTE_MAP map[byte]byte
+
 func init() {
-	GRAHITE_REPLACER = strings.NewReplacer(
+	GRAPHITE_REPLACER = strings.NewReplacer(
 		"/", ".",
 		"..", ".",
 		",", "_",
@@ -63,6 +66,27 @@ func init() {
 		"}", "_",
 		"  ", " ",
 	)
+	GRAPHITE_REPLACER_BYTE_MAP := make(map[byte]byte)
+	GRAPHITE_REPLACER_BYTE_MAP['/'] = '.'
+	GRAPHITE_REPLACER_BYTE_MAP[','] = '_'
+	GRAPHITE_REPLACER_BYTE_MAP['*'] = '_'
+	GRAPHITE_REPLACER_BYTE_MAP['{'] = '_'
+	GRAPHITE_REPLACER_BYTE_MAP['}'] = '_'
+	GRAPHITE_REPLACER_BYTE_MAP['('] = '_'
+	GRAPHITE_REPLACER_BYTE_MAP[')'] = '_'
+	GRAPHITE_REPLACER_BYTE_MAP[' '] = '_'
+}
+
+func graphiteByteReplace(bs []byte) []byte {
+	bs = bytes.TrimSpace(bs)
+	for i, b := range bs {
+		if g, ok := GRAPHITE_REPLACER_BYTE_MAP[b]; ok {
+			bs[i] = g
+		}
+	}
+	bs = bytes.Replace(bs, []byte(".."), []byte("."), -1)
+	bs = bytes.Replace(bs, []byte("=="), []byte("="), -1)
+	return bs
 }
 
 type GraphiteSplitItem struct {
@@ -133,8 +157,8 @@ func (g *GraphiteSplitItem) String() string {
 }
 
 type GraphiteSplitter struct {
-	key_index  int
-	time_index int
+	keyIndex  int
+	timeIndex int
 }
 
 func (g *GraphiteSplitter) Name() (name string) { return GRAPHITE_NAME }
@@ -143,36 +167,33 @@ func NewGraphiteSplitter(conf map[string]interface{}) (*GraphiteSplitter, error)
 
 	//<key> <value> <time> <thigns>
 	job := &GraphiteSplitter{
-		key_index:  0,
-		time_index: 2,
+		keyIndex:  0,
+		timeIndex: 2,
 	}
 	// allow for a config option to pick the proper thing in the line
 	if idx, ok := conf["key_index"].(int); ok {
-		job.key_index = idx
+		job.keyIndex = idx
 	}
 	if idx, ok := conf["time_index"].(int); ok {
-		job.time_index = idx
+		job.timeIndex = idx
 	}
 	return job, nil
 }
 
 func (g *GraphiteSplitter) ProcessLine(line []byte) (SplitItem, error) {
 	//<key> <value> <time> <more> <more>
-	//graphite_array := strings.Fields(line)
-	// clean the string of bad chars
-	/*for _, repls := range GRAHITE_REPLACER_BYTES {
-		line = bytes.Replace(line, repls[0], repls[1], -1)
-	}*/
-	t_l := string(line)
-	t_l = GRAHITE_REPLACER.Replace(t_l)
 
-	graphite_array := strings.Fields(t_l)
-	if len(graphite_array) > g.key_index {
+	// clean out not-so-good chars
+	line = graphiteByteReplace(line)
+
+	//oddly strings Fields is faster then bytes fields, and we need strings later
+	graphiteArray := strings.Fields(string(line))
+	if len(graphiteArray) > g.keyIndex {
 
 		// graphite timestamps are in unix seconds
 		t := time.Time{}
-		if len(graphite_array) > g.time_index {
-			i, err := strconv.ParseInt(graphite_array[g.time_index], 10, 64)
+		if len(graphiteArray) > g.timeIndex {
+			i, err := strconv.ParseInt(graphiteArray[g.timeIndex], 10, 64)
 			if err == nil {
 				// nano or second tstamps
 				if i > 2147483647 {
@@ -183,21 +204,21 @@ func (g *GraphiteSplitter) ProcessLine(line []byte) (SplitItem, error) {
 			}
 		}
 		fs := [][]byte{}
-		for _, j := range graphite_array {
+		for _, j := range graphiteArray {
 			fs = append(fs, []byte(j))
 		}
 		gi := getGraphiteItem()
-		gi.inkey = []byte(graphite_array[g.key_index])
-		gi.inline = []byte(t_l)
+		gi.inkey = []byte(graphiteArray[g.keyIndex])
+		gi.inline = line
 		gi.intime = t
 		gi.infields = fs
 		gi.inphase = Parsed
 		gi.inorigin = Other
 		/*
-			// log.Printf("IN GRAPHITE: %s ARR: %v  t_idx: %d, time: %s", graphite_array, line, graphite_array[job.time_index], t.String())
+			// log.Printf("IN GRAPHITE: %s ARR: %v  t_idx: %d, time: %s", graphiteArray, line, graphiteArray[job.timeIndex], t.String())
 
 			gi := &GraphiteSplitItem{
-				inkey:    []byte(graphite_array[g.key_index]),
+				inkey:    []byte(graphiteArray[g.keyIndex]),
 				inline:   []byte(t_l),
 				intime:   t,
 				infields: fs,

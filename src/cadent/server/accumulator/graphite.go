@@ -327,12 +327,11 @@ func (a *GraphiteAccumulate) ProcessRepr(stat *repr.StatRepr) error {
 */
 
 func (a *GraphiteAccumulate) ProcessLine(linebytes []byte) (err error) {
-	line := string(linebytes)
-	stats_arr := strings.Fields(line)
+	stats_arr := strings.Fields(string(linebytes))
 	l := len(stats_arr)
 
 	if l < GRAHPITE_ACC_MIN_LEN {
-		return fmt.Errorf("Accumulate: Invalid Graphite line `%s`", line)
+		return fmt.Errorf("Accumulate: Invalid Graphite line `%s`", linebytes)
 	}
 
 	//
@@ -347,7 +346,7 @@ func (a *GraphiteAccumulate) ProcessLine(linebytes []byte) (err error) {
 
 	f_val, err := strconv.ParseFloat(val, 64)
 	if err != nil {
-		return fmt.Errorf("Accumulate: Bad Value | Invalid Graphite line `%s`", line)
+		return fmt.Errorf("Accumulate: Bad Value | Invalid Graphite line `%s`", linebytes)
 	}
 
 	var tags repr.SortingTags

@@ -29,7 +29,6 @@ import (
 	"fmt"
 	"math"
 	"sort"
-	"sync"
 	"time"
 )
 
@@ -40,36 +39,6 @@ var errMergeStepSizeError = errors.New("To merge 2 RawRenderItems, the step size
 var errQuantizeTooLittleData = errors.New("Cannot quantize to step: too little data")
 var errQuantizeStepTooSmall = fmt.Errorf("Cannot quantize: to a '0' step size ...")
 var errQuantizeStepTooManyPoints = fmt.Errorf("Cannot quantize: Over the 10,000 point threashold, please try a smaller time window")
-
-// NullRawDataPoint pool of goodies to lessen GC pressure and alocs
-
-var nullDataPointPool sync.Pool
-
-func GetNullRawDataPoint() *RawDataPoint {
-	x := nullDataPointPool.Get()
-	if x == nil {
-		out := new(RawDataPoint)
-		out.Count = 0
-		out.Time = 0
-		out.Sum = math.NaN()
-		out.Last = math.NaN()
-		out.Min = math.NaN()
-		out.Max = math.NaN()
-		return out
-	}
-	out := x.(*RawDataPoint)
-	out.Count = 0
-	out.Time = 0
-	out.Sum = math.NaN()
-	out.Last = math.NaN()
-	out.Min = math.NaN()
-	out.Max = math.NaN()
-	return out
-}
-
-func PutNullRawDataPoint(spl *RawDataPoint) {
-	nullDataPointPool.Put(spl)
-}
 
 /******************  a simple union of series.TimeSeries and repr.StatName *********************/
 type TotalTimeSeries struct {
@@ -198,9 +167,14 @@ func (d RawDataPoint) MarshalJSON() ([]byte, error) {
 }
 
 func NullRawDataPoint(time uint32) *RawDataPoint {
-	d := GetNullRawDataPoint()
-	d.Time = time
-	return d
+	out := new(RawDataPoint)
+	out.Count = 0
+	out.Time = time
+	out.Sum = math.NaN()
+	out.Last = math.NaN()
+	out.Min = math.NaN()
+	out.Max = math.NaN()
+	return out
 }
 
 func (r *RawDataPoint) IsNull() bool {
@@ -528,9 +502,8 @@ func (r *RawRenderItem) Resample(step uint32) error {
 
 	i_len := len(r.Data)
 	data := make([]*RawDataPoint, 0)
-
+	var dp *RawDataPoint
 	for t, i, n = start, 0, -1; t <= endTime; t += step {
-		dp := NullRawDataPoint(t)
 		// loop through the orig data until we hit a time > then the current one
 		for ; i < i_len; i++ {
 			if r.Data[i] == nil {
@@ -539,14 +512,16 @@ func (r *RawRenderItem) Resample(step uint32) error {
 			if r.Data[i].Time > t {
 				break
 			}
+			if dp == nil {
+				dp = NullRawDataPoint(t)
+			}
 			dp.Merge(r.Data[i])
 		}
 
-		if !dp.IsNull() {
+		if dp != nil && !dp.IsNull() {
 			data = append(data, dp)
+			dp = nil
 			n++
-		} else {
-			PutNullRawDataPoint(dp) // back to the pool
 		}
 	}
 
@@ -836,8 +811,8 @@ func (r *RawRenderItem) MergeWithResample(d *RawRenderItem, step uint32) error {
 	o_len := len(d.Data)
 	data := make([]*RawDataPoint, 0)
 
+	var dp *RawDataPoint
 	for t, i, o, n = start, 0, 0, -1; t <= endTime; t += step {
-		dp := NullRawDataPoint(t)
 		// loop through the orig data until we hit a time > then the current one
 		for ; i < i_len; i++ {
 			if r.Data[i] == nil {
@@ -845,6 +820,9 @@ func (r *RawRenderItem) MergeWithResample(d *RawRenderItem, step uint32) error {
 			}
 			if r.Data[i].Time > t {
 				break
+			}
+			if dp == nil {
+				dp = NullRawDataPoint(t)
 			}
 			dp.Merge(r.Data[i])
 		}
@@ -857,13 +835,15 @@ func (r *RawRenderItem) MergeWithResample(d *RawRenderItem, step uint32) error {
 			if d.Data[o].Time > t {
 				break
 			}
+			if dp == nil {
+				dp = NullRawDataPoint(t)
+			}
 			dp.Merge(d.Data[o])
 		}
-		if !dp.IsNull() {
+		if dp != nil && !dp.IsNull() {
 			data = append(data, dp)
+			dp = nil
 			n++
-		} else {
-			PutNullRawDataPoint(dp) // back to the pool
 		}
 	}
 

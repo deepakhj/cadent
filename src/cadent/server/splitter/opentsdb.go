@@ -52,8 +52,8 @@ func NewOpenTSDBSplitter(conf map[string]interface{}) (*OpenTSDBSplitter, error)
 	//<key> <value> <time> <thigns>
 	job := &OpenTSDBSplitter{}
 	job.graphSplit = new(GraphiteSplitter)
-	job.graphSplit.key_index = 0
-	job.graphSplit.time_index = 2
+	job.graphSplit.keyIndex = 0
+	job.graphSplit.timeIndex = 2
 	return job, nil
 }
 
