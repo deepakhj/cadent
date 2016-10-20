@@ -44,6 +44,7 @@ type ProtobufTimeSeries struct {
 	curTime int64
 	Stats   *ProtStats
 	len     int
+	curCount int
 }
 
 func NewProtobufTimeSeries(t0 int64, options *Options) *ProtobufTimeSeries {
@@ -64,7 +65,7 @@ func (s *ProtobufTimeSeries) HighResolution() bool {
 }
 
 func (s *ProtobufTimeSeries) Count() int {
-	return len(s.Stats.Stats)
+	return s.curCount
 }
 
 func (s *ProtobufTimeSeries) UnmarshalBinary(data []byte) error {
@@ -157,6 +158,9 @@ func (s *ProtobufTimeSeries) AddPoint(t int64, min float64, max float64, last fl
 		s.len += p_stat.Size()
 
 	}
+
+	s.curCount++
+
 	if t > s.curTime {
 		s.curTime = t
 	}
