@@ -59,16 +59,19 @@ type WriterCacheConfig struct {
 	LowFruitRate    float64 `toml:"low_fruit_rate" json:"low_fruit_rate"`
 }
 
-func (wc *WriterCacheConfig) New(resolution uint32) (*metrics.Cacher, error) {
-	// grab from signleton list
+func (wc *WriterCacheConfig) New(resolution uint32, mode string) (metrics.Cacher, error) {
+	// grab from singleton list
 	if len(wc.Name) == 0 {
 		return nil, errNeedCacheName
 	}
-	c, err := metrics.GetCacherSingleton(fmt.Sprintf("%s:%d", wc.Name, resolution))
+
+	c, err := metrics.GetCacherSingleton(fmt.Sprintf("%s:%d", wc.Name, resolution), mode)
 	if err != nil {
 		return nil, err
 	}
-	c.Prefix = wc.Name
+
+	c.SetPrefix(wc.Name)
+
 	if wc.BroadCastLength > 0 {
 		c.SetMaxBroadcastLen(wc.BroadCastLength)
 	}
@@ -76,7 +79,7 @@ func (wc *WriterCacheConfig) New(resolution uint32) (*metrics.Cacher, error) {
 		c.SetMaxKeys(wc.MaxMetricKeys)
 	}
 	if len(wc.CacheOverFlow) > 0 {
-		c.SetMaxOverFlowMethod(wc.CacheOverFlow)
+		c.SetOverFlowMethod(wc.CacheOverFlow)
 	}
 	if len(wc.SeriesEncoding) > 0 {
 		c.SetSeriesEncoding(wc.SeriesEncoding)
@@ -139,12 +142,16 @@ func (wc WriterMetricConfig) NewMetrics(duration time.Duration, cache_config []W
 	res := uint32(duration.Seconds())
 	proper_name := fmt.Sprintf("%s:%d", wc.UseCache, res)
 	have := false
+
+	// mode is the single or chunked modes
+	mode := metrics.CacheNeededName(wc.Driver)
+
 	for _, c := range cache_config {
-		got, err := c.New(res)
+		got, err := c.New(res, mode)
 		if err != nil {
 			return nil, err
 		}
-		if got.Name == proper_name {
+		if got.GetName() == proper_name {
 			i_ops.Set("cache", got)
 			have = true
 			break
