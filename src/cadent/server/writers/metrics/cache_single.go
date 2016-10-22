@@ -15,7 +15,9 @@ limitations under the License.
 */
 
 /*
-	The "cacher"
+	The "single cacher"
+
+	By single we mean just "one list" of metrics and their timeseries
 
 	Metrics come in and eventually go out.
 
@@ -75,7 +77,6 @@ import (
 	"sort"
 
 	"cadent/server/broadcast"
-	"cadent/server/utils"
 	"cadent/server/utils/shutdown"
 	"errors"
 	logging "gopkg.in/op/go-logging.v1"
@@ -100,8 +101,8 @@ const (
 )
 
 /*
-To save disk writes, the way carbon-cache does things is that it maintains an internal timseries
-map[metric]timesereis
+To save disk writes, the way carbon-cache does things is that it maintains an internal timeseries
+map[metric]timeseries
 once a "worker" gets to the writing of that queue it dumps all the points at once not
 one write per point.  The trick is that since graphite "queries" the cache it can backfill all the
 not-written points into the return that are still waiting to be written, just from some initial testing
@@ -113,42 +114,6 @@ a "write" operation will simply add things to this map of points and let a singl
 the "render" step will then attempt to backfill those points
 
 */
-
-// Cache singletons as the readers may need to use this too
-
-// the singleton
-var _CACHER_SINGLETON map[string]*Cacher
-var _cacher_mutex sync.RWMutex
-
-func GetCacherSingleton(nm string) (*Cacher, error) {
-	_cacher_mutex.Lock()
-	defer _cacher_mutex.Unlock()
-
-	if val, ok := _CACHER_SINGLETON[nm]; ok {
-		return val, nil
-	}
-
-	cacher := NewCacher()
-	_CACHER_SINGLETON[nm] = cacher
-	cacher.SetName(nm)
-	return cacher, nil
-}
-
-// just GET by name if it exists
-func GetCacherByName(nm string) *Cacher {
-	_cacher_mutex.RLock()
-	defer _cacher_mutex.RUnlock()
-
-	if val, ok := _CACHER_SINGLETON[nm]; ok {
-		return val
-	}
-	return nil
-}
-
-// special onload init
-func init() {
-	_CACHER_SINGLETON = make(map[string]*Cacher)
-}
 
 // struct to pull the next thing to "write"
 type CacheQueueItem struct {
@@ -195,11 +160,6 @@ func (v CacheQueueBytes) Less(i, j int) bool { return v[i].bytes < v[j].bytes }
 var errWriteCacheTooManyMetrics = errors.New("Cacher: too many keys, dropping metric")
 var errWriteCacheTooManyPoints = errors.New("Cacher: too many points in cache, dropping metric")
 
-type CacheSeries struct {
-	SeriesList []series.TimeSeries
-	WroteIndex []int
-}
-
 type CacheItem struct {
 	Name    *repr.StatName
 	Series  series.TimeSeries
@@ -207,49 +167,17 @@ type CacheItem struct {
 }
 
 // The "cache" item for points
-type Cacher struct {
-	mu             *sync.RWMutex
-	qmu            *sync.Mutex
-	maxTimeInCache uint32
-	maxKeys        int // max num of keys to keep before we have to drop
-	maxBytes       int // max num of points per key to keep before we have to drop
-	seriesType     string
-	curSize        int64
-	numCurPoint    int
-	numCurKeys     int
-	lowFruitRate   float64                // % of the time we reverse the max sortings to persist low volume stats
-	shutdown       *broadcast.Broadcaster // when recieved stop allowing adds and updates
-	_accept        bool                   // flag to stop
-	log            *logging.Logger
-	Queue          CacheQueue                 `json:"-"`
-	Cache          map[repr.StatId]*CacheItem `json:"-"`
-	Name           string                     `json:"name"` // just a human name for things
-	statsdPrefix   string
-	Prefix         string `json:"prefix"` // caches names are "Prefix:{resolution}" or should be
+type CacherSingle struct {
+	CacherBase
 
-	// for the overflow cached items::
-	// these caches can be shared for a given writer set, and the caches may provide the data for
-	// multiple writers, we need to specify that ONE of the writers is the "main" one otherwise
-	// the Metrics Write function will add the points over again, which is not a good thing
-	// when the accumulator flushes things to the multi writer
-	// The Writer needs to know it's "not" the primary writer and thus will not "add" points to the
-	// cache .. so the cache basically gets "one" primary writer pointed (first come first serve)
-	// the `Write` function in the writer object should check it's the primary
-	PrimaryWriter Metrics `json:"-"`
-
-	//overflow pieces
-	overFlowMethod string
-
-	// allow for multiple registering entities
-	overFlowBroadcast *broadcast.Broadcaster // should pass in *TotalTimeSeries
-
-	startstop utils.StartStop
-	started   bool
-	inited    bool
+	log     *logging.Logger
+	Queue   CacheQueue                 `json:"-"`
+	Cache   map[repr.StatId]*CacheItem `json:"-"`
+	_accept bool
 }
 
-func NewCacher() *Cacher {
-	wc := new(Cacher)
+func NewSingleCacher() *CacherSingle {
+	wc := new(CacherSingle)
 	wc.mu = new(sync.RWMutex)
 	wc.qmu = new(sync.Mutex)
 	wc.maxKeys = CACHER_METRICS_KEYS
@@ -274,45 +202,7 @@ func NewCacher() *Cacher {
 	return wc
 }
 
-func (wc *Cacher) SetName(nm string) {
-	wc.Name = nm
-	wc.statsdPrefix = fmt.Sprintf("cacher.%s.metrics.", stats.SanitizeName(nm))
-}
-func (wc *Cacher) SetMaxKeys(m int) {
-	wc.maxKeys = m
-}
-func (wc *Cacher) SetMaxBytesPerMetric(m int) {
-	wc.maxBytes = m
-}
-func (wc *Cacher) SetSeriesEncoding(m string) {
-	wc.seriesType = m
-}
-func (wc *Cacher) SetMaxTimeInCache(m uint32) {
-	wc.maxTimeInCache = m
-}
-func (wc *Cacher) SetMaxOverFlowMethod(m string) {
-	wc.overFlowMethod = m
-}
-func (wc *Cacher) SetMaxBroadcastLen(m int) {
-	wc.overFlowBroadcast = broadcast.New(m)
-}
-func (wc *Cacher) SetLowFruitRate(m float64) {
-	wc.lowFruitRate = m
-}
-
-func (wc *Cacher) SetPrimaryWriter(mw Metrics) bool {
-	if wc.PrimaryWriter == nil {
-		wc.PrimaryWriter = mw
-		return true
-	}
-	return false
-}
-
-func (wc *Cacher) IsPrimaryWriter(mw Metrics) bool {
-	return wc.PrimaryWriter == mw
-}
-
-func (wc *Cacher) Len() int {
+func (wc *CacherSingle) Len() int {
 	if wc.mu == nil {
 		return 0 // means we've not "started"
 	}
@@ -321,7 +211,7 @@ func (wc *Cacher) Len() int {
 	return len(wc.Cache)
 }
 
-func (wc *Cacher) Start() {
+func (wc *CacherSingle) Start() {
 	wc.startstop.Start(func() {
 		wc.started = true
 		wc.log.Notice("Starting Metric Cache sorter tick (%d max metrics, %d max bytes per metric) [%s]", wc.maxKeys, wc.maxBytes, wc.Name)
@@ -334,7 +224,7 @@ func (wc *Cacher) Start() {
 	})
 }
 
-func (wc *Cacher) Stop() {
+func (wc *CacherSingle) Stop() {
 	wc.startstop.Stop(func() {
 		shutdown.AddToShutdown()
 		defer shutdown.ReleaseFromShutdown()
@@ -346,11 +236,7 @@ func (wc *Cacher) Stop() {
 	})
 }
 
-func (wc *Cacher) GetOverFlowChan() *broadcast.Listener {
-	return wc.overFlowBroadcast.Listen()
-}
-
-func (wc *Cacher) DumpPoints(pts []*repr.StatRepr) {
+func (wc *CacherSingle) DumpPoints(pts []*repr.StatRepr) {
 	for idx, pt := range pts {
 		wc.log.Notice("TimerSeries: %d Time: %d Sum: %f", idx, pt.Time, pt.Sum)
 	}
@@ -358,7 +244,7 @@ func (wc *Cacher) DumpPoints(pts []*repr.StatRepr) {
 
 // do this every 5 min and write out any things that need to be \
 // flush as they been in the cache too long
-func (wc *Cacher) startCacheExpiredTick() {
+func (wc *CacherSingle) startCacheExpiredTick() {
 
 	// only can do this if overflow is chan
 	if wc.overFlowMethod != "chan" || wc.overFlowBroadcast == nil {
@@ -414,7 +300,7 @@ func (wc *Cacher) startCacheExpiredTick() {
 }
 
 // do this only once a second as it can be expensive
-func (wc *Cacher) startUpdateTick() {
+func (wc *CacherSingle) startUpdateTick() {
 
 	tick := time.NewTicker(2 * time.Second)
 	shuts := wc.shutdown.Listen()
@@ -432,7 +318,7 @@ func (wc *Cacher) startUpdateTick() {
 	}
 }
 
-func (wc *Cacher) updateQueue() {
+func (wc *CacherSingle) updateQueue() {
 	if !wc._accept {
 		return
 	}
@@ -486,13 +372,13 @@ func (wc *Cacher) updateQueue() {
 
 // add metric then update the sort queue
 // use this for more "direct" writing for very small caches
-func (wc *Cacher) AddAndUpdate(metric *repr.StatName, stat *repr.StatRepr) (err error) {
+func (wc *CacherSingle) AddAndUpdate(metric *repr.StatName, stat *repr.StatRepr) (err error) {
 	err = wc.Add(metric, stat)
 	wc.updateQueue()
 	return err
 }
 
-func (wc *Cacher) Add(name *repr.StatName, stat *repr.StatRepr) error {
+func (wc *CacherSingle) Add(name *repr.StatName, stat *repr.StatRepr) error {
 	wc.mu.Lock()
 	defer wc.mu.Unlock()
 
@@ -572,7 +458,7 @@ NEWSTAT:
 	return nil
 }
 
-func (wc *Cacher) getStatsStream(name *repr.StatName, ts series.TimeSeries) (repr.StatReprSlice, error) {
+func (wc *CacherSingle) getStatsStream(name *repr.StatName, ts series.TimeSeries) (repr.StatReprSlice, error) {
 	it, err := ts.Iter()
 	if err != nil {
 		wc.log.Error("Failed to get series itterator: %v", err)
@@ -598,7 +484,7 @@ func (wc *Cacher) getStatsStream(name *repr.StatName, ts series.TimeSeries) (rep
 	return stats, nil
 }
 
-func (wc *Cacher) Get(name *repr.StatName) (repr.StatReprSlice, error) {
+func (wc *CacherSingle) Get(name *repr.StatName) (repr.StatReprSlice, error) {
 	stats.StatsdClientSlow.Incr(wc.statsdPrefix+"read.cache-gets", 1)
 
 	wc.mu.RLock()
@@ -612,7 +498,7 @@ func (wc *Cacher) Get(name *repr.StatName) (repr.StatReprSlice, error) {
 	return nil, nil
 }
 
-func (wc *Cacher) GetAsRawRenderItem(name *repr.StatName) (*RawRenderItem, error) {
+func (wc *CacherSingle) GetAsRawRenderItem(name *repr.StatName) (*RawRenderItem, error) {
 
 	name, data, err := wc.GetById(name.UniqueId())
 	if err != nil {
@@ -654,7 +540,7 @@ func (wc *Cacher) GetAsRawRenderItem(name *repr.StatName) (*RawRenderItem, error
 	return rawd, nil
 }
 
-func (wc *Cacher) GetById(metric_id repr.StatId) (*repr.StatName, repr.StatReprSlice, error) {
+func (wc *CacherSingle) GetById(metric_id repr.StatId) (*repr.StatName, repr.StatReprSlice, error) {
 	stats.StatsdClientSlow.Incr("cacher.read.cache-gets", 1)
 	if wc == nil || wc.mu == nil {
 		return nil, nil, nil
@@ -671,7 +557,7 @@ func (wc *Cacher) GetById(metric_id repr.StatId) (*repr.StatName, repr.StatReprS
 	return nil, nil, nil
 }
 
-func (wc *Cacher) GetSeries(name *repr.StatName) (*repr.StatName, series.TimeSeries, error) {
+func (wc *CacherSingle) GetSeries(name *repr.StatName) (*repr.StatName, []series.TimeSeries, error) {
 	stats.StatsdClientSlow.Incr(wc.statsdPrefix+"read.cache-series-gets", 1)
 
 	wc.mu.RLock()
@@ -679,13 +565,21 @@ func (wc *Cacher) GetSeries(name *repr.StatName) (*repr.StatName, series.TimeSer
 
 	if gots, ok := wc.Cache[name.UniqueId()]; ok {
 		stats.StatsdClientSlow.Incr(wc.statsdPrefix+"read.cache-series-gets.values", 1)
-		return gots.Name, gots.Series, nil
+		return gots.Name, []series.TimeSeries{gots.Series}, nil
 	}
 	stats.StatsdClientSlow.Incr(wc.statsdPrefix+"read.cache-series-gets.empty", 1)
 	return nil, nil, nil
 }
 
-func (wc *Cacher) GetSeriesById(metric_id repr.StatId) (*repr.StatName, series.TimeSeries, error) {
+func (wc *CacherSingle) GetCurrentSeries(name *repr.StatName) (*repr.StatName, series.TimeSeries, error) {
+	nm, ts, err := wc.GetSeries(name)
+	if ts != nil && len(ts) > 0 {
+		return nm, ts[0], err
+	}
+	return nm, nil, err
+}
+
+func (wc *CacherSingle) GetSeriesById(metric_id repr.StatId) (*repr.StatName, []series.TimeSeries, error) {
 	stats.StatsdClientSlow.Incr(wc.statsdPrefix+"read.cache-series-by-idgets", 1)
 
 	wc.mu.RLock()
@@ -693,13 +587,21 @@ func (wc *Cacher) GetSeriesById(metric_id repr.StatId) (*repr.StatName, series.T
 
 	if gots, ok := wc.Cache[metric_id]; ok {
 		stats.StatsdClientSlow.Incr(wc.statsdPrefix+"read.cache-series-by-idgets.values", 1)
-		return gots.Name, gots.Series, nil
+		return gots.Name, []series.TimeSeries{gots.Series}, nil
 	}
 	stats.StatsdClientSlow.Incr(wc.statsdPrefix+"read.cache-series-by-idgets.empty", 1)
 	return nil, nil, nil
 }
 
-func (wc *Cacher) GetNextMetric() *repr.StatName {
+func (wc *CacherSingle) GetCurrentSeriesById(metric_id repr.StatId) (*repr.StatName, series.TimeSeries, error) {
+	nm, ts, err := wc.GetSeriesById(metric_id)
+	if ts != nil && len(ts) > 0 {
+		return nm, ts[0], err
+	}
+	return nm, nil, err
+}
+
+func (wc *CacherSingle) GetNextMetric() *repr.StatName {
 
 	for {
 		wc.qmu.Lock()
@@ -728,7 +630,7 @@ func (wc *Cacher) GetNextMetric() *repr.StatName {
 }
 
 // just grab something from the list
-func (wc *Cacher) GetAnyStat() (name *repr.StatName, stats repr.StatReprSlice) {
+func (wc *CacherSingle) GetAnyStat() (name *repr.StatName, stats repr.StatReprSlice) {
 	wc.mu.Lock()
 	defer wc.mu.Unlock()
 
@@ -741,7 +643,7 @@ func (wc *Cacher) GetAnyStat() (name *repr.StatName, stats repr.StatReprSlice) {
 	return nil, nil
 }
 
-func (wc *Cacher) Pop() (*repr.StatName, repr.StatReprSlice) {
+func (wc *CacherSingle) Pop() (*repr.StatName, repr.StatReprSlice) {
 	metric, ts := wc.PopSeries()
 	if ts == nil {
 		return nil, nil
@@ -750,7 +652,7 @@ func (wc *Cacher) Pop() (*repr.StatName, repr.StatReprSlice) {
 	return metric, out
 }
 
-func (wc *Cacher) PopSeries() (*repr.StatName, series.TimeSeries) {
+func (wc *CacherSingle) PopSeries() (*repr.StatName, series.TimeSeries) {
 	metric := wc.GetNextMetric()
 	if metric != nil {
 		wc.mu.Lock()
@@ -766,7 +668,7 @@ func (wc *Cacher) PopSeries() (*repr.StatName, series.TimeSeries) {
 }
 
 // add a metrics/point list back on the queue as it either "failed" or was ratelimited
-func (wc *Cacher) AddBack(name *repr.StatName, points repr.StatReprSlice) {
+func (wc *CacherSingle) AddBack(name *repr.StatName, points repr.StatReprSlice) {
 	for _, pt := range points {
 		wc.Add(name, pt)
 	}

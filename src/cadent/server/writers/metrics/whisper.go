@@ -155,7 +155,11 @@ func NewWhisperWriter(conf *options.Options) (*WhisperWriter, error) {
 	if err != nil {
 		return nil, errMetricsCacheRequired
 	}
-	ws.cacher = _cache.(*Cacher)
+	ws.cacher = _cache.(Cacher)
+	_, ok := ws.cacher.(*CacherSingle)
+	if !ok {
+		return nil, ErrorMustBeSingleCacheType
+	}
 
 	ws.shutdown = make(chan bool, 5)
 	ws.shutitdown = false
@@ -271,7 +275,11 @@ func (ws *WhisperWriter) Stop() {
 			ws.log.Warning("Whisper: Shutdown finished, nothing in queue to write")
 			return
 		}
-		mets := ws.cacher.Queue
+
+		//need to cast to get internals
+		scache := ws.cacher.(*CacherSingle)
+
+		mets := scache.Queue
 		mets_l := len(mets)
 		ws.log.Warning("Whisper: Shutting down, exhausting the queue (%d items) and quiting", mets_l)
 		// full tilt write out
@@ -314,7 +322,7 @@ func (ws *WhisperWriter) Start() {
 		go ws.sendToWriters() // fire up queue puller
 
 		// set th overflow chan, and start the listener for that channel
-		if ws.cacher.overFlowMethod == "chan" {
+		if ws.cacher.GetOverFlowMethod() == "chan" {
 			ws.cacheOverFlow = ws.cacher.GetOverFlowChan()
 			go ws.overFlowWrite()
 		}
@@ -395,7 +403,7 @@ func (ws *WhisperWriter) InsertMulti(metric *repr.StatName, points repr.StatRepr
 func (ws *WhisperWriter) InsertNext() (int, error) {
 	defer stats.StatsdSlowNanoTimeFunc("writer.whisper.update-time-ns", time.Now())
 
-	metric, points := ws.cacher.Pop()
+	metric, points := ws.cacher.(*CacherSingle).Pop()
 	if metric == nil || points == nil || len(points) == 0 {
 		return 0, nil
 	}

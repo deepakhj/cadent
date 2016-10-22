@@ -199,7 +199,7 @@ func (et *ESPath) ToSortedTags() (tags repr.SortingTags, metatags repr.SortingTa
 	return
 }
 
-type ElasticSearchSchema struct {
+type elasticSearchSchema struct {
 	conn         *elastic.Client
 	pathIndex    string
 	tagIndex     string
@@ -208,8 +208,8 @@ type ElasticSearchSchema struct {
 	startstop    utils.StartStop
 }
 
-func NewElasticSearchSchema(conn *elastic.Client, segment string, path string, tag string) *ElasticSearchSchema {
-	my := new(ElasticSearchSchema)
+func NewElasticSearchSchema(conn *elastic.Client, segment string, path string, tag string) *elasticSearchSchema {
+	my := new(elasticSearchSchema)
 	my.conn = conn
 	my.pathIndex = path
 	my.tagIndex = tag
@@ -219,7 +219,7 @@ func NewElasticSearchSchema(conn *elastic.Client, segment string, path string, t
 	return my
 }
 
-func (es *ElasticSearchSchema) AddIndexTables() (err error) {
+func (es *elasticSearchSchema) AddIndexTables() (err error) {
 	es.startstop.Start(func() {
 		es.log.Notice("Adding ElasticSearch index indexes `%s` `%s` `%s`", es.pathIndex, es.tagIndex, es.segmentIndex)
 		indexes := []string{es.pathIndex, es.tagIndex, es.segmentIndex}

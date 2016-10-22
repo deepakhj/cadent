@@ -109,7 +109,7 @@ func (my *MySQLFlatMetrics) Config(conf *options.Options) error {
 	//need to hide the usr/pw from things
 	p, _ := url.Parse("mysql://" + dsn)
 	cacheKey := fmt.Sprintf("mysqlflat:cache:%s/%s:%v", p.Host, conf.String("table", "metrics"), res)
-	my.cacher, err = GetCacherSingleton(cacheKey)
+	my.cacher, err = GetCacherSingleton(cacheKey, "single")
 
 	if err != nil {
 		return err

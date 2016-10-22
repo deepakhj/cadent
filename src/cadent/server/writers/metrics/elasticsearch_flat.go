@@ -126,7 +126,7 @@ func (es *ElasticSearchFlatMetrics) Config(conf *options.Options) error {
 	//need to hide the usr/pw from things
 	p, _ := url.Parse(dsn)
 	cacheKey := fmt.Sprintf("elasticflat:cache:%s/%s:%v", p.Host, conf.String("table", "metrics"), res)
-	es.cacher, err = GetCacherSingleton(cacheKey)
+	es.cacher, err = GetCacherSingleton(cacheKey, "single")
 
 	if err != nil {
 		return err

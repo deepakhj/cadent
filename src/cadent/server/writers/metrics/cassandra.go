@@ -414,8 +414,15 @@ func (cass *CassandraMetric) Config(conf *options.Options) (err error) {
 	if _cache == nil {
 		return errMetricsCacheRequired
 	}
-	cass.cacher = _cache.(*Cacher)
-	cass.cacherPrefix = cass.cacher.Prefix
+
+	// make sure it's of the correct type
+	_, ok := _cache.(*CacherSingle)
+	if !ok {
+		return fmt.Errorf("cacher for cassandra needs to be of 'single' type")
+	}
+
+	cass.cacher = _cache.(Cacher)
+	cass.cacherPrefix = cass.cacher.GetPrefix()
 
 	// for the overflow cached items::
 	// these caches can be shared for a given writer set, and the caches may provide the data for
@@ -426,12 +433,12 @@ func (cass *CassandraMetric) Config(conf *options.Options) (err error) {
 	// cache .. so the cache basically gets "one" primary writer pointed (first come first serve)
 	cass.isPrimary = cass.cacher.SetPrimaryWriter(cass)
 	if cass.isPrimary {
-		cass.writer.log.Notice("Cassandra series writer is the primary writer to write back cache %s", cass.cacher.Name)
+		cass.writer.log.Notice("Cassandra series writer is the primary writer to write back cache %s", cass.cacher.GetName())
 	}
 
 	if cass.rollupType == "triggered" {
 		cass.driver = "cassandra-triggered" // reset the name
-		cass.rollup = NewRollupMetric(cass, cass.cacher.maxBytes)
+		cass.rollup = NewRollupMetric(cass, cass.cacher.GetMaxBytesPerMetric())
 	}
 
 	if cass.tablePerResolution {
@@ -450,8 +457,23 @@ func (cass *CassandraMetric) Driver() string {
 func (cass *CassandraMetric) Start() {
 	cass.startstop.Start(func() {
 		/**** dispatcher queue ***/
-		cass.writer.log.Notice("Starting cassandra series writer for %s at %d bytes per series", cass.writer.db.MetricTable(), cass.cacher.maxBytes)
-		cass.cacher.overFlowMethod = "chan" // need to force this issue
+		cass.writer.log.Notice("Starting cassandra series writer for %s at %d bytes per series", cass.writer.db.MetricTable(), cass.cacher.GetMaxBytesPerMetric())
+		cass.writer.log.Notice("Adding metric tables ...")
+
+		schems := NewCassandraMetricsSchema(
+			cass.writer.conn,
+			cass.writer.db.Keyspace(),
+			cass.writer.db.MetricTable(),
+			cass.resolutions,
+			"blob",
+			cass.tablePerResolution,
+			cass.writer.db.GetCassandraVersion(),
+		)
+		err := schems.AddMetricsTable()
+		if err != nil {
+			panic(err)
+		}
+		cass.cacher.SetOverFlowMethod("chan") // need to force this issue
 		cass.cacher.Start()
 
 		// register the overflower
@@ -470,7 +492,7 @@ func (cass *CassandraMetric) Start() {
 		if cass.doRollup {
 			cass.writer.log.Notice("Starting rollup machine")
 			// all but the lowest one
-			cass.rollup.blobMaxBytes = cass.cacher.maxBytes
+			cass.rollup.blobMaxBytes = cass.cacher.GetMaxBytesPerMetric()
 			cass.rollup.SetResolutions(cass.resolutions[1:])
 			go cass.rollup.Start()
 		}
@@ -498,9 +520,12 @@ func (cass *CassandraMetric) Stop() {
 
 		cass.cacher.Stop()
 
-		mets := cass.cacher.Cache
+		// need to cast this out
+		scache := cass.cacher.(*CacherSingle)
+
+		mets := scache.Cache
 		mets_l := len(mets)
-		cass.writer.log.Warning("Shutting down %s and exhausting the queue (%d items) and quiting", cass.cacher.Name, mets_l)
+		cass.writer.log.Warning("Shutting down %s and exhausting the queue (%d items) and quiting", cass.cacher.GetName(), mets_l)
 
 		// full tilt write out
 		procs := 16
@@ -1049,7 +1074,13 @@ func (cass *CassandraMetric) CachedSeries(path string, start int64, end int64, t
 	if use_cache == nil {
 		use_cache = cass.cacher
 	}
-	name, inflight, err := use_cache.GetSeries(metric)
+
+	// must be of the "single" type
+	_, ok := use_cache.(*CacherSingle)
+	if !ok {
+		return nil, ErrorMustBeSingleCacheType
+	}
+	name, inflight, err := use_cache.GetCurrentSeries(metric)
 	if err != nil {
 		return nil, err
 	}
@@ -1057,7 +1088,7 @@ func (cass *CassandraMetric) CachedSeries(path string, start int64, end int64, t
 		// try the the path as unique ID
 		gotsInt := metric.StringToUniqueId(path)
 		if gotsInt != 0 {
-			name, inflight, err = use_cache.GetSeriesById(gotsInt)
+			name, inflight, err = use_cache.GetCurrentSeriesById(gotsInt)
 			if err != nil {
 				return nil, err
 			}
@@ -1074,15 +1105,24 @@ func (cass *CassandraMetric) CachedSeries(path string, start int64, end int64, t
 // given a name get the latest metric series
 func (cass *CassandraMetric) GetLatestFromDB(name *repr.StatName, resolution uint32) (DBSeriesList, error) {
 
-	Q := fmt.Sprintf(
-		"SELECT mid.id, stime, etime, ptype, points FROM %s WHERE mid={id: ?, res: ?} ORDER BY etime DESC LIMIT 1",
-		cass.writer.db.MetricTable(),
-	)
+	var Q string
+	var selArgs []interface{}
 
-	iter := cass.writer.conn.Query(
-		Q,
-		name.UniqueIdString(), resolution,
-	).Iter()
+	if cass.tablePerResolution {
+		Q = fmt.Sprintf(
+			"SELECT id, stime, etime, ptype, points FROM %s_%ds WHERE id=? ORDER BY etime DESC LIMIT 1",
+			cass.writer.db.MetricTable(), resolution,
+		)
+		selArgs = []interface{}{name.UniqueIdString()}
+	} else {
+		fmt.Sprintf(
+			"SELECT mid.id, stime, etime, ptype, points FROM %s WHERE mid={id: ?, res: ?} ORDER BY etime DESC LIMIT 1",
+			cass.writer.db.MetricTable(),
+		)
+		selArgs = []interface{}{name.UniqueIdString(), resolution}
+	}
+
+	iter := cass.writer.conn.Query(Q, selArgs...).Iter()
 
 	defer iter.Close()
 
@@ -1114,19 +1154,29 @@ func (cass *CassandraMetric) GetLatestFromDB(name *repr.StatName, resolution uin
 // given a name get the latest metric series
 func (cass *CassandraMetric) GetRangeFromDB(name *repr.StatName, start uint32, end uint32, resolution uint32) (DBSeriesList, error) {
 
-	Q := fmt.Sprintf(
-		"SELECT mid.id, stime, etime, ptype, points FROM %s WHERE mid={id: ?, res: ?} AND etime >= ? AND etime <= ?",
-		cass.writer.db.MetricTable(),
-	)
+	tName := cass.writer.db.MetricTable()
+	var Q string
+	var selArgs []interface{}
 	// need to convert second time to nan time
 	nano := int64(time.Second)
 	nanoEnd := int64(end) * nano
 	nanoStart := int64(start) * nano
 
-	iter := cass.writer.conn.Query(
-		Q,
-		name.UniqueIdString(), resolution, nanoStart, nanoEnd,
-	).Iter()
+	if cass.tablePerResolution {
+		Q = fmt.Sprintf(
+			"SELECT id, stime, etime, ptype, points FROM %s_%ds WHERE id= ? AND etime >= ? AND etime <= ?",
+			tName, resolution,
+		)
+		selArgs = []interface{}{name.UniqueIdString(), nanoStart, nanoEnd}
+	} else {
+		Q = fmt.Sprintf(
+			"SELECT mid.id, stime, etime, ptype, points FROM %s WHERE mid={id: ?, res: ?} AND etime >= ? AND etime <= ?",
+			tName,
+		)
+		selArgs = []interface{}{name.UniqueIdString(), resolution, nanoStart, nanoEnd}
+	}
+
+	iter := cass.writer.conn.Query(Q, selArgs...).Iter()
 
 	rawd := make(DBSeriesList, 0)
 	var pType uint8
@@ -1173,7 +1223,7 @@ func (cass *CassandraMetric) UpdateDBSeries(dbs *DBSeries, ts series.TimeSeries)
 
 	tName := cass.writer.db.MetricTable()
 	delQ := fmt.Sprintf(
-		"DELETE FROM %s WHERE mid={id: ?, res:?} AND etime=?",
+		"DELETE FROM %s WHERE mid={id: ?, res:?} AND etime=? AND stime=? AND ptype=?",
 		tName,
 	)
 	InsQ := fmt.Sprintf(
@@ -1181,15 +1231,15 @@ func (cass *CassandraMetric) UpdateDBSeries(dbs *DBSeries, ts series.TimeSeries)
 		tName,
 	)
 
-	delArgs := []interface{}{dbs.Uid, dbs.Resolution, dbs.End}
+	delArgs := []interface{}{dbs.Uid, dbs.Resolution, dbs.End, dbs.Start, dbs.Ptype}
 	insArgs := []interface{}{dbs.Uid, dbs.Resolution, ts.StartTime(), ts.LastTime(), ptype, points}
 	if cass.tablePerResolution {
 		tName = fmt.Sprintf("%s_%ds", tName, dbs.Resolution)
 		delQ = fmt.Sprintf(
-			"DELETE FROM %s WHERE id = ? AND etime=?",
+			"DELETE FROM %s WHERE id = ? AND etime=? AND stime=? AND ptype=?",
 			tName,
 		)
-		delArgs = []interface{}{dbs.Uid, dbs.End}
+		delArgs = []interface{}{dbs.Uid, dbs.End, dbs.Start, dbs.Ptype}
 
 		InsQ = fmt.Sprintf(
 			"INSERT INTO %s (id, stime, etime, ptype, points) VALUES (?, ?, ?, ?, ?)",

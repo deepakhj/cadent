@@ -48,6 +48,13 @@ const (
 	FirstResolution                      // just one
 )
 
+type CacheTypeNeeded int
+
+const (
+	Chunked CacheTypeNeeded = iota // all of them
+	Single                         // just one
+)
+
 // Writer interface ..
 type Metrics interface {
 
@@ -66,7 +73,7 @@ type Metrics interface {
 	SetCurrentResolution(int)
 
 	IsPrimaryWriter() bool
-	Cache() *Cacher
+	Cache() Cacher
 	CachePrefix() string
 
 	Config(*options.Options) error
@@ -123,7 +130,7 @@ type WriterBase struct {
 	// the cache singleton keys
 	// `cache:series:seriesMaxMetrics:seriesEncoding:seriesMaxBytes:maxTimeInCache`
 	cacherPrefix string
-	cacher       *Cacher
+	cacher       Cacher
 	isPrimary    bool // is this the primary writer to the cache?
 
 	shutitdown bool
@@ -161,7 +168,7 @@ func (wc *WriterBase) IsPrimaryWriter() bool {
 }
 
 // Cache the cache item for the writer
-func (wc *WriterBase) Cache() *Cacher {
+func (wc *WriterBase) Cache() Cacher {
 	return wc.cacher
 }
 

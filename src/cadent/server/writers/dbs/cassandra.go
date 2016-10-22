@@ -58,15 +58,19 @@ func init() {
 	_SESSION_SINGLETON = make(map[string]*gocql.Session)
 }
 
+const DEFAULT_KEYSPACE_QUERY = `CREATE KEYSPACE IF NOT EXISTS %s WITH REPLICATION = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 } AND DURABLE_WRITES = true`
+
 type CassandraDB struct {
-	conn              *gocql.Session
-	cluster           *gocql.ClusterConfig
-	keyspace          string
-	metric_table      string
-	path_table        string
-	segment_table     string
-	read_consistency  gocql.Consistency
-	write_consistency gocql.Consistency
+	conn             *gocql.Session
+	cluster          *gocql.ClusterConfig
+	keyspace         string
+	metricTable      string
+	pathTable        string
+	segmentTable     string
+	logTable         string
+	version          string
+	readConsistency  gocql.Consistency
+	writeConsistency gocql.Consistency
 
 	log *logging.Logger
 }
@@ -86,42 +90,51 @@ func (cass *CassandraDB) Config(conf *options.Options) (err error) {
 	port := int(conf.Int64("port", 9042))
 
 	cass.keyspace = conf.String("keyspace", "metric")
-	cass.metric_table = conf.String("metrics_table", "metric")
-	cass.path_table = conf.String("path_table", "path")
+	cass.metricTable = conf.String("metrics_table", "metric")
+	cass.pathTable = conf.String("path_able", "path")
+	cass.logTable = conf.String("log_table", "metriclogs")
+	cass.segmentTable = conf.String("segment_table", "segment")
 
-	cass.segment_table = conf.String("segment_table", "segment")
+	wconsistency := conf.String("write_consistency", "one")
+	noSniff := !conf.Bool("sniff", false)
 
-	w_consistency := conf.String("write_consistency", "one")
-	cass.write_consistency = gocql.LocalOne
-	if w_consistency == "local_quorum" {
-		cass.write_consistency = gocql.LocalQuorum
-	} else if w_consistency == "quorum" {
-		cass.write_consistency = gocql.Quorum
+	cass.writeConsistency = gocql.LocalOne
+	if wconsistency == "local_quorum" {
+		cass.writeConsistency = gocql.LocalQuorum
+	} else if wconsistency == "quorum" {
+		cass.writeConsistency = gocql.Quorum
 	}
 
 	r_consistency := conf.String("read_consistency", "one")
-	cass.read_consistency = gocql.LocalOne
+	cass.readConsistency = gocql.LocalOne
 	if r_consistency == "local_quorum" {
-		cass.read_consistency = gocql.LocalQuorum
+		cass.readConsistency = gocql.LocalQuorum
 	} else if r_consistency == "quorum" {
-		cass.read_consistency = gocql.Quorum
+		cass.readConsistency = gocql.Quorum
 	}
 
 	timeout := conf.Duration("timeout", time.Duration(30*time.Second))
 
 	numcons := conf.Int64("numcons", CASSANDRA_DEFAULT_CONNECTIONS)
 
-	con_key := fmt.Sprintf("%s:%v/keyspace:%v-tables:%v+%v+%v", dsn, port, cass.keyspace, cass.metric_table, cass.path_table, cass.segment_table)
+	con_key := fmt.Sprintf("%s:%v/keyspace:%v-tables:%v+%v+%v", dsn, port, cass.keyspace, cass.metricTable, cass.pathTable, cass.segmentTable)
 
 	servers := strings.Split(dsn, ",")
 	cluster := gocql.NewCluster(servers...)
+	cluster.DisableInitialHostLookup = noSniff // for dev on docker this part takes too long
 	cluster.Port = port
-	cluster.Keyspace = cass.keyspace
-	cluster.Consistency = cass.write_consistency
-	cluster.Timeout = timeout
-	cluster.NumConns = int(numcons)
 	cluster.RetryPolicy = &gocql.SimpleRetryPolicy{NumRetries: 3}
 	cluster.ProtoVersion = 0x04 //so much faster then v3
+	// need to test/add for keyspace first
+	err = cass.injectKeySpace(cluster)
+	if err != nil {
+		return err
+	}
+
+	cluster.Keyspace = cass.keyspace
+	cluster.Consistency = cass.writeConsistency
+	cluster.Timeout = timeout
+	cluster.NumConns = int(numcons)
 
 	cluster.PoolConfig.HostSelectionPolicy = gocql.TokenAwareHostPolicy(gocql.RoundRobinHostPolicy())
 
@@ -150,8 +163,31 @@ func (cass *CassandraDB) Config(conf *options.Options) (err error) {
 	}
 	cass.log.Notice("Connected to Cassandra: %v (%v)", con_key, servers)
 	cass.cluster = cluster
-
 	return nil
+}
+
+// need to inject the keyspace if not there
+func (cass *CassandraDB) injectKeySpace(tCluster *gocql.ClusterConfig) error {
+	ses, err := tCluster.CreateSession()
+	if err != nil {
+		return err
+	}
+	defer ses.Close()
+	return ses.Query(fmt.Sprintf(DEFAULT_KEYSPACE_QUERY, cass.keyspace)).Exec()
+}
+
+func (cass *CassandraDB) GetCassandraVersion() string {
+	if cass.version != "" {
+		return cass.version
+	}
+	// get the version
+	iter := cass.conn.Query("SELECT release_version FROM system.local").Iter()
+	var vers string
+	for iter.Scan(&vers) {
+	}
+	iter.Close()
+	cass.version = vers
+	return cass.version
 }
 
 // getters
@@ -161,13 +197,16 @@ func (cass *CassandraDB) Cluster() *gocql.ClusterConfig {
 
 // getters
 func (cass *CassandraDB) MetricTable() string {
-	return cass.metric_table
+	return cass.metricTable
+}
+func (cass *CassandraDB) LogTableBase() string {
+	return cass.logTable
 }
 func (cass *CassandraDB) PathTable() string {
-	return cass.path_table
+	return cass.pathTable
 }
 func (cass *CassandraDB) SegmentTable() string {
-	return cass.segment_table
+	return cass.segmentTable
 }
 func (cass *CassandraDB) Keyspace() string {
 	return cass.keyspace

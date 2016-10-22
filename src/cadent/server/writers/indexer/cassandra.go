@@ -147,6 +147,14 @@ func NewCassandraIndexer() *CassandraIndexer {
 func (cass *CassandraIndexer) Start() {
 	cass.startstop.Start(func() {
 		cass.log.Notice("starting up cassandra indexer: %s", cass.Name())
+		cass.log.Notice("Adding index tables ...")
+
+		schems := NewCassandraIndexerSchema(cass.conn, cass.db.Keyspace(), cass.db.PathTable(), cass.db.SegmentTable())
+		err := schems.AddIndexerTables()
+		if err != nil {
+			panic(err)
+		}
+
 		workers := cass.numWorkers
 		cass.writeQueue = make(chan dispatch.IJob, cass.queueLen)
 		cass.dispatchQueue = make(chan chan dispatch.IJob, workers)

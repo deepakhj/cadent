@@ -105,8 +105,9 @@ func (kf *KafkaMetrics) Config(conf *options.Options) error {
 	if _cache == nil {
 		return errMetricsCacheRequired
 	}
-	kf.cacher = _cache.(*Cacher)
-	kf.cacherPrefix = kf.cacher.Prefix
+	kf.cacher = _cache.(Cacher)
+
+	kf.cacherPrefix = kf.cacher.GetPrefix()
 
 	// for the overflow cached items::
 	// these caches can be shared for a given writer set, and the caches may provide the data for
@@ -117,7 +118,7 @@ func (kf *KafkaMetrics) Config(conf *options.Options) error {
 	// cache .. so the cache basically gets "one" primary writer pointed (first come first serve)
 	kf.isPrimary = kf.cacher.SetPrimaryWriter(kf)
 	if kf.isPrimary {
-		kf.log.Notice("Kafka series writer is the primary writer to write back cache %s", kf.cacher.Name)
+		kf.log.Notice("Kafka series writer is the primary writer to write back cache %s", kf.cacher.GetName())
 	}
 	return nil
 }
@@ -128,8 +129,8 @@ func (kf *KafkaMetrics) Driver() string {
 
 func (kf *KafkaMetrics) Start() {
 	kf.startstop.Start(func() {
-		kf.log.Notice("Starting Kafka writer for %s at %d bytes per series", kf.db.DataTopic(), kf.cacher.maxBytes)
-		kf.cacher.overFlowMethod = "chan" // force chan
+		kf.log.Notice("Starting Kafka writer for %s at %d bytes per series", kf.db.DataTopic(), kf.cacher.GetMaxBytesPerMetric())
+		kf.cacher.SetOverFlowMethod("chan") // force chan
 
 		kf.cacher.Start()
 		// only register this if we are really going to consume it
@@ -141,7 +142,7 @@ func (kf *KafkaMetrics) Start() {
 }
 
 func (kf *KafkaMetrics) Stop() {
-	kf.log.Warning("Stopping Kafka writer for (%s)", kf.cacher.Name)
+	kf.log.Warning("Stopping Kafka writer for (%s)", kf.cacher.GetName())
 	kf.startstop.Stop(func() {
 		shutdown.AddToShutdown()
 		defer shutdown.ReleaseFromShutdown()
@@ -152,9 +153,12 @@ func (kf *KafkaMetrics) Stop() {
 		kf.shutitdown = true
 		kf.cacher.Stop()
 
-		mets := kf.cacher.Cache
+		// need to cast this
+		scache := kf.cacher.(*CacherSingle)
+
+		mets := scache.Cache
 		mets_l := len(mets)
-		kf.log.Warning("Shutting down %s and exhausting the queue (%d items) and quiting", kf.cacher.Name, mets_l)
+		kf.log.Warning("Shutting down %s and exhausting the queue (%d items) and quiting", kf.cacher.GetName(), mets_l)
 
 		// full tilt write out
 		procs := 16
@@ -399,7 +403,7 @@ func (kf *KafkaMetrics) CachedSeries(path string, start int64, end int64, tags r
 	if use_cache == nil {
 		use_cache = kf.cacher
 	}
-	name, inflight, err := use_cache.GetSeries(metric)
+	name, inflight, err := use_cache.GetCurrentSeries(metric)
 	if err != nil {
 		return nil, err
 	}
@@ -407,7 +411,7 @@ func (kf *KafkaMetrics) CachedSeries(path string, start int64, end int64, tags r
 		// try the the path as unique ID
 		gots_int := metric.StringToUniqueId(path)
 		if gots_int != 0 {
-			name, inflight, err = use_cache.GetSeriesById(gots_int)
+			name, inflight, err = use_cache.GetCurrentSeriesById(gots_int)
 			if err != nil {
 				return nil, err
 			}

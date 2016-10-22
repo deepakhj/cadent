@@ -219,8 +219,15 @@ func (my *MySQLMetrics) Config(conf *options.Options) error {
 	if err != nil {
 		return errMetricsCacheRequired
 	}
-	my.cacher = _cache.(*Cacher)
-	my.cacherPrefix = my.cacher.Prefix
+	my.cacher = _cache.(Cacher)
+
+	//force single cacher
+	_, ok := my.cacher.(*CacherSingle)
+	if !ok {
+		return ErrorMustBeSingleCacheType
+	}
+
+	my.cacherPrefix = my.cacher.GetPrefix()
 
 	// for the overflow cached items::
 	// these caches can be shared for a given writer set, and the caches may provide the data for
@@ -231,12 +238,12 @@ func (my *MySQLMetrics) Config(conf *options.Options) error {
 	// cache .. so the cache basically gets "one" primary writer pointed (first come first serve)
 	my.isPrimary = my.cacher.SetPrimaryWriter(my)
 	if my.isPrimary {
-		my.log.Notice("Mysql series writer is the primary writer to write back cache for %s", my.cacher.Name)
+		my.log.Notice("Mysql series writer is the primary writer to write back cache for %s", my.cacher.GetName())
 	}
 
 	if my.rollupType == "triggered" {
 		my.driver = "mysql-triggered"
-		my.rollup = NewRollupMetric(my, my.cacher.maxBytes)
+		my.rollup = NewRollupMetric(my, my.cacher.GetMaxBytesPerMetric())
 	}
 
 	rdur, err := time.ParseDuration(MYSQL_RENDER_TIMEOUT)
@@ -261,9 +268,9 @@ func (my *MySQLMetrics) Start() {
 			panic(err)
 		}
 
-		my.log.Notice("Starting mysql writer for %s at %d bytes per series", my.db.Tablename(), my.cacher.maxBytes)
+		my.log.Notice("Starting mysql writer for %s at %d bytes per series", my.db.Tablename(), my.cacher.GetMaxBytesPerMetric())
 
-		my.cacher.overFlowMethod = "chan"
+		my.cacher.SetOverFlowMethod("chan")
 		my.cacher.Start()
 
 		// only register this when we start as we really want to consume
@@ -281,7 +288,7 @@ func (my *MySQLMetrics) Start() {
 		if my.doRollup {
 			my.log.Notice("Starting rollup machine")
 			// all but the lowest one
-			my.rollup.blobMaxBytes = my.cacher.maxBytes
+			my.rollup.blobMaxBytes = my.cacher.GetMaxBytesPerMetric()
 			my.rollup.SetResolutions(my.resolutions[1:])
 			go my.rollup.Start()
 		}
@@ -300,7 +307,7 @@ func (my *MySQLMetrics) Start() {
 }
 
 func (my *MySQLMetrics) Stop() {
-	my.log.Warning("Stopping Mysql writer for (%s)", my.cacher.Name)
+	my.log.Warning("Stopping Mysql writer for (%s)", my.cacher.GetName())
 	my.startstop.Stop(func() {
 		shutdown.AddToShutdown()
 		defer shutdown.ReleaseFromShutdown()
@@ -311,9 +318,13 @@ func (my *MySQLMetrics) Stop() {
 		my.shutitdown = true
 
 		my.cacher.Stop()
-		mets := my.cacher.Cache
+
+		//have to cast thie
+		scache := my.cacher.(*CacherSingle)
+
+		mets := scache.Cache
 		mets_l := len(mets)
-		my.log.Warning("Shutting down %s and exhausting the queue (%d items) and quiting", my.cacher.Name, mets_l)
+		my.log.Warning("Shutting down %s and exhausting the queue (%d items) and quiting", my.cacher.GetName(), mets_l)
 
 		// full tilt write out
 		procs := 16
@@ -929,7 +940,7 @@ func (my *MySQLMetrics) CachedSeries(path string, start int64, end int64, tags r
 	if use_cache == nil {
 		use_cache = my.cacher
 	}
-	name, inflight, err := use_cache.GetSeries(metric)
+	name, inflight, err := use_cache.GetCurrentSeries(metric)
 	if err != nil {
 		return nil, err
 	}
@@ -937,7 +948,7 @@ func (my *MySQLMetrics) CachedSeries(path string, start int64, end int64, tags r
 		// try the the path as unique ID
 		gots_int := metric.StringToUniqueId(path)
 		if gots_int != 0 {
-			name, inflight, err = use_cache.GetSeriesById(gots_int)
+			name, inflight, err = use_cache.GetCurrentSeriesById(gots_int)
 			if err != nil {
 				return nil, err
 			}

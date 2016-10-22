@@ -104,14 +104,14 @@ limitations under the License.
 		cache_metric_size=102400  # the "internal carbon-like-cache" size (ram is your friend)
 		cache_byte_size=1024 # number of bytes
 		cache_low_fruit_rate=0.25 # every 1/4 of the time write "low count" metrics to at least persist them
-		writes_per_second=5000 # allowed insert queries per second
+		writesPerSecond=5000 # allowed insert queries per second
 
 		numcons=5  # cassandra connection pool size
 		timeout="30s" # query timeout
 		user: ""
 		pass: ""
 		write_workers=32  # dispatch workers to write
-		write_queue_length=102400  # buffered queue size before we start blocking
+		write_queueLength=102400  # buffered queue size before we start blocking
 
 		# NOPE: batch_count: batch this many inserts for much faster insert performance (default 1000)
 		# NOPE: periodic_flush: regardless of if batch_count met always flush things at this interval (default 1s)
@@ -271,30 +271,30 @@ type CassandraFlatWriter struct {
 
 	dispatcher *dispatch.DispatchQueue
 
-	cacher                *Cacher
+	cacher                *CacherSingle
 	cacheOverFlowListener *broadcast.Listener // on byte overflow of cacher force a write
 
 	shutitdown bool // just a flag
 	startstop  utils.StartStop
 
-	writes_per_second int // allowed writes per second
-	num_workers       int
-	queue_len         int
-	max_write_size    int           // size of that buffer before a flush
-	max_idle          time.Duration // either max_write_size will trigger a write or this time passing will
-	write_lock        sync.Mutex
-	log               *logging.Logger
+	writesPerSecond int // allowed writes per second
+	numWorkers      int
+	queueLen        int
+	maxWriteSize    int           // size of that buffer before a flush
+	maxIdle         time.Duration // either maxWriteSize will trigger a write or this time passing will
+	writeLock       sync.Mutex
+	log             *logging.Logger
 
 	// upsert (true) or select -> merge -> update (false)
 	// either squish metrics that have the same time windowe as a previious insert
 	// or try to "update" the data point if exists
 	// note upsert is WAY faster and should handle most of the cases
-	insert_mode        bool
+	insertMode         bool
 	tablePerResolution bool
 
-	_insert_query      string //render once
-	_select_time_query string //render once
-	_get_query         string //render once
+	insertQuery     string //render once
+	selectTimeQuery string //render once
+	getQuery        string //render once
 }
 
 func NewCassandraFlatWriter(conf *options.Options) (*CassandraFlatWriter, error) {
@@ -318,27 +318,27 @@ func NewCassandraFlatWriter(conf *options.Options) (*CassandraFlatWriter, error)
 	cass.db = db.(*dbs.CassandraDB)
 	cass.conn = db.Connection().(*gocql.Session)
 
-	cass.max_write_size = int(conf.Int64("batch_count", 50))
+	cass.maxWriteSize = int(conf.Int64("batch_count", 50))
 
-	if gocql.BatchSizeMaximum < cass.max_write_size {
+	if gocql.BatchSizeMaximum < cass.maxWriteSize {
 		cass.log.Warning("Cassandra Driver: Setting batch size to %d, as it's the largest allowed", gocql.BatchSizeMaximum)
-		cass.max_write_size = gocql.BatchSizeMaximum
+		cass.maxWriteSize = gocql.BatchSizeMaximum
 	}
 
-	cass.max_idle = conf.Duration("periodic_flush", time.Duration(time.Second))
+	cass.maxIdle = conf.Duration("periodic_flush", time.Duration(time.Second))
 
 	// tweak queus and worker sizes
-	cass.num_workers = int(conf.Int64("write_workers", CASSANDRA_FLAT_METRIC_WORKERS))
-	cass.queue_len = int(conf.Int64("write_queue_length", CASSANDRA_FLAT_METRIC_QUEUE_LEN))
-	cass.writes_per_second = int(conf.Int64("writes_per_second", CASSANDRA_FLAT_WRITES_PER_SECOND))
-	cass.insert_mode = conf.Bool("write_upsert", CASSANDRA_FLAT_WRITE_UPSERT)
+	cass.numWorkers = int(conf.Int64("write_workers", CASSANDRA_FLAT_METRIC_WORKERS))
+	cass.queueLen = int(conf.Int64("write_queue_length", CASSANDRA_FLAT_METRIC_QUEUE_LEN))
+	cass.writesPerSecond = int(conf.Int64("writes_per_second", CASSANDRA_FLAT_WRITES_PER_SECOND))
+	cass.insertMode = conf.Bool("write_upsert", CASSANDRA_FLAT_WRITE_UPSERT)
 	cass.tablePerResolution = conf.Bool("table_per_resolution", CASSANDRA_FLAT_DEFAULT_TABLE_PER_RESOLUTION)
 
-	cass._insert_query = "INSERT INTO %s (mid, time, point) VALUES  ({id: ?, res: ?}, ?, {sum: ?, min: ?, max: ?, last: ?, count: ?})"
+	cass.insertQuery = "INSERT INTO %s (mid, time, point) VALUES  ({id: ?, res: ?}, ?, {sum: ?, min: ?, max: ?, last: ?, count: ?})"
 
-	cass._select_time_query = "SELECT point.max, point.min, point.sum, point.last, point.count, time FROM %s WHERE mid={id: ?, res: ?} AND time <= ? and time >= ?"
+	cass.selectTimeQuery = "SELECT point.max, point.min, point.sum, point.last, point.count, time FROM %s WHERE mid={id: ?, res: ?} AND time <= ? and time >= ?"
 
-	cass._get_query = "SELECT point.max, point.min, point.sum, point.last, point.count, time FROM %s WHERE mid={id: ?, res: ?} and time = ?"
+	cass.getQuery = "SELECT point.max, point.min, point.sum, point.last, point.count, time FROM %s WHERE mid={id: ?, res: ?} and time = ?"
 	return cass, nil
 }
 
@@ -383,9 +383,9 @@ func (cass *CassandraFlatWriter) Stop() {
 func (cass *CassandraFlatWriter) Start() {
 	/**** dispatcher queue ***/
 	cass.startstop.Start(func() {
-		workers := cass.num_workers
+		workers := cass.numWorkers
 		retries := 2
-		cass.dispatcher = dispatch.NewDispatchQueue(workers, cass.queue_len, retries)
+		cass.dispatcher = dispatch.NewDispatchQueue(workers, cass.queueLen, retries)
 		cass.dispatcher.Start()
 
 		cass.cacher.Start()
@@ -395,7 +395,7 @@ func (cass *CassandraFlatWriter) Start() {
 
 // is not doing a straight upsert, we need to select then update
 func (cass *CassandraFlatWriter) mergeWrite(stat *repr.StatRepr) *repr.StatRepr {
-	if cass.insert_mode { // true means upsert
+	if cass.insertMode { // true means upsert
 		return stat
 	}
 
@@ -405,7 +405,7 @@ func (cass *CassandraFlatWriter) mergeWrite(stat *repr.StatRepr) *repr.StatRepr 
 	if cass.tablePerResolution {
 		t_name = fmt.Sprintf("%s_%ds", t_name, stat.Name.Resolution)
 	}
-	Q := fmt.Sprintf(cass._select_time_query, t_name)
+	Q := fmt.Sprintf(cass.selectTimeQuery, t_name)
 
 	// grab ze data. (note data is already sorted by time asc va the cassandra schema)
 	iter := cass.conn.Query(Q, stat.Name.UniqueIdString(), stat.Name.Resolution, time).Iter()
@@ -479,7 +479,7 @@ func (cass *CassandraFlatWriter) InsertMulti(name *repr.StatName, points repr.St
 	}
 
 	for _, stat := range points {
-		DO_Q := fmt.Sprintf(cass._insert_query, t_name)
+		DO_Q := fmt.Sprintf(cass.insertQuery, t_name)
 		if stat.Name.Ttl > 0 {
 			DO_Q += fmt.Sprintf(" USING TTL %d", stat.Name.Ttl)
 		}
@@ -520,7 +520,7 @@ func (cass *CassandraFlatWriter) InsertOne(name *repr.StatName, stat *repr.StatR
 	if cass.tablePerResolution {
 		t_name = fmt.Sprintf("%s_%ds", t_name, name.Resolution)
 	}
-	Q := fmt.Sprintf(cass._insert_query, t_name)
+	Q := fmt.Sprintf(cass.insertQuery, t_name)
 
 	if ttl > 0 {
 		Q += " USING TTL ?"
@@ -558,7 +558,7 @@ func (cass *CassandraFlatWriter) sendToWriters() error {
 	// it will block on the write_queue stage
 
 	//ye old unlimited
-	if cass.writes_per_second <= 0 {
+	if cass.writesPerSecond <= 0 {
 		cass.log.Notice("Starting metric writer: No Write limiter")
 
 		for {
@@ -577,8 +577,8 @@ func (cass *CassandraFlatWriter) sendToWriters() error {
 		}
 	} else {
 
-		sleep_t := float64(time.Second) * (time.Second.Seconds() / float64(cass.writes_per_second))
-		cass.log.Notice("Starting metric writer: limiter every %f nanoseconds (%d writes per second)", sleep_t, cass.writes_per_second)
+		sleep_t := float64(time.Second) * (time.Second.Seconds() / float64(cass.writesPerSecond))
+		cass.log.Notice("Starting metric writer: limiter every %f nanoseconds (%d writes per second)", sleep_t, cass.writesPerSecond)
 		dur := time.Duration(int(sleep_t))
 
 		for {
@@ -651,9 +651,16 @@ func (cass *CassandraFlatMetric) Config(conf *options.Options) (err error) {
 		return fmt.Errorf("Resulotuion needed for cassandra writer")
 	}
 
-	cache_key := fmt.Sprintf("cassandraflat:cache:%s:%v", conf.String("dsn", ""), res)
-
-	gots.cacher, err = GetCacherSingleton(cache_key)
+	cacheKey := fmt.Sprintf("cassandraflat:cache:%s:%v", conf.String("dsn", ""), res)
+	_cache, err := GetCacherSingleton(cacheKey, "single")
+	if _cache == nil {
+		return errMetricsCacheRequired
+	}
+	scacher, ok := _cache.(*CacherSingle)
+	if !ok {
+		return ErrorMustBeSingleCacheType
+	}
+	gots.cacher = scacher
 
 	if err != nil {
 		return err
@@ -731,30 +738,30 @@ func (cass *CassandraFlatMetric) RawRenderOne(metric indexer.MetricFindItem, sta
 
 	// time in cassandra is in NanoSeconds so we need to pad the times from seconds -> nanos
 	nano := int64(time.Second)
-	nano_end := end * nano
-	nano_start := start * nano
+	nanoEnd := end * nano
+	nanoStart := start * nano
 
-	first_t := uint32(start)
-	last_t := uint32(end)
+	firstT := uint32(start)
+	lastT := uint32(end)
 
 	// try the write inflight cache as nothing is written yet
 	stat_name := metric.StatName()
-	inflight_renderitem, err := cass.writer.cacher.GetAsRawRenderItem(stat_name)
+	inflightRenderitem, err := cass.writer.cacher.GetAsRawRenderItem(stat_name)
 
 	// need at LEAST 2 points to get the proper step size
-	if inflight_renderitem != nil && err == nil {
+	if inflightRenderitem != nil && err == nil {
 		// move the times to the "requested" ones and quantize the list
-		inflight_renderitem.Metric = metric.Id
-		inflight_renderitem.Tags = metric.Tags
-		inflight_renderitem.MetaTags = metric.MetaTags
-		inflight_renderitem.Id = metric.UniqueId
-		inflight_renderitem.AggFunc = stat_name.AggType()
-		if inflight_renderitem.Start < uint32(start) {
-			inflight_renderitem.RealEnd = uint32(end)
-			inflight_renderitem.RealStart = uint32(start)
-			inflight_renderitem.Start = inflight_renderitem.RealStart
-			inflight_renderitem.End = inflight_renderitem.RealEnd
-			return inflight_renderitem, err
+		inflightRenderitem.Metric = metric.Id
+		inflightRenderitem.Tags = metric.Tags
+		inflightRenderitem.MetaTags = metric.MetaTags
+		inflightRenderitem.Id = metric.UniqueId
+		inflightRenderitem.AggFunc = stat_name.AggType()
+		if inflightRenderitem.Start < uint32(start) {
+			inflightRenderitem.RealEnd = uint32(end)
+			inflightRenderitem.RealStart = uint32(start)
+			inflightRenderitem.Start = inflightRenderitem.RealStart
+			inflightRenderitem.End = inflightRenderitem.RealEnd
+			return inflightRenderitem, err
 		}
 	}
 
@@ -762,20 +769,20 @@ func (cass *CassandraFlatMetric) RawRenderOne(metric indexer.MetricFindItem, sta
 	if cass.writer.tablePerResolution {
 		t_name = fmt.Sprintf("%s_%ds", t_name, resolution)
 	}
-	Q := fmt.Sprintf(cass.writer._select_time_query, t_name)
+	Q := fmt.Sprintf(cass.writer.selectTimeQuery, t_name)
 
 	// grab ze data. (note data is already sorted by time asc va the cassandra schema)
-	iter := cass.writer.conn.Query(Q, metric.UniqueId, resolution, nano_end, nano_start).Iter()
+	iter := cass.writer.conn.Query(Q, metric.UniqueId, resolution, nanoEnd, nanoStart).Iter()
 
 	var t, count int64
 	var min, max, sum, last float64
 
-	m_key := metric.Id
+	mKey := metric.Id
 
-	// sorting order for the table is time ASC (i.e. first_t == first entry)
+	// sorting order for the table is time ASC (i.e. firstT == first entry)
 
-	t_start := uint32(start)
-	curPt := NullRawDataPoint(t_start)
+	Tstart := uint32(start)
+	curPt := NullRawDataPoint(Tstart)
 
 	// on resamples (if >0 ) we simply merge points until we hit the time steps
 	do_resample := resample > 0 && resample > resolution
@@ -783,8 +790,8 @@ func (cass *CassandraFlatMetric) RawRenderOne(metric indexer.MetricFindItem, sta
 	for iter.Scan(&max, &min, &sum, &last, &count, &t) {
 		t := uint32(time.Unix(0, t).Unix())
 		if do_resample {
-			if t >= t_start+resample {
-				t_start += resample
+			if t >= Tstart+resample {
+				Tstart += resample
 				rawd.Data = append(rawd.Data, curPt)
 				curPt = &RawDataPoint{
 					Count: count,
@@ -814,7 +821,7 @@ func (cass *CassandraFlatMetric) RawRenderOne(metric indexer.MetricFindItem, sta
 				Time:  t,
 			})
 		}
-		last_t = t
+		lastT = t
 	}
 	if !curPt.IsNull() {
 		rawd.Data = append(rawd.Data, curPt)
@@ -825,27 +832,27 @@ func (cass *CassandraFlatMetric) RawRenderOne(metric indexer.MetricFindItem, sta
 	}
 
 	if len(rawd.Data) > 0 && rawd.Data[0].Time > 0 {
-		first_t = rawd.Data[0].Time
+		firstT = rawd.Data[0].Time
 	}
 
-	//cass.log.Critical("METR: %s Start: %d END: %d LEN: %d GotLen: %d", metric.Id, first_t, last_t, len(d_points), ct)
+	//cass.log.Critical("METR: %s Start: %d END: %d LEN: %d GotLen: %d", metric.Id, firstT, lastT, len(dPoints), ct)
 
-	rawd.RealEnd = uint32(last_t)
-	rawd.RealStart = uint32(first_t)
+	rawd.RealEnd = uint32(lastT)
+	rawd.RealStart = uint32(firstT)
 	rawd.Start = uint32(start)
 	rawd.End = uint32(end)
 	rawd.Step = outResolution
-	rawd.Metric = m_key
+	rawd.Metric = mKey
 	rawd.Id = metric.UniqueId
 	rawd.Tags = metric.Tags
 	rawd.MetaTags = metric.MetaTags
 	rawd.AggFunc = stat_name.AggType()
 
 	// grab the "current inflight" from the cache and merge into the main array
-	if inflight_renderitem != nil && len(inflight_renderitem.Data) > 1 {
+	if inflightRenderitem != nil && len(inflightRenderitem.Data) > 1 {
 		//merge with any inflight bits (inflight has higher precedence over the file)
-		inflight_renderitem.MergeWithResample(rawd, outResolution)
-		return inflight_renderitem, nil
+		inflightRenderitem.MergeWithResample(rawd, outResolution)
+		return inflightRenderitem, nil
 	}
 
 	return rawd, nil
@@ -858,8 +865,8 @@ func (cass *CassandraFlatMetric) RawRender(path string, from int64, to int64, ta
 	paths := strings.Split(path, ",")
 	var metrics []indexer.MetricFindItem
 
-	render_wg := utils.GetWaitGroup()
-	defer utils.PutWaitGroup(render_wg)
+	renderWg := utils.GetWaitGroup()
+	defer utils.PutWaitGroup(renderWg)
 
 	for _, pth := range paths {
 		mets, err := cass.indexer.Find(pth, tags)
@@ -876,7 +883,7 @@ func (cass *CassandraFlatMetric) RawRender(path string, from int64, to int64, ta
 	jobs := make(chan indexer.MetricFindItem, len(metrics))
 	results := make(chan *RawRenderItem, len(metrics))
 
-	render_one := func(met indexer.MetricFindItem) *RawRenderItem {
+	renderOne := func(met indexer.MetricFindItem) *RawRenderItem {
 		_ri, err := cass.RawRenderOne(met, from, to, resample)
 
 		if err != nil {
@@ -887,10 +894,10 @@ func (cass *CassandraFlatMetric) RawRender(path string, from int64, to int64, ta
 	}
 
 	// ye old fan out technique but not "too many" as to kill the server
-	job_worker := func(jober int, taskqueue <-chan indexer.MetricFindItem, resultqueue chan<- *RawRenderItem) {
+	jobWorker := func(jober int, taskqueue <-chan indexer.MetricFindItem, resultqueue chan<- *RawRenderItem) {
 		rec_chan := make(chan *RawRenderItem, 1)
 		for met := range taskqueue {
-			go func() { rec_chan <- render_one(met) }()
+			go func() { rec_chan <- renderOne(met) }()
 			select {
 			case <-time.After(cass.renderTimeout):
 				stats.StatsdClientSlow.Incr("reader.cassandraflat.rawrender.timeouts", 1)
@@ -903,7 +910,7 @@ func (cass *CassandraFlatMetric) RawRender(path string, from int64, to int64, ta
 	}
 
 	for i := 0; i < procs; i++ {
-		go job_worker(i, jobs, results)
+		go jobWorker(i, jobs, results)
 	}
 
 	for _, metric := range metrics {

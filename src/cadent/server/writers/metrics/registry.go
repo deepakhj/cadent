@@ -51,6 +51,10 @@ func NewWriterMetrics(name string) (Metrics, error) {
 		return NewCassandraMetrics(), nil
 	case name == "cassandra-triggered":
 		return NewCassandraTriggerMetrics(), nil
+	case name == "cassandra-log":
+		return NewCassandraLogMetrics(), nil
+	case name == "cassandra-log-triggered":
+		return NewCassandraLogTriggerMetrics(), nil
 	case name == "cassandra-flat":
 		return NewCassandraFlatMetrics(), nil
 	case name == "elasticsearch-flat" || name == "elastic-flat":
@@ -82,9 +86,27 @@ func ResolutionsNeeded(name string) (WritersNeeded, error) {
 		return AllResolutions, nil
 	case name == "kafka" || name == "kafka-flat":
 		return AllResolutions, nil
-	case name == "whisper" || name == "carbon" || name == "graphite" || name == "cassandra-triggered" || name == "mysql-triggered":
+	case name == "whisper" || name == "carbon" || name == "graphite" || name == "cassandra-triggered" || name == "mysql-triggered" || name == "cassandra-log-triggered":
 		return FirstResolution, nil
 	default:
 		return AllResolutions, fmt.Errorf("Invalid metrics `%s`", name)
+	}
+}
+
+func CacheNeeded(name string) (CacheTypeNeeded, error) {
+	switch {
+	case name == "cassandra-log" || name == "cassandra-log-triggered":
+		return Chunked, nil
+	default:
+		return Single, nil
+	}
+}
+
+func CacheNeededName(name string) string {
+	switch {
+	case name == "cassandra-log" || name == "cassandra-log-triggered":
+		return "chunk"
+	default:
+		return "single"
 	}
 }

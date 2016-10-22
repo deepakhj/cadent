@@ -111,7 +111,7 @@ KEY uid (uid)
 ) ENGINE=InnoDB DEFAULT CHARSET=ascii ROW_FORMAT=COMPRESSED;`,
 }
 
-type MySQLIndexSchema struct {
+type mySQLIndexSchema struct {
 	conn         *sql.DB
 	segmentTable string
 	pathTable    string
@@ -120,8 +120,8 @@ type MySQLIndexSchema struct {
 	startstop    utils.StartStop
 }
 
-func NewMySQLIndexSchema(conn *sql.DB, segment string, path string, tag string) *MySQLIndexSchema {
-	my := new(MySQLIndexSchema)
+func NewMySQLIndexSchema(conn *sql.DB, segment string, path string, tag string) *mySQLIndexSchema {
+	my := new(mySQLIndexSchema)
 	my.conn = conn
 	my.segmentTable = segment
 	my.pathTable = path
@@ -130,7 +130,7 @@ func NewMySQLIndexSchema(conn *sql.DB, segment string, path string, tag string) 
 	return my
 }
 
-func (my *MySQLIndexSchema) AddIndexTables() error {
+func (my *mySQLIndexSchema) AddIndexTables() error {
 	var err error
 	my.startstop.Start(func() {
 		my.log.Notice("Adding mysql index tables `%s` `%s` `%s`", my.segmentTable, my.pathTable, my.tagTable)
