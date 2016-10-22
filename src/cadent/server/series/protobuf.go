@@ -40,10 +40,10 @@ const (
 type ProtobufTimeSeries struct {
 	mu *sync.Mutex
 
-	T0      int64
-	curTime int64
-	Stats   *ProtStats
-	len     int
+	T0       int64
+	curTime  int64
+	Stats    *ProtStats
+	len      int
 	curCount int
 }
 
