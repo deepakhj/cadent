@@ -66,7 +66,7 @@ func NewWriterMetrics(name string) (Metrics, error) {
 	case name == "kafka-flat":
 		return NewKafkaFlatMetrics(), nil
 	default:
-		return nil, fmt.Errorf("Invalid metrics `%s`", name)
+		return nil, fmt.Errorf("Invalid metrics driver `%s`", name)
 	}
 }
 
@@ -89,7 +89,7 @@ func ResolutionsNeeded(name string) (WritersNeeded, error) {
 	case name == "whisper" || name == "carbon" || name == "graphite" || name == "cassandra-triggered" || name == "mysql-triggered" || name == "cassandra-log-triggered":
 		return FirstResolution, nil
 	default:
-		return AllResolutions, fmt.Errorf("Invalid metrics `%s`", name)
+		return AllResolutions, fmt.Errorf("Invalid metrics driver `%s`", name)
 	}
 }
 
