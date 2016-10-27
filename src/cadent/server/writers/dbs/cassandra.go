@@ -96,7 +96,7 @@ func (cass *CassandraDB) Config(conf *options.Options) (err error) {
 	cass.segmentTable = conf.String("segment_table", "segment")
 
 	wconsistency := conf.String("write_consistency", "one")
-	noSniff := !conf.Bool("sniff", false)
+	sniff := conf.Bool("sniff", true)
 
 	cass.writeConsistency = gocql.LocalOne
 	if wconsistency == "local_quorum" {
@@ -121,7 +121,9 @@ func (cass *CassandraDB) Config(conf *options.Options) (err error) {
 
 	servers := strings.Split(dsn, ",")
 	cluster := gocql.NewCluster(servers...)
-	cluster.DisableInitialHostLookup = noSniff // for dev on docker this part takes too long
+	if !sniff {
+		cluster.DisableInitialHostLookup = true // for dev on docker this part takes too long so set this to false
+	}
 	cluster.Port = port
 	cluster.RetryPolicy = &gocql.SimpleRetryPolicy{NumRetries: 3}
 	cluster.ProtoVersion = 0x04 //so much faster then v3
