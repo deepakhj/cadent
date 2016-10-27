@@ -95,12 +95,8 @@ func (c *SystemConfig) PidFile() {
 			0644); err != nil {
 
 			log.Critical("Unable to write pidfile '%s': %s", pidFile, err)
+		} else {
+			log.Info("Wrote pid to pidfile '%s'", pidFile)
 		}
-		log.Info("Wrote pid to pidfile '%s'", pidFile)
-		defer func() {
-			if err = os.Remove(pidFile); err != nil {
-				log.Errorf("Unable to remove pidfile '%s': %s", pidFile, err)
-			}
-		}()
 	}
 }
