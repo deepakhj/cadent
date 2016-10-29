@@ -87,7 +87,7 @@ func TestWriterReadCache(t *testing.T) {
 			s := stat.Copy()
 			m_idx := i % len(r_list)
 			r_prefix := r_list[m_idx]
-			s.Name.Key = s.Name.Key + "." + r_prefix
+			s.Name.SetKey(s.Name.Key + "." + r_prefix)
 			s.Sum = rand.Float64()
 			// a random time testing the sorts
 			s.Time = t_start.UnixNano() + int64(time.Duration(time.Second*time.Duration(rand.Int63n(1000))))
@@ -130,7 +130,7 @@ func TestWriterReadCache(t *testing.T) {
 			s := stat.Copy()
 			m_idx := i % len(r_list)
 			r_prefix := r_list[m_idx]
-			s.Name.Key = s.Name.Key + "." + r_prefix
+			s.Name.SetKey(s.Name.Key + "." + r_prefix)
 			s.Sum = rand.Float64()
 			// a random time testing the sorts
 			s.Time = t_start.UnixNano() + int64(time.Duration(time.Second*time.Duration(rand.Int63n(1000))))
@@ -138,7 +138,7 @@ func TestWriterReadCache(t *testing.T) {
 			GetReadCache().Put(s.Name.Key, s)
 
 			s2 := s.Copy()
-			s.Name.Key = raw_nm
+			s.Name.SetKey(raw_nm)
 			t_series.Data = append(t_series.Data, &RawDataPoint{Sum: float64(s2.Sum), Time: uint32(s2.Time)})
 		}
 		t.Logf("ReadCache Singleton: Size: %d, Keys: %d Capacity: %d", GetReadCache().Size(), GetReadCache().NumKeys(), GetReadCache().lru.GetCapacity())
