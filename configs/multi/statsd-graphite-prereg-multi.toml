@@ -54,27 +54,61 @@ default_backend="graphite-proxy"
         indexer_queue_length=10240
 
         [[graphite-cassandra.accumulator.writer.caches]]
+        name="gorilla"
+        series_encoding="gorilla"
+        bytes_per_metric=1024
+        max_metrics=1024000  # for 1 million points @ 1024 b you'll need lots o ram
+
+        [[graphite-cassandra.accumulator.writer.caches]]
         name="whisper"
-        series_encoding="protobuf"
+        series_encoding="gorilla"
         bytes_per_metric=1024
         low_fruit_rate=0.1
         max_metrics=1024000  # for 1 million points @ 1024 b you'll need lots o ram
 
 
         [graphite-cassandra.accumulator.writer.metrics]
+        driver = "cassandra-triggered"
+        dsn = "127.0.0.1"
+        cache = "gorilla"
+
+        [graphite-cassandra.accumulator.writer.metrics.options]
+        user="cassandra"
+        pass="cassandra"
+        keyspace="metric"
+        metrics_table="metric_series"
+        numcons=32
+
+        [graphite-cassandra.accumulator.writer.indexer]
+        driver = "cassandra"
+        dsn = "127.0.0.1"
+
+        [graphite-cassandra.accumulator.writer.indexer.options]
+        user="cassandra"
+        pass="cassandra"
+        path_table="path"
+        segment_table="segment"
+        cache_index=1024000
+        numcons=10
+        write_workers=32
+        write_queue_length=1024000
+        writes_per_second=8000
+
+
+        [graphite-cassandra.accumulator.writer.submetrics]
         driver = "whisper"
         dsn = "/vol/graphite/storage/whisper/"
         cache = "whisper"
 
-        [graphite-cassandra.accumulator.writer.metrics.options]
+        [graphite-cassandra.accumulator.writer.submetrics.options]
         xFilesFactor=0.3
         write_workers=16
         write_queue_length=102400
         writes_per_second=2500 # allowed physical writes per second
 
-        [graphite-cassandra.accumulator.writer.indexer]
-        driver = "whisper"
-        dsn = "/vol/graphite/storage/whisper/"
+        [graphite-cassandra.accumulator.writer.subindexer]
+        driver = "leveldb"
+        dsn = "/vol/graphite/storage/ldb/"
 
 
 
@@ -87,10 +121,27 @@ default_backend="graphite-proxy"
      # cert="/path/to/server.crt"
 
         [graphite-cassandra.accumulator.api.metrics]
-        driver = "whisper"
-        dsn = "/vol/graphite/storage/whisper/"
-        cache = "whisper"
+        driver = "cassandra"
+        dsn = "127.0.0.1"
+        cache = "gorilla"
+            [graphite-cassandra.accumulator.api.metrics.options]
+            user="cassandra"
+            pass="cassandra"
+            keyspace="metric"
+            metrics_table="metric_series"
+
 
         [graphite-cassandra.accumulator.api.indexer]
-        driver = "whisper"
-        dsn = "/vol/graphite/storage/whisper/"
+        driver = "cassandra"
+        dsn = "127.0.0.1"
+
+            [graphite-cassandra.accumulator.api.indexer.options]
+            user="cassandra"
+            pass="cassandra"
+            path_table="path"
+            segment_table="segment"
+
+    [[graphite-cassandra.map]]
+    # Sub string type match
+        substring=".marvel"  # ignore elastic search marvel stuff
+        reject=true

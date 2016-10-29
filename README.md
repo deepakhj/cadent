@@ -7,38 +7,58 @@ Manipulate your metrics
 
 Philosophy: If it's not measured it does not exist.
 
-Cadent itself spews about 400-500 of it's own metrics for instances (which of course it just emits to itself if configured to).
-As far as i can tell only Kafka followed by Cassandra spew forth more (and Kafka is obscenely verbose, to the point of just not useful really).
 
 ### The beginnings.
 
-Graphite (carbon) + Statsd:  The champions of getting metrics stored and queried quickly.  I hesitate to say almost every startup started here
-(Except those acctually old enough to have started w/ SNMP and RRDtool, I include myself here) with these two wonderful tools.  However, it turns out
-we collect more metrics per second from all the various sources then any sort of actual user trafic (by a few orders
+Once upon a time ...  there are sometimes (manytimes) when alarms sound, and as the pager duty recipient, one would have no
+idea what it realy was (unless it was something easy like this node is down, this process crashed, this NIC is saturated,
+this machine is swapping way to much...).  So the team wouls spend _way_ to much time just tracking what thing had borked
+ rather then fixing the issue.
+
+Then came micro-services:  And there were fewer clues as to what was going on.
+
+Metrics:  It's not just for machines anymore.  We decided to make our apps emit all sorts of things about it's
+internals.  We said, before your service can go live, there better be a dashboard to indicate what you think are the key
+indicators of it's health.
+
+We had to give people tools for that.
+
+Graphite (carbon) + Statsd:  The champions of getting metrics stored and queried quickly.  I hesitate to say almost every beginings
+(except those acctually old enough to have started w/ SNMP and RRDtool, and before that tcpdump alone) with these two wonderful tools.
+
+However, it turns out we collect more metrics per second from all the various sources then any sort of actual user trafic (by a few orders
 of magnitude).  It, not being customer facing, (not customer facing in the eyes of the business, but certainly "internal" customer
 facing) the resources allocated to keeping it running and useful are sparse.
 
-But as much as I love, use, hack, tinker and futz with graphite + statsd.  There are three big issues, it's reliance on disks,
+But as much as I love, use, hack, tinker and futz with graphite + statsd ecosphere.  There are three big issues, it's reliance on disks,
 single threaded and general performance while trying to keep a few TBs of metrics online and queried, make it difficult to scale (not impossible
-by any means), just not easy.
+by any means), just not easy (lets say i'm happy RRDs have fixed data sizes).
 
 I think is now a common issue in the ecosphere of metrics/ops folks now.  And as a result _many_ projects exist out there in the echo system
 that handle lots of "parts" of the problem.  Cadent attempts to merge many of them (it's
-"standing on the sholders of giants", uses other good opensource pieces in the wild, and is certainly not the most performant things in the world) in one binary.
+"standing on the sholders of giants", uses other good opensource pieces in the wild) in one binary.
+
 Every situation is different, data retention requirement, speed, input volume, query volume, timeording,
-persistence solutions etc.  Each one comes with it's own cost to run (something alot of projects fail to mention).  For instance if you're just starting,
-you're probably not going to have a good sized cassandra cluster and a good sized kafka cluster, as your app
-probably runs on one (maybe two) instances.  But you probably have a Database somewhere, or at least a hardrive.
+persistence solutions, cardinality etc.
+
+Each one comes with it's own cost to run (something alot of projects fail to mention).  For instance if you're just starting,
+you're probably not going to have a good sized cassandra/druid cluster and a good sized kafka cluster, as your app
+probably runs on one (maybe two) instances (with a couple spares in case of failure of course).
+
+But you probably have a Database somewhere, or at least a hardrive.
 As you expand, you start to hit the "wall". There's no way around it.  But let's make moving that wall easier.
+
 
 ### The Name:
 
 is "k-dent" as in "`k` as in `cake`" `\ˈkā-dənt\` ..
 call it "ca-dent" (`ca` as in `cat`) if you really want to .. but that holds no real meaning (just look it up)
 
+
 ### Function
 
-Basically this acts like many tens of existing projects out in the wilderness that either are, or act like, the standard "set": statsd, statsd-proxy, carbon-relay, carbon-aggegator, carbon-cache.
+Basically this acts like many tens of existing projects out in the wilderness that either are, or act like,
+the standard "set": statsd, statsd-proxy, carbon-relay, carbon-aggegator, carbon-cache.
 
 It "sorta" behaves like carbon-cache, (as it can read/write to whisper files but does not have the "entire functionality set" of carbon-cache)
 Cassandra, and even a SQL DB if you really think that's a good idea, watch as you kill your RDBS trying to insert 100k items in 1 second)
@@ -67,17 +87,18 @@ If metrics collection and manipulating was simple, I would not have to write thi
 
 Visualization: In the visualization world grafana wins, period, we're not visualizing things in cadent.
 
-`result = f(timeseries)`: Graphite/graphite-api also win here, by alot.
+`result = f(timeseries)`: Graphite/graphite-api also win here (or even the spark DSL), by alot.
 Their DSL for applying `fancy math` to timeseries is near impossible to match (not impossible, but really hard to
 recreate it as it's depth is rather mystifying sometimes).
 
 
 ## Why is it designed this way?
 
-Well, no system lives in a vacuum.  You probably already have a graphite cluster, maybe OpenTSDB, or what have you, and
-need to migrate systems as whatever you are using is falling down (for reasons, as ops folks, i hope you know). But you cannot
-just "cut the cord" to the old system as there are many dependencies on it already.  Time series never stop, never slow
-down, never go away. So each peice of this puzzle is made to partially replace another.  If one element cannot be "out of the box"
+Well, no system lives in a vacuum.  You probably already have a graphite cluster, maybe OpenTSDB, or what-have-you, and
+need to migrate systems as whatever you are using is falling down. But you cannot
+just "cut the cord" to the old system as there are many dependencies on it already.  System time series never stop, never slow
+down, never go away, they keep increasing. So each peice of this puzzle is made to partially replace another.
+If one element cannot be "out of the box"
 replaced, then replication to a new system is there to feed things to the old one, while bootstrapping the new one.
 
 That's why this looks a bit like plaster covering a few holes left by a few baseballs.  You can only cover one hole
@@ -90,6 +111,7 @@ Installation
 Well, first you need to install go .. https://golang.org  >= 1.5.1
 And a kernel that supports SO_REUSEPORT (linux 3.9 or higher and bsd like kernels)
 And make sure to use VENDOR support (in golang 1.6, this is the default),
+
 go 1.7.x is perfered as it's better, faster, stronger.
 
 
@@ -104,11 +126,53 @@ Examples Configs
 
 Look to the [configs directory](./configs/) for all the options you can set and their meaning
 
-to start
+To start, let's replace the statsd becuase there are too many UDP errors
+
+    cadent --config=configs/statsd/statsd-config.toml
+
+then you notice carbon-relay basically not being to keep up w/ both server (diamond/collectd) and statsd
 
     cadent --config=configs/graphite/graphite-config.toml
 
-There is also the "PreReg" config files as well.
+then you notice that kafka/cassandra is spewing forth many metrics, and that 90% of basically useless.
+(and do you really need metrics from elasticsearches ".marvel*" indexes (per day)?)
+
+    cadent --config=configs/statsd/statsd-config.toml --prereg=configs/statsd/statsd-relay-graphite.toml
+
+then you notice, that carbon-cache is backuping up (and consuming so much RAM) becuase writing to EBS volumes puts you in
+IOWait hell) that restarting (nicely) it is basically impossible.
+
+    cadent --config=configs/graphite/graphite-config.toml --prereg=configs/graphite/graphite-whisper-flat.toml
+
+Or wait, this is really just a test environment, or a dev env, where no one really would be woken up if the metrics
+stoped flowing (i.e. pinned to one instance).  So put the entire package on one machine.
+
+    cadent --config=configs/multi/statsd-graphite.toml --prereg=configs/multi/statsd-graphite-prereg.toml
+
+Ah, but then there's the storage issue.  Disks suck, disks suck even more if they go down and all your data is gone.
+system metrics wait for no one.  Well there cassandra, which helps with that.  But you need to be able to
+backfill the cassandra DB while things "continue on as normal", So you may need to run "both" for a while until
+cassandra can get the all-clear.
+
+    cadent --config=configs/multi/statsd-graphite.toml --prereg=configs/multi/statsd-graphite-multi.toml
+
+The story continues.
+
+  1. cardinality (i.e. the sheer number of keys) explodes :: elasticsearch can help with that.
+  2. I need to farm these things to "somewhere else" :: kafka helps with that
+  3. I have tags :: ok whats the big deal? (i.e. my.stat.is.good == {pronoun=my, noun=stat, verb=is, adjective=good} but in way fewer chars)
+  4. I'm really just locally/small dev env messing with things :: ok
+
+
+Hopefully, cadent can help w/ alot of those senerios.
+
+Basically there are so many use cases, and so many solutions, with so many variations, requirements, cost restrictions, etc
+there is no magic bullet.  If you can afford the cost (not just machines, but the people)
+to acctually set up a proper full sized Kafka + Druid + Spark + Hadoop
+cluster(s) (and all of their fun "extras" that they need), then by all, means please, use those.
+
+
+### So what is "prereg"?
 
 This does many things optionally
 

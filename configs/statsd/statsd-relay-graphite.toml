@@ -29,8 +29,11 @@ default_backend="statsd-proxy"  # failing a match go here
             ["percentThreshold", "0.90,0.95,0.99"]
     ]
 
-    # don't filter anything really
     # Sub string type match
     [[statsd-regex-map.map]]
     substring=".marvel"  # ignore elastic search marvel stuff
+    reject=true
+
+    [[statsd-regex-map.map]]
+    regex='''(kafka\.consumer\.FetchRequestAndResponseMetrics.*)|(.*ReplicaFetcherThread.*)|(kafka\.server\.FetcherLagMetrics\..*)|(kafka\.log\.Log\..*)|(kafka\.cluster\.Partition\..*)'''
     reject=true
