@@ -24,7 +24,6 @@ import (
 	logging "gopkg.in/op/go-logging.v1"
 
 	"bytes"
-	"cadent/server/utils"
 	"fmt"
 	"github.com/gocql/gocql"
 	"strings"
@@ -69,7 +68,6 @@ CREATE TYPE IF NOT EXISTS  {{.Keyspace}}.metric_id_res (
             compaction = {
                 'class': 'TimeWindowCompactionStrategy',
                 'compaction_window_unit': 'DAYS',
-                'timestamp_resolution': 'SECONDS',
                 'compaction_window_size': '1'
             }
             {{ end }}
@@ -105,11 +103,11 @@ CREATE TYPE IF NOT EXISTS {{.Keyspace}}.metric_point (
             compaction = {
                 'class': 'TimeWindowCompactionStrategy',
                 'compaction_window_unit': 'DAYS',
-                'timestamp_resolution': 'SECONDS',
                 'compaction_window_size': '1'
             }
             {{ end }}
             AND compression = {'sstable_compression': 'org.apache.cassandra.io.compress.LZ4Compressor'};`
+
 const CASSANDRA_METRICS_BLOB_TEMPLATE = `
 CREATE TYPE IF NOT EXISTS  {{.Keyspace}}.metric_id_res (
             id ascii,
@@ -137,7 +135,6 @@ CREATE TABLE IF NOT EXISTS {{.Keyspace}}.{{.MetricsTable}} (
             compaction = {
                 'class': 'TimeWindowCompactionStrategy',
                 'compaction_window_unit': 'DAYS',
-                'timestamp_resolution': 'SECONDS',
                 'compaction_window_size': '1'
             }
             {{ end }}
@@ -165,19 +162,18 @@ CREATE TABLE IF NOT EXISTS {{.Keyspace}}.{{.MetricsTable}}_{{.Resolution}}s (
             compaction = {
                 'class': 'TimeWindowCompactionStrategy',
                 'compaction_window_unit': 'DAYS',
-                'timestamp_resolution': 'SECONDS',
                 'compaction_window_size': '1'
             }
             {{ end }}
             AND compression = {'sstable_compression': 'org.apache.cassandra.io.compress.LZ4Compressor'};`
 
 const CASSANDRA_METRICS_LOG_TEMPLATE = `
-CREATE TABLE IF NOT EXISTS {{.Keyspace}}.{{.LogTable}}_{{.WriteIndex}} (
+CREATE TABLE IF NOT EXISTS {{.Keyspace}}.{{.LogTable}}_{{.WriteIndex}}_{{.Resolution}}s (
             seq bigint,
-            stamp bigint,
-            points blob,
-            PRIMARY KEY (sequence, stamp)
-        ) WITH COMPACT STORAGE AND CLUSTERING ORDER BY (stamp ASC)
+            ts bigint,
+            pts blob,
+            PRIMARY KEY (seq, ts)
+        ) WITH COMPACT STORAGE AND CLUSTERING ORDER BY (ts ASC)
             AND {{ if .CassVersionTwo }}
             compaction = {
                 'class': 'DateTieredCompactionStrategy',
@@ -191,7 +187,6 @@ CREATE TABLE IF NOT EXISTS {{.Keyspace}}.{{.LogTable}}_{{.WriteIndex}} (
             compaction = {
                 'class': 'TimeWindowCompactionStrategy',
                 'compaction_window_unit': 'DAYS',
-                'timestamp_resolution': 'SECONDS',
                 'compaction_window_size': '1'
             }
             {{ end }}
@@ -211,7 +206,6 @@ type cassandraMetricsSchema struct {
 	CassVersionTwo   bool
 	CassVersionThree bool
 	log              *logging.Logger
-	startstop        utils.StartStop
 }
 
 func NewCassandraMetricsSchema(
@@ -243,97 +237,64 @@ func NewCassandraMetricsSchema(
 
 func (cass *cassandraMetricsSchema) AddMetricsTable() error {
 	var err error
-	cass.startstop.Start(func() {
 
-		if len(cass.Resolutions) == 0 {
-			err = fmt.Errorf("Need resolutions")
-			return
-		}
+	if len(cass.Resolutions) == 0 {
+		err = fmt.Errorf("Need resolutions")
+		return err
+	}
 
-		baseTpl := CASSANDRA_METRICS_BLOB_TEMPLATE
+	baseTpl := CASSANDRA_METRICS_BLOB_TEMPLATE
+	if cass.Perres {
+		baseTpl = CASSANDRA_METRICS_BLOB_PER_RES_TEMPLATE
+	}
+
+	if cass.Mode == "flat" {
+		baseTpl = CASSANDRA_METRICS_FLAT_TEMPLATE
 		if cass.Perres {
-			baseTpl = CASSANDRA_METRICS_BLOB_PER_RES_TEMPLATE
+			baseTpl = CASSANDRA_METRICS_FLAT_PER_RES_TEMPLATE
+
 		}
+	}
 
-		if cass.Mode == "flat" {
-			baseTpl = CASSANDRA_METRICS_FLAT_TEMPLATE
-			if cass.Perres {
-				baseTpl = CASSANDRA_METRICS_FLAT_PER_RES_TEMPLATE
-
-			}
-		}
-
-		if cass.Perres {
-			for _, r := range cass.Resolutions {
-				cass.Resolution = r[0]
-
-				buf := bytes.NewBuffer(nil)
-				cass.log.Notice("Cassandra Schema Driver: verifing schema")
-				tpl := template.Must(template.New("cassmetric").Parse(baseTpl))
-				err = tpl.Execute(buf, cass)
-				if err != nil {
-					cass.log.Errorf("%s", err)
-					err = fmt.Errorf("Cassandra Schema Driver: Metric failed, %v", err)
-					return
-				}
-				Q := string(buf.Bytes())
-
-				for _, q := range strings.Split(Q, "==SPLIT==") {
-
-					err = cass.conn.Query(q).Exec()
-					if err != nil {
-						cass.log.Errorf("%s", err)
-						err = fmt.Errorf("Cassandra Schema Driver: Metric failed, %v", err)
-						return
-					}
-					cass.log.Notice("Added table for resolution %s_%ds", cass.MetricsTable, r[0])
-				}
-
-			}
-
-		} else {
+	if cass.Perres {
+		for _, r := range cass.Resolutions {
+			cass.Resolution = r[0]
 
 			buf := bytes.NewBuffer(nil)
 			cass.log.Notice("Cassandra Schema Driver: verifing schema")
 			tpl := template.Must(template.New("cassmetric").Parse(baseTpl))
 			err = tpl.Execute(buf, cass)
-
 			if err != nil {
 				cass.log.Errorf("%s", err)
 				err = fmt.Errorf("Cassandra Schema Driver: Metric failed, %v", err)
-				return
+				return err
 			}
-			cass.log.Notice("Added table for all resolutions %s", cass.MetricsTable)
-
 			Q := string(buf.Bytes())
+
 			for _, q := range strings.Split(Q, "==SPLIT==") {
 
 				err = cass.conn.Query(q).Exec()
 				if err != nil {
 					cass.log.Errorf("%s", err)
 					err = fmt.Errorf("Cassandra Schema Driver: Metric failed, %v", err)
-					return
+					return err
 				}
+				cass.log.Notice("Added table for resolution %s_%ds", cass.MetricsTable, r[0])
 			}
+
 		}
 
-	})
-	return err
-}
-
-func (cass *cassandraMetricsSchema) AddMetricsLogTable() error {
-	var err error
-	cass.startstop.Start(func() {
+	} else {
 
 		buf := bytes.NewBuffer(nil)
 		cass.log.Notice("Cassandra Schema Driver: verifing schema")
-		tpl := template.Must(template.New("cassmetric").Parse(CASSANDRA_METRICS_LOG_TEMPLATE))
+		tpl := template.Must(template.New("cassmetric").Parse(baseTpl))
 		err = tpl.Execute(buf, cass)
 
 		if err != nil {
 			cass.log.Errorf("%s", err)
 			err = fmt.Errorf("Cassandra Schema Driver: Metric failed, %v", err)
-			return
+			return err
 		}
 		cass.log.Notice("Added table for all resolutions %s", cass.MetricsTable)
 
@@ -344,10 +305,38 @@ func (cass *cassandraMetricsSchema) AddMetricsLogTable() error {
 			if err != nil {
 				cass.log.Errorf("%s", err)
 				err = fmt.Errorf("Cassandra Schema Driver: Metric failed, %v", err)
-				return
+				return err
 			}
 		}
+	}
+	return err
+}
 
-	})
+func (cass *cassandraMetricsSchema) AddMetricsLogTable() error {
+	var err error
+
+	buf := bytes.NewBuffer(nil)
+	cass.log.Notice("Cassandra Schema Driver: verifing log schema")
+	tpl := template.Must(template.New("cassmetriclog").Parse(CASSANDRA_METRICS_LOG_TEMPLATE))
+	err = tpl.Execute(buf, cass)
+
+	if err != nil {
+		cass.log.Errorf("%s", err)
+		err = fmt.Errorf("Cassandra Schema Driver: Metric Log failed, %v", err)
+		return err
+	}
+	cass.log.Notice("Added table for log table %s_%d", cass.LogTable, cass.WriteIndex)
+
+	Q := string(buf.Bytes())
+	for _, q := range strings.Split(Q, "==SPLIT==") {
+
+		err = cass.conn.Query(q).Exec()
+		if err != nil {
+			cass.log.Errorf("%s", err)
+			err = fmt.Errorf("Cassandra Schema Driver: Metric Log failed, %v", err)
+			return err
+		}
+	}
+
 	return err
 }
