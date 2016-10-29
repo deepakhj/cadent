@@ -94,11 +94,31 @@ func (s *StatName) SetTagMode(mode string) {
 	case "all":
 		s.TagMode = TAG_ALLTAGS
 	}
+	s.XXX_uniqueId = 0
+	s.XXX_uniqueIdstr = ""
+
+}
+
+func (s *StatName) SetKey(name string) {
+	s.Key = name
+	if name != s.Key {
+		s.XXX_uniqueId = 0
+		s.XXX_uniqueIdstr = ""
+	}
 }
 
 func (s *StatName) Copy() *StatName {
-	cp := *s
-	return &cp
+	cp := &StatName{
+		Key: s.Key,
+		Ttl: s.Ttl,
+		Resolution: s.Resolution,
+		Tags: s.Tags,
+		MetaTags: s.MetaTags,
+		XXX_uniqueId: 0,
+		XXX_uniqueIdstr: "",
+		TagMode: s.TagMode,
+	}
+	return cp
 }
 
 // take the various "parts" (keys, resolution, tags) and return a basic md5 hash of things
@@ -311,8 +331,15 @@ func (s *StatRepr) ByteSize() int64 {
 }
 
 func (s *StatRepr) Copy() *StatRepr {
-	cp := *s
-	return &cp
+	cp := &StatRepr{
+		Name: s.Name.Copy(),
+		Min: s.Min,
+		Max: s.Max,
+		Count: s.Count,
+		Last: s.Last,
+		Sum: s.Sum,
+	}
+	return cp
 
 }
 
@@ -361,6 +388,10 @@ func (s *StatRepr) Merge(stat *StatRepr) *StatRepr {
 	out.Count = out.Count + s.Count
 	out.Sum = out.Sum + s.Sum
 	return out
+}
+
+func (s *StatRepr) SetKey(name string)  {
+	s.Name.SetKey(name)
 }
 
 // basically a "uniqueness" key for dedupe attempts in list

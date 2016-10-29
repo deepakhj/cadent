@@ -425,7 +425,7 @@ func (acc *Accumulator) CurrentStats() *repr.ReprList {
 
 	for idx, stat := range stats {
 		rr := stat.Repr()
-		rr.Name.Key = idx
+		rr.Name.SetKey(idx)
 		rr.Time = t.UnixNano()
 		rr.Name.Resolution = uint32(acc.FlushTimes[0].Seconds())
 		s_rep.Add(*rr)
