@@ -59,8 +59,10 @@ type ApiIndexerConfig struct {
 	Options options.Options `toml:"options"  json:"options,omitempty"`
 }
 
+// ApiConfig each writer for both metrics and indexers should get the http API attached to it
 type ApiConfig struct {
 	Listen                     string           `toml:"listen"  json:"listen,omitempty"`
+	GPRCListen                 string           `toml:"grpc_listen" json:"grpc_listen,omitempty"`
 	Logfile                    string           `toml:"log_file"  json:"log-file,omitempty"`
 	BasePath                   string           `toml:"base_path"  json:"base-path,omitempty"`
 	TLSKeyPath                 string           `toml:"key"  json:"key,omitempty"`
@@ -71,6 +73,7 @@ type ApiConfig struct {
 	MaxReadCacheBytesPerMetric int              `toml:"read_cache_max_bytes_per_metric"  json:"read-cache-max-bytes-per-metric,omitempty"`
 }
 
+// SoloApiConfig for when you just want to run the API only (i.e. a reader only node)
 type SoloApiConfig struct {
 	ApiConfig
 	Seed        string  `toml:"seed" json:"seed,omitempty"` // only used in "api only" mode
@@ -80,6 +83,7 @@ type SoloApiConfig struct {
 func (s *SoloApiConfig) GetApiConfig() ApiConfig {
 	return ApiConfig{
 		Listen:                     s.Listen,
+		GPRCListen:                 s.GPRCListen,
 		Logfile:                    s.Logfile,
 		BasePath:                   s.BasePath,
 		TLSKeyPath:                 s.TLSKeyPath,
@@ -91,6 +95,7 @@ func (s *SoloApiConfig) GetApiConfig() ApiConfig {
 	}
 }
 
+// GetMetrics creates a new metrics object
 func (re *ApiConfig) GetMetrics(resolution float64) (metrics.Metrics, error) {
 	reader, err := metrics.NewWriterMetrics(re.ApiMetricOptions.Driver)
 	if err != nil {
@@ -111,7 +116,7 @@ func (re *ApiConfig) GetMetrics(resolution float64) (metrics.Metrics, error) {
 	// find the proper cache to use
 	res := uint32(resolution)
 	proper_name := fmt.Sprintf("%s:%d", re.ApiMetricOptions.UseCache, res)
-	c, err := metrics.GetCacherSingleton(proper_name)
+	c, err := metrics.GetCacherSingleton(proper_name, metrics.CacheNeededName(re.ApiMetricOptions.Driver))
 	if err != nil {
 		return nil, err
 	}
@@ -125,6 +130,7 @@ func (re *ApiConfig) GetMetrics(resolution float64) (metrics.Metrics, error) {
 	return reader, nil
 }
 
+// GetIndexer creates a new indexer object
 func (re *ApiConfig) GetIndexer() (indexer.Indexer, error) {
 	idx, err := indexer.NewIndexer(re.ApiIndexerOptions.Driver)
 	if err != nil {

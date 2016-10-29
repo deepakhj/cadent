@@ -109,14 +109,14 @@ func (s *StatName) SetKey(name string) {
 
 func (s *StatName) Copy() *StatName {
 	cp := &StatName{
-		Key: s.Key,
-		Ttl: s.Ttl,
-		Resolution: s.Resolution,
-		Tags: s.Tags,
-		MetaTags: s.MetaTags,
-		XXX_uniqueId: 0,
+		Key:             s.Key,
+		Ttl:             s.Ttl,
+		Resolution:      s.Resolution,
+		Tags:            s.Tags,
+		MetaTags:        s.MetaTags,
+		XXX_uniqueId:    0,
 		XXX_uniqueIdstr: "",
-		TagMode: s.TagMode,
+		TagMode:         s.TagMode,
 	}
 	return cp
 }
@@ -332,12 +332,12 @@ func (s *StatRepr) ByteSize() int64 {
 
 func (s *StatRepr) Copy() *StatRepr {
 	cp := &StatRepr{
-		Name: s.Name.Copy(),
-		Min: s.Min,
-		Max: s.Max,
+		Name:  s.Name.Copy(),
+		Min:   s.Min,
+		Max:   s.Max,
 		Count: s.Count,
-		Last: s.Last,
-		Sum: s.Sum,
+		Last:  s.Last,
+		Sum:   s.Sum,
 	}
 	return cp
 
@@ -390,7 +390,7 @@ func (s *StatRepr) Merge(stat *StatRepr) *StatRepr {
 	return out
 }
 
-func (s *StatRepr) SetKey(name string)  {
+func (s *StatRepr) SetKey(name string) {
 	s.Name.SetKey(name)
 }
 
