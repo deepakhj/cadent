@@ -395,7 +395,7 @@ func (cass *CassandraMetric) Config(conf *options.Options) (err error) {
 
 	// tweak queus and worker sizes
 	cass.numWorkers = int(conf.Int64("write_workers", CASSANDRA_DEFAULT_METRIC_WORKERS))
-	cass.queueLen = int(conf.Int64("write_queueLength", CASSANDRA_DEFAULT_METRIC_QUEUE_LEN))
+	cass.queueLen = int(conf.Int64("write_queue_ength", CASSANDRA_DEFAULT_METRIC_QUEUE_LEN))
 	cass.dispatchRetries = int(conf.Int64("write_queue_retries", CASSANDRA_DEFAULT_METRIC_RETRIES))
 	cass.tablePerResolution = conf.Bool("table_per_resolution", false)
 
@@ -407,7 +407,7 @@ func (cass *CassandraMetric) Config(conf *options.Options) (err error) {
 
 	// rolluptype
 	if cass.rollupType == "" {
-		cass.rollupType = conf.String("rollupType", CASSANDRA_DEFAULT_ROLLUP_TYPE)
+		cass.rollupType = conf.String("rollup_type", CASSANDRA_DEFAULT_ROLLUP_TYPE)
 	}
 
 	_cache, err := conf.ObjectRequired("cache")
@@ -1115,7 +1115,7 @@ func (cass *CassandraMetric) GetLatestFromDB(name *repr.StatName, resolution uin
 		)
 		selArgs = []interface{}{name.UniqueIdString()}
 	} else {
-		fmt.Sprintf(
+		Q = fmt.Sprintf(
 			"SELECT mid.id, stime, etime, ptype, points FROM %s WHERE mid={id: ?, res: ?} ORDER BY etime DESC LIMIT 1",
 			cass.writer.db.MetricTable(),
 		)
