@@ -18,6 +18,7 @@ package metrics
 
 import (
 	"cadent/server/repr"
+	"fmt"
 	. "github.com/smartystreets/goconvey/convey"
 	"testing"
 	"time"
@@ -31,10 +32,11 @@ func TestCacher(t *testing.T) {
 		Sum:   100,
 		Name:  &nm,
 	}
-	tmp, _ := GetCacherSingleton("myniftyname", "chunk")
-	c := tmp.(*CacherChunk)
 
 	Convey("CacherChunk should function basically", t, func() {
+		tmp, _ := GetCacherSingleton("myniftyname", "chunk")
+		c := tmp.(*CacherChunk)
+
 		So(c, ShouldNotEqual, nil)
 
 		c.SetName("monkey")
@@ -52,6 +54,8 @@ func TestCacher(t *testing.T) {
 	})
 
 	Convey("CacherChunk should emit log messages", t, func() {
+		tmp, _ := GetCacherSingleton("moogoo", "chunk")
+		c := tmp.(*CacherChunk)
 
 		c.SetMaxChunks(2)
 		c.SetLogTimeWindow(2)
@@ -64,18 +68,64 @@ func TestCacher(t *testing.T) {
 			err := c.Add(&nm, &repCp)
 			So(err, ShouldEqual, nil)
 		}
-		// myniftyname was already inited above
-		So(len(c.curSlice[nm.UniqueId()]), ShouldEqual, 101)
+
+		So(len(c.curSlice[nm.UniqueId()]), ShouldEqual, 100)
 		So(c.curChunk.Len(), ShouldEqual, 1)
-		So(c.curChunk.ts[nm.UniqueId()].Series.Count(), ShouldEqual, 101)
+		So(c.curChunk.ts[nm.UniqueId()].Series.Count(), ShouldEqual, 100)
 
 		gots := <-lchan.Ch
 		g := gots.(*CacheChunkLog)
 		So(g.SequenceId, ShouldEqual, 0)
 		So(len(g.Slice), ShouldEqual, 1)
-		So(len(g.Slice[nm.UniqueId()]), ShouldEqual, 101)
+		So(len(g.Slice[nm.UniqueId()]), ShouldEqual, 100)
 		So(len(c.curSlice), ShouldEqual, 0)
 		lchan.Close()
+		c.Stop()
 
 	})
+
+	Convey("CacherChunk should emit slice messages", t, func() {
+		tmp, _ := GetCacherSingleton("anothername", "chunk")
+		c := tmp.(*CacherChunk)
+
+		c.SetMaxChunks(2)
+		c.SetLogTimeWindow(2)
+		c.SetChunkTimeWindow(10)
+		c.Start()
+
+		schan := c.GetSliceChan()
+
+		doadd := func() {
+			orName := rep.Name.Key
+			for {
+				for i := int64(0); i < 100; i++ {
+					repCp := rep.Copy()
+					repCp.SetKey(fmt.Sprintf("%s.%d", orName, i))
+					repCp.Time = time.Now().UnixNano() + i*int64(10*time.Second)
+					c.Add(repCp.Name, repCp)
+					time.Sleep(100 * time.Microsecond)
+				}
+			}
+		}
+		go doadd()
+
+		So(c.curSequenceId, ShouldEqual, 0)
+
+		gots := <-schan.Ch
+		g, ok := gots.(*CacheChunkSlice)
+		if !ok {
+			t.Fatalf("Not a CacheChunkLog object")
+		}
+		So(len(g.Slice.AllSeries()), ShouldEqual, 100)
+		So(c.curSequenceId, ShouldEqual, 1)
+		gots = <-schan.Ch
+		g, ok = gots.(*CacheChunkSlice)
+		if !ok {
+			t.Fatalf("Not a CacheChunkLog object")
+		}
+		So(len(g.Slice.AllSeries()), ShouldEqual, 100)
+		So(c.curSequenceId, ShouldEqual, 2)
+
+	})
+
 }

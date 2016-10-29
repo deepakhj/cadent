@@ -26,14 +26,12 @@ limitations under the License.
 
 	writers that use this, need two channel responders
 
-	1. for the "overflow" (not really overflow) but the cacher will push metrics in the chunk
-	 that needs to be written as "normal"
+	1. chunk channel: the cacher will push metrics in the chunk
+	 that needs to be written as "normal timeseries"
 
-	2. will push "current" log to dump to the log tables/files
+	2. log channel: will push "current" log to dump to the log tables/files
 
 	The writer is responsible for removing the log chunks once the series have all been written
-
-
 
 */
 
@@ -327,7 +325,7 @@ func NewCacherChunk() *CacherChunk {
 	wc.logTime = CACHE_LOG_FLUSH
 	wc.seriesType = CACHER_SERIES_TYPE
 
-	wc.log = logging.MustGetLogger("chunkcacher.metrics")
+	wc.log = logging.MustGetLogger("metrics.chunkcacher")
 	wc.statsdPrefix = "chunkcacher.metrics."
 	wc.curSlice = make(map[repr.StatId][]*repr.StatRepr)
 	wc.chunks = make([]*cacheChunkItem, CACHE_LOG_CHUNKS)
@@ -387,6 +385,7 @@ func (wc *CacherChunk) Start() {
 		wc.log.Notice("Starting Metric Chunk Cache Encoding: %s", wc.seriesType)
 		wc.log.Notice("Starting Metric Chunk Cache Log Runner every: %d seconds", wc.logTime)
 		go wc.runLogDump()
+		go wc.cycleChunks()
 	})
 }
 
@@ -395,7 +394,7 @@ func (wc *CacherChunk) Stop() {
 	wc.startstop.Stop(func() {
 		shutdown.AddToShutdown()
 		defer shutdown.ReleaseFromShutdown()
-
+		wc.shutdown.Close()
 	})
 }
 
@@ -406,7 +405,7 @@ func (wc *CacherChunk) runLogDump() {
 	for {
 		select {
 		case <-tick.C:
-			wc.log.Info("Flushing log to writer for %d metrics", len(wc.curSlice))
+			wc.log.Info("Flushing log to writer for %d metrics for %s", len(wc.curSlice), wc.Name)
 			wc.mu.Lock()
 			// need to clone it to avoid overwriting
 			tmp := make(map[repr.StatId][]*repr.StatRepr)
@@ -440,11 +439,12 @@ func (wc *CacherChunk) runLogDump() {
 // old chunk to the queue
 func (wc *CacherChunk) cycleChunks() {
 	tick := time.NewTicker(time.Duration(int64(wc.maxTime) * int64(time.Second)))
+	wc.log.Notice("Starting Chunk cycler: rotating every %d seconds", int64(wc.maxTime))
 	shuts := wc.shutdown.Listen()
 	for {
 		select {
 		case <-tick.C:
-			wc.log.Info("Sending sequence %d to writers for %d metrics", len(wc.curSlice))
+			wc.log.Info("Sending sequence %d to writers for %d metrics", wc.curSequenceId, len(wc.curSlice))
 			wc.mu.Lock()
 
 			// drop the first one in the list and add the new one

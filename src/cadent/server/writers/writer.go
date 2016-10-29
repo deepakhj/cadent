@@ -151,6 +151,7 @@ func (wc WriterMetricConfig) NewMetrics(duration time.Duration, cache_config []W
 		if err != nil {
 			return nil, err
 		}
+
 		if got.GetName() == proper_name {
 			i_ops.Set("cache", got)
 			have = true

@@ -92,20 +92,10 @@ type CassandraLogMetric struct {
 	CassandraMetric
 
 	cacher     *CacherChunk
-	loggerChan *broadcast.Listener
-	slicerChan *broadcast.Listener
+	loggerChan *broadcast.Listener // log writes
+	slicerChan *broadcast.Listener // current slice writes
 
-	// dispatch writer worker queue
-	numWorkers      int
-	queueLen        int
-	dispatchRetries int
-	dispatcher      *dispatch.DispatchQueue
-
-	tablePerResolution bool   // if this is "true" then rather then "one big table" we assume different tables for each rollup
-	selQ               string //select query
-	writerIndex        int
-
-	shutdown chan bool
+	writerIndex int
 }
 
 func NewCassandraLogMetrics() *CassandraLogMetric {
@@ -124,12 +114,13 @@ func NewCassandraLogTriggerMetrics() *CassandraLogMetric {
 	return cass
 }
 
+// Config setups all the options for the writer
 func (cass *CassandraLogMetric) Config(conf *options.Options) (err error) {
 
-	err = cass.CassandraMetric.Config(conf)
+	/*err = cass.CassandraMetric.Config(conf)
 	if err != nil {
 		return err
-	}
+	}*/
 	_, err = conf.StringRequired("dsn")
 	if err != nil {
 		return fmt.Errorf("Metrics: `dsn` (server1,server2,server3) is needed for cassandra config")
@@ -163,7 +154,7 @@ func (cass *CassandraLogMetric) Config(conf *options.Options) (err error) {
 
 	// tweak queus and worker sizes
 	cass.numWorkers = int(conf.Int64("write_workers", CASSANDRA_DEFAULT_METRIC_WORKERS))
-	cass.queueLen = int(conf.Int64("write_queueLength", CASSANDRA_DEFAULT_METRIC_QUEUE_LEN))
+	cass.queueLen = int(conf.Int64("write_queue_length", CASSANDRA_DEFAULT_METRIC_QUEUE_LEN))
 	cass.dispatchRetries = int(conf.Int64("write_queue_retries", CASSANDRA_DEFAULT_METRIC_RETRIES))
 	cass.tablePerResolution = conf.Bool("table_per_resolution", false)
 
@@ -175,7 +166,7 @@ func (cass *CassandraLogMetric) Config(conf *options.Options) (err error) {
 
 	// rolluptype
 	if cass.rollupType == "" {
-		cass.rollupType = conf.String("rollupType", CASSANDRA_DEFAULT_ROLLUP_TYPE)
+		cass.rollupType = conf.String("rollup_type", CASSANDRA_DEFAULT_ROLLUP_TYPE)
 	}
 
 	_cache, err := conf.ObjectRequired("cache")
@@ -195,7 +186,7 @@ func (cass *CassandraLogMetric) Config(conf *options.Options) (err error) {
 	// these caches can be shared for a given writer set, and the caches may provide the data for
 	// multiple writers, we need to specify that ONE of the writers is the "main" one otherwise
 	// the Metrics Write function will add the points over again, which is not a good thing
-	// when the accumulator flushes things to the multi wrtiers
+	// when the accumulator flushes things to the multi writers
 	// The Writer needs to know it's "not" the primary writer and thus will not "add" points to the
 	// cache .. so the cache basically gets "one" primary writer pointed (first come first serve)
 	cass.isPrimary = cass.cacher.SetPrimaryWriter(cass)
@@ -237,13 +228,17 @@ func (cass *CassandraLogMetric) Start() {
 			cass.tablePerResolution,
 			cass.writer.db.GetCassandraVersion(),
 		)
+
+		// table names is {base}_{windex}_{res}s
 		schems.LogTable = cass.writer.db.LogTableBase()
 		schems.WriteIndex = cass.writerIndex
-
+		schems.Resolution = cass.currentResolution
 		err := schems.AddMetricsTable()
+
 		if err != nil {
 			panic(err)
 		}
+		cass.writer.log.Notice("Adding metric log tables")
 		err = schems.AddMetricsLogTable()
 		if err != nil {
 			panic(err)
@@ -314,8 +309,13 @@ func (cass *CassandraLogMetric) Stop() {
 // listen for the broad cast chan an flush out a log entry
 func (cass *CassandraLogMetric) writeLog() {
 	for {
-		clog := <-cass.loggerChan.Ch
-
+		clog, more := <-cass.loggerChan.Ch
+		if !more {
+			return
+		}
+		if clog == nil {
+			continue
+		}
 		tn := time.Now()
 
 		toLog, ok := clog.(*CacheChunkLog)
@@ -326,9 +326,11 @@ func (cass *CassandraLogMetric) writeLog() {
 			continue
 		}
 
+		// needs to be in seconds
+		ttl := CASSANDRA_LOG_TTL / int64(time.Second)
 		Q := fmt.Sprintf(
-			"INSERT INTO %s_%d (seq, stamp, data) VALUES (?,?,?) USING TTL %d",
-			cass.writer.db.LogTableBase(), cass.writerIndex, CASSANDRA_LOG_TTL,
+			"INSERT INTO %s_%d_%ds (seq, ts, pts) VALUES (?,?,?) USING TTL %d",
+			cass.writer.db.LogTableBase(), cass.writerIndex, cass.currentResolution, ttl,
 		)
 
 		// zstd the punk
@@ -337,11 +339,13 @@ func (cass *CassandraLogMetric) writeLog() {
 		enc := json.NewEncoder(compressed)
 		err := enc.Encode(toLog.Slice)
 		compressed.Close()
+
 		if err != nil {
 			stats.StatsdClientSlow.Incr("writer.cassandralog.log.writes.errors", 1)
 			cass.writer.log.Critical("Json encode error: type cannot write log: %v", err)
 			continue
 		}
+
 		err = cass.writer.conn.Query(
 			Q,
 			toLog.SequenceId,
@@ -359,12 +363,19 @@ func (cass *CassandraLogMetric) writeLog() {
 	}
 }
 
-// listen for the broad cast chan an flush out the newest slice in the mix
+// listen for the broadcast chan an flush out the newest slice in the mix
 func (cass *CassandraLogMetric) writeSlice() {
 	for {
 		var err error
 
-		clog := <-cass.loggerChan.Ch
+		clog, more := <-cass.slicerChan.Ch
+		if !more {
+			return
+		}
+
+		if clog == nil {
+			continue
+		}
 
 		tn := time.Now()
 
@@ -587,7 +598,6 @@ func (cass *CassandraLogMetric) GetFromWriteCache(metric *indexer.MetricFindItem
 
 	// grab data from the write inflight cache
 	// need to pick the "proper" cache
-	cass.writer.log.Critical("MOOO GetFromWriteCache")
 	cache_db := fmt.Sprintf("%s:%d", cass.cacherPrefix, resolution)
 	use_res := resolution
 	if cass.rollupType == "triggered" {
