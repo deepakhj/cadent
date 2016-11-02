@@ -2,6 +2,8 @@
 // source: objects.proto
 // DO NOT EDIT!
 
+// XXX EDITED (boblanton) :: `omitempty` REMOVED from MetricFindItem
+
 /*
 	Package indexer is a generated protocol buffer package.
 
@@ -36,11 +38,11 @@ const _ = proto.GoGoProtoPackageIsVersion2 // please upgrade the proto package
 
 // the basic metric json blob for find
 type MetricFindItem struct {
-	Text          string      `protobuf:"bytes,1,opt,name=text,proto3" json:"text,omitempty"`
-	Expandable    uint32      `protobuf:"varint,2,opt,name=expandable,proto3" json:"expandable,omitempty"`
-	Leaf          uint32      `protobuf:"varint,3,opt,name=leaf,proto3" json:"leaf,omitempty"`
-	Path          string      `protobuf:"bytes,4,opt,name=path,proto3" json:"path,omitempty"`
-	AllowChildren uint32      `protobuf:"varint,5,opt,name=allowChildren,proto3" json:"allowChildren,omitempty"`
+	Text          string      `protobuf:"bytes,1,opt,name=text,proto3" json:"text"`
+	Expandable    uint32      `protobuf:"varint,2,opt,name=expandable,proto3" json:"expandable"`
+	Leaf          uint32      `protobuf:"varint,3,opt,name=leaf,proto3" json:"leaf"`
+	Path          string      `protobuf:"bytes,4,opt,name=path,proto3" json:"path"`
+	AllowChildren uint32      `protobuf:"varint,5,opt,name=allowChildren,proto3" json:"allowChildren"`
 	Id            string      `protobuf:"bytes,6,opt,name=id,proto3" json:"id,omitempty"`
 	UniqueId      string      `protobuf:"bytes,7,opt,name=uniqueId,json=uniqueid,proto3" json:"uniqueId,omitempty"`
 	Tags          []*repr.Tag `protobuf:"bytes,13,rep,name=tags" json:"tags,omitempty"`

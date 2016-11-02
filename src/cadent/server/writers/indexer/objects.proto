@@ -1,5 +1,7 @@
 //go:generate  protoc --proto_path=../../../../cadent/vendor/:./:../../../../ --gogofaster_out=.  objects.proto
 
+// NOTE: MUST EDIT GENERATED (boblanton) :: `omitempty` json REMOVED from MetricFindItem fields (leaf, expandable, id, path, text)
+
 // note this is not a gogofaster as we need maps properly
 
 // also need to generate the msgpack from the rendered result
