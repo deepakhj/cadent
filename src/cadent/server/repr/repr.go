@@ -338,6 +338,7 @@ func (s *StatRepr) Copy() *StatRepr {
 		Count: s.Count,
 		Last:  s.Last,
 		Sum:   s.Sum,
+		Time:  s.Time,
 	}
 	return cp
 
