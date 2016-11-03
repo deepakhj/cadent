@@ -214,19 +214,19 @@ type WriterConfig struct {
 }
 
 type WriterLoop struct {
-	name         string
-	cache        *metrics.Cacher
-	metrics      metrics.Metrics
-	indexer      indexer.Indexer
-	write_chan   chan *repr.StatRepr
-	indexer_chan chan *repr.StatName
-	shutdowner   *broadcast.Broadcaster
-	write_queue  *WriteQueue
-	MetricQLen   int
-	IndexerQLen  int
-	log          *logging.Logger
-	startstop    utils.StartStop
-	stopped      bool
+	name        string
+	cache       *metrics.Cacher
+	metrics     metrics.Metrics
+	indexer     indexer.Indexer
+	writeChan   chan *repr.StatRepr
+	indexerChan chan *repr.StatName
+	shutdowner  *broadcast.Broadcaster
+	write_queue *WriteQueue
+	MetricQLen  int
+	IndexerQLen int
+	log         *logging.Logger
+	startstop   utils.StartStop
+	stopped     bool
 }
 
 func New() (loop *WriterLoop, err error) {
@@ -259,9 +259,9 @@ func (loop *WriterLoop) statTick() {
 		case <-shuts.Ch:
 			return
 		case <-ticker.C:
-			stats.StatsdClientSlow.GaugeAvg(fmt.Sprintf("writer.metricsqueue.%s.length", loop.name), int64(len(loop.write_chan)))
-			stats.StatsdClientSlow.GaugeAvg(fmt.Sprintf("writer.indexerqueue.%s.length", loop.name), int64(len(loop.indexer_chan)))
-			//log.Printf("Write Queue Length: %s: Metrics: %d Indexer %d", loop.name, len(loop.write_chan), len(loop.indexer_chan))
+			stats.StatsdClientSlow.GaugeAvg(fmt.Sprintf("writer.metricsqueue.%s.length", loop.name), int64(len(loop.writeChan)))
+			stats.StatsdClientSlow.GaugeAvg(fmt.Sprintf("writer.indexerqueue.%s.length", loop.name), int64(len(loop.indexerChan)))
+			//log.Printf("Write Queue Length: %s: Metrics: %d Indexer %d", loop.name, len(loop.writeChan), len(loop.indexerChan))
 		}
 	}
 }
@@ -285,14 +285,14 @@ func (loop *WriterLoop) Indexer() indexer.Indexer {
 }
 
 func (loop *WriterLoop) WriterChan() chan *repr.StatRepr {
-	return loop.write_chan
+	return loop.writeChan
 }
 
 func (loop *WriterLoop) indexLoop() {
 	shut := loop.shutdowner.Listen()
 	for {
 		select {
-		case stat, more := <-loop.indexer_chan:
+		case stat, more := <-loop.indexerChan:
 			// indexing can be very expensive (at least for cassandra)
 			// and should have their own internal queues and smarts for handleing a massive influx of metric names
 			if !more {
@@ -310,7 +310,7 @@ func (loop *WriterLoop) procLoop() {
 
 	for {
 		select {
-		case stat, more := <-loop.write_chan:
+		case stat, more := <-loop.writeChan:
 			if !more {
 				return
 			}
@@ -360,16 +360,16 @@ func (loop *WriterLoop) processQueue() {
 }
 
 func (loop *WriterLoop) Full() bool {
-	return len(loop.write_chan) >= loop.MetricQLen || len(loop.indexer_chan) >= loop.IndexerQLen
+	return len(loop.writeChan) >= loop.MetricQLen || len(loop.indexerChan) >= loop.IndexerQLen
 }
 
 func (loop *WriterLoop) Start() {
 	loop.startstop.Start(func() {
 		loop.log.Notice("Starting Writer `%s`", loop.name)
 
-		loop.write_chan = make(chan *repr.StatRepr, loop.MetricQLen)
+		loop.writeChan = make(chan *repr.StatRepr, loop.MetricQLen)
 		// indexing is slow, so we'll need to buffer things a bit more
-		loop.indexer_chan = make(chan *repr.StatName, loop.IndexerQLen)
+		loop.indexerChan = make(chan *repr.StatName, loop.IndexerQLen)
 
 		go loop.metrics.Start()
 		go loop.indexer.Start()
@@ -388,13 +388,13 @@ func (loop *WriterLoop) Stop() {
 		loop.stopped = true
 		loop.log.Warning("Shutting down writer `%s`", loop.name)
 		loop.shutdowner.Send(true)
-		if loop.indexer_chan != nil {
-			close(loop.indexer_chan)
-			loop.indexer_chan = nil
+		if loop.indexerChan != nil {
+			close(loop.indexerChan)
+			loop.indexerChan = nil
 		}
-		if loop.write_chan != nil {
-			close(loop.write_chan)
-			loop.write_chan = nil
+		if loop.writeChan != nil {
+			close(loop.writeChan)
+			loop.writeChan = nil
 		}
 		loop.log.Warning("Shutting down metrics writer `%s`", loop.name)
 		loop.metrics.Stop()
