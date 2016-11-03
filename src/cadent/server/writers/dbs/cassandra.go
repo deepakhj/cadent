@@ -127,9 +127,12 @@ func (cass *CassandraDB) Config(conf *options.Options) (err error) {
 	cluster.Port = port
 	cluster.RetryPolicy = &gocql.SimpleRetryPolicy{NumRetries: 3}
 	cluster.ProtoVersion = 0x04 //so much faster then v3
+	cluster.Timeout = time.Duration(10 * time.Second)
+
 	// need to test/add for keyspace first
 	err = cass.injectKeySpace(cluster)
 	if err != nil {
+		cass.log.Errorf("Could not make keyspace: %s", err)
 		return err
 	}
 
@@ -161,6 +164,7 @@ func (cass *CassandraDB) Config(conf *options.Options) (err error) {
 	cass.conn, err = getSessionSingleton(sess_key, cluster)
 
 	if err != nil {
+		cass.log.Errorf("Could not get session: %s", err)
 		return err
 	}
 	cass.log.Notice("Connected to Cassandra: %v (%v)", con_key, servers)
@@ -197,7 +201,6 @@ func (cass *CassandraDB) Cluster() *gocql.ClusterConfig {
 	return cass.cluster
 }
 
-// getters
 func (cass *CassandraDB) MetricTable() string {
 	return cass.metricTable
 }
