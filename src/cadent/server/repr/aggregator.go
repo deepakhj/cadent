@@ -91,8 +91,8 @@ func (sa *Aggregator) Add(stat *StatRepr) error {
 
 		return nil
 	}
-	sa.mu.Lock()
-	defer sa.mu.Unlock()
+	//sa.mu.Lock()
+	//defer sa.mu.Unlock()
 
 	element.Last = stat.Last
 
@@ -106,9 +106,7 @@ func (sa *Aggregator) Add(stat *StatRepr) error {
 	element.Sum += stat.Sum
 	element.Time = res_time.UnixNano()
 	element.Name.Resolution = uint32(sa.Resolution.Seconds())
-	/*sa.mu.Lock()
-	sa.Items[m_k] = element
-	sa.mu.Unlock()*/
+	//sa.Items[m_k] = element
 
 	return nil
 }
