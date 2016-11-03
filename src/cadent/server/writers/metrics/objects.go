@@ -656,54 +656,28 @@ func (r *RawRenderItem) QuantizeToStep(step uint32) error {
 	return nil
 }
 
-// merges 2 series into the current one .. it will quantize them first
-// if the 'r' data point is Null, it will use the 'm' data point
-// otherwise it will just continue using "r" as we assume that's the source of truth
+// merges 2 series into the current one ..
 func (r *RawRenderItem) Merge(m *RawRenderItem) error {
-
-	// steps sizes need to be the same
-	if r.Step != m.Step {
-		return errMergeStepSizeError
-	}
 
 	if m.Start < r.Start {
 		r.Start = m.Start
-	} else {
-		m.Start = r.Start
 	}
 	if m.End > r.End {
 		r.End = m.End
-	} else {
-		m.End = r.End
 	}
+
 	if m.RealStart < r.RealStart {
 		r.RealStart = m.RealStart
-	} else {
-		m.RealStart = r.RealStart
 	}
+
 	if m.RealEnd > r.RealEnd {
 		r.RealEnd = m.RealEnd
-	} else {
-		m.RealEnd = r.RealEnd
 	}
 
-	// both series should be the same size after this step
-	err := r.Quantize()
-	if err != nil {
-		return err
-	}
-	err = m.Quantize()
-	if err != nil {
-		return err
-	}
-
-	// find the "longest" one
-	cur_len := len(m.Data)
-	for i := 0; i < cur_len; i++ {
-		if r.Data[i] == nil || r.Data[i].IsNull() {
-			r.Data[i] = m.Data[i]
-		}
-	}
+	// easy one we just merge the two lists and sort it (becuase we're too lazy to do linked
+	// list things
+	r.Data = append(r.Data, m.Data...)
+	sort.Sort(RawDataPointList(r.Data))
 
 	r.Tags = repr.SortingTags(r.Tags).Merge(m.Tags)
 	r.MetaTags = repr.SortingTags(r.MetaTags).Merge(m.MetaTags)
