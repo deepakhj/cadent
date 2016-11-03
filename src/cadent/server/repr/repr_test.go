@@ -49,11 +49,27 @@ func TestStatAccumulatorRepr(t *testing.T) {
 		Count: 4,
 		Time:  time.Now().UnixNano(),
 	}
+
 	Convey("Stat Names Copy", t, func() {
 		cp := moo_nm.Copy()
 		cp.SetKey("monkey")
 
 		So(cp.Key, ShouldNotEqual, moo_nm.Key)
+
+	})
+
+	Convey("Stat Copy", t, func() {
+		cp := ss.Copy()
+
+		So(cp.Name.Key, ShouldEqual, ss.Name.Key)
+		So(cp.Count, ShouldEqual, ss.Count)
+		So(cp.Time, ShouldEqual, ss.Time)
+		So(cp.Max, ShouldEqual, ss.Max)
+		So(cp.Min, ShouldEqual, ss.Min)
+		So(cp.Last, ShouldEqual, ss.Last)
+
+		So(&cp, ShouldNotEqual, &ss)
+
 	})
 
 	Convey("Stat Names", t, func() {
