@@ -81,19 +81,18 @@ A "total" metric has the form
          Metric StatMetric
     }
 
-## "You" Need To Add your schemas
+## "You" Need "check" your schemas
 
-Cadent could inject the schemas for you.  But as a long time ops person, not every schema is geared towards use cases.
+Cadent injects the "basic" scheams for MySQL ElasticSearch, and Cassandra.
+
+But as a long time ops person, not every schema is geared towards use cases. So please check them to make sure they are what you
+really want. 
 The scemas presented below are what cadent expects in it's tables, so one will at least need to match them in some form
 For MySQL, for instance, if you wanted to do TTLs on data, you would need to partition the table to allow for easy
 dropping of data at the proper time (and thus some of your indexes may change).  Cassandra is a bit more tricky as the
 query patterns expect some element of consitency in the Primary key, but you may want different replication,
 drivers, and other options that make your environment happy.
 
-*Almost*
-
-Currently _MySQL_ and _ElasticSearch_ have modules to add their schemas and least verify they are there as well. Hopefully
-a good solution can be found with Cassandra in a bit.
 
 
 ## Status
@@ -108,7 +107,7 @@ Not everything is "done" .. as there are many things to write and verify, this i
 | elasticsearch |  read+write | read+write | No | read+write | No |
 | whisper|  read | n/a | n/a  | write+read |  n/a |
 | leveldb |  write+read | No | No  | No |  n/a |
-| file |  n/a | n/a | n/a  | write |  n/a | 
+| file |  n/a | n/a | n/a  | write |  n/a |
 
 
 
