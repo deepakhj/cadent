@@ -21,12 +21,16 @@ limitations under the License.
 package api
 
 import (
+	"cadent/server/repr"
 	"cadent/server/stats"
+	"cadent/server/utils"
 	"cadent/server/writers/indexer"
 	"cadent/server/writers/metrics"
+	"encoding/json"
 	"fmt"
 	"github.com/gorilla/mux"
 	"net/http"
+	"sort"
 	"time"
 )
 
@@ -72,7 +76,51 @@ type WhisperRenderItem struct {
 	Series    map[string][]*metrics.DataPoint `json:"series,omitempty"`
 }
 
-// take a rawrender and make it a graphite api json format
+// MarshalJSON custom json-er for sorting the series by keys
+func (w *WhisperRenderItem) MarshalJSON() ([]byte, error) {
+	buf := utils.GetBytesBuffer()
+	defer utils.PutBytesBuffer(buf)
+
+	buf.Write(repr.LEFT_BRACE_BYTES)
+
+	fmt.Fprintf(buf, "\"real_start\": %d,\"real_end\": %d,\"start\": %d,\"end\": %d,\"from\": %d,\"to\": %d,\"step\": %d,\"series\": {",
+		w.RealStart,
+		w.RealEnd,
+		w.Start,
+		w.End,
+		w.From,
+		w.To,
+		w.Step,
+	)
+
+	// grab names and sort them
+	tNames := make([]string, len(w.Series))
+	idx := 0
+	for n := range w.Series {
+		tNames[idx] = n
+		idx++
+	}
+	sort.Strings(tNames)
+	l := len(tNames)
+	for i, n := range tNames {
+		bytes, err := json.Marshal(w.Series[n])
+		if err != nil {
+			fmt.Println("Json Error: ", err)
+			continue
+		}
+		fmt.Fprintf(buf, "\"%s\": ", n)
+		buf.Write(bytes)
+		if i < l-1 {
+			buf.Write(repr.COMMA_SEPARATOR_BYTE)
+		}
+	}
+
+	buf.Write(repr.RIGHT_BRACE_BYTES)
+	buf.Write(repr.RIGHT_BRACE_BYTES)
+	return buf.Bytes(), nil
+}
+
+// ToGraphiteRender take a rawrender and make it a graphite api json format
 // meant for PyCadent hooked into the graphite-api backend storage item
 func (re *MetricsAPI) ToGraphiteRender(raw_data []*metrics.RawRenderItem) *WhisperRenderItem {
 	whis := new(WhisperRenderItem)
@@ -111,6 +159,13 @@ type GraphiteApiItem struct {
 }
 type GraphiteApiItems []*GraphiteApiItem
 
+// Sorting for the target outputs
+func (p GraphiteApiItems) Len() int { return len(p) }
+func (p GraphiteApiItems) Less(i, j int) bool {
+	return p[i].Target < p[j].Target
+}
+func (p GraphiteApiItems) Swap(i, j int) { p[i], p[j] = p[j], p[i] }
+
 func (re *MetricsAPI) ToGraphiteApiRender(raw_data []*metrics.RawRenderItem) GraphiteApiItems {
 	graphite := make(GraphiteApiItems, 0)
 
@@ -133,6 +188,7 @@ func (re *MetricsAPI) ToGraphiteApiRender(raw_data []*metrics.RawRenderItem) Gra
 		g_item.Datapoints = d_points
 		graphite = append(graphite, g_item)
 	}
+	sort.Sort(graphite)
 	return graphite
 }
 
@@ -247,6 +303,7 @@ func (re *MetricsAPI) RawRender(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// adds the gotten metrics to the internal read cache
 	re.a.AddToCache(data)
 	stats.StatsdClientSlow.Incr("reader.http.rawrender.ok", 1)
 

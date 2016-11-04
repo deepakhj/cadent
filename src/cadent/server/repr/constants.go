@@ -28,6 +28,8 @@ const COMMA_SEPARATOR = ","
 const EQUAL_SEPARATOR = "="
 const COLON_SEPARATOR = ":"
 const IS_SEPARATOR = "_is_"
+const RIGHT_BRACE = "}"
+const LEFT_BRACE = "{"
 const UNDERSCORE_SEPARATOR = "_"
 const DASH_SEPARATOR = "-"
 const NEWLINE_SEPARATOR = "\n"
@@ -47,6 +49,8 @@ var DASH_SEPARATOR_BYTES = []byte("-")
 var UNDERSCORE_SEPARATOR_BYTES = []byte("_")
 var DATAGRAM_SEPARATOR_BYTES = []byte("|#")
 var SPACES_BYTES = []byte("\r\n\t ")
+var RIGHT_BRACE_BYTES = []byte("}")
+var LEFT_BRACE_BYTES = []byte("{")
 
 const (
 	TAG_METRICS2 = TagMode_METRICS2
