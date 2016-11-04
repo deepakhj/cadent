@@ -173,7 +173,7 @@ CREATE TABLE IF NOT EXISTS {{.Keyspace}}.{{.LogTable}}_{{.WriteIndex}}_{{.Resolu
             ts bigint,
             pts blob,
             PRIMARY KEY (seq, ts)
-        ) WITH COMPACT STORAGE
+        ) WITH COMPACT STORAGE AND CLUSTERING ORDER BY (ts ASC)
             AND {{ if .CassVersionTwo }}
             compaction = {
                 'class': 'DateTieredCompactionStrategy',
