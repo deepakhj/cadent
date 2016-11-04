@@ -83,10 +83,10 @@ A "total" metric has the form
 
 ## "You" Need "check" your schemas
 
-Cadent injects the "basic" scheams for MySQL ElasticSearch, and Cassandra.
+Cadent injects the "basic" scheams for MySQL, ElasticSearch, and Cassandra.
 
 But as a long time ops person, not every schema is geared towards use cases. So please check them to make sure they are what you
-really want. 
+really want.
 The scemas presented below are what cadent expects in it's tables, so one will at least need to match them in some form
 For MySQL, for instance, if you wanted to do TTLs on data, you would need to partition the table to allow for easy
 dropping of data at the proper time (and thus some of your indexes may change).  Cassandra is a bit more tricky as the
@@ -155,7 +155,6 @@ The main writers are
     - cassandra-log: a binary blob of timeseries points between a time range put with a periodic "log"
 
            Same as `cassandra` for series, but uses a log (see #Log below)
-
 
     - cassandra-log-triggered: same as `cassandra-triggered`, but using the log technique as well
 
@@ -316,7 +315,12 @@ for a given sequence in a big-old-blob of zstd compressed json data.
 
 Each sequence is "Y" seconds long (default 10min).  Since crashing or restarting cadent that has
 many many thousands of metrics in ram caches that are not written, on restart this will re-read the last sequence
-of the N second snapshots, and re-fill the caches (which if there are alot of metrics this to can take some time)
+of the N second snapshots, and re-fill the caches (which if there are alot of metrics this to can take some time).
+
+Once a time Y chunk is finished it is pushed to the front of the chunk list, and also written to the DB.
+
+After the chunk is written it then removes the sequence slice logs from the DB.  Thus if things crash, restart
+It only needs to grab the last chunk of data it had.
 
 There can be "X" sequences held in ram for query speed (default of 6, plus the current one is 7 total).
 
