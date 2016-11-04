@@ -344,7 +344,6 @@ func (cass *CassandraLogMetric) getSequences() {
 	sort.Sort(sequences)
 	curtocken := int64(0)
 	added := 0
-	fmt.Println(sequences)
 
 	// now purge out the sequence number as we've writen our data
 	Q = fmt.Sprintf(
