@@ -414,7 +414,7 @@ func (wc *CacherChunk) runLogDump() {
 	for {
 		select {
 		case <-tick.C:
-			wc.log.Info("Flushing log to writer for %d metrics for %s", len(wc.curSlice), wc.Name)
+			wc.log.Info("Flushing log to writer for %d metrics for %s sequence %d", len(wc.curSlice), wc.Name, wc.curSequenceId)
 			wc.mu.Lock()
 			// need to clone it to avoid overwriting
 			tmp := make(map[repr.StatId][]*repr.StatRepr)
@@ -443,6 +443,34 @@ func (wc *CacherChunk) runLogDump() {
 	}
 }
 
+func (wc *CacherChunk) cycleInternalChunks() *CacheChunkSlice {
+
+	// drop the first one in the list and add the new one
+	wc.chunks = wc.chunks[1:len(wc.chunks)]
+	wc.chunks = append(wc.chunks, wc.curChunk)
+
+	outSlice := &CacheChunkSlice{
+		Slice:      &(*wc.curChunk), // needs to copy it off
+		SequenceId: wc.curChunk.sequence,
+	}
+
+	wc.curSequenceId++
+
+	wc.curChunk = NewCacheChunkItem(time.Now().UnixNano(), wc.curSequenceId, wc.seriesType)
+	return outSlice
+}
+
+// force a write of the current chunk and wipe it out
+// this is used for startup cache reads
+func (wc *CacherChunk) ForceChunkWrite() {
+	wc.log.Info("Sending sequence %d to writers for %d metrics", wc.curSequenceId, len(wc.curSlice))
+	wc.mu.Lock()
+
+	wc.sliceBroadcast.Send(wc.cycleInternalChunks())
+
+	wc.mu.Unlock()
+}
+
 // every chunk time, push the current slice into the overflow channel for writing
 // update the sequence ID we're on .. pop the earliest chunk off the queue and add this
 // old chunk to the queue
@@ -454,22 +482,8 @@ func (wc *CacherChunk) cycleChunks() {
 		select {
 		case <-tick.C:
 			wc.log.Info("Sending sequence %d to writers for %d metrics", wc.curSequenceId, len(wc.curSlice))
-			wc.mu.Lock()
 
-			// drop the first one in the list and add the new one
-			wc.chunks = wc.chunks[1:len(wc.chunks)]
-			wc.chunks = append(wc.chunks, wc.curChunk)
-
-			outSlice := &CacheChunkSlice{
-				Slice:      &(*wc.curChunk), // needs to copy it off
-				SequenceId: wc.curSequenceId,
-			}
-			wc.sliceBroadcast.Send(outSlice)
-
-			wc.curSequenceId++
-			wc.curChunk = NewCacheChunkItem(time.Now().UnixNano(), wc.curSequenceId, wc.seriesType)
-
-			wc.mu.Unlock()
+			wc.sliceBroadcast.Send(wc.cycleInternalChunks())
 
 		case <-shuts.Ch:
 			wc.log.Notice("Shutdown of log dump, doing final log write")
@@ -499,9 +513,9 @@ func (wc *CacherChunk) Add(name *repr.StatName, stat *repr.StatRepr) error {
 }
 
 // backfill the chunks, but not the Main Current list
-func (wc *CacherChunk) BackFill(name *repr.StatName, stat *repr.StatRepr) error {
+func (wc *CacherChunk) BackFill(name *repr.StatName, stat *repr.StatRepr, sequence int64) error {
 	if wc.curChunk == nil {
-		wc.curChunk = NewCacheChunkItem(int64(wc.maxTime), wc.curSequenceId, wc.seriesType)
+		wc.curChunk = NewCacheChunkItem(int64(wc.maxTime), sequence, wc.seriesType)
 	}
 	return wc.curChunk.Add(name, stat)
 }

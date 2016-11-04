@@ -250,7 +250,6 @@ func (cass *CassandraLogMetric) Start() {
 			panic(err)
 		}
 
-		cass.cacher.Start()
 		cass.shutitdown = false
 
 		cass.loggerChan = cass.cacher.GetLogChan()
@@ -260,13 +259,6 @@ func (cass *CassandraLogMetric) Start() {
 		if len(cass.resolutions) == 1 {
 			cass.rollupType = "cached"
 		}
-
-		//slurp the old logs if any
-		cass.getSequences()
-
-		// now we can write
-		close(cass.okToWrite)
-		cass.okToWrite = nil
 
 		cass.writer.log.Notice("Rollup Type: %s on resolution: %d (min resolution: %d)", cass.rollupType, cass.currentResolution, cass.resolutions[0][0])
 		cass.doRollup = cass.rollupType == "triggered" && cass.currentResolution == cass.resolutions[0][0]
@@ -286,8 +278,20 @@ func (cass *CassandraLogMetric) Start() {
 			cass.dispatchRetries,
 		)
 		cass.dispatcher.Start()
+
 		go cass.writeLog()
 		go cass.writeSlice()
+
+		//slurp the old logs if any sequence reads will force a write for each distinct
+		// sequence ID so the rest of the manifold needs to be set up
+		cass.getSequences()
+
+		// now we can write
+		close(cass.okToWrite)
+		cass.okToWrite = nil
+
+		cass.cacher.Start()
+
 	})
 }
 
@@ -354,13 +358,13 @@ func (cass *CassandraLogMetric) getSequences() {
 
 	if len(sequences) > 0 {
 		// set the current sequence number 'higher"
-		curtocken = sequences[len(sequences)-1] + 1
+		curtocken = sequences[len(sequences)-1]
 		cass.cacher.curSequenceId = curtocken
 	}
 
 	// now purge out the sequence number as we've writen our data
 	Q = fmt.Sprintf(
-		"SELECT seq, pts FROM %s_%d_%ds WHERE seq = ?",
+		"SELECT seq, pts FROM %s_%d_%ds WHERE seq = ? ORDER BY ts ASC",
 		cass.writer.db.LogTableBase(), cass.writerIndex, cass.currentResolution,
 	)
 
@@ -400,12 +404,13 @@ func (cass *CassandraLogMetric) getSequences() {
 			// this can mean our first chunk is longer then the "slice time" but that should be ok
 			for _, item := range slice {
 				for _, stat := range item {
-					cass.cacher.BackFill(stat.Name, stat)
+					cass.cacher.BackFill(stat.Name, stat, curtocken)
 					added++
 				}
 			}
 			decomp.Close()
 		}
+
 	}
 
 	// set our sequence version
@@ -509,7 +514,7 @@ func (cass *CassandraLogMetric) writeSlice() {
 		// this table unless we crash or restart, and the tombstone performance hit is not the
 		// end of the world, compaction will eventually take care of these
 		Q := fmt.Sprintf(
-			"DELETE FROM %s_%d_%ds WHERE seq <= ?",
+			"DELETE FROM %s_%d_%ds WHERE seq = ?",
 			cass.writer.db.LogTableBase(), cass.writerIndex, cass.currentResolution,
 		)
 		err = cass.writer.conn.Query(
