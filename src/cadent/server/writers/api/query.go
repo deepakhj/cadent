@@ -24,19 +24,19 @@ import (
 	"cadent/server/repr"
 	"cadent/server/writers/metrics"
 	"errors"
-	"fmt"
 	"github.com/gorilla/mux"
 	"net/http"
 	"strconv"
 	"strings"
 )
 
-var errTargetRequired = errors.New("Target is required")
-var errInvalidStep = errors.New("Invalid `step` size")
-var errInvalidMaxPts = errors.New("Invalid `max_points` size")
-var errInvalidStartTime = errors.New("Invalid `start` time")
-var errInvalidEndTime = errors.New("Invalid `end` time")
-var errInvalidPage = errors.New("Invalid `page`")
+var ErrorTargetRequired = errors.New("Target is required")
+var ErrorInvalidStep = errors.New("Invalid `step` size")
+var ErrorInvalidMaxPts = errors.New("Invalid `max_points` size")
+var ErrorInvalidStartTime = errors.New("Invalid `start` time")
+var ErrorInvalidEndTime = errors.New("Invalid `end` time")
+var ErrorInvalidPage = errors.New("Invalid `page`")
+var ErrorBadTagQuery = errors.New("Invalid Tag query `{name=val, name=val}`")
 
 type MetricQuery struct {
 	Target    string
@@ -79,7 +79,7 @@ func ParseNameToTags(query string) (key string, tags repr.SortingTags, err error
 	}
 
 	if len(inner) == 0 || collecting {
-		return key, tags, fmt.Errorf("Invalid Tag query `{name=val, name=val}`")
+		return key, tags, ErrorBadTagQuery
 	}
 	t_arr := strings.Split(inner, ",")
 	for _, tg := range t_arr {
@@ -166,7 +166,7 @@ func ParseMetricQuery(r *http.Request) (mq MetricQuery, err error) {
 	to = strings.TrimSpace(r.Form.Get("to"))
 
 	if len(target) == 0 && len(tags) == 0 {
-		return mq, errTargetRequired
+		return mq, ErrorTargetRequired
 	}
 
 	if len(from) == 0 {
@@ -186,12 +186,12 @@ func ParseMetricQuery(r *http.Request) (mq MetricQuery, err error) {
 
 	start, err := metrics.ParseTime(from)
 	if err != nil {
-		return mq, errInvalidStartTime
+		return mq, ErrorInvalidStartTime
 	}
 
 	end, err := metrics.ParseTime(to)
 	if err != nil {
-		return mq, errInvalidEndTime
+		return mq, ErrorInvalidEndTime
 	}
 	if end < start {
 		start, end = end, start
@@ -208,7 +208,7 @@ func ParseMetricQuery(r *http.Request) (mq MetricQuery, err error) {
 	if len(_step) > 0 {
 		tstep, err := (strconv.ParseUint(_step, 10, 32))
 		if err != nil {
-			return mq, errInvalidStep
+			return mq, ErrorInvalidStep
 		}
 		step = uint32(tstep)
 	}
@@ -226,7 +226,7 @@ func ParseMetricQuery(r *http.Request) (mq MetricQuery, err error) {
 	if len(_maxpts) > 0 {
 		maxpts, err = (strconv.ParseUint(_maxpts, 10, 32))
 		if err != nil {
-			return mq, errInvalidMaxPts
+			return mq, ErrorInvalidMaxPts
 		}
 		// if maxPoints, need to resample to fit things if data
 		t_step := uint32(end-start) / uint32(maxpts)
@@ -273,7 +273,7 @@ func ParseFindQuery(r *http.Request) (mq IndexQuery, err error) {
 	query := strings.TrimSpace(r.Form.Get("name"))
 	val := strings.TrimSpace(r.Form.Get("value"))
 	inpage := strings.TrimSpace(r.Form.Get("page"))
-	has_data := strings.TrimSpace(r.Form.Get("hasdata"))
+	hasData := strings.TrimSpace(r.Form.Get("hasdata"))
 
 	if len(query) == 0 {
 		query = strings.TrimSpace(r.Form.Get("query"))
@@ -295,27 +295,27 @@ func ParseFindQuery(r *http.Request) (mq IndexQuery, err error) {
 		val = vars["value"]
 	}
 
-	var _tags string
+	var tTags string
 	var tags repr.SortingTags
 
 	l := len(r.Form["tags"])
 	for idx, tgs := range r.Form["tags"] {
-		_tags += strings.TrimSpace(tgs)
+		tTags += strings.TrimSpace(tgs)
 		switch {
 		case idx < l-1:
-			_tags += ","
+			tTags += ","
 		}
 	}
-	if _tags != "" {
-		tags = repr.SortingTagsFromString(_tags)
+	if tTags != "" {
+		tags = repr.SortingTagsFromString(tTags)
 	}
 
 	if len(query) > 0 {
 		// see if the name has a key{tag,tag}
-		a_key, a_tags, err := ParseNameToTags(query)
+		aKey, aTags, err := ParseNameToTags(query)
 		if err == nil {
-			query = a_key
-			tags.Merge(a_tags)
+			query = aKey
+			tags.Merge(aTags)
 		}
 	}
 
@@ -324,14 +324,14 @@ func ParseFindQuery(r *http.Request) (mq IndexQuery, err error) {
 	mq.Value = val
 	mq.HasData = true
 
-	if len(has_data) > 0 && (has_data == "0" || has_data == "false") {
+	if len(hasData) > 0 && (hasData == "0" || hasData == "false") {
 		mq.HasData = false
 	}
 
 	if len(inpage) > 0 {
 		pg, err := (strconv.ParseUint(inpage, 10, 32))
 		if err != nil {
-			return mq, errInvalidPage
+			return mq, ErrorInvalidPage
 		}
 		mq.Page = int(pg)
 	}
