@@ -160,7 +160,7 @@ The story continues.
 
   1. cardinality (i.e. the sheer number of keys) explodes :: elasticsearch can help with that.
   2. I need to farm these things to "somewhere else" :: kafka helps with that
-  3. I have tags :: ok whats the big deal? (i.e. my.stat.is.good == {pronoun=my, noun=stat, verb=is, adjective=good} but in way fewer chars)
+  3. I have tags :: ok what's the big deal? (i.e. my.stat.is.good == {pronoun=my, noun=stat, verb=is, adjective=good} but in way fewer chars)
   4. I'm really just locally/small dev env messing with things :: ok
 
 

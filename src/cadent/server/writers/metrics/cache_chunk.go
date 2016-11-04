@@ -43,6 +43,7 @@ import (
 	"cadent/server/series"
 	"cadent/server/stats"
 	"cadent/server/utils/shutdown"
+	"errors"
 	"fmt"
 	logging "gopkg.in/op/go-logging.v1"
 	"sort"
@@ -60,6 +61,8 @@ const (
 	// every CACHE_LOG_FLUSH duration, drop the current set of points into the log table
 	CACHE_LOG_FLUSH = uint32(10)
 )
+
+var ErrZeroTime = errors.New("Time for metric is 0 cannot insert")
 
 // CacheChunk singletons as the readers may need to use this too
 
@@ -138,8 +141,13 @@ func (c *cacheChunkItem) Count() int {
 
 // Add a metric to the cache
 func (c *cacheChunkItem) Add(name *repr.StatName, stat *repr.StatRepr) (err error) {
+	if stat.Time == 0 {
+		return ErrZeroTime
+	}
+
 	c.Lock()
 	defer c.Unlock()
+
 	unique_id := name.UniqueId()
 	if _, ok := c.ts[unique_id]; ok {
 		err = c.ts[unique_id].Series.AddStat(stat)
@@ -151,7 +159,6 @@ func (c *cacheChunkItem) Add(name *repr.StatName, stat *repr.StatRepr) (err erro
 	}
 
 	tp, err := series.NewTimeSeries(c.seriesType, stat.Time, nil)
-
 	if err != nil {
 		return err
 	}
@@ -180,6 +187,7 @@ func (c *cacheChunkItem) getStatsStream(name *repr.StatName, ts series.TimeSerie
 		return nil, err
 	}
 	stats := make(repr.StatReprSlice, 0)
+
 	for it.Next() {
 		st := it.ReprValue()
 		if st == nil {
@@ -200,6 +208,7 @@ func (c *cacheChunkItem) getStatsStream(name *repr.StatName, ts series.TimeSerie
 func (wc *cacheChunkItem) GetAsRawRenderItem(name *repr.StatName) (*RawRenderItem, error) {
 
 	name, data, err := wc.GetById(name.UniqueId())
+
 	if err != nil {
 		return nil, err
 	}
@@ -381,7 +390,7 @@ func (wc *CacherChunk) GetSliceChan() *broadcast.Listener {
 // Start the cacher
 func (wc *CacherChunk) Start() {
 	wc.startstop.Start(func() {
-		wc.log.Notice("Starting Metric Chunk Cache sorter tick (%d max chunks, %d Time Window) [%s]", wc.maxChunks, wc.maxTime, wc.Name)
+		wc.log.Notice("Starting Metric Chunk Cache sorter tick (%d max chunks, %d second Time Window) [%s]", wc.maxChunks, wc.maxTime, wc.Name)
 		wc.log.Notice("Starting Metric Chunk Cache Encoding: %s", wc.seriesType)
 		wc.log.Notice("Starting Metric Chunk Cache Log Runner every: %d seconds", wc.logTime)
 		go wc.runLogDump()
@@ -486,7 +495,14 @@ func (wc *CacherChunk) Add(name *repr.StatName, stat *repr.StatRepr) error {
 		wc.curSlice[uid] = []*repr.StatRepr{stat}
 	}
 	wc.mu.Unlock()
+	return wc.curChunk.Add(name, stat)
+}
 
+// backfill the chunks, but not the Main Current list
+func (wc *CacherChunk) BackFill(name *repr.StatName, stat *repr.StatRepr) error {
+	if wc.curChunk == nil {
+		wc.curChunk = NewCacheChunkItem(int64(wc.maxTime), wc.curSequenceId, wc.seriesType)
+	}
 	return wc.curChunk.Add(name, stat)
 }
 
@@ -532,8 +548,9 @@ func (wc *CacherChunk) GetAsRawRenderItem(name *repr.StatName) (rawd *RawRenderI
 		if mets == nil {
 			continue
 		}
+
 		if err != nil {
-			wc.log.Error("Failed in Cache Chunk GetAsRawRenderItem: %v", err)
+			wc.log.Error("Failed in Historical Cache Chunks GetAsRawRenderItem: %v", err)
 			continue
 		}
 		if rawd == nil {
@@ -546,8 +563,9 @@ func (wc *CacherChunk) GetAsRawRenderItem(name *repr.StatName) (rawd *RawRenderI
 	//current chunk
 	mets, err := wc.curChunk.GetAsRawRenderItem(name)
 	if err != nil {
-		wc.log.Error("Failed in Cache Chunk GetAsRawRenderItem: %v", err)
+		wc.log.Error("Failed in Current Cache Chunk GetAsRawRenderItem: %v", err)
 	}
+
 	if mets != nil {
 		if rawd == nil {
 			rawd = mets
@@ -555,6 +573,7 @@ func (wc *CacherChunk) GetAsRawRenderItem(name *repr.StatName) (rawd *RawRenderI
 			rawd.Merge(mets)
 		}
 	}
+
 	return rawd, nil
 
 }

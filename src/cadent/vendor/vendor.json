@@ -84,10 +84,10 @@
 			"revisionTime": "2016-06-02T00:10:21Z"
 		},
 		{
-			"checksumSHA1": "X3aO3d9K9ALtg4/XI4I9L57FPkM=",
+			"checksumSHA1": "Ea5tZxe8OjKyrXAaw5FTrpxiBWw=",
 			"path": "github.com/gocql/gocql",
-			"revision": "ffae44103aa14ada9e2b342329f44ce354f399fd",
-			"revisionTime": "2016-09-27T08:26:32Z"
+			"revision": "3a52a1dae458ea8c51f156b4b0e07758cd652b55",
+			"revisionTime": "2016-11-01T09:30:54Z"
 		},
 		{
 			"checksumSHA1": "Z3N6HDGWcvcNu0FloZRq54uO3h4=",
@@ -791,18 +791,6 @@
 			"path": "gopkg.in/yaml.v2",
 			"revision": "a83829b6f1293c91addabc89d0571c246397bbf4",
 			"revisionTime": "2016-03-01T20:40:22Z"
-		},
-		{
-			"path": "https://github.com/Shopify/sarama",
-			"revision": ""
-		},
-		{
-			"path": "https://github.com/gorilla/websocket",
-			"revision": ""
-		},
-		{
-			"path": "https://github.com/tinylib/msgp",
-			"revision": ""
 		},
 		{
 			"path": "statsd",

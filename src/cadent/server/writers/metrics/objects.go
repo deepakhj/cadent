@@ -675,7 +675,7 @@ func (r *RawRenderItem) Merge(m *RawRenderItem) error {
 	}
 
 	// easy one we just merge the two lists and sort it (becuase we're too lazy to do linked
-	// list things
+	// list things)
 	r.Data = append(r.Data, m.Data...)
 	sort.Sort(RawDataPointList(r.Data))
 

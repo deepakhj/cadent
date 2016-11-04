@@ -66,6 +66,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/DataDog/zstd"
+	"sort"
 	"strings"
 	"time"
 )
@@ -254,6 +255,10 @@ func (cass *CassandraLogMetric) Start() {
 		if len(cass.resolutions) == 1 {
 			cass.rollupType = "cached"
 		}
+
+		//slurp the old logs if any
+		cass.getSequences()
+
 		cass.writer.log.Notice("Rollup Type: %s on resolution: %d (min resolution: %d)", cass.rollupType, cass.currentResolution, cass.resolutions[0][0])
 		cass.doRollup = cass.rollupType == "triggered" && cass.currentResolution == cass.resolutions[0][0]
 		// start the rollupper if needed
@@ -304,6 +309,100 @@ func (cass *CassandraLogMetric) Stop() {
 		cass.writer.log.Warning("Shutdown finished ... quiting cassandra series writer")
 		return
 	})
+}
+
+// for sorting below
+type intList []int64
+
+func (p intList) Len() int { return len(p) }
+func (p intList) Less(i, j int) bool {
+	return p[i] < p[j]
+}
+func (p intList) Swap(i, j int) { p[i], p[j] = p[j], p[i] }
+
+// on startup yank the current sequences we may have missed due to crash/restart reassingment
+func (cass *CassandraLogMetric) getSequences() {
+
+	cass.writer.log.Notice("Backfilling internal caches from log")
+
+	// due to sorting restrictions in cassandra, we need to get the sequence numbers first then sort them
+	// to get things in time order
+
+	// now purge out the sequence number as we've writen our data
+	Q := fmt.Sprintf(
+		"SELECT DISTINCT seq FROM %s_%d_%ds",
+		cass.writer.db.LogTableBase(), cass.writerIndex, cass.currentResolution,
+	)
+	seqiter := cass.writer.conn.Query(Q).Iter()
+	defer seqiter.Close()
+
+	sequences := make(intList, 0)
+	var tSeq int64
+	for seqiter.Scan(&tSeq) {
+		sequences = append(sequences, tSeq)
+	}
+	sort.Sort(sequences)
+	curtocken := int64(0)
+	added := 0
+	fmt.Println(sequences)
+
+	// now purge out the sequence number as we've writen our data
+	Q = fmt.Sprintf(
+		"SELECT seq, pts FROM %s_%d_%ds WHERE seq = ?",
+		cass.writer.db.LogTableBase(), cass.writerIndex, cass.currentResolution,
+	)
+
+	for _, s := range sequences {
+
+		iter := cass.writer.conn.Query(Q, s).Iter()
+		defer iter.Close()
+
+		var sequence int64
+		var pts []byte
+		didChunks := 0
+		for iter.Scan(&sequence, &pts) {
+			didChunks++
+			cass.writer.log.Notice("Parsing chunk %d into cache for %d", didChunks, s)
+
+			if curtocken == 0 || sequence > curtocken {
+				curtocken = sequence
+			}
+
+			// unzstd the punk
+			decomp := zstd.NewReader(bytes.NewBuffer(pts))
+
+			var data []byte
+			_, err := decomp.Read(data)
+			if err != nil {
+				cass.writer.log.Errorf("Error reading compressed slice log data: %v", err)
+				decomp.Close()
+				continue
+			}
+
+			slice := make(map[repr.StatId][]*repr.StatRepr, 0)
+			dec := json.NewDecoder(decomp)
+			err = dec.Decode(&slice)
+			if err != nil {
+				cass.writer.log.Errorf("Error reading slice log data: %v", err)
+				decomp.Close()
+				continue
+			}
+
+			// now we need to add the points to the chunks
+			// this can mean our first chunk is longer then the "slice time" but that should be ok
+			for _, item := range slice {
+				for _, stat := range item {
+					cass.cacher.BackFill(stat.Name, stat)
+					added++
+				}
+			}
+			decomp.Close()
+		}
+	}
+
+	// set our sequence version
+	cass.cacher.curSequenceId = curtocken
+	cass.writer.log.Notice("Backfilled %d data points from the log.  Current Sequence is %d", added, curtocken)
 }
 
 // listen for the broad cast chan an flush out a log entry
@@ -398,6 +497,27 @@ func (cass *CassandraLogMetric) writeSlice() {
 			}
 		}
 
+		// now purge out the sequence number as we've writen our data
+		Q := fmt.Sprintf(
+			"DELETE FROM %s_%d_%ds  WHERE seq = ?",
+			cass.writer.db.LogTableBase(), cass.writerIndex, cass.currentResolution,
+		)
+		err = cass.writer.conn.Query(
+			Q,
+			toLog.SequenceId,
+		).Exec()
+
+		if err != nil {
+			stats.StatsdClientSlow.Incr("writer.cassandralog.log.purge.errors", 1)
+			cass.writer.log.Critical("Cassandra writer error: cannot purge sequence %d: %v", toLog.SequenceId, err)
+		} else {
+			cass.writer.log.Info(
+				"Purged log sequence %d for writer %d and resolution %d",
+				toLog.SequenceId,
+				cass.writerIndex,
+				cass.currentResolution,
+			)
+		}
 		stats.StatsdClientSlow.Incr("writer.cassandralog.slice.writes.errors", hadErrors)
 		stats.StatsdClientSlow.Incr("writer.cassandralog.log.writes.success", hadHappy)
 		stats.StatsdNanoTimeFunc("writer.cassandralog.slice.write-time-ns", tn)
