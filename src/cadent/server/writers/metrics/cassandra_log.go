@@ -327,8 +327,6 @@ func (cass *CassandraLogMetric) getSequences() {
 
 	// due to sorting restrictions in cassandra, we need to get the sequence numbers first then sort them
 	// to get things in time order
-
-	// now purge out the sequence number as we've writen our data
 	Q := fmt.Sprintf(
 		"SELECT DISTINCT seq FROM %s_%d_%ds",
 		cass.writer.db.LogTableBase(), cass.writerIndex, cass.currentResolution,
@@ -497,6 +495,9 @@ func (cass *CassandraLogMetric) writeSlice() {
 		}
 
 		// now purge out the sequence number as we've writen our data
+		// note that we don't really care about the "tombstone" issue here as we will never read from
+		// this table unless we crash or restart, and the tombstone performance hit is not the
+		// end of the world, compaction will eventually take care of these
 		Q := fmt.Sprintf(
 			"DELETE FROM %s_%d_%ds  WHERE seq = ?",
 			cass.writer.db.LogTableBase(), cass.writerIndex, cass.currentResolution,
