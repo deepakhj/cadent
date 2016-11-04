@@ -100,15 +100,15 @@ a good solution can be found with Cassandra in a bit.
 
 Not everything is "done" .. as there are many things to write and verify, this is the status of the pieces.
 
-| Driver   | IndexSupport  |  TagSupport |  SeriesSupport | LineSupport  | TriggerSupport | DriverNames |
+| Driver   | IndexSupport  |  TagSupport |  SeriesSupport | LineSupport  | TriggerSupport |
 |---|---|---|---|---|---|---|
-| cassandra | write+read  | No  | write+read | write+read | Yes | Index: "cassandra", Line: "cassandra-flat", Series: "cassandra", Series Triggered: "cassandra-triggered" |
-| mysql  | write+read  | write+read  | write+read  | write+read  | Yes | Index: "mysql", Line: "mysql-flat", Series: "mysql",  Series Triggered: "cassandra-triggered" |
-| kafka  |  write | write | write  | write  | n/a | Index: "kafka", Line: "kafka-flat", Series: "kafka" |
-| elasticsearch |  read+write | read+write | No | read+write | No | Index: "elasticsearch", Line: "elasticsearch-flat", Series: "n/a" |
-| whisper|  read | n/a | n/a  | write+read |  n/a | Index: "whisper", Line: "whisper", Series: "n/a" |
-| leveldb |  write+read | No | No  | No |  n/a | Index: "leveldb", Line: "n/a", Series: "n/a" |
-| file |  n/a | n/a | n/a  | write |  n/a | Index: "n/a", Line: "file", Series: "n/a" |
+| cassandra | write+read  | No  | write+read | write+read | Yes |
+| mysql  | write+read  | write+read  | write+read  | write+read  | Yes |
+| kafka  |  write | write | write  | write  | n/a |
+| elasticsearch |  read+write | read+write | No | read+write | No |
+| whisper|  read | n/a | n/a  | write+read |  n/a |
+| leveldb |  write+read | No | No  | No |  n/a |
+| file |  n/a | n/a | n/a  | write |  n/a | 
 
 
 
@@ -130,7 +130,7 @@ Not everything is "done" .. as there are many things to write and verify, this i
 ### Below are the "driver" names to use in configs for each backing DB (if they exist)
 
 | Driver   |  IndexName | LineName | SeriesName | TriggerName | LogSeriesName |
-|---|---|---|---|---|
+|---|---|---|---|---|---|
 | cassandra | cassandra | cassandra-flat | cassandra | cassandra-triggered | cassandra-log |
 | mysql  | mysql | mysql-flat | mysql | mysql-triggered |  |
 | kafka  | kafka | kafka-flat | kafka |  |  |
