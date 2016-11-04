@@ -123,14 +123,14 @@ Not everything is "done" .. as there are many things to write and verify, this i
 
 `n/a` implies it will not be done, or the backend just does not support it.
 
-`No` means it probably be done, just not complete.
+`No` means it probably can be done, just not complete.
 
 
 ### Below are the "driver" names to use in configs for each backing DB (if they exist)
 
-| Driver   |  IndexName | LineName | SeriesName | TriggerName | LogSeriesName |
+| DataBase   |  IndexName | LineName | SeriesName | TriggerName | LogSeriesName |
 |---|---|---|---|---|---|
-| cassandra | cassandra | cassandra-flat | cassandra | cassandra-triggered | cassandra-log |
+| cassandra | cassandra | cassandra-flat | cassandra | cassandra-triggered | cassandra-log{-triggered} |
 | mysql  | mysql | mysql-flat | mysql | mysql-triggered |  |
 | kafka  | kafka | kafka-flat | kafka |  |  |
 | elasticsearch | elasticsearch | elasticsearch-flat |  |  |  |
@@ -194,7 +194,7 @@ The main writers are
        benifit from a standard "text" indexer and not a scan of lists).
 
        ElasticSearch is not really efficient for huge volumes of time series data (unless you have a monster
-       cluster).  MySQL acctually performs better for that, however it is of course not horizonally scaleable like ES.
+       cluster).  MySQL acctually performs better for that, however it is, of course, not horizonally scaleable like ES.
 
 
 Some basic performance things:

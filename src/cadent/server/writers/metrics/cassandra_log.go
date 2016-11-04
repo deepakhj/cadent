@@ -353,13 +353,13 @@ func (cass *CassandraLogMetric) getSequences() {
 		sequences = append(sequences, tSeq)
 	}
 	sort.Sort(sequences)
-	curtocken := int64(0)
+	curSeq := int64(0)
 	added := 0
 
 	if len(sequences) > 0 {
 		// set the current sequence number 'higher"
-		curtocken = sequences[len(sequences)-1]
-		cass.cacher.curSequenceId = curtocken
+		curSeq = sequences[len(sequences)-1]
+		cass.cacher.curSequenceId = curSeq
 	}
 
 	// now purge out the sequence number as we've writen our data
@@ -404,7 +404,7 @@ func (cass *CassandraLogMetric) getSequences() {
 			// this can mean our first chunk is longer then the "slice time" but that should be ok
 			for _, item := range slice {
 				for _, stat := range item {
-					cass.cacher.BackFill(stat.Name, stat, curtocken)
+					cass.cacher.BackFill(stat.Name, stat, curSeq)
 					added++
 				}
 			}
@@ -414,7 +414,7 @@ func (cass *CassandraLogMetric) getSequences() {
 	}
 
 	// set our sequence version
-	cass.writer.log.Notice("Backfilled %d data points from the log.  Current Sequence is %d", added, curtocken)
+	cass.writer.log.Notice("Backfilled %d data points from the log.  Current Sequence is %d", added, curSeq)
 }
 
 // listen for the broad cast chan an flush out a log entry

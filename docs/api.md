@@ -1,7 +1,9 @@
 
 # API/Readers
 
-Readers are an attempt to imitate the Graphite API bits and include 3 main endpoints with a few more endpoints
+Readers are an attempt to imitate the Graphite API bits and include 3 main endpoints with a few more endpoints.
+
+NOTE: _In the Works_ gRPC interface .. lots of protobuffing and testing still todo, but getting there
 
 ### TimeSeries
 
@@ -11,6 +13,8 @@ Readers are an attempt to imitate the Graphite API bits and include 3 main endpo
                         ?target=path.*.to.my.*.metric&from=time&to=time
     /{root}/cached/series -- get the BINARY blob of data only ONE metric allowed here
                         ?to=now&from=-10m&target=graphitetest.there.now.there
+                          To enable base64
+                        ...&base64=1
     /{root}/cache -- get the actual metrics stored in writeback cache
                         ?target=path.*.to.my.*.metric&from=time&to=time
 
@@ -24,7 +28,7 @@ Readers are an attempt to imitate the Graphite API bits and include 3 main endpo
                     ?page=N
 
 
-### Tag Indexer (in the works (regexes for some backends may not be supported)
+### Tag Indexer (in the works) (regexes for some backends may not be supported)
 
     /{root}/tag/find/byname -- find tags values by name (?name=host) this can be a typeahead form
                             ?name=ho.*
@@ -34,6 +38,7 @@ Readers are an attempt to imitate the Graphite API bits and include 3 main endpo
     /{root}/tag/uid/bytags -- get uniqueIdStrings no regexes allowed here.
                                You can omit the `metric_key` as well.
                              ?query=metric_key{name=val,name=val}
+                             ?query={name=val,name=val}
 
 ### Graphite Mimics
 
@@ -61,6 +66,7 @@ Readers are an attempt to imitate the Graphite API bits and include 3 main endpo
     /ws/metric  -- Attach to a websocket, as stats get flushed, pop you get a new one
                     The metric you query must be "exact" (no search/regexes/finder things here)
                     ?query=path.to.metric
+                    ?query={uid}
 
 
 
