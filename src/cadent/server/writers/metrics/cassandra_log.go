@@ -361,7 +361,7 @@ func (cass *CassandraLogMetric) getSequences() {
 		didChunks := 0
 		for iter.Scan(&sequence, &pts) {
 			didChunks++
-			cass.writer.log.Notice("Parsing chunk %d into cache for %d", didChunks, s)
+			cass.writer.log.Notice("Parsing chunk %d into cache for sequence # %d", didChunks, s)
 
 			if curtocken == 0 || sequence > curtocken {
 				curtocken = sequence
