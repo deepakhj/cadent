@@ -83,7 +83,7 @@ A "total" metric has the form
 
 ## "You" Need "check" your schemas
 
-Cadent injects the "basic" scheams for MySQL, ElasticSearch, and Cassandra.
+Cadent injects the "basic" scheams for MySQL,make ElasticSearch, and Cassandra.
 
 But as a long time ops person, not every schema is geared towards use cases. So please check them to make sure they are what you
 really want.

@@ -96,6 +96,7 @@ type CassandraLogMetric struct {
 	loggerChan *broadcast.Listener // log writes
 	slicerChan *broadcast.Listener // current slice writes
 
+	okToWrite   chan bool // temp channel to block as we may need to pull in the cache first
 	writerIndex int
 }
 
@@ -104,6 +105,7 @@ func NewCassandraLogMetrics() *CassandraLogMetric {
 	cass.driver = "cassandra-log"
 	cass.isPrimary = false
 	cass.rollupType = "cached"
+	cass.okToWrite = make(chan bool)
 	return cass
 }
 
@@ -215,6 +217,9 @@ func (cass *CassandraLogMetric) Driver() string {
 
 func (cass *CassandraLogMetric) Start() {
 	cass.startstop.Start(func() {
+
+		cass.okToWrite = make(chan bool)
+
 		/**** dispatcher queue ***/
 		cass.writer.log.Notice("Starting cassandra-log series writer for %s at %d time chunks", cass.writer.db.MetricTable(), cass.cacher.maxTime)
 
@@ -258,6 +263,10 @@ func (cass *CassandraLogMetric) Start() {
 
 		//slurp the old logs if any
 		cass.getSequences()
+
+		// now we can write
+		close(cass.okToWrite)
+		cass.okToWrite = nil
 
 		cass.writer.log.Notice("Rollup Type: %s on resolution: %d (min resolution: %d)", cass.rollupType, cass.currentResolution, cass.resolutions[0][0])
 		cass.doRollup = cass.rollupType == "triggered" && cass.currentResolution == cass.resolutions[0][0]
@@ -343,6 +352,12 @@ func (cass *CassandraLogMetric) getSequences() {
 	curtocken := int64(0)
 	added := 0
 
+	if len(sequences) > 0 {
+		// set the current sequence number 'higher"
+		curtocken = sequences[len(sequences)-1] + 1
+		cass.cacher.curSequenceId = curtocken
+	}
+
 	// now purge out the sequence number as we've writen our data
 	Q = fmt.Sprintf(
 		"SELECT seq, pts FROM %s_%d_%ds WHERE seq = ?",
@@ -360,10 +375,6 @@ func (cass *CassandraLogMetric) getSequences() {
 		for iter.Scan(&sequence, &pts) {
 			didChunks++
 			cass.writer.log.Notice("Parsing chunk %d into cache for sequence # %d", didChunks, s)
-
-			if curtocken == 0 || sequence > curtocken {
-				curtocken = sequence
-			}
 
 			// unzstd the punk
 			decomp := zstd.NewReader(bytes.NewBuffer(pts))
@@ -398,7 +409,6 @@ func (cass *CassandraLogMetric) getSequences() {
 	}
 
 	// set our sequence version
-	cass.cacher.curSequenceId = curtocken
 	cass.writer.log.Notice("Backfilled %d data points from the log.  Current Sequence is %d", added, curtocken)
 }
 
@@ -499,7 +509,7 @@ func (cass *CassandraLogMetric) writeSlice() {
 		// this table unless we crash or restart, and the tombstone performance hit is not the
 		// end of the world, compaction will eventually take care of these
 		Q := fmt.Sprintf(
-			"DELETE FROM %s_%d_%ds  WHERE seq = ?",
+			"DELETE FROM %s_%d_%ds WHERE seq <= ?",
 			cass.writer.db.LogTableBase(), cass.writerIndex, cass.currentResolution,
 		)
 		err = cass.writer.conn.Query(
@@ -526,9 +536,16 @@ func (cass *CassandraLogMetric) writeSlice() {
 
 // simple proxy to the cacher
 func (cass *CassandraLogMetric) Write(stat repr.StatRepr) error {
+
+	// block until ready
+	if cass.okToWrite != nil {
+		<-cass.okToWrite
+	}
+
 	if cass.shutitdown {
 		return nil
 	}
+
 	stat.Name.MergeMetric2Tags(cass.staticTags)
 	// only need to do this if the first resolution
 	if cass.currentResolution == cass.resolutions[0][0] {
