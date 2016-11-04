@@ -103,7 +103,7 @@ func (my *MySQLFlatMetrics) Config(conf *options.Options) error {
 
 	res, err := conf.Int64Required("resolution")
 	if err != nil {
-		return fmt.Errorf("Resolution needed for cassandra writer")
+		return fmt.Errorf("Resolution needed for mysql writer")
 	}
 
 	//need to hide the usr/pw from things

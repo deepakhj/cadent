@@ -16,8 +16,6 @@ limitations under the License.
 
 package indexer
 
-// you best have some form of cassandra up
-
 import (
 	//. "github.com/smartystreets/goconvey/convey"
 

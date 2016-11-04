@@ -120,7 +120,7 @@ func (es *ElasticSearchFlatMetrics) Config(conf *options.Options) error {
 
 	res, err := conf.Int64Required("resolution")
 	if err != nil {
-		return fmt.Errorf("Resolution needed for cassandra writer")
+		return fmt.Errorf("Resolution needed for elasticsearch writer")
 	}
 
 	//need to hide the usr/pw from things
