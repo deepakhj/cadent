@@ -111,6 +111,7 @@ Not everything is "done" .. as there are many things to write and verify, this i
 | file |  n/a | n/a | n/a  | write |  n/a | Index: "n/a", Line: "file", Series: "n/a" |
 
 
+
 `IndexSupport` means that we can use this driver to index the metric space.
 
 `TagSupport` means the driver will be able to index tags and read them (write/read).
@@ -126,6 +127,20 @@ Not everything is "done" .. as there are many things to write and verify, this i
 `No` means it probably be done, just not complete.
 
 
+### Below are the "driver" names to use in configs for each backing DB (if they exist)
+
+| Driver   |  IndexName | LineName | SeriesName | TriggerName | LogSeriesName |
+|---|---|---|---|---|
+| cassandra | cassandra | cassandra-flat | cassandra | cassandra-triggered | cassandra-log |
+| mysql  | mysql | mysql-flat | mysql | mysql-triggered |  |
+| kafka  | kafka | kafka-flat | kafka |  |  |
+| elasticsearch | elasticsearch | elasticsearch-flat |  |  |  |
+| whisper |  whisper | whisper | | | |
+| leveldb | leveldb | | | | |
+| file |  | file | | | |
+
+
+
 ## When to choose and why
 
 The main writers are
@@ -137,6 +152,13 @@ The main writers are
     - cassandra-triggered: a binary blob of timeseries points between a time range
 
        Same as `cassandra` but uses triggering for rollups (see below)
+
+    - cassandra-log: a binary blob of timeseries points between a time range put with a periodic "log"
+
+           Same as `cassandra` for series, but uses a log (see #Log below)
+
+
+    - cassandra-log-triggered: same as `cassandra-triggered`, but using the log technique as well
 
     - cassandra-flat: a row for each time/point
 
@@ -279,9 +301,29 @@ resolution items which get written to the the DB.  This can slove 2 issues,
 
 To enable this, simply use the writer drivers of
 
-    cassandra-triggered or mysql-triggered
+    cassandra-triggered or mysql-triggered or cassandra-log-triggered
 
 to the `writer.metrics` options (it will be ignored for anything other then the mysql and cassandra blob writers)
+
+
+## Log
+
+Unlike the other "series" based wrtiers that use the Size in ram before writing, this is pure time based.
+
+It also is more tollerent of failures, by writing a temporary log also in the Database.
+
+Every "N" seconds (default 10s) it will write a log of the current past N seconds of metrics to the DB
+for a given sequence in a big-old-blob of zstd compressed json data.
+
+Each sequence is "Y" seconds long (default 10min).  Since crashing or restarting cadent that has
+many many thousands of metrics in ram caches that are not written, on restart this will re-read the last sequence
+of the N second snapshots, and re-fill the caches (which if there are alot of metrics this to can take some time)
+
+There can be "X" sequences held in ram for query speed (default of 6, plus the current one is 7 total).
+
+While much nicer towards failures, it also can use much more ram, and be a bit less efficent in terms
+of space consumed by the series type (as they will be shorter typically then using straight byte sized limies).
+Also since there can be more chunks to itterate over on queries, query speed will suffer a little bit.
 
 
 #### Max time in Cache
