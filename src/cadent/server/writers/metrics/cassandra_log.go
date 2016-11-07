@@ -536,7 +536,7 @@ func (cass *CassandraLogMetric) writeSlice() {
 			)
 		}
 		stats.StatsdClientSlow.Incr("writer.cassandralog.slice.writes.errors", hadErrors)
-		stats.StatsdClientSlow.Incr("writer.cassandralog.log.writes.success", hadHappy)
+		stats.StatsdClientSlow.Incr("writer.cassandralog.slice.writes.success", hadHappy)
 		stats.StatsdNanoTimeFunc("writer.cassandralog.slice.write-time-ns", tn)
 	}
 }
