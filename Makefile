@@ -50,9 +50,9 @@ iref: $(IREF_LIST)
 fmt: $(FMT_TEST)
 export GOPATH=$(shell pwd)
 
-if [ which godep ]; then; \
-export GOPATH=$GOPATH:$(shell godep path ) \
-fi \
+#if [ which godep ]; then; \
+#export GOPATH=$GOPATH:$(shell godep path ) \
+#fi \
 
 export build=$(shell git rev-parse HEAD)
 export version=$(shell cat ./version )
