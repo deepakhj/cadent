@@ -94,7 +94,7 @@ func (cass *cassandraIndexerSchema) AddIndexerTables() (err error) {
 	cass.startstop.Start(func() {
 
 		buf := bytes.NewBuffer(nil)
-		cass.log.Notice("Cassandra Schema Driver: verifing schema")
+		cass.log.Notice("Cassandra Index Schema: verifing schema")
 		tpl := template.Must(template.New("cassindexer").Parse(CASSANDRA_PATH_TEMPLATE))
 		err := tpl.Execute(buf, cass)
 

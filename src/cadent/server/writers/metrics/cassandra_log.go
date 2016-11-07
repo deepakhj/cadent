@@ -114,6 +114,7 @@ func NewCassandraLogTriggerMetrics() *CassandraLogMetric {
 	cass.driver = "cassandra-log-triggered"
 	cass.isPrimary = false
 	cass.rollupType = "triggered"
+	cass.okToWrite = make(chan bool)
 	return cass
 }
 
