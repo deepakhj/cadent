@@ -129,6 +129,17 @@ func (cass *CassandraDB) Config(conf *options.Options) (err error) {
 	cluster.ProtoVersion = 0x04 //so much faster then v3
 	cluster.Timeout = time.Duration(10 * time.Second)
 
+	// auth
+	user := conf.String("user", "")
+	pass := conf.String("pass", "")
+
+	if user != "" {
+		cluster.Authenticator = gocql.PasswordAuthenticator{
+			Username: user,
+			Password: pass,
+		}
+	}
+	
 	// need to test/add for keyspace first
 	err = cass.injectKeySpace(cluster)
 	if err != nil {
@@ -148,16 +159,6 @@ func (cass *CassandraDB) Config(conf *options.Options) (err error) {
 		cluster.Compressor = new(gocql.SnappyCompressor)
 	}
 
-	// auth
-	user := conf.String("user", "")
-	pass := conf.String("pass", "")
-
-	if user != "" {
-		cluster.Authenticator = gocql.PasswordAuthenticator{
-			Username: user,
-			Password: pass,
-		}
-	}
 
 	sess_key := fmt.Sprintf("%s/%s", dsn, cass.keyspace)
 	cass.log.Notice("Connecting to Cassandra (can take a bit of time) ... %s (%s)", sess_key, con_key)
