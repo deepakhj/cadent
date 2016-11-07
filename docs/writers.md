@@ -81,12 +81,13 @@ A "total" metric has the form
          Metric StatMetric
     }
 
-## "You" Need "check" your schemas
+## You check the injected schemas
 
-Cadent injects the "basic" scheams for MySQL,make ElasticSearch, and Cassandra.
+Cadent injects the "basic" scheams for MySQL, ElasticSearch, and Cassandra.
 
 But as a long time ops person, not every schema is geared towards use cases. So please check them to make sure they are what you
 really want.
+
 The scemas presented below are what cadent expects in it's tables, so one will at least need to match them in some form
 For MySQL, for instance, if you wanted to do TTLs on data, you would need to partition the table to allow for easy
 dropping of data at the proper time (and thus some of your indexes may change).  Cassandra is a bit more tricky as the

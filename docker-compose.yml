@@ -71,6 +71,18 @@ services:
       links:
           - elasticsearch
 
+    mysql:
+        image: mysql:5.6
+        ports:
+            - "0.0.0.0:3308:3306"  # diferent port as i've got a native mysql running
+        environment:
+          MYSQL_USER: "admin"
+          MYSQL_ROOT_PASSWORD: "password"
+          MYSQL_DATABASE: "cadent"
+        volumes:
+          - $PWD/docker/data/mysql:/var/lib/mysql
+
+
     zookeeper:
       image: wurstmeister/zookeeper
       ports:
@@ -99,7 +111,6 @@ services:
         - "0.0.0.0:7199:7199"
         - "0.0.0.0:9160:9160"
       volumes:
-        - /var/run/docker.sock:/var/run/docker.sock
         - $PWD/docker/data/cassandra:/var/lib/cassandra
 
     opscenter:
