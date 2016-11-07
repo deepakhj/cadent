@@ -139,7 +139,7 @@ func (cass *CassandraDB) Config(conf *options.Options) (err error) {
 			Password: pass,
 		}
 	}
-	
+
 	// need to test/add for keyspace first
 	err = cass.injectKeySpace(cluster)
 	if err != nil {
@@ -158,7 +158,6 @@ func (cass *CassandraDB) Config(conf *options.Options) (err error) {
 	if _compress {
 		cluster.Compressor = new(gocql.SnappyCompressor)
 	}
-
 
 	sess_key := fmt.Sprintf("%s/%s", dsn, cass.keyspace)
 	cass.log.Notice("Connecting to Cassandra (can take a bit of time) ... %s (%s)", sess_key, con_key)
