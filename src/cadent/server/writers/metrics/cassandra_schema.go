@@ -325,7 +325,7 @@ func (cass *cassandraMetricsSchema) AddMetricsLogTable() error {
 		err = fmt.Errorf("Cassandra Schema Driver: Metric Log failed, %v", err)
 		return err
 	}
-	cass.log.Notice("Added table for log table %s_%d", cass.LogTable, cass.WriteIndex)
+	cass.log.Notice("Adding log table %s_%d_%ds", cass.LogTable, cass.WriteIndex, cass.Resolution)
 
 	Q := string(buf.Bytes())
 	for _, q := range strings.Split(Q, "==SPLIT==") {
