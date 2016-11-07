@@ -105,10 +105,9 @@ func (cass *cassandraIndexerSchema) AddIndexerTables() (err error) {
 
 		Q := string(buf.Bytes())
 		for _, q := range strings.Split(Q, "==SPLIT==") {
-			err = cass.conn.Query(q).Exec()
-			if err != nil {
+			terr := cass.conn.Query(q).Exec()
+			if terr != nil {
 				err = fmt.Errorf("Cassandra Schema Driver: Index failed, %v", err)
-				return
 			}
 		}
 	})
