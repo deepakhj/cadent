@@ -246,6 +246,7 @@ func (cass *CassandraLogMetric) Start() {
 			panic(err)
 		}
 		cass.writer.log.Notice("Adding metric log tables")
+		schems.Resolution = cass.currentResolution // need to reset this if table per res is true
 		err = schems.AddMetricsLogTable()
 		if err != nil {
 			panic(err)

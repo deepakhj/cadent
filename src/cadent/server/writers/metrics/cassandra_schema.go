@@ -239,8 +239,7 @@ func (cass *cassandraMetricsSchema) AddMetricsTable() error {
 	var err error
 
 	if len(cass.Resolutions) == 0 {
-		err = fmt.Errorf("Need resolutions")
-		return err
+		return fmt.Errorf("Need resolutions")
 	}
 
 	baseTpl := CASSANDRA_METRICS_BLOB_TEMPLATE
@@ -252,7 +251,6 @@ func (cass *cassandraMetricsSchema) AddMetricsTable() error {
 		baseTpl = CASSANDRA_METRICS_FLAT_TEMPLATE
 		if cass.Perres {
 			baseTpl = CASSANDRA_METRICS_FLAT_PER_RES_TEMPLATE
-
 		}
 	}
 
