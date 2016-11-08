@@ -65,7 +65,6 @@ progress Copying artifacts
 mkdir -p ${TARGET}
 mkdir -p ${OUTPUT}
 
-cp -rf html ${OUTPUT}
 cp -rf cadent ${OUTPUT}
 cp -rf echoserver ${OUTPUT}
 cp -rf statblast ${OUTPUT}
